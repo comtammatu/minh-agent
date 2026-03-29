@@ -1,0 +1,19 @@
+{
+  "name": "minh-agent",
+  "version": "1.0.0",
+  "description": "Minh (明) — lightweight real-time trading analysis engine",
+  "module": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "test": "bun test",
+    "test:run": "bun test --run",
+    "fixtures": "bun run scripts/gen-fixtures.ts"
+  },
+  "dependencies": {
+    "@nktkas/hyperliquid": "^0.32.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
