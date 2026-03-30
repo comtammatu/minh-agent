@@ -10,10 +10,12 @@
  *   5. Wire PG write-through for live WS candles
  *   6. Start funding + OI polling
  *   7. Print ARMED + coin counts
- *   8. Start coin refresh loop (1h interval)
- *   9. setInterval: STATUS line every 60s
- *  10. setInterval: staleness check every 30s
- *  SIGINT: stop refresh → close WS → close DB → exit
+ *   8. Start health monitor
+ *   9. Wire agent: TradingAgent ↔ OrderManager ↔ PositionMonitor + InvalidationBridge + Elysia
+ *  10. Start coin refresh loop (1h interval)
+ *  11. setInterval: STATUS line every 60s
+ *  12. setInterval: staleness check every 30s
+ *  SIGINT: stop sync → close WS → close DB → exit
  */
 
 import {
@@ -53,6 +55,12 @@ import {
 import { log } from './lib/logger.js'
 import { getHealthMonitor } from './agent/self-healing.js'
 import { ANSI } from './ui/terminal.js'
+import { getPipelineEmitter } from './scanner/pipeline.js'
+import { getAgent } from './agent/trading-agent.js'
+import { getOrderManager } from './agent/order-manager.js'
+import { getPositionMonitor } from './agent/position-monitor.js'
+import { getInvalidationBridge } from './agent/invalidation-bridge.js'
+import { startServer } from './server/index.js'
 import type { CandleInterval } from './types.js'
 
 // ── Banner ───────────────────────────────────────────────────────────────────
@@ -229,10 +237,40 @@ async function main(): Promise<void> {
   // 8. Start health monitor periodic check (S13: Self-Healing)
   health.startPeriodicCheck()
 
-  // 9. Start coin refresh loop
+  // 9. Wire agent components (S16: end-to-end integration)
+  const agent = getAgent()
+  const om = getOrderManager()
+  const pm = getPositionMonitor()
+  const bridge = getInvalidationBridge()
+
+  // Load active orders from DB (crash recovery R1)
+  await om.loadActiveOrders()
+
+  // Agent ← Pipeline (setup events)
+  agent.subscribeToPipeline(getPipelineEmitter())
+
+  // InvalidationBridge ← Pipeline (invalidation events) → Agent
+  bridge.connect(getPipelineEmitter(), agent)
+
+  // Agent → OrderManager (bidirectional)
+  agent.onAction(action => om.handleAction(action))
+  om.setAgentDispatch((coin, event) => agent.dispatch(coin, event))
+
+  // Agent → PositionMonitor (dispatch back)
+  pm.setAgentDispatch((coin, event) => agent.dispatch(coin, event))
+
+  // Start exchange sync heartbeat (R3: 10s interval)
+  pm.startSync()
+
+  // Start Elysia HTTP server
+  await startServer()
+
+  log.info('agent', `Agent wired: state machine + order manager + position monitor + invalidation bridge`)
+
+  // 10. Start coin refresh loop
   selector.startRefreshLoop()
 
-  // 9. STATUS interval — per-coin compact aggregate
+  // 11. STATUS interval — per-coin compact aggregate
   activeIntervals.push(setInterval(() => {
     const trackedCoins = selector.getTrackedCoins()
     const snapshots = getStatus()
@@ -262,7 +300,7 @@ async function main(): Promise<void> {
     console.log(`[${ts()}] ${ANSI.dim}STATUS${ANSI.reset} | ${trackedCoins.length} coins | ${parts.slice(0, 10).join(' | ')}${trackedCoins.length > 10 ? ` ... +${trackedCoins.length - 10} more` : ''}`)
   }, STATUS_INTERVAL_MS))
 
-  // 10. Staleness watchdog (candles + order book)
+  // 12. Staleness watchdog (candles + order book)
   activeIntervals.push(setInterval(() => {
     checkStaleness()
     checkBookStaleness()
@@ -274,9 +312,10 @@ async function main(): Promise<void> {
   })
 }
 
-/** Clean up intervals, WS connections, refresh loop, polling, and DB before reconnect. */
+/** Clean up intervals, WS connections, refresh loop, polling, agent sync, and DB before reconnect. */
 async function cleanup(): Promise<void> {
   selector.stopRefreshLoop()
+  getPositionMonitor().stopSync()
   for (const id of activeIntervals) clearInterval(id)
   activeIntervals.length = 0
   stopFundingPolling()
@@ -290,8 +329,9 @@ async function runWithReconnect(): Promise<never> {
 
   // SIGINT handler — register once, outside retry loop
   process.on('SIGINT', async () => {
-    console.log(`\n${ANSI.bold}${ANSI.yellow}[SHUTDOWN]${ANSI.reset} Closing WebSocket connections...`)
+    console.log(`\n${ANSI.bold}${ANSI.yellow}[SHUTDOWN]${ANSI.reset} Closing connections...`)
     getHealthMonitor().stopPeriodicCheck()
+    getPositionMonitor().stopSync()
     await cleanup()
     await closeDb()
     console.log(`${ANSI.bold}${ANSI.yellow}[SHUTDOWN]${ANSI.reset} Minh stopped gracefully.`)

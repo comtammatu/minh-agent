@@ -9,15 +9,15 @@
  *   GET /api/candles/:coin/:tf — candle data with ?count
  *
  * Agent endpoints (no auth, read-only):
- *   GET /api/agent/state     — agent state (stub until S5)
+ *   GET /api/agent/state     — agent state
  *   GET /api/agent/journal   — trade journal from PG
- *   GET /api/agent/positions — open positions (stub until S5)
+ *   GET /api/agent/positions — open positions from PositionMonitor
  *
  * Execution endpoints (bearer auth required):
- *   POST /api/execution/override/pause     — pause agent (stub)
- *   POST /api/execution/override/resume    — resume agent (stub)
- *   POST /api/execution/override/close-all — emergency close (stub)
- *   DELETE /api/execution/order/:id        — cancel order (stub)
+ *   POST /api/execution/override/pause     — pause agent
+ *   POST /api/execution/override/resume    — resume agent
+ *   POST /api/execution/override/close-all — emergency close all positions + cancel orders
+ *   DELETE /api/execution/order/:id        — cancel specific order
  */
 
 import { Elysia, t } from 'elysia'
@@ -38,6 +38,8 @@ import { getCandles } from '../feed/store.js'
 import { getStatus, getActiveSetups } from '../scanner/pipeline.js'
 import { sql } from '../db/connection.js'
 import { getAgent } from '../agent/trading-agent.js'
+import { getOrderManager } from '../agent/order-manager.js'
+import { getPositionMonitor } from '../agent/position-monitor.js'
 import { getHealthMonitor } from '../agent/self-healing.js'
 
 const startedAt = Date.now()
@@ -171,12 +173,11 @@ function createApp() {
     })
 
     .get('/api/agent/positions', () => {
-      // Stub — position monitor wired in S7
-      return {
-        positions: [],
-        totalExposure: 0,
-        message: 'Position monitor not yet wired (Sprint 2 S7)',
-      }
+      const pm = getPositionMonitor()
+      const posMap = pm.getPositions()
+      const positions = Array.from(posMap.values())
+      const totalExposure = positions.reduce((sum, p) => sum + (p.size * p.entryPrice), 0)
+      return { positions, totalExposure, count: positions.length }
     })
 
     // ── Execution endpoints (bearer auth required) ────────────────────────
@@ -205,14 +206,53 @@ function createApp() {
           return { ok: true, action: 'resume' }
         })
 
-        .post('/override/close-all', () => {
-          // Stub — wired in S6
-          return { ok: true, action: 'close-all', message: 'Close-all not yet wired (Sprint 2 S6)' }
+        .post('/override/close-all', async () => {
+          const agent = getAgent()
+          const om = getOrderManager()
+          const pm = getPositionMonitor()
+
+          // Pause agent first to prevent new entries
+          agent.pauseAll('emergency close-all via API')
+
+          // Cancel all pending orders
+          const orders = om.getOrders()
+          let cancelled = 0
+          for (const [id, order] of orders) {
+            if (order.status === 'pending' || order.status === 'submitted') {
+              await om.cancelOrder(id, 'emergency close-all')
+              cancelled++
+            }
+          }
+
+          // Close all open positions via OrderManager
+          const positions = pm.getPositions()
+          let closed = 0
+          for (const [posId] of positions) {
+            await om.handleAction({ type: 'close_position', positionId: posId, reason: 'emergency close-all' })
+            closed++
+          }
+
+          return { ok: true, action: 'close-all', cancelled, closed }
         })
 
-        .delete('/order/:id', ({ params }) => {
-          // Stub — wired in S6
-          return { ok: true, action: 'cancel', orderId: params.id, message: 'Order cancel not yet wired (Sprint 2 S6)' }
+        .delete('/order/:id', async ({ params, set }) => {
+          try {
+            const om = getOrderManager()
+            const order = await om.getOrder(params.id)
+            if (!order) {
+              set.status = 404
+              return { ok: false, error: 'not_found', orderId: params.id }
+            }
+            if (order.status !== 'pending' && order.status !== 'submitted') {
+              set.status = 409
+              return { ok: false, error: 'not_cancellable', orderId: params.id, status: order.status }
+            }
+            await om.cancelOrder(params.id, 'cancelled via API')
+            return { ok: true, action: 'cancel', orderId: params.id }
+          } catch {
+            set.status = 404
+            return { ok: false, error: 'not_found', orderId: params.id }
+          }
         }, {
           params: t.Object({ id: t.String() }),
         })

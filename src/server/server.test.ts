@@ -169,7 +169,7 @@ describe('Elysia HTTP Server', () => {
   // ── Agent positions endpoint ─────────────────────────────────────────────
 
   describe('GET /api/agent/positions', () => {
-    it('returns stub positions', async () => {
+    it('returns empty positions when none open', async () => {
       const res = await get(app, '/api/agent/positions')
       expect(res.status).toBe(200)
       const body = await json(res)
@@ -239,12 +239,12 @@ describe('Elysia HTTP Server', () => {
         expect(body.action).toBe('close-all')
       })
 
-      it('accepts DELETE /api/execution/order/:id with correct token', async () => {
+      it('returns 404 for DELETE /api/execution/order/:id when order not found', async () => {
         const res = await del(app, '/api/execution/order/abc-123', TEST_TOKEN)
-        expect(res.status).toBe(200)
+        expect(res.status).toBe(404)
         const body = await json(res)
-        expect(body.action).toBe('cancel')
-        expect(body.orderId).toBe('abc-123')
+        expect(body.ok).toBe(false)
+        expect(body.error).toBe('not_found')
       })
 
       it('rejects DELETE /api/execution/order/:id without token', async () => {
