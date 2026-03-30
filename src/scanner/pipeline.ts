@@ -110,6 +110,15 @@ export function getActiveSetups(): ActiveSetup[] {
   return Array.from(activeSetups.values())
 }
 
+/** Get unique list of coins that have at least one active setup. */
+export function getActiveSetupCoins(): string[] {
+  const coins = new Set<string>()
+  for (const setup of activeSetups.values()) {
+    coins.add(setup.coin)
+  }
+  return Array.from(coins)
+}
+
 /** Clear all state — used in tests. */
 export function clearPipelineState(): void {
   activeSetups.clear()

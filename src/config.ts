@@ -1,7 +1,13 @@
 import type { CandleInterval } from './types.js'
 
-export const COINS = ['BTC', 'ETH', 'SOL', 'HYPE', 'TAO'] as const
-export type Coin = typeof COINS[number]
+/** Fallback coins if fetchTopCoins fails at startup (should not normally be used). */
+export const FALLBACK_COINS = ['BTC', 'ETH', 'SOL', 'HYPE', 'TAO'] as const
+
+/** Number of top coins by OI to track. */
+export const TOP_COINS_LIMIT = 50
+
+/** How often to refresh the top coins list (ms). */
+export const COIN_REFRESH_INTERVAL_MS = 3_600_000  // 1 hour
 
 export const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'] as const
 

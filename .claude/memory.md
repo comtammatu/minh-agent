@@ -4,8 +4,22 @@
 
 ### Sprint Overview
 - **Sprint 1**: DONE ✅ — Analysis engine, 175 tests pass
+- **Sprint 1.5**: IN PROGRESS — Scale to 50 coins + feed optimization
 - **Sprint 2**: PLANNED — Algorithmic Agent Trading (PostgreSQL+TimescaleDB, Elysia, State Machine)
 - **Sprint 3**: PLANNED — Validate + Visualize (Backtest, Analytics, Dashboard MVP)
+
+### Sprint 1.5 Progress
+- **Phase A**: SKIPPED — already implemented in Sprint 1 (per-coin/per-TF WS routing)
+- **S1 (B-1)**: DONE — fetchTopCoins + CoinSelector + config changes (192 tests pass)
+- **S2 (B-2)**: NOT STARTED — Startup wiring + refresh loop + subscribe/unsubscribe
+- **S3 (C)**: NOT STARTED — Parallel backfill with concurrency cap
+- **S4 (D)**: NOT STARTED — activeAssetCtx feed + OI/divergence signals
+
+### Sprint 1.5 Key Changes (S1)
+- `COINS` const removed from config.ts → replaced with `FALLBACK_COINS` + `TOP_COINS_LIMIT` (50) + `COIN_REFRESH_INTERVAL_MS` (1h)
+- `src/feed/coin-selector.ts` created: fetchTopCoins() from HL metaAndAssetCtxs, CoinSelector (stateful, tracks topCoins ∪ activeSetupCoins)
+- `pipeline.ts` exports `getActiveSetupCoins()` — used by CoinSelector to prevent mid-setup drops
+- `index.ts` temporarily uses `FALLBACK_COINS as COINS` — S2 will wire CoinSelector
 
 ### Sprint 1 Progress (Complete)
 - **Step 0**: DONE — exports, domain-knowledge sections 11+12, git init
@@ -32,7 +46,7 @@
 - Sprint progression: SEE (S1) → ACT (S2) → VALIDATE (S3) → EXPAND (S4) → ADVISE (S5) → REMEMBER (S6-7)
 
 ### Test Baseline
-- 175 pass, 3 skip, 0 fail (17 test files)
+- 192 pass, 3 skip, 0 fail (18 test files)
 
 ### Current File Structure
 
@@ -44,6 +58,7 @@ src/
 │   └── order-flow.ts    ← Phase B: computeDelta, deltaConfirm, bookConfirm, fundingConfirm
 ├── feed/
 │   ├── rest.ts, ws.ts, store.ts
+│   ├── coin-selector.ts ← Sprint 1.5 S1: fetchTopCoins + CoinSelector
 │   ├── funding.ts       ← Phase B: REST polling 60s
 │   ├── trades.ts        ← Phase B: WS trades → DeltaState
 │   └── orderbook.ts     ← Phase B: WS L2 book → OrderBookSnapshot
@@ -54,7 +69,7 @@ src/
     │   ├── zones.ts       ← Layer 3: findEntryZones (bias-filtered)
     │   ├── confirm.ts     ← Layer 4: isAtZone + confirmZones (VSA/VP + OrderFlowContext)
     │   └── trigger.ts     ← Layer 5: findTrigger (PA at zone)
-    ├── pipeline.ts        ← Orchestrator
+    ├── pipeline.ts        ← Orchestrator + getActiveSetupCoins()
     ├── confluence.ts      ← Grade C/B/A/A+
     ├── regime.ts          ← Soft regime modifier
     ├── risk-filter.ts     ← Zone distance → size/RR/skip
@@ -65,16 +80,13 @@ src/
 - `onCandleTick(coin, interval, candle)` — called by WS subscription
 - `getStatus()` → StatusSnapshot[] (with confluenceGrade field)
 - `getActiveSetups()` → ActiveSetup[]
+- `getActiveSetupCoins()` → string[] (coins with active setups)
 - `clearPipelineState()` — for tests
 
-### Available Indicator Exports (for layers)
-- core.ts: sma, ema, atr, rsi, volumeRatio, volumeTrend, adx, detectRegime
-- smc.ts: detectFVG, scanFVGs, detectOrderBlocks, findPivots, detectStructureBreaks, detectLiquiditySweep, premiumDiscount, oteZone
-- wyckoff.ts: detectWyckoff → WyckoffResult { phase, confidence, event }
-- structure.ts: classifySwings, detectStructuralBias, compileKeyZones, analyzeStructure
-- volume-profile.ts: buildVolumeProfile
-- vsa.ts: detectVSA → VSASignal[]
-- price-action.ts: detectPriceAction → CandlePattern[]
+### HL SDK API Notes
+- `info.metaAndAssetCtxs()` → `[MetaResponse, PerpAssetCtxSchema[]]` (parallel arrays)
+- `MetaResponse.universe[i].name` = coin name, `.isDelisted` = true if delisted
+- `PerpAssetCtxSchema.openInterest` = string (all HL numerics are strings)
 
 ### Gotchas
 - HL SDK: all numerics are strings → parseFloat() everywhere
@@ -85,18 +97,5 @@ src/
 - HL trades side: "B" = buyer aggressor (buy), "A" = seller aggressor (sell)
 - ZoneConfirmation.deltaBoost/bookBoost/fundingBoost are optional — default 0
 
-### Live Run Verification (2026-03-30)
-- [CONFIRMED] git init + commit: `14bd08a`
-- [CONFIRMED] ARMED: BTC 6/6, ETH 6/6, SOL 6/6 TFs ready
-- [CONFIRMED] STATUS: prints every 60s (BTC/ETH/SOL SIDEWAYS — 0setup)
-- [CONFIRMED] domain-knowledge.md sections 11+12 present (933 lines)
-- Pending: SETUP alerts, Staleness WARNING, INVALID (market/network dependent)
-
-### Workflow (updated 2026-03-30)
-- Full workflow in `.claude/rules/session-protocol.md`
-- Sprint Kickoff → Session (Task Contract → Build → /review → Commit) → Phase Complete → Sprint Close
-- gstack skills: /review (every session), /cso (wallet/execution), /retro (phase/sprint boundaries)
-
 ### Next
-- Sprint 2 Session S1: PostgreSQL + TimescaleDB setup
-- Sprint 2 has 16 sessions across 5 phases (2A-2E), ~8-10h estimated
+- Sprint 1.5 Session S2: Startup wiring — replace FALLBACK_COINS with CoinSelector in index.ts

@@ -377,20 +377,21 @@ This is gated on empirical test. Do not implement speculatively.
 
 | Session | Phase | Task | Est. |
 |---|---|---|---|
-| S1 | A | Scanner incremental — per-coin tick routing | 20-30 min |
-| S2 | B-1 | `fetchTopCoins` + `CoinSelector` + config | 30-40 min |
-| S3 | B-2 | Startup wiring + refresh loop + subscribe/unsubscribe | 30-40 min |
-| S4 | C | Parallel backfill with concurrency cap | 25-35 min |
-| S5 | D | `activeAssetCtx` feed + OI/divergence signals | 30-40 min |
-| S6 | — | WS pool (conditional on cap test) | 25-35 min |
+| S1 | B-1 | `fetchTopCoins` + `CoinSelector` + config | 30-40 min |
+| S2 | B-2 | Startup wiring + refresh loop + subscribe/unsubscribe | 30-40 min |
+| S3 | C | Parallel backfill with concurrency cap | 25-35 min |
+| S4 | D | `activeAssetCtx` feed + OI/divergence signals | 30-40 min |
+| S5 | — | WS pool (conditional on cap test) | 25-35 min |
 
-**Total: 5-6 sessions, ~3-4 hours estimated**
+Phase A (scanner incremental) was already implemented in Sprint 1 — `onCandleTick` routes per-coin/per-TF via WS callback. Removed from roadmap.
+
+**Total: 4-5 sessions, ~2.5-3.5 hours estimated**
 
 ### Session Progress
 
 | Session | Status | Date | Notes |
 |---|---|---|---|
-| S1 | NOT STARTED | — | — |
+| S1 | DONE | 2026-03-30 | fetchTopCoins + CoinSelector + config. Phase A skipped (already done). 192 tests pass. |
 
 ---
 
