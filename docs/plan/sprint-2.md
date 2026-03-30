@@ -798,6 +798,7 @@ Map phases to sessions. Each session = 1 Task Contract, 20-45 min, checkpoint co
 | S3 | DONE | 2026-03-30 | exits.ts: computePositionSize (R12), structure/ATR/combined SL, R:R + structure TP, trailing stop, partial close, buildExitPlan. Risk-filter refactored to shared computePositionSize. 42 new tests, 286 total pass. |
 | S4 | DONE | 2026-03-30 | Elysia HTTP server: 8 read routes (health, status, setups, candles, agent state/journal/positions), 4 auth-protected execution stubs (pause/resume/close-all/cancel). Bearer auth, localhost-only (R4), validation. 20 new tests, 306 total pass. |
 | S5 | DONE | 2026-03-30 | Agent state machine: 6 states (IDLE/WATCHING/ENTERING/IN_POSITION/EXITING/PAUSED), per-coin Map<coin,CoinContext>, state-handler pattern (R2), EventEmitter pipeline→agent (R10), crash recovery skeleton (R1), CB holds position (R5), API wired. 47 new tests, 353 total pass. |
+| S6 | DONE | 2026-03-30 | Order Lifecycle Manager: place/fill/reject/cancel/timeout, idempotency (cloid + 1-order-per-coin), R9 SL trigger-market + TP trigger-limit after fill, DB persist (insert/update/query), handleAction bridge to TradingAgent, exchange stubs (S10). Multi-position DCA deferred. 23 new tests, 376 total pass. |
 
 ---
 

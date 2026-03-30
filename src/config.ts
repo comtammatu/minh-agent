@@ -220,6 +220,20 @@ export const MIN_POSITION_SIZE_PCT = 0.001
 /** Slippage buffer for stop market orders (Section 12.5). */
 export const STOP_SLIPPAGE_BUFFER = 0.002  // 0.2%
 
+// ─── Order Lifecycle (S6) ────────────────────────────────────────────────────
+
+/** Order fill timeout (ms) — cancel entry if not filled. */
+export const ORDER_FILL_TIMEOUT_MS = 5 * 60 * 1000  // 5 minutes
+
+/** Max open orders per coin (enforces 1-position-per-coin rule). */
+export const MAX_ORDERS_PER_COIN = 1
+
+/** SL trigger order type: market (guaranteed fill on stop). */
+export const SL_IS_MARKET = true
+
+/** TP trigger order type: limit (better fill price on target). */
+export const TP_IS_MARKET = false
+
 // ─── Elysia HTTP Server (R4: localhost-only) ────────────────────────────────
 
 /** Server port. */

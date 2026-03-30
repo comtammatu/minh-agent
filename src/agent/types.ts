@@ -96,6 +96,53 @@ export type AgentEvent =
   | { type: 'resume' }
   | { type: 'tick' }  // periodic check (timeouts, cooldowns)
 
+// ─── Order Types (S6: Order Lifecycle Manager) ──────────────────────────────
+
+export type OrderStatus = 'pending' | 'submitted' | 'filled' | 'partial' | 'cancelled' | 'rejected'
+export type OrderType = 'limit' | 'market'
+export type TriggerOrderType = 'sl' | 'tp'
+
+/** Persisted order record — maps to `orders` table. */
+export interface Order {
+  id: string             // UUID from DB
+  coin: string
+  side: 'long' | 'short'
+  type: OrderType
+  price: number          // limit price or market ref price
+  size: number           // in coin units
+  status: OrderStatus
+  setupId: string | null
+  slPrice: number | null
+  tpPrice: number | null
+  cloid: string          // client order ID for idempotency (0x hex, 128-bit)
+  exchangeOrderId: string | null
+  createdAt: number      // ms timestamp
+  updatedAt: number
+  filledAt: number | null
+  fillPrice: number | null
+  fillSize: number       // filled so far (for partials)
+}
+
+/** SL/TP trigger order placed on exchange after entry fill (R9). */
+export interface TriggerOrder {
+  type: TriggerOrderType
+  coin: string
+  side: 'long' | 'short'  // close side (opposite of position)
+  triggerPrice: number
+  size: number
+  isMarket: boolean        // SL = trigger-market, TP = trigger-limit
+  cloid: string
+  exchangeOrderId: string | null
+  parentOrderId: string    // links to entry order
+}
+
+/** Result from exchange order submission (stubbed until S10). */
+export interface ExchangeOrderResult {
+  success: boolean
+  exchangeOrderId: string | null
+  error: string | null
+}
+
 // ─── Pipeline Event (emitted by scanner) ─────────────────────────────────────
 
 export interface PipelineEvents {
