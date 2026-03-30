@@ -806,6 +806,7 @@ Map phases to sessions. Each session = 1 Task Contract, 20-45 min, checkpoint co
 | S11 | DONE | 2026-03-30 | Circuit Breakers: daily loss, consecutive loss, rapid loss, max drawdown. Pure check functions in circuit-breakers.ts. R5: CB pauses NEW entries only, IN_POSITION keeps SL/TP. TradingAgent.checkCircuitBreakers() + recordPnl() wired. 30 new tests, 514 total pass. |
 | S12 | DONE | 2026-03-30 | Anti-Correlation Guard: static correlation groups (7 groups: btc/eth/sol-ecosystem, meme, ai, defi, l1). shouldBlockCorrelatedEntry() checks RISK.maxCorrelatedPositions per group. TradingAgent.onSetup() blocks new entries. getCorrelationExposure() for API. 28 new tests, 542 total pass. |
 | S13 | DONE | 2026-03-30 | Self-Healing: withRetry() exponential backoff utility (lib/retry.ts), HealthMonitor (self-healing.ts) tracks feed/db/exchange component health + RSS monitoring, ExchangeService all API calls wrapped with retry + 503 detection, OrderManager SL/TP placement retries (3 attempts), /api/health returns component-level status (ok/degraded/critical). 46 new tests, 588 total pass. |
+| S14 | DONE | 2026-03-30 | Telegram Alerts: sendTelegramAlert() fire-and-forget via Bot API, formatAlert() MarkdownV2 for signal(A/A+)/enter/exit/circuit_break/invalidate(with position), escapeMarkdownV2() helper, formatDailySummary(), checkTelegramConfig() startup WARN. Injected fetch for testability. 32 new tests, 620 total pass. |
 
 ---
 

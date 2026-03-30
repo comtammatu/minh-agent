@@ -347,6 +347,20 @@ export const RETRY = {
   jitterFraction: 0.3,
 } as const
 
+// ─── Telegram Alerts (S14) ──────────────────────────────────────────────────
+
+/** Telegram Bot API configuration. Env vars: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID. */
+export const TELEGRAM = {
+  /** Environment variable name for bot token. */
+  tokenEnv: 'TELEGRAM_BOT_TOKEN',
+  /** Environment variable name for chat ID. */
+  chatIdEnv: 'TELEGRAM_CHAT_ID',
+  /** Telegram Bot API base URL. */
+  apiBase: 'https://api.telegram.org',
+  /** Request timeout (ms). */
+  timeoutMs: 10_000,
+} as const
+
 /** Health monitoring configuration. */
 export const HEALTH = {
   /** RSS warning threshold (bytes). ~512MB. */
