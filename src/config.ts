@@ -113,14 +113,16 @@ export const FUNDING_CONTRARIAN_THRESHOLD = -0.0001
 
 // ─── Phase D: Asset Context / OI Config ────────────────────────────────────
 
-/** OI polling interval — all coins fetched in one REST call (ms). */
-export const OI_POLL_INTERVAL_MS = 30_000
-
 /** OI spike threshold: deltaOI / prevOI > threshold → spike signal. */
 export const OI_SPIKE_THRESHOLD = 0.05  // 5%
 
 /** Mark/oracle divergence threshold: |mark - oracle| / oracle > threshold. */
 export const MARK_ORACLE_DIVERGENCE_THRESHOLD = 0.005  // 0.5%
+
+// ─── WebSocket Limits ─────────────────────────────────────────────────────
+
+/** HL WS max subscriptions per IP (hard limit). */
+export const WS_MAX_SUBSCRIPTIONS = 1_000
 
 // ─── WebSocket Reconnection ────────────────────────────────────────────────
 

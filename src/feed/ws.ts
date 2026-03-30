@@ -8,7 +8,7 @@
 import { WebSocketTransport, SubscriptionClient } from '@nktkas/hyperliquid'
 import type { ISubscription } from '@nktkas/hyperliquid'
 import type { Candle, CandleInterval } from '../types.js'
-import { STALENESS_THRESHOLD_MS } from '../config.js'
+import { STALENESS_THRESHOLD_MS, WS_MAX_SUBSCRIPTIONS } from '../config.js'
 
 // Module-level WS client (one process, one WS connection)
 let wsClient: SubscriptionClient | null = null
@@ -33,9 +33,16 @@ export function getWsClient(): SubscriptionClient {
   return getClient()
 }
 
-/** Register a subscription for centralized cleanup on closeAll(). */
+/** Register a subscription for centralized cleanup on closeAll(). Warns near HL 1000 limit. */
 export function registerSubscription(sub: ISubscription): void {
+  if (activeSubscriptions.length >= WS_MAX_SUBSCRIPTIONS) {
+    console.log(`[WS] LIMIT — ${activeSubscriptions.length}/${WS_MAX_SUBSCRIPTIONS} subscriptions, cannot add more`)
+    return
+  }
   activeSubscriptions.push(sub)
+  if (activeSubscriptions.length >= WS_MAX_SUBSCRIPTIONS * 0.8) {
+    console.log(`[WS] WARNING — ${activeSubscriptions.length}/${WS_MAX_SUBSCRIPTIONS} subscriptions (80%+ capacity)`)
+  }
 }
 
 /** Remove a subscription from the global activeSubscriptions array. */
