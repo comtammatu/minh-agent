@@ -81,8 +81,8 @@ Sprint 2 (Agent):
 | Component | Choice | Rationale (see decisions.md S1-S7) |
 |---|---|---|
 | Runtime | Bun/TypeScript | Rule-based agent, type safety, 2-5ms/tick |
-| Database | PostgreSQL + TimescaleDB | ACID for orders/positions, hypertables for candles, continuous aggregates |
-| DB deploy | Docker Compose | `docker-compose.yml` with `timescale/timescaledb` image |
+| Database | PostgreSQL 18 + TimescaleDB | ACID for orders/positions, hypertables for candles, materialized views for analytics |
+| DB deploy | Docker Compose | `docker-compose.yml` with `timescale/timescaledb:latest-pg18` image |
 | Migrations | Numbered SQL files | `src/db/migrations/001_initial.sql`, simple runner on startup |
 | HTTP | Elysia (localhost only) | Execution endpoints need validation, auth; bound to 127.0.0.1 |
 | Wallet | viem | EIP-712 signing for Hyperliquid |

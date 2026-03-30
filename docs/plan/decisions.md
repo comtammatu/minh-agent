@@ -246,3 +246,26 @@ Mode: **BIG CHANGE** — full interactive review across Architecture, Code Quali
 Error & rescue map: 17 error paths mapped, 0 unhandled.
 Failure modes: 12 production failure scenarios reviewed, 0 silent failures.
 Security: 9 threat vectors assessed, all mitigated by review decisions.
+
+---
+
+## Sprint 2 Session Log
+
+### S1 — PostgreSQL + TimescaleDB Setup (2026-03-30)
+
+**Completed:**
+- `docker-compose.yml`: TimescaleDB on PostgreSQL 18 (`timescale/timescaledb:latest-pg18`)
+- `src/db/migrations/001_initial.sql`: 4 tables (candles, orders, positions, trade_journal) + 2 hypertables (candles, trade_journal) + schema_migrations + pnl_hourly materialized view
+- `src/db/connection.ts`: postgres pool max:5 (R15)
+- `src/db/migrate.ts`: Numbered SQL migration runner — tracks applied versions in schema_migrations
+- `src/lib/logger.ts`: Simple log helper (R6) — DEBUG/INFO/WARN/ERROR + timestamps + component tags
+- `src/config.ts`: DB_MAX_CONNECTIONS, DB_IDLE_TIMEOUT_S, DB_CONNECT_TIMEOUT_S
+- `.env.example`: DATABASE_URL + LOG_LEVEL
+- `test/db/migrate.test.ts`: Integration tests (idempotent run, hypertable checks, constraint checks)
+- `test/lib/logger.test.ts`: Unit tests (format, routing, level filtering)
+
+**Design decisions made during implementation:**
+- `pnl_hourly` changed from TimescaleDB continuous aggregate to regular materialized view. Reason: `positions` is a regular table (updated in place), not a hypertable. Continuous aggregates require hypertable source. Refresh via `REFRESH MATERIALIZED VIEW pnl_hourly;`.
+- `trade_journal` PK changed from `(id)` to TimescaleDB auto-managed (BIGSERIAL id + ts hypertable). Required because hypertables need the partitioning column in PK.
+
+**Tests:** 226 pass, 3 skip, 0 fail.
