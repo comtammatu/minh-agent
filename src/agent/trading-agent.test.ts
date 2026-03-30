@@ -457,16 +457,20 @@ describe('TradingAgent', () => {
     expect(agent.getCoinState('BTC')).toBe('WATCHING')
   })
 
-  it('handles pipeline invalidation events', () => {
+  it('handles pipeline invalidation events via bridge', () => {
+    const { InvalidationBridge } = require('./invalidation-bridge.js')
     const emitter = new EventEmitter()
+    const bridge = new InvalidationBridge()
+
     agent.subscribeToPipeline(emitter)
+    bridge.connect(emitter, agent)
 
     // First put in WATCHING
     const setup = makeSetup({ confluenceGrade: 'A' })
     emitter.emit('setup', setup)
     expect(agent.getCoinState('BTC')).toBe('WATCHING')
 
-    // Invalidate
+    // Invalidate — bridge validates setupId match before dispatch
     emitter.emit('invalidation', 'BTC:1h:order-block:long', 'zone-broken')
     expect(agent.getCoinState('BTC')).toBe('IDLE')
   })

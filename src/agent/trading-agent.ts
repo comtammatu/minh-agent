@@ -362,15 +362,18 @@ export class TradingAgent {
 
   // ── Pipeline Integration (R10) ───────────────────────────────────────────
 
-  /** Subscribe to pipeline EventEmitter for setup events. */
+  /**
+   * Subscribe to pipeline EventEmitter for setup events.
+   * Note: invalidation events are handled by InvalidationBridge (S8),
+   * which validates setupId match before dispatching to this agent.
+   * Call `bridge.connect(pipelineEmitter, agent)` separately.
+   */
   subscribeToPipeline(pipelineEmitter: EventEmitter): void {
     pipelineEmitter.on('setup', (setup: ActiveSetup) => {
       this.onSetup(setup)
     })
-    pipelineEmitter.on('invalidation', (setupId: string, reason: string) => {
-      const coin = setupId.split(':')[0]
-      if (coin) this.dispatch(coin, { type: 'setup_invalidated', setupId, reason })
-    })
+    // Invalidation events handled by InvalidationBridge — see S8.
+    // Bridge calls agent.dispatch() after setupId matching.
   }
 
   /** Handle incoming setup from pipeline. */
@@ -524,6 +527,11 @@ export class TradingAgent {
   /** Get state for a specific coin. */
   getCoinState(coin: string): AgentState {
     return this.coins.get(coin)?.state ?? 'IDLE'
+  }
+
+  /** Get full coin context (for invalidation bridge setup ID matching). */
+  getCoinContext(coin: string): Readonly<CoinContext> | null {
+    return this.coins.get(coin) ?? null
   }
 
   /** Get global context (for circuit breakers, risk management). */
