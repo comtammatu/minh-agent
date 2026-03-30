@@ -2,6 +2,7 @@
  * HL WebSocket candle subscription.
  * Uses SubscriptionClient for per-coin/TF candle streams.
  * Staleness watchdog: setInterval checks lastCandleTime map every 30s.
+ * Per-coin tracking: coinSubs Map enables selective unsubscribe on coin drop.
  */
 
 import { WebSocketTransport, SubscriptionClient } from '@nktkas/hyperliquid'
@@ -12,6 +13,9 @@ import { STALENESS_THRESHOLD_MS } from '../config.js'
 // Module-level WS client (one process, one WS connection)
 let wsClient: SubscriptionClient | null = null
 const activeSubscriptions: ISubscription[] = []
+
+// Per-coin subscription tracking for selective unsubscribe
+const coinSubs = new Map<string, ISubscription[]>()
 
 // lastCandleTime: key = "BTC:4h", value = Date.now() at last received candle
 const lastCandleTime = new Map<string, number>()
@@ -32,6 +36,12 @@ export function getWsClient(): SubscriptionClient {
 /** Register a subscription for centralized cleanup on closeAll(). */
 export function registerSubscription(sub: ISubscription): void {
   activeSubscriptions.push(sub)
+}
+
+/** Remove a subscription from the global activeSubscriptions array. */
+export function removeSubscription(sub: ISubscription): void {
+  const idx = activeSubscriptions.indexOf(sub)
+  if (idx !== -1) activeSubscriptions.splice(idx, 1)
 }
 
 function parseCandle(raw: {
@@ -71,6 +81,28 @@ export async function subscribeCandles(
 
   activeSubscriptions.push(sub)
   lastCandleTime.set(k, Date.now())
+
+  // Track per-coin for selective unsubscribe
+  const existing = coinSubs.get(coin) ?? []
+  existing.push(sub)
+  coinSubs.set(coin, existing)
+}
+
+/** Unsubscribe all candle streams for a specific coin. */
+export async function unsubscribeCandles(coin: string): Promise<void> {
+  const subs = coinSubs.get(coin)
+  if (!subs) return
+
+  for (const sub of subs) {
+    try { await sub.unsubscribe() } catch { /* ignore */ }
+    removeSubscription(sub)
+  }
+  coinSubs.delete(coin)
+
+  // Clear staleness entries for this coin
+  for (const k of lastCandleTime.keys()) {
+    if (k.startsWith(`${coin}:`)) lastCandleTime.delete(k)
+  }
 }
 
 /** Close all active WS subscriptions (call on SIGINT). */
@@ -79,6 +111,7 @@ export async function closeAll(): Promise<void> {
     try { await sub.unsubscribe() } catch { /* ignore */ }
   }
   activeSubscriptions.length = 0
+  coinSubs.clear()
   lastCandleTime.clear()
   if (wsClient) {
     try { (wsClient as unknown as { close?: () => void }).close?.() } catch { /* ignore */ }

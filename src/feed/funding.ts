@@ -3,6 +3,7 @@
  *
  * Uses HL REST fundingHistory() to fetch last 24h of rates per coin.
  * Stores latest snapshot per coin for Layer 4 consumption.
+ * Supports dynamic coin add/remove via addFundingCoin/removeFundingCoin.
  */
 
 import { info } from './rest.js'
@@ -16,6 +17,9 @@ import type { FundingSnapshot } from '../types.js'
 const fundingStore = new Map<string, FundingSnapshot[]>()
 
 let pollingTimer: ReturnType<typeof setInterval> | null = null
+
+// Mutable set — interval callback iterates this, so add/remove takes effect next poll
+const polledCoins = new Set<string>()
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -31,13 +35,17 @@ export function getLatestFunding(coin: string): FundingSnapshot | null {
  * Performs an initial fetch immediately, then polls every FUNDING_POLL_INTERVAL_MS.
  */
 export async function startFundingPolling(coins: string[]): Promise<void> {
+  // Populate mutable set
+  polledCoins.clear()
+  for (const coin of coins) polledCoins.add(coin)
+
   // Initial fetch (sequential — avoids burst on startup)
-  for (const coin of coins) {
+  for (const coin of polledCoins) {
     await fetchFunding(coin)
   }
 
   pollingTimer = setInterval(async () => {
-    for (const coin of coins) {
+    for (const coin of polledCoins) {
       await fetchFunding(coin)
     }
   }, FUNDING_POLL_INTERVAL_MS)
@@ -49,6 +57,18 @@ export function stopFundingPolling(): void {
     clearInterval(pollingTimer)
     pollingTimer = null
   }
+}
+
+/** Add a coin to the polling set + immediate initial fetch. */
+export async function addFundingCoin(coin: string): Promise<void> {
+  polledCoins.add(coin)
+  await fetchFunding(coin)
+}
+
+/** Remove a coin from polling and clear its stored data. */
+export function removeFundingCoin(coin: string): void {
+  polledCoins.delete(coin)
+  fundingStore.delete(coin)
 }
 
 // ── Internal ─────────────────────────────────────────────────────────────────

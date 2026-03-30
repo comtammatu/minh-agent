@@ -65,6 +65,13 @@ export function candleCount(coin: string, interval: CandleInterval): number {
   return store.get(key(coin, interval))?.length ?? 0
 }
 
+/** Clear all candle data for a specific coin (all timeframes). */
+export function clearCoinData(coin: string): void {
+  for (const k of store.keys()) {
+    if (k.startsWith(`${coin}:`)) store.delete(k)
+  }
+}
+
 /** Clear all stored candles (used in tests). */
 export function clearStore(): void {
   store.clear()

@@ -392,6 +392,7 @@ Phase A (scanner incremental) was already implemented in Sprint 1 — `onCandleT
 | Session | Status | Date | Notes |
 |---|---|---|---|
 | S1 | DONE | 2026-03-30 | fetchTopCoins + CoinSelector + config. Phase A skipped (already done). 192 tests pass. |
+| S2 | DONE | 2026-03-30 | CoinSelector wired into index.ts. Per-coin unsub in ws/trades/orderbook/funding. Dynamic subscribe/unsubscribe on refresh. 192 tests pass. |
 
 ---
 

@@ -10,12 +10,16 @@
  *   "A" = seller aggressor → sell volume
  */
 
-import { getWsClient, registerSubscription } from './ws.js'
+import type { ISubscription } from '@nktkas/hyperliquid'
+import { getWsClient, registerSubscription, removeSubscription } from './ws.js'
 import { computeDelta } from '../indicators/order-flow.js'
 import type { DeltaState } from '../types.js'
 
 // coin → current accumulated delta state
 const deltaStore = new Map<string, DeltaState>()
+
+// Per-coin subscription tracking for selective unsubscribe
+const tradeSubs = new Map<string, ISubscription>()
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -84,5 +88,17 @@ export async function subscribeTrades(coin: string): Promise<void> {
     }
   })
 
+  tradeSubs.set(coin, sub)
   registerSubscription(sub)
+}
+
+/** Unsubscribe trades stream for a specific coin and clear its delta state. */
+export async function unsubscribeTrades(coin: string): Promise<void> {
+  const sub = tradeSubs.get(coin)
+  if (sub) {
+    try { await sub.unsubscribe() } catch { /* ignore */ }
+    removeSubscription(sub)
+    tradeSubs.delete(coin)
+  }
+  deltaStore.delete(coin)
 }

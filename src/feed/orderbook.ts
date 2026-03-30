@@ -7,7 +7,8 @@
  * Logs WARNING if no update received within BOOK_STALENESS_MS.
  */
 
-import { getWsClient, registerSubscription } from './ws.js'
+import type { ISubscription } from '@nktkas/hyperliquid'
+import { getWsClient, registerSubscription, removeSubscription } from './ws.js'
 import { bidAskImbalance } from '../indicators/order-flow.js'
 import { BOOK_DEPTH_LEVELS, BOOK_STALENESS_MS } from '../config.js'
 import type { OrderBookSnapshot } from '../types.js'
@@ -17,6 +18,9 @@ const bookStore = new Map<string, OrderBookSnapshot>()
 
 // coin → last update timestamp (for staleness watchdog)
 const lastBookTime = new Map<string, number>()
+
+// Per-coin subscription tracking for selective unsubscribe
+const bookSubs = new Map<string, ISubscription>()
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -66,7 +70,20 @@ export async function subscribeOrderBook(coin: string): Promise<void> {
     }
   })
 
+  bookSubs.set(coin, sub)
   registerSubscription(sub)
+}
+
+/** Unsubscribe order book stream for a specific coin and clear its state. */
+export async function unsubscribeOrderBook(coin: string): Promise<void> {
+  const sub = bookSubs.get(coin)
+  if (sub) {
+    try { await sub.unsubscribe() } catch { /* ignore */ }
+    removeSubscription(sub)
+    bookSubs.delete(coin)
+  }
+  bookStore.delete(coin)
+  lastBookTime.delete(coin)
 }
 
 /**

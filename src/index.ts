@@ -2,18 +2,19 @@
  * Minh (明) — entry point.
  *
  * Startup sequence:
- *   1. Fetch HL universe meta → cache tickSizes (unused in Sprint 1, reserved)
- *   2. For each coin × TF:
- *      a. WS subscribe FIRST (candles during backfill arrive via upsert)
- *      b. REST backfill (sequential, ~9s total)
- *   3. Print "Ready" + candle counts
- *   4. setInterval: STATUS line every 60s
- *   5. setInterval: staleness check every 30s
- *   6. SIGINT: close all WS → log → process.exit(0)
+ *   1. CoinSelector: fetch top coins from HL by OI
+ *   2. For each tracked coin:
+ *      a. WS subscribe (candles × 6 TFs + trades + order book)
+ *      b. REST backfill (sequential per coin)
+ *   3. Start funding polling
+ *   4. Print ARMED + coin counts
+ *   5. Start coin refresh loop (1h interval)
+ *   6. setInterval: STATUS line every 60s
+ *   7. setInterval: staleness check every 30s
+ *   8. SIGINT: stop refresh → close WS → log → exit
  */
 
 import {
-  FALLBACK_COINS as COINS,
   TIMEFRAMES,
   STALENESS_CHECK_INTERVAL_MS,
   STATUS_INTERVAL_MS,
@@ -25,22 +26,87 @@ import {
   WS_RECONNECT_BACKOFF,
 } from './config.js'
 import { fetchCandles, backfillStartTime } from './feed/rest.js'
-import { setCandles, candleCount } from './feed/store.js'
-import { subscribeCandles, closeAll, checkStaleness } from './feed/ws.js'
-import { startFundingPolling, stopFundingPolling } from './feed/funding.js'
-import { subscribeTrades } from './feed/trades.js'
-import { subscribeOrderBook, checkBookStaleness } from './feed/orderbook.js'
-import { onCandleTick, getStatus } from './scanner/pipeline.js'
+import { setCandles, clearCoinData } from './feed/store.js'
+import { subscribeCandles, unsubscribeCandles, closeAll, checkStaleness } from './feed/ws.js'
+import { startFundingPolling, stopFundingPolling, addFundingCoin, removeFundingCoin } from './feed/funding.js'
+import { subscribeTrades, unsubscribeTrades } from './feed/trades.js'
+import { subscribeOrderBook, unsubscribeOrderBook, checkBookStaleness } from './feed/orderbook.js'
+import { createCoinSelector } from './feed/coin-selector.js'
+import type { RefreshResult } from './feed/coin-selector.js'
+import { onCandleTick, getStatus, getActiveSetupCoins, clearCoinState } from './scanner/pipeline.js'
 import type { CandleInterval } from './types.js'
 
 // ── Banner ───────────────────────────────────────────────────────────────────
 
-console.log(`[${ts()}] Minh (明) v1.0.0 — Layered Decision Framework`)
+console.log(`[${ts()}] Minh (明) v1.1.0 — Dynamic Coin Selection`)
 console.log(
-  `[${ts()}] Config: ${COINS.join(',')} × ${TIMEFRAMES.join(',')} | ` +
+  `[${ts()}] Config: dynamic top coins × ${TIMEFRAMES.join(',')} | ` +
   `min:${MIN_CONFIDENCE} | confluence:${CONFLUENCE_MIN}+ | ` +
   `regime:${REGIME_MULTIPLIERS.aligned}/${REGIME_MULTIPLIERS.neutral}/${REGIME_MULTIPLIERS.counter}`,
 )
+
+// ── Coin Lifecycle Helpers ──────────────────────────────────────────────────
+
+/** Subscribe all WS feeds for a coin (candles × TFs + trades + orderbook). */
+async function subscribeCoin(coin: string): Promise<void> {
+  for (const tf of TIMEFRAMES) {
+    await subscribeCandles(coin, tf as CandleInterval, onCandleTick)
+  }
+  await subscribeTrades(coin)
+  await subscribeOrderBook(coin)
+}
+
+/** Backfill all timeframes for a coin via REST. */
+async function backfillCoin(coin: string): Promise<number> {
+  let ready = 0
+  for (const tf of TIMEFRAMES) {
+    const interval = tf as CandleInterval
+    const startTime = backfillStartTime(interval)
+    const candles = await fetchCandles(coin, interval, startTime)
+
+    if (candles === null) {
+      console.log(`[${ts()}] BACKFILL | ${coin} ${tf}: FAILED — skipping`)
+    } else if (candles.length === 0) {
+      console.log(`[${ts()}] BACKFILL | ${coin} ${tf}: empty`)
+    } else {
+      setCandles(coin, interval, candles)
+      ready++
+      console.log(`[${ts()}] BACKFILL | ${coin} ${tf}: ${candles.length} candles`)
+    }
+  }
+  return ready
+}
+
+/** Unsubscribe all feeds + clear all state for a coin. */
+async function unsubscribeCoin(coin: string): Promise<void> {
+  await unsubscribeCandles(coin)
+  await unsubscribeTrades(coin)
+  await unsubscribeOrderBook(coin)
+  removeFundingCoin(coin)
+  clearCoinData(coin)
+  clearCoinState(coin)
+}
+
+// ── CoinSelector + onRefresh ────────────────────────────────────────────────
+
+async function onCoinsRefreshed(result: RefreshResult): Promise<void> {
+  // Subscribe + backfill new coins
+  for (const coin of result.added) {
+    console.log(`[${ts()}] COIN-ADD | ${coin} — subscribing + backfilling`)
+    await subscribeCoin(coin)
+    await backfillCoin(coin)
+    await addFundingCoin(coin)
+  }
+
+  // Unsubscribe dropped coins (no active setup — already filtered by CoinSelector)
+  for (const coin of result.dropped) {
+    console.log(`[${ts()}] COIN-DROP | ${coin} — unsubscribing + clearing`)
+    await unsubscribeCoin(coin)
+  }
+}
+
+// Module-level selector — accessible from cleanup()
+const selector = createCoinSelector(getActiveSetupCoins, onCoinsRefreshed)
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
@@ -48,50 +114,47 @@ console.log(
 const activeIntervals: ReturnType<typeof setInterval>[] = []
 
 async function main(): Promise<void> {
-  // WS subscribe first (before backfill) to capture any candles during backfill
-  for (const coin of COINS) {
-    for (const tf of TIMEFRAMES) {
-      await subscribeCandles(coin, tf as CandleInterval, onCandleTick)
-    }
-    // Phase B: trades + order book per coin
-    await subscribeTrades(coin)
-    await subscribeOrderBook(coin)
+  // 1. Fetch top coins from HL — fatal if empty at startup (spec requirement)
+  const initialResult = await selector.refresh()
+  const coins = selector.getTrackedCoins()
+
+  if (coins.length === 0) {
+    throw new Error('fetchTopCoins returned empty at startup — cannot proceed without coin list')
   }
 
-  // REST backfill (sequential — ~9s)
-  const tfReady = new Map<string, number>()  // coin → count of TFs loaded
+  console.log(`[${ts()}] COINS | ${coins.length} coins selected (${initialResult.added.length} from HL)`)
 
-  for (const coin of COINS) {
-    tfReady.set(coin, 0)
-    for (const tf of TIMEFRAMES) {
-      const interval = tf as CandleInterval
-      const startTime = backfillStartTime(interval)
-      const candles = await fetchCandles(coin, interval, startTime)
-
-      if (candles === null) {
-        console.log(`[${ts()}] BACKFILL | ${coin} ${tf}: FAILED — skipping`)
-      } else if (candles.length === 0) {
-        console.log(`[${ts()}] BACKFILL | ${coin} ${tf}: empty`)
-      } else {
-        setCandles(coin, interval, candles)
-        tfReady.set(coin, (tfReady.get(coin) ?? 0) + 1)
-        console.log(`[${ts()}] BACKFILL | ${coin} ${tf}: ${candles.length} candles`)
-      }
-    }
+  // 2. Subscribe all coins (WS first, before backfill — captures candles during backfill)
+  for (const coin of coins) {
+    await subscribeCoin(coin)
   }
 
-  // Phase B: funding rate polling (initial fetch + 60s interval)
-  await startFundingPolling([...COINS])
+  // 3. REST backfill all coins
+  const tfReady = new Map<string, number>()
+  for (const coin of coins) {
+    const ready = await backfillCoin(coin)
+    tfReady.set(coin, ready)
+  }
 
-  // ARMED readiness gate
-  const armedParts = COINS.map(coin => {
-    const ready = tfReady.get(coin) ?? 0
-    return `${coin}: ${ready}/${TIMEFRAMES.length} TFs ready`
-  })
-  console.log(`[${ts()}] ARMED | ${armedParts.join(' | ')}`)
+  // 4. Start funding polling for all coins
+  await startFundingPolling(coins)
 
-  // STATUS interval — per-coin compact aggregate
+  // 5. ARMED readiness gate
+  const fullyReady = coins.filter(c => (tfReady.get(c) ?? 0) === TIMEFRAMES.length).length
+  const partialReady = coins.filter(c => {
+    const r = tfReady.get(c) ?? 0
+    return r > 0 && r < TIMEFRAMES.length
+  }).length
+  console.log(
+    `[${ts()}] ARMED | ${coins.length} coins: ${fullyReady} fully ready, ${partialReady} partial | ${TIMEFRAMES.length} TFs`,
+  )
+
+  // 6. Start coin refresh loop
+  selector.startRefreshLoop()
+
+  // 7. STATUS interval — per-coin compact aggregate
   activeIntervals.push(setInterval(() => {
+    const trackedCoins = selector.getTrackedCoins()
     const snapshots = getStatus()
     if (snapshots.length === 0) return
 
@@ -104,7 +167,6 @@ async function main(): Promise<void> {
         byCoin.set(s.coin, { regime: s.regime, grade: g, setups: s.activeCount })
       } else {
         prev.setups += s.activeCount
-        // Keep highest-TF regime (last snapshot per coin = highest TF due to iteration order)
         prev.regime = s.regime
         if (s.confluenceGrade) {
           prev.grade = `${s.confluenceGrade}${Math.floor(s.biasConfidence * 10)}`
@@ -112,30 +174,29 @@ async function main(): Promise<void> {
       }
     }
 
-    const parts = COINS.map(coin => {
+    const parts = trackedCoins.map(coin => {
       const info = byCoin.get(coin)
       if (!info) return `${coin} — 0`
       return `${coin} ${info.regime} ${info.grade} ${info.setups} setup`
     })
-    console.log(`[${ts()}] STATUS | ${parts.join(' | ')}`)
+    console.log(`[${ts()}] STATUS | ${trackedCoins.length} coins | ${parts.slice(0, 10).join(' | ')}${trackedCoins.length > 10 ? ` ... +${trackedCoins.length - 10} more` : ''}`)
   }, STATUS_INTERVAL_MS))
 
-  // Staleness watchdog (candles + order book)
+  // 8. Staleness watchdog (candles + order book)
   activeIntervals.push(setInterval(() => {
     checkStaleness()
     checkBookStaleness()
   }, STALENESS_CHECK_INTERVAL_MS))
 
   // Keep alive — resolve when WS dies (detected via staleness or thrown error)
-  // This promise never resolves normally; it only rejects on WS error
-  // which bubbles up to runWithReconnect for retry
   await new Promise(() => {
     // intentionally never resolves — process stays alive via setIntervals
   })
 }
 
-/** Clean up intervals, WS connections, and polling before reconnect. */
+/** Clean up intervals, WS connections, refresh loop, and polling before reconnect. */
 async function cleanup(): Promise<void> {
+  selector.stopRefreshLoop()
   for (const id of activeIntervals) clearInterval(id)
   activeIntervals.length = 0
   stopFundingPolling()

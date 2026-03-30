@@ -74,7 +74,7 @@ export interface CoinSelector {
  */
 export function createCoinSelector(
   getActiveSetupCoins: () => string[],
-  onRefresh?: (result: RefreshResult) => void,
+  onRefresh?: (result: RefreshResult) => void | Promise<void>,
 ): CoinSelector {
   let topCoins: string[] = []
   let refreshTimer: ReturnType<typeof setInterval> | null = null
@@ -113,7 +113,7 @@ export function createCoinSelector(
     topCoins = newTop
 
     const result: RefreshResult = { added, dropped }
-    onRefresh?.(result)
+    await onRefresh?.(result)
     return result
   }
 

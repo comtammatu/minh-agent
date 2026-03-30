@@ -119,6 +119,14 @@ export function getActiveSetupCoins(): string[] {
   return Array.from(coins)
 }
 
+/** Clear state for a specific coin (all timeframes). */
+export function clearCoinState(coin: string): void {
+  const prefix = `${coin}:`
+  for (const k of activeSetups.keys()) { if (k.startsWith(prefix)) activeSetups.delete(k) }
+  for (const k of statusState.keys()) { if (k.startsWith(prefix)) statusState.delete(k) }
+  for (const k of lastCandleTs.keys()) { if (k.startsWith(prefix)) lastCandleTs.delete(k) }
+}
+
 /** Clear all state — used in tests. */
 export function clearPipelineState(): void {
   activeSetups.clear()
