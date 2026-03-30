@@ -27,6 +27,7 @@ import type {
   PipelineEvents,
 } from './types.js'
 import { runAllChecks, prunePnlHistory } from './circuit-breakers.js'
+import { shouldBlockCorrelatedEntry } from './correlation-guard.js'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -364,6 +365,22 @@ export class TradingAgent {
 
   /** Handle incoming setup from pipeline. */
   onSetup(setup: ActiveSetup): void {
+    // S12: Anti-correlation guard — block if correlated positions exceed limit.
+    // Only check when the coin is not already active (IDLE → would start new entry path).
+    const coinState = this.getCoinState(setup.coin)
+    if (coinState === 'IDLE' || coinState === 'WATCHING') {
+      const openCoins = this.getOpenPositionCoins()
+      const check = shouldBlockCorrelatedEntry(setup.coin, openCoins)
+      if (check.blocked) {
+        this.emitter.emit('action', journalAction('skip', setup.coin, {
+          reason: check.reason,
+          setupId: setup.id,
+          blockedGroups: check.blockedGroups,
+        }))
+        return  // Don't dispatch — blocked by correlation guard
+      }
+    }
+
     this.dispatch(setup.coin, { type: 'setup_detected', setup })
   }
 
@@ -598,6 +615,17 @@ export class TradingAgent {
   /** Get full coin context (for invalidation bridge setup ID matching). */
   getCoinContext(coin: string): Readonly<CoinContext> | null {
     return this.coins.get(coin) ?? null
+  }
+
+  /** Get coins that are currently in position or entering (for correlation guard S12). */
+  getOpenPositionCoins(): string[] {
+    const coins: string[] = []
+    for (const [coin, ctx] of this.coins) {
+      if (ctx.state === 'IN_POSITION' || ctx.state === 'ENTERING') {
+        coins.push(coin)
+      }
+    }
+    return coins
   }
 
   /** Get global context (for circuit breakers, risk management). */

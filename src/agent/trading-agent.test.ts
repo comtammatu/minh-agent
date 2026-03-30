@@ -599,3 +599,109 @@ describe('TradingAgent', () => {
     expect(cbActions.length).toBeGreaterThan(0)
   })
 })
+
+// ─── S12: Anti-Correlation Guard Integration ─────────────────────────────────
+
+describe('TradingAgent — correlation guard', () => {
+  let agent: TradingAgent
+
+  beforeEach(() => {
+    resetAgent()
+    agent = new TradingAgent()
+  })
+
+  it('allows entry when no correlated positions exist', () => {
+    const result = agent.dispatch('BTC', {
+      type: 'setup_detected',
+      setup: makeSetup({ coin: 'BTC', confluenceGrade: 'A' }),
+    })
+    expect(result.nextState).toBe('WATCHING')
+  })
+
+  it('blocks entry when correlated positions exceed limit', () => {
+    const actions: unknown[] = []
+    agent.onAction((a) => actions.push(a))
+
+    // Put BTC and STX in position (both btc-ecosystem) via crash recovery
+    agent.recoverFromCrash(
+      [{ coin: 'BTC', size: 1, entryPrice: 50000 }, { coin: 'STX', size: 100, entryPrice: 1.5 }],
+      [{ coin: 'BTC', positionId: 'p1', side: 'long' }, { coin: 'STX', positionId: 'p2', side: 'long' }],
+    )
+
+    // Try to enter ORDI (also btc-ecosystem) — should be blocked
+    agent.onSetup(makeSetup({ coin: 'ORDI', id: 'ORDI:1h:ob:long', confluenceGrade: 'A' }))
+
+    // ORDI should still be IDLE (blocked)
+    expect(agent.getCoinState('ORDI')).toBe('IDLE')
+
+    // Should have emitted a skip journal action
+    const skipActions = actions.filter((a: any) => a.eventType === 'skip' && a.coin === 'ORDI')
+    expect(skipActions.length).toBe(1)
+    expect((skipActions[0] as any).details.reason).toContain('Correlated')
+  })
+
+  it('allows entry for coins in different groups', () => {
+    // Put BTC in position via crash recovery
+    agent.recoverFromCrash(
+      [{ coin: 'BTC', size: 1, entryPrice: 50000 }],
+      [{ coin: 'BTC', positionId: 'p1', side: 'long' }],
+    )
+
+    // ETH is in eth-ecosystem, not btc-ecosystem — should be allowed
+    agent.onSetup(makeSetup({ coin: 'ETH', id: 'ETH:1h:ob:long', confluenceGrade: 'A' }))
+    expect(agent.getCoinState('ETH')).toBe('WATCHING')
+  })
+
+  it('allows entry for unknown coins (not in any group)', () => {
+    // Fill btc-ecosystem with 2 positions
+    agent.recoverFromCrash(
+      [{ coin: 'BTC', size: 1, entryPrice: 50000 }, { coin: 'STX', size: 100, entryPrice: 1.5 }],
+      [{ coin: 'BTC', positionId: 'p1', side: 'long' }, { coin: 'STX', positionId: 'p2', side: 'long' }],
+    )
+
+    // HYPE is not in any correlation group — should always pass
+    agent.onSetup(makeSetup({ coin: 'HYPE', id: 'HYPE:1h:ob:long', confluenceGrade: 'A' }))
+    expect(agent.getCoinState('HYPE')).toBe('WATCHING')
+  })
+
+  it('counts ENTERING state coins as open for correlation check', () => {
+    // Put BTC in IN_POSITION via crash recovery
+    agent.recoverFromCrash(
+      [{ coin: 'BTC', size: 1, entryPrice: 50000 }],
+      [{ coin: 'BTC', positionId: 'p1', side: 'long' }],
+    )
+
+    // Put STX in ENTERING via internal state (same pattern as CB tests)
+    const coinsMap = (agent as unknown as { coins: Map<string, CoinContext> }).coins
+    coinsMap.set('STX', makeCoinCtx({ state: 'ENTERING', coin: 'STX', pendingOrderId: 'o2' }))
+
+    // ORDI blocked — BTC (IN_POSITION) + STX (ENTERING) = 2 in btc-ecosystem
+    agent.onSetup(makeSetup({ coin: 'ORDI', id: 'ORDI:1h:ob:long', confluenceGrade: 'A' }))
+    expect(agent.getCoinState('ORDI')).toBe('IDLE')
+  })
+
+  it('getOpenPositionCoins returns correct coins', () => {
+    agent.recoverFromCrash(
+      [{ coin: 'BTC', size: 1, entryPrice: 50000 }],
+      [{ coin: 'BTC', positionId: 'p1', side: 'long' }],
+    )
+
+    // ETH in WATCHING — not counted as open
+    agent.dispatch('ETH', { type: 'setup_detected', setup: makeSetup({ coin: 'ETH', id: 'ETH:1h:ob:long', confluenceGrade: 'A' }) })
+
+    const openCoins = agent.getOpenPositionCoins()
+    expect(openCoins).toContain('BTC')       // IN_POSITION
+    expect(openCoins).not.toContain('ETH')   // WATCHING, not ENTERING/IN_POSITION
+  })
+
+  it('does not block when coin is already WATCHING (re-evaluation)', () => {
+    // BTC already watching — correlation guard only checks IDLE/WATCHING → new entry
+    agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup({ coin: 'BTC', confluenceGrade: 'A' }) })
+    expect(agent.getCoinState('BTC')).toBe('WATCHING')
+
+    // Sending another setup while WATCHING — guard runs but no correlated open positions
+    agent.onSetup(makeSetup({ coin: 'BTC', id: 'BTC:1h:ob2:long', confluenceGrade: 'A+', confidence: 0.9 }))
+    // Should still be WATCHING (upgraded setup)
+    expect(agent.getCoinState('BTC')).toBe('WATCHING')
+  })
+})

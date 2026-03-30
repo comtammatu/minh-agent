@@ -194,6 +194,24 @@ export const CIRCUIT_BREAKER = {
   maxDrawdownLimit: 0.10,
 } as const
 
+// ─── Correlation Groups (S12) ─────────────────────────────────────────────
+
+/**
+ * Static correlation groups for anti-correlation guard.
+ * Coins in the same group are considered correlated.
+ * A coin can appear in multiple groups if it correlates with several ecosystems.
+ * Unknown coins (not in any group) are treated as uncorrelated.
+ */
+export const CORRELATION_GROUPS: Record<string, readonly string[]> = {
+  'btc-ecosystem': ['BTC', 'STX', 'ORDI', 'SATS', 'RUNE'],
+  'eth-ecosystem': ['ETH', 'OP', 'ARB', 'STRK', 'BLAST', 'SCROLL', 'ZK', 'TAIKO', 'LINEA'],
+  'sol-ecosystem': ['SOL', 'JTO', 'JUP', 'PYTH', 'WIF', 'BONK', 'RAY', 'ORCA'],
+  'meme':          ['DOGE', 'SHIB', 'PEPE', 'WIF', 'BONK', 'FLOKI', 'MEME', 'MYRO', 'BRETT'],
+  'ai':            ['FET', 'AGIX', 'OCEAN', 'RENDER', 'TAO', 'AKT', 'AR', 'NEAR'],
+  'defi':          ['AAVE', 'UNI', 'MKR', 'CRV', 'COMP', 'DYDX', 'SNX', 'SUSHI'],
+  'l1':            ['AVAX', 'DOT', 'ATOM', 'ADA', 'NEAR', 'SUI', 'APT', 'SEI', 'TIA', 'INJ'],
+} as const
+
 // ─── Database (R15: single-process, sequential writes) ────────────────────
 
 /** Max connections in pool. */
