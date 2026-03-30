@@ -51,6 +51,7 @@ import {
   shouldGapFill,
 } from './db/candle-repo.js'
 import { log } from './lib/logger.js'
+import { getHealthMonitor } from './agent/self-healing.js'
 import type { CandleInterval } from './types.js'
 
 // ── Banner ───────────────────────────────────────────────────────────────────
@@ -197,10 +198,17 @@ async function main(): Promise<void> {
 
   // 5. Wire PG write-through for live WS candles (R14: sync write-through)
   //    Wired AFTER backfill so startup uses efficient bulk operations, not per-candle upserts
+  //    S13: record health on success/error
+  const health = getHealthMonitor()
   setOnPersist((coin, interval, candle) => {
-    upsertCandle(coin, interval, candle).catch(err => {
-      log.error('persist', `upsert failed ${coin}:${interval} t=${candle.t}: ${err instanceof Error ? err.message : String(err)}`)
-    })
+    health.recordSuccess('feed')
+    upsertCandle(coin, interval, candle)
+      .then(() => health.recordSuccess('db'))
+      .catch(err => {
+        const msg = err instanceof Error ? err.message : String(err)
+        log.error('persist', `upsert failed ${coin}:${interval} t=${candle.t}: ${msg}`)
+        health.recordError('db', msg)
+      })
   })
 
   // 6. Start funding + OI polling for all coins
@@ -217,7 +225,10 @@ async function main(): Promise<void> {
     `[${ts()}] ARMED | ${coins.length} coins: ${fullyReady} fully ready, ${partialReady} partial | ${TIMEFRAMES.length} TFs`,
   )
 
-  // 8. Start coin refresh loop
+  // 8. Start health monitor periodic check (S13: Self-Healing)
+  health.startPeriodicCheck()
+
+  // 9. Start coin refresh loop
   selector.startRefreshLoop()
 
   // 9. STATUS interval — per-coin compact aggregate
@@ -279,6 +290,7 @@ async function runWithReconnect(): Promise<never> {
   // SIGINT handler — register once, outside retry loop
   process.on('SIGINT', async () => {
     console.log('\n[SHUTDOWN] Closing WebSocket connections...')
+    getHealthMonitor().stopPeriodicCheck()
     await cleanup()
     await closeDb()
     console.log('[SHUTDOWN] Minh stopped gracefully.')

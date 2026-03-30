@@ -243,6 +243,29 @@ export interface PipelineEvents {
   invalidation: [setupId: string, reason: string]
 }
 
+// ─── Self-Healing / Health (S13) ────────────────────────────────────────────
+
+export type ComponentStatus = 'ok' | 'degraded' | 'critical'
+
+export interface ComponentHealth {
+  status: ComponentStatus
+  lastSuccessAt: number   // ms timestamp of last successful operation
+  lastErrorAt: number     // ms timestamp of last error (0 = never)
+  lastError: string | null
+  consecutiveErrors: number
+}
+
+export interface HealthReport {
+  overall: ComponentStatus
+  uptime: number           // seconds
+  rssBytes: number
+  components: {
+    feed: ComponentHealth
+    db: ComponentHealth
+    exchange: ComponentHealth
+  }
+}
+
 // ─── Snapshot (for API) ──────────────────────────────────────────────────────
 
 export interface AgentSnapshot {

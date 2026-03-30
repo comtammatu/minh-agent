@@ -40,6 +40,9 @@ import type { ExchangePositionSnapshot } from '../agent/types.js'
 import { info } from '../feed/rest.js'
 import { acquire } from '../feed/rate-limiter.js'
 import { log } from '../lib/logger.js'
+import { withRetry, isRetryableExchangeError, is503 } from '../lib/retry.js'
+import { getHealthMonitor } from '../agent/self-healing.js'
+import { RETRY } from '../config.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -193,7 +196,8 @@ export class ExchangeService {
 
     log.info('exchange-service', `Placing ${params.type} ${params.side} ${params.coin}: price=${priceStr} size=${sizeStr} [asset=${assetId}]`)
 
-    try {
+    const health = getHealthMonitor()
+    const retryResult = await withRetry(async () => {
       await acquire()
       const response = await this.exchange!.order({
         orders: [{
@@ -207,13 +211,26 @@ export class ExchangeService {
         }],
         grouping: 'na',
       })
-
       return this.parseOrderStatus(response.response.data.statuses[0])
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      log.error('exchange-service', `Order failed: ${msg}`)
-      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: msg }
+    }, {
+      maxAttempts: RETRY.exchangeMaxAttempts,
+      initialDelayMs: RETRY.initialDelayMs,
+      jitterFraction: RETRY.jitterFraction,
+      shouldRetry: (err) => isRetryableExchangeError(err),
+      onRetry: (err, attempt, delayMs) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        log.warn('exchange-service', `Order retry ${attempt}: ${msg} (backoff ${delayMs}ms)${is503(err) ? ' [MAINTENANCE]' : ''}`)
+      },
+    })
+
+    if (retryResult.success && retryResult.value) {
+      health.recordSuccess('exchange')
+      return retryResult.value
     }
+    const msg = retryResult.lastError instanceof Error ? retryResult.lastError.message : String(retryResult.lastError)
+    log.error('exchange-service', `Order failed after ${retryResult.attempts} attempts: ${msg}`)
+    health.recordError('exchange', msg)
+    return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: msg }
   }
 
   /**
@@ -237,7 +254,8 @@ export class ExchangeService {
 
     log.info('exchange-service', `Placing ${params.tpsl.toUpperCase()} trigger ${params.coin}: triggerPx=${triggerPxStr} size=${sizeStr} isMarket=${params.isMarket}`)
 
-    try {
+    const health = getHealthMonitor()
+    const retryResult = await withRetry(async () => {
       await acquire()
       const response = await this.exchange!.order({
         orders: [{
@@ -257,13 +275,26 @@ export class ExchangeService {
         }],
         grouping: 'normalTpsl',
       })
-
       return this.parseOrderStatus(response.response.data.statuses[0])
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      log.error('exchange-service', `Trigger order failed: ${msg}`)
-      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: msg }
+    }, {
+      maxAttempts: RETRY.exchangeMaxAttempts,
+      initialDelayMs: RETRY.initialDelayMs,
+      jitterFraction: RETRY.jitterFraction,
+      shouldRetry: (err) => isRetryableExchangeError(err),
+      onRetry: (err, attempt, delayMs) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        log.warn('exchange-service', `Trigger retry ${attempt}: ${msg} (backoff ${delayMs}ms)${is503(err) ? ' [MAINTENANCE]' : ''}`)
+      },
+    })
+
+    if (retryResult.success && retryResult.value) {
+      health.recordSuccess('exchange')
+      return retryResult.value
     }
+    const msg = retryResult.lastError instanceof Error ? retryResult.lastError.message : String(retryResult.lastError)
+    log.error('exchange-service', `Trigger failed after ${retryResult.attempts} attempts: ${msg}`)
+    health.recordError('exchange', msg)
+    return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: msg }
   }
 
   // ── Cancel ────────────────────────────────────────────────────────────────
@@ -393,24 +424,36 @@ export class ExchangeService {
   async getAccountState(): Promise<AccountState> {
     this.ensureInit()
 
-    try {
+    const health = getHealthMonitor()
+    const retryResult = await withRetry(async () => {
       await acquire()
       const state = await info.clearinghouseState({ user: this.walletAddress as `0x${string}` })
-
-      const result: AccountState = {
+      return {
         accountValue: parseFloat(state.marginSummary.accountValue),
         totalNtlPos: parseFloat(state.marginSummary.totalNtlPos),
         totalMarginUsed: parseFloat(state.marginSummary.totalMarginUsed),
         withdrawable: parseFloat(state.withdrawable),
-      }
+      } satisfies AccountState
+    }, {
+      maxAttempts: RETRY.exchangeMaxAttempts,
+      initialDelayMs: RETRY.initialDelayMs,
+      jitterFraction: RETRY.jitterFraction,
+      shouldRetry: (err) => isRetryableExchangeError(err),
+      onRetry: (err, attempt, delayMs) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        log.warn('exchange-service', `getAccountState retry ${attempt}: ${msg} (backoff ${delayMs}ms)`)
+      },
+    })
 
-      this.cachedAccountValue = result.accountValue
-      return result
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      log.error('exchange-service', `getAccountState failed: ${msg}`)
-      throw err
+    if (retryResult.success && retryResult.value) {
+      this.cachedAccountValue = retryResult.value.accountValue
+      health.recordSuccess('exchange')
+      return retryResult.value
     }
+    const msg = retryResult.lastError instanceof Error ? retryResult.lastError.message : String(retryResult.lastError)
+    log.error('exchange-service', `getAccountState failed after ${retryResult.attempts} attempts: ${msg}`)
+    health.recordError('exchange', msg)
+    throw retryResult.lastError
   }
 
   /** Get cached account value (from last getAccountState call). */
@@ -425,26 +468,40 @@ export class ExchangeService {
   async getPositions(): Promise<ExchangePositionSnapshot[]> {
     this.ensureInit()
 
-    try {
+    const health = getHealthMonitor()
+    const retryResult = await withRetry(async () => {
       await acquire()
       const state = await info.clearinghouseState({ user: this.walletAddress as `0x${string}` })
-
       return state.assetPositions.map(ap => {
         const pos = ap.position
         const szi = parseFloat(pos.szi)
         return {
           coin: pos.coin,
-          size: szi,  // positive = long, negative = short, 0 = closed
+          size: szi,
           entryPrice: parseFloat(pos.entryPx),
           unrealizedPnl: parseFloat(pos.unrealizedPnl),
           liquidationPrice: pos.liquidationPx ? parseFloat(pos.liquidationPx) : null,
         }
-      }).filter(p => p.size !== 0)  // only open positions
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      log.error('exchange-service', `getPositions failed: ${msg}`)
-      return []
+      }).filter(p => p.size !== 0)
+    }, {
+      maxAttempts: RETRY.exchangeMaxAttempts,
+      initialDelayMs: RETRY.initialDelayMs,
+      jitterFraction: RETRY.jitterFraction,
+      shouldRetry: (err) => isRetryableExchangeError(err),
+      onRetry: (err, attempt, delayMs) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        log.warn('exchange-service', `getPositions retry ${attempt}: ${msg} (backoff ${delayMs}ms)`)
+      },
+    })
+
+    if (retryResult.success && retryResult.value) {
+      health.recordSuccess('exchange')
+      return retryResult.value
     }
+    const msg = retryResult.lastError instanceof Error ? retryResult.lastError.message : String(retryResult.lastError)
+    log.error('exchange-service', `getPositions failed after ${retryResult.attempts} attempts: ${msg}`)
+    health.recordError('exchange', msg)
+    return []
   }
 
   // ── Response Parsing ──────────────────────────────────────────────────────

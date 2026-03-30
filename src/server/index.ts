@@ -38,6 +38,7 @@ import { getCandles } from '../feed/store.js'
 import { getStatus, getActiveSetups } from '../scanner/pipeline.js'
 import { sql } from '../db/connection.js'
 import { getAgent } from '../agent/trading-agent.js'
+import { getHealthMonitor } from '../agent/self-healing.js'
 
 const startedAt = Date.now()
 
@@ -84,11 +85,18 @@ function createApp() {
       const uptime = Math.floor((Date.now() - startedAt) / 1000)
       const statuses = getStatus()
       const coins = [...new Set(statuses.map(s => s.coin))]
+      const health = getHealthMonitor().getReport()
       return {
-        status: 'ok',
+        status: health.overall,
         uptime,
         coins: coins.length,
         coinList: coins,
+        rssBytes: health.rssBytes,
+        components: {
+          feed: { status: health.components.feed.status, errors: health.components.feed.consecutiveErrors },
+          db: { status: health.components.db.status, errors: health.components.db.consecutiveErrors },
+          exchange: { status: health.components.exchange.status, errors: health.components.exchange.consecutiveErrors },
+        },
       }
     })
 

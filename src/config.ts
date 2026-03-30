@@ -328,3 +328,35 @@ export const API_DEFAULT_JOURNAL_LIMIT = 50
 
 /** Max journal entries per request. */
 export const API_MAX_JOURNAL_LIMIT = 500
+
+// ─── Self-Healing (S13) ────────────────────────────────────────────────────
+
+/** Retry configuration for exchange API calls. */
+export const RETRY = {
+  /** Max attempts for exchange order/trigger calls. */
+  exchangeMaxAttempts: 3,
+  /** Max attempts for SL/TP placement retries. */
+  slTpMaxAttempts: 3,
+  /** Initial backoff delay (ms). */
+  initialDelayMs: 500,
+  /** Maximum backoff delay (ms). */
+  maxDelayMs: 5_000,
+  /** Backoff multiplier per attempt. */
+  backoffMultiplier: 2,
+  /** Jitter range (0–1). Adds up to this fraction of the delay as random jitter. */
+  jitterFraction: 0.3,
+} as const
+
+/** Health monitoring configuration. */
+export const HEALTH = {
+  /** RSS warning threshold (bytes). ~512MB. */
+  rssWarnBytes: 512 * 1024 * 1024,
+  /** RSS critical threshold (bytes). ~1024MB. */
+  rssCriticalBytes: 1024 * 1024 * 1024,
+  /** Health check interval (ms). */
+  checkIntervalMs: 30_000,
+  /** Staleness threshold for exchange API (ms) — no successful call in this window. */
+  exchangeStaleMs: 60_000,
+  /** Staleness threshold for DB writes (ms). */
+  dbStaleMs: 60_000,
+} as const

@@ -34,9 +34,11 @@ import {
   MAX_ORDERS_PER_COIN,
   SL_IS_MARKET,
   TP_IS_MARKET,
+  RETRY,
 } from '../config.js'
 import { getExchangeService } from '../execution/exchange-service.js'
 import { log } from '../lib/logger.js'
+import { withRetry, isRetryableExchangeError } from '../lib/retry.js'
 
 // ─── Cloid Generation ───────────────────────────────────────────────────────
 
@@ -386,12 +388,12 @@ export class OrderManager {
       exchangeOrderId: null,
       parentOrderId: entryOrder.id,
     }
-    const slResult = await placeTriggerOnExchange(slTrigger)
+    const slResult = await this.placeTriggerWithRetry(slTrigger, 'SL', entryOrder.coin)
     if (slResult.success) {
       slTrigger.exchangeOrderId = slResult.exchangeOrderId
       log.info('order-manager', `SL trigger placed: ${entryOrder.coin} @ ${entryOrder.slPrice} [${slResult.exchangeOrderId}]`)
     } else {
-      log.error('order-manager', `SL trigger FAILED for ${entryOrder.coin}: ${slResult.error}`)
+      log.error('order-manager', `SL trigger FAILED for ${entryOrder.coin} after retries: ${slResult.error}`)
     }
     triggers.push(slTrigger)
 
@@ -407,16 +409,58 @@ export class OrderManager {
       exchangeOrderId: null,
       parentOrderId: entryOrder.id,
     }
-    const tpResult = await placeTriggerOnExchange(tpTrigger)
+    const tpResult = await this.placeTriggerWithRetry(tpTrigger, 'TP', entryOrder.coin)
     if (tpResult.success) {
       tpTrigger.exchangeOrderId = tpResult.exchangeOrderId
       log.info('order-manager', `TP trigger placed: ${entryOrder.coin} @ ${entryOrder.tpPrice} [${tpResult.exchangeOrderId}]`)
     } else {
-      log.error('order-manager', `TP trigger FAILED for ${entryOrder.coin}: ${tpResult.error}`)
+      log.error('order-manager', `TP trigger FAILED for ${entryOrder.coin} after retries: ${tpResult.error}`)
     }
     triggers.push(tpTrigger)
 
     this.triggerOrders.set(entryOrder.id, triggers)
+  }
+
+  /**
+   * Place a trigger order with retry (S13: Self-Healing).
+   * Retries up to RETRY.slTpMaxAttempts on transient errors, then gives up.
+   */
+  private async placeTriggerWithRetry(
+    trigger: TriggerOrder,
+    label: string,
+    coin: string,
+  ): Promise<ExchangeOrderResult> {
+    const retryResult = await withRetry(
+      async () => {
+        const result = await placeTriggerOnExchange(trigger)
+        if (!result.success) {
+          // Check if the error is retryable — if not, throw non-retryable to break out
+          const errMsg = result.error ?? 'unknown error'
+          if (!isRetryableExchangeError(new Error(errMsg))) {
+            // Return the failed result directly (don't retry validation errors)
+            return result
+          }
+          throw new Error(errMsg)
+        }
+        return result
+      },
+      {
+        maxAttempts: RETRY.slTpMaxAttempts,
+        initialDelayMs: RETRY.initialDelayMs,
+        jitterFraction: RETRY.jitterFraction,
+        shouldRetry: (err) => isRetryableExchangeError(err),
+        onRetry: (err, attempt, delayMs) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          log.warn('order-manager', `${label} trigger retry ${attempt} for ${coin}: ${msg} (backoff ${delayMs}ms)`)
+        },
+      },
+    )
+
+    if (retryResult.success && retryResult.value) {
+      return retryResult.value
+    }
+    const msg = retryResult.lastError instanceof Error ? retryResult.lastError.message : String(retryResult.lastError)
+    return { success: false, exchangeOrderId: null, error: msg }
   }
 
   // ── Cancel Order ───────────────────────────────────────────────────────
