@@ -8,6 +8,7 @@
  */
 
 import { info } from './rest.js'
+import { acquire } from './rate-limiter.js'
 import { TOP_COINS_LIMIT, MIN_24H_VOLUME, COIN_REFRESH_INTERVAL_MS } from '../config.js'
 
 /**
@@ -20,6 +21,7 @@ export async function fetchTopCoins(
   minVolume: number = MIN_24H_VOLUME,
 ): Promise<string[]> {
   try {
+    await acquire()
     const [meta, assetCtxs] = await info.metaAndAssetCtxs()
 
     // Zip universe metadata with asset contexts (parallel arrays)
@@ -65,8 +67,8 @@ export interface CoinSelector {
   getTopCoins(): string[]
   /** topCoins ∪ activeSetupCoins — never drops a coin mid-setup. */
   getTrackedCoins(): string[]
-  /** Fetch new top coins, compute diff vs current. */
-  refresh(): Promise<RefreshResult>
+  /** Fetch new top coins, compute diff vs current. skipCallback=true for initial load. */
+  refresh(skipCallback?: boolean): Promise<RefreshResult>
   /** Start periodic refresh loop. */
   startRefreshLoop(): void
   /** Stop periodic refresh loop. */
@@ -92,7 +94,7 @@ export function createCoinSelector(
     return Array.from(set)
   }
 
-  async function refresh(): Promise<RefreshResult> {
+  async function refresh(skipCallback = false): Promise<RefreshResult> {
     const newTop = await fetchTopCoins()
 
     // If fetch failed (empty), keep current list
@@ -119,7 +121,9 @@ export function createCoinSelector(
     topCoins = newTop
 
     const result: RefreshResult = { added, dropped }
-    await onRefresh?.(result)
+    if (!skipCallback) {
+      await onRefresh?.(result)
+    }
     return result
   }
 

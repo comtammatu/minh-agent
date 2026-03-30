@@ -105,7 +105,9 @@ const activeIntervals: ReturnType<typeof setInterval>[] = []
 
 async function main(): Promise<void> {
   // 1. Fetch top coins from HL — fatal if empty at startup (spec requirement)
-  const initialResult = await selector.refresh()
+  //    skipCallback=true: main() handles initial subscribe+backfill in batch (efficient)
+  //    onCoinsRefreshed is only for mid-run coin additions/removals
+  const initialResult = await selector.refresh(true)
   const coins = selector.getTrackedCoins()
 
   if (coins.length === 0) {

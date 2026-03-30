@@ -43,7 +43,7 @@ Runtime: Bun | SDK: @nktkas/hyperliquid | Store: In-memory Map<string, Candle[]>
 
 - **HL SDK**: All numeric values are **strings** → `parseFloat()` everywhere
 - **HL WS**: Returns 0 historical candles, only current bar → MUST REST backfill first
-- **HL REST**: Max 5000 candles/request. Rate limit 800 req/min
+- **HL REST**: Max 5000 candles/request. **Weight-based** rate limit: 1200 weight/min per IP. Info requests cost weight 20, `candleSnapshot` has extra per-60-items surcharge. Effective: ~45 burst + ~1 req/1.2s sustained. All REST callers go through `feed/rate-limiter.ts`
 - **Candle dedup**: WS may resend same timestamp as REST → store upserts by timestamp
 - **Staleness**: Track `lastCandleTime` per coin/tf, WARNING after 60s silence
 - **Regime filter**: Soft — does NOT block counter-trend, reduces confidence (×1.0/×0.8/×0.3)

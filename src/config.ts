@@ -28,8 +28,14 @@ export const MIN_CANDLES_FOR_SCAN = 50
 // Candles to fetch per REST backfill call
 export const BACKFILL_CANDLE_COUNT = 5000
 
-// Max concurrent REST backfill requests (respect HL 800 req/min rate limit)
+// Max concurrent REST backfill requests
 export const BACKFILL_CONCURRENCY = 20
+
+// HL REST weight budget: 1200/min. Info requests cost weight ~20-26 each.
+// Burst: first N requests pass immediately (startup backfill).
+// Sustained: 1 request per REFILL_MS after burst exhaustion.
+export const REST_BURST_TOKENS = 45
+export const REST_REFILL_MS = 1_200  // ~50 req/min sustained, safe under 1200 weight/min
 
 // Candles to use for indicator calculation
 export const INDICATOR_WINDOW = 200

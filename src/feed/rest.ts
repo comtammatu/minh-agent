@@ -6,6 +6,7 @@
 import { HttpTransport, InfoClient } from '@nktkas/hyperliquid'
 import type { Candle, CandleInterval, BackfillResult } from '../types.js'
 import { BACKFILL_CANDLE_COUNT, BACKFILL_CONCURRENCY } from '../config.js'
+import { acquire } from './rate-limiter.js'
 
 const transport = new HttpTransport()
 export const info = new InfoClient({ transport })
@@ -44,6 +45,7 @@ export async function fetchCandles(
 
   while (attempt <= maxRetries) {
     try {
+      await acquire()
       const raw = await info.candleSnapshot({ coin, interval, startTime, endTime })
       if (!raw || raw.length === 0) return []
       return raw.map(parseCandle)

@@ -9,6 +9,7 @@
  */
 
 import { info } from './rest.js'
+import { acquire } from './rate-limiter.js'
 import {
   OI_POLL_INTERVAL_MS,
   MARK_ORACLE_DIVERGENCE_THRESHOLD,
@@ -99,6 +100,7 @@ async function fetchAllAssetCtx(): Promise<void> {
   if (polledCoins.size === 0) return
 
   try {
+    await acquire()
     const [meta, assetCtxs] = await info.metaAndAssetCtxs()
     const now = Date.now()
 

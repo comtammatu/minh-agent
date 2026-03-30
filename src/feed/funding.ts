@@ -7,6 +7,7 @@
  */
 
 import { info } from './rest.js'
+import { acquire } from './rate-limiter.js'
 import {
   FUNDING_POLL_INTERVAL_MS,
   FUNDING_HISTORY_HOURS,
@@ -76,6 +77,7 @@ export function removeFundingCoin(coin: string): void {
 async function fetchFunding(coin: string): Promise<void> {
   const startTime = Date.now() - FUNDING_HISTORY_HOURS * 60 * 60 * 1000
   try {
+    await acquire()
     const results = await info.fundingHistory({ coin, startTime })
     const snapshots: FundingSnapshot[] = results.map(r => ({
       coin: r.coin,
