@@ -204,3 +204,4 @@ Preliminary decisions for Sprint 3 — Intelligence + Scale. Final review after 
 | # | Decision | Choice | Rationale | Status |
 |---|----------|--------|-----------|--------|
 | S1.5-1 | WS connection pool | **Not needed** | Empirical test: 300 subs / 0 errors / 1626 events in 90s on single SubscriptionClient. 6 missing coins are low-volume ($10K-$237K daily), not cap-related. | [CONFIRMED] 2026-03-30 |
+| S1.5-2 | Coin quality filter | **Volume floor $500K + top 30** | 24/50 coins had vol <$500K (zombie coins: HMSTR $7.3B OI but $10K vol). Volume filter removes noise, ensures candle quality for PA/SMC/VSA. Reduced from 50→30 (only ~26 pass filter anyway). | [CONFIRMED] 2026-03-30 |

@@ -3,8 +3,11 @@ import type { CandleInterval } from './types.js'
 /** Fallback coins if fetchTopCoins fails at startup (should not normally be used). */
 export const FALLBACK_COINS = ['BTC', 'ETH', 'SOL', 'HYPE', 'TAO'] as const
 
-/** Number of top coins by OI to track. */
-export const TOP_COINS_LIMIT = 50
+/** Number of top coins by OI to track (after volume filter). */
+export const TOP_COINS_LIMIT = 30
+
+/** Minimum 24h notional volume ($) to qualify for tracking. */
+export const MIN_24H_VOLUME = 500_000
 
 /** How often to refresh the top coins list (ms). */
 export const COIN_REFRESH_INTERVAL_MS = 3_600_000  // 1 hour

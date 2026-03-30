@@ -400,7 +400,7 @@ Phase A (scanner incremental) was already implemented in Sprint 1 — `onCandleT
 
 Sprint 1.5 is complete when:
 
-- [ ] `COINS` hardcode removed — top 50 fetched from HL on startup
+- [x] `COINS` hardcode removed — top 30 fetched from HL on startup (volume >= $500K filter)
 - [ ] Active-setup coins never dropped during coin refresh
 - [ ] Scanner runs per-coin per-tick, not scan-all
 - [ ] 50-coin backfill completes in < 30s

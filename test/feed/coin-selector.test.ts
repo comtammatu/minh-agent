@@ -44,10 +44,10 @@ function makeMeta(coins: { name: string; delisted?: boolean }[]) {
   }
 }
 
-function makeCtxs(ois: number[]) {
-  return ois.map(oi => ({
+function makeCtxs(ois: number[], volumes?: number[]) {
+  return ois.map((oi, i) => ({
     prevDayPx: '100',
-    dayNtlVlm: '1000000',
+    dayNtlVlm: String(volumes?.[i] ?? 1_000_000),
     markPx: '100',
     midPx: '100',
     funding: '0.0001',
@@ -109,6 +109,27 @@ describe('fetchTopCoins', () => {
     mockResponse = [{ universe: [] }, []]
     const result = await fetchTopCoins(10)
     expect(result).toEqual([])
+  })
+
+  it('filters coins below minimum volume', async () => {
+    mockResponse = [
+      makeMeta([{ name: 'BTC' }, { name: 'ZOMBIE' }, { name: 'ETH' }]),
+      makeCtxs([2_000_000, 1_500_000, 1_000_000], [5_000_000, 10_000, 2_000_000]),
+    ]
+    // ZOMBIE has high OI but only $10K volume → filtered
+    const result = await fetchTopCoins(10)
+    expect(result).toEqual(['BTC', 'ETH'])
+    expect(result).not.toContain('ZOMBIE')
+  })
+
+  it('respects custom minVolume parameter', async () => {
+    mockResponse = [
+      makeMeta([{ name: 'A' }, { name: 'B' }, { name: 'C' }]),
+      makeCtxs([300, 200, 100], [2_000_000, 800_000, 100_000]),
+    ]
+    // With minVolume=$1M, only A passes
+    const result = await fetchTopCoins(10, 1_000_000)
+    expect(result).toEqual(['A'])
   })
 
   it('handles NaN openInterest gracefully', async () => {

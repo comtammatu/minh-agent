@@ -8,19 +8,22 @@
  */
 
 import { info } from './rest.js'
-import { TOP_COINS_LIMIT, COIN_REFRESH_INTERVAL_MS } from '../config.js'
+import { TOP_COINS_LIMIT, MIN_24H_VOLUME, COIN_REFRESH_INTERVAL_MS } from '../config.js'
 
 /**
  * Fetch top N coins from HL ranked by open interest (descending).
- * Filters delisted coins. Returns coin name strings.
- * Returns [] on error (caller decides fallback behavior).
+ * Filters delisted coins and coins below MIN_24H_VOLUME.
+ * Returns coin name strings. Returns [] on error (caller decides fallback).
  */
-export async function fetchTopCoins(limit: number = TOP_COINS_LIMIT): Promise<string[]> {
+export async function fetchTopCoins(
+  limit: number = TOP_COINS_LIMIT,
+  minVolume: number = MIN_24H_VOLUME,
+): Promise<string[]> {
   try {
     const [meta, assetCtxs] = await info.metaAndAssetCtxs()
 
     // Zip universe metadata with asset contexts (parallel arrays)
-    const coins: { name: string; oi: number }[] = []
+    const coins: { name: string; oi: number; vol: number }[] = []
     for (let i = 0; i < meta.universe.length; i++) {
       const asset = meta.universe[i]!
       const ctx = assetCtxs[i]
@@ -34,7 +37,10 @@ export async function fetchTopCoins(limit: number = TOP_COINS_LIMIT): Promise<st
       const oi = parseFloat(ctx.openInterest)
       if (isNaN(oi) || oi <= 0) continue
 
-      coins.push({ name: asset.name, oi })
+      const vol = parseFloat(ctx.dayNtlVlm)
+      if (isNaN(vol) || vol < minVolume) continue
+
+      coins.push({ name: asset.name, oi, vol })
     }
 
     // Sort by OI descending, take top N
