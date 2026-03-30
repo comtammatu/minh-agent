@@ -2,7 +2,7 @@
  * Asset context feed tests — OI store, delta computation, divergence detection.
  *
  * Tests focus on the pure logic: snapshot parsing, storage, OI delta, divergence.
- * Live REST calls are not made; we test exported getters indirectly.
+ * WS subscription is not created; we test exported getters directly.
  */
 
 import { describe, it, expect } from 'bun:test'
@@ -10,7 +10,7 @@ import {
   getLatestAssetCtx,
   getOiDelta,
   hasDivergence,
-  stopOiPolling,
+  stopOiFeed,
   removeOiCoin,
 } from '../../src/feed/asset-ctx.js'
 
@@ -18,11 +18,10 @@ import {
 
 describe('getLatestAssetCtx', () => {
   it('returns null for unknown coin before any fetch', () => {
-    stopOiPolling()  // ensure clean state
     expect(getLatestAssetCtx('UNKNOWN_COIN_XYZ')).toBeNull()
   })
 
-  it('returns null for coin that has never been polled', () => {
+  it('returns null for coin that has never been tracked', () => {
     expect(getLatestAssetCtx('BTC')).toBeNull()
   })
 })
@@ -35,7 +34,7 @@ describe('getOiDelta', () => {
   })
 
   it('returns null for coin with no previous snapshot', () => {
-    // No data fetched yet → null
+    // No data received yet → null
     expect(getOiDelta('BTC')).toBeNull()
   })
 })
@@ -52,18 +51,16 @@ describe('hasDivergence', () => {
   })
 })
 
-// ── stopOiPolling ───────────────────────────────────────────────────────────
+// ── stopOiFeed ──────────────────────────────────────────────────────────────
 
-describe('stopOiPolling', () => {
-  it('is safe to call multiple times', () => {
-    expect(() => {
-      stopOiPolling()
-      stopOiPolling()
-    }).not.toThrow()
+describe('stopOiFeed', () => {
+  it('is safe to call multiple times', async () => {
+    await stopOiFeed()
+    await stopOiFeed()
   })
 
-  it('is safe to call when polling was never started', () => {
-    expect(() => stopOiPolling()).not.toThrow()
+  it('is safe to call when feed was never started', async () => {
+    await stopOiFeed()
   })
 })
 

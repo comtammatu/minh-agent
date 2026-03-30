@@ -29,7 +29,7 @@ import { backfillAllCoins } from './feed/rest.js'
 import { setCandles, clearCoinData } from './feed/store.js'
 import { subscribeCandles, unsubscribeCandles, closeAll, checkStaleness } from './feed/ws.js'
 import { startFundingPolling, stopFundingPolling, addFundingCoin, removeFundingCoin } from './feed/funding.js'
-import { startOiPolling, stopOiPolling, addOiCoin, removeOiCoin } from './feed/asset-ctx.js'
+import { startOiFeed, stopOiFeed, addOiCoin, removeOiCoin } from './feed/asset-ctx.js'
 import { subscribeTrades, unsubscribeTrades } from './feed/trades.js'
 import { subscribeOrderBook, unsubscribeOrderBook, checkBookStaleness } from './feed/orderbook.js'
 import { createCoinSelector } from './feed/coin-selector.js'
@@ -130,7 +130,7 @@ async function main(): Promise<void> {
 
   // 4. Start funding + OI polling for all coins
   await startFundingPolling(coins)
-  await startOiPolling(coins)
+  await startOiFeed(coins)
 
   // 5. ARMED readiness gate
   const fullyReady = coins.filter(c => (tfReady.get(c) ?? 0) === TIMEFRAMES.length).length
@@ -193,7 +193,7 @@ async function cleanup(): Promise<void> {
   for (const id of activeIntervals) clearInterval(id)
   activeIntervals.length = 0
   stopFundingPolling()
-  stopOiPolling()
+  await stopOiFeed()
   await closeAll()
 }
 

@@ -1,32 +1,35 @@
 /**
- * Asset Context feed — REST polling every 30s.
+ * Asset Context feed — WS `allDexsAssetCtxs` subscription.
  *
- * Uses HL REST metaAndAssetCtxs() to fetch OI + mark/oracle prices per coin.
+ * Single WS subscription receives real-time OI + mark/oracle prices for ALL coins.
  * Stores current + previous snapshot per coin for OI delta computation.
  * Supports dynamic coin add/remove via addOiCoin/removeOiCoin.
  *
- * Single REST call returns all coins — no per-coin calls needed.
+ * Replaces the previous REST polling approach (saved 40 weight/min).
  */
 
 import { info } from './rest.js'
+import { getWsClient, registerSubscription, removeSubscription } from './ws.js'
 import { acquire } from './rate-limiter.js'
-import {
-  OI_POLL_INTERVAL_MS,
-  MARK_ORACLE_DIVERGENCE_THRESHOLD,
-} from '../config.js'
+import { MARK_ORACLE_DIVERGENCE_THRESHOLD } from '../config.js'
 import type { AssetCtxSnapshot } from '../types.js'
+import type { ISubscription } from '@nktkas/hyperliquid'
 
 // coin → { current, previous } for delta computation
 const oiStore = new Map<string, { current: AssetCtxSnapshot; previous: AssetCtxSnapshot | null }>()
 
-let pollingTimer: ReturnType<typeof setInterval> | null = null
+// Active WS subscription
+let wsSub: ISubscription | null = null
 
-// Mutable set — interval callback iterates this, so add/remove takes effect next poll
-const polledCoins = new Set<string>()
+// Mutable set — WS sends all coins, we only store coins in this set
+const trackedCoins = new Set<string>()
+
+// Index → coin name mapping (fetched once from meta.universe at startup)
+let coinNames: string[] = []
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
-/** Get latest asset context snapshot for a coin, or null if not yet fetched. */
+/** Get latest asset context snapshot for a coin, or null if not yet received. */
 export function getLatestAssetCtx(coin: string): AssetCtxSnapshot | null {
   return oiStore.get(coin)?.current ?? null
 }
@@ -56,86 +59,85 @@ export function hasDivergence(coin: string): boolean {
 }
 
 /**
- * Start polling asset context for the given coins.
- * Performs an initial fetch immediately, then polls every OI_POLL_INTERVAL_MS.
+ * Start OI feed — fetches meta once for coin name mapping, then subscribes
+ * to `allDexsAssetCtxs` WS for real-time updates.
  */
-export async function startOiPolling(coins: string[]): Promise<void> {
-  polledCoins.clear()
-  for (const coin of coins) polledCoins.add(coin)
+export async function startOiFeed(coins: string[]): Promise<void> {
+  trackedCoins.clear()
+  for (const coin of coins) trackedCoins.add(coin)
 
-  // Initial fetch
-  await fetchAllAssetCtx()
+  // Fetch meta once for index→name mapping (need rate limiter for REST call)
+  await acquire()
+  const meta = await info.meta()
+  coinNames = meta.universe.map(a => a.name)
 
-  pollingTimer = setInterval(async () => {
-    await fetchAllAssetCtx()
-  }, OI_POLL_INTERVAL_MS)
+  // Subscribe to allDexsAssetCtxs WS — single subscription for all coins
+  const client = getWsClient()
+  wsSub = await client.allDexsAssetCtxs((event) => {
+    try {
+      const now = Date.now()
+      // event.ctxs is [dex, PerpAssetCtxSchema[]][] — typically one dex
+      for (const [, ctxs] of event.ctxs) {
+        for (let i = 0; i < ctxs.length; i++) {
+          const name = coinNames[i]
+          if (!name || !trackedCoins.has(name)) continue
+
+          const ctx = ctxs[i]!
+          const snapshot: AssetCtxSnapshot = {
+            coin: name,
+            openInterest: parseFloat(ctx.openInterest),
+            markPrice: parseFloat(ctx.markPx),
+            oraclePrice: parseFloat(ctx.oraclePx),
+            funding: parseFloat(ctx.funding),
+            premium: parseFloat(ctx.premium ?? '0'),
+            timestamp: now,
+          }
+
+          // Skip if any parsed value is NaN
+          if (isNaN(snapshot.openInterest) || isNaN(snapshot.markPrice) || isNaN(snapshot.oraclePrice)) {
+            continue
+          }
+
+          const existing = oiStore.get(name)
+          oiStore.set(name, {
+            current: snapshot,
+            previous: existing?.current ?? null,
+          })
+        }
+      }
+    } catch (err) {
+      console.log(
+        `[ASSET-CTX] WS parse error — ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+  })
+
+  registerSubscription(wsSub)
 }
 
-/** Stop OI polling (call on SIGINT). */
-export function stopOiPolling(): void {
-  if (pollingTimer !== null) {
-    clearInterval(pollingTimer)
-    pollingTimer = null
+/** Stop OI feed — unsubscribe WS (call on SIGINT). */
+export async function stopOiFeed(): Promise<void> {
+  if (wsSub) {
+    try { await wsSub.unsubscribe() } catch { /* ignore */ }
+    removeSubscription(wsSub)
+    wsSub = null
   }
 }
 
-/** Add a coin to the polling set (takes effect on next poll cycle). */
+/** Add a coin to the tracked set (takes effect immediately — next WS event will include it). */
 export function addOiCoin(coin: string): void {
-  polledCoins.add(coin)
+  trackedCoins.add(coin)
 }
 
-/** Remove a coin from polling and clear its stored data. */
+/** Remove a coin from tracking and clear its stored data. */
 export function removeOiCoin(coin: string): void {
-  polledCoins.delete(coin)
+  trackedCoins.delete(coin)
   oiStore.delete(coin)
 }
 
-// ── Internal ─────────────────────────────────────────────────────────────────
+// ── Backward-compat aliases (used by index.ts) ──────────────────────────────
 
-/**
- * Fetch metaAndAssetCtxs once — updates all polled coins in a single REST call.
- * Coins not in polledCoins are ignored (no wasted storage).
- */
-async function fetchAllAssetCtx(): Promise<void> {
-  if (polledCoins.size === 0) return
-
-  try {
-    await acquire()
-    const [meta, assetCtxs] = await info.metaAndAssetCtxs()
-    const now = Date.now()
-
-    for (let i = 0; i < meta.universe.length; i++) {
-      const asset = meta.universe[i]!
-      const ctx = assetCtxs[i]
-      if (!ctx) continue
-
-      // Only store coins we're tracking
-      if (!polledCoins.has(asset.name)) continue
-
-      const snapshot: AssetCtxSnapshot = {
-        coin: asset.name,
-        openInterest: parseFloat(ctx.openInterest),
-        markPrice: parseFloat(ctx.markPx),
-        oraclePrice: parseFloat(ctx.oraclePx),
-        funding: parseFloat(ctx.funding),
-        premium: parseFloat(ctx.premium),
-        timestamp: now,
-      }
-
-      // Skip if any parsed value is NaN
-      if (isNaN(snapshot.openInterest) || isNaN(snapshot.markPrice) || isNaN(snapshot.oraclePrice)) {
-        continue
-      }
-
-      const existing = oiStore.get(asset.name)
-      oiStore.set(asset.name, {
-        current: snapshot,
-        previous: existing?.current ?? null,
-      })
-    }
-  } catch (err) {
-    console.log(
-      `[ASSET-CTX] fetch error — ${err instanceof Error ? err.message : String(err)}`,
-    )
-  }
-}
+/** @deprecated Use startOiFeed */
+export const startOiPolling = startOiFeed
+/** @deprecated Use stopOiFeed */
+export const stopOiPolling = stopOiFeed
