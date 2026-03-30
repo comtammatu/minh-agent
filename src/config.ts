@@ -284,6 +284,14 @@ export const MIN_POSITION_SIZE_PCT = 0.001
 /** Slippage buffer for stop market orders (Section 12.5). */
 export const STOP_SLIPPAGE_BUFFER = 0.002  // 0.2%
 
+// ─── Backtest (Sprint 3A) ──────────────────────────────────────────────────
+
+/** Default slippage for backtest fills (0.05% = 5 bps). */
+export const BACKTEST_SLIPPAGE_PCT = 0.0005
+
+/** Default commission per trade for backtest (0.03% = 3 bps, HL taker fee). */
+export const BACKTEST_COMMISSION_PCT = 0.0003
+
 // ─── Order Lifecycle (S6) ────────────────────────────────────────────────────
 
 /** Order fill timeout (ms) — cancel entry if not filled. */
