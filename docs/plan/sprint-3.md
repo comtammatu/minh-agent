@@ -572,7 +572,7 @@ Phase 3C: Web Dashboard MVP           ← visibility, debug tool
 
 | Session | Status | Date | Notes |
 |---|---|---|---|
-| S1 | NOT STARTED | — | Blocked by Sprint 2 completion |
+| S1 | DONE | 2026-03-31 | Engine + simulator + metrics + 17 tests. 4 pre-existing logger test failures (not caused by S1). |
 
 ---
 
