@@ -353,23 +353,20 @@ Add `oiBoost` and `divergenceWarning` to `ZoneConfirmation`.
 
 ---
 
-## WS Connection Pool (conditional)
+## WS Connection Pool (conditional) — SKIPPED [CONFIRMED]
 
-**Do first**: manually test HL subscription cap — subscribe 300 topics (50 coins × 6 TFs) on a single `SubscriptionClient`, observe if HL silently drops or errors.
+**Empirical test (2026-03-30)**: Subscribed 300 candle topics (50 coins × 6 TFs) on a single `SubscriptionClient`.
 
-**If HL allows 300+ subscriptions on one connection** → no pool needed. Skip this section entirely.
+**Results**:
+- 300/300 subscriptions: **0 errors**
+- 1,626 candle events received in 90s
+- 44/50 coins received events (264/300 topics active)
+- 6 missing coins (HMSTR, BLAST, NOT, RSR, PURR, SAGA) are low-volume ($10K-$237K daily), no trades during test window — not a cap issue
+- All 6 TFs uniformly received 44/50 coins — no TF-dependent drop
 
-**If HL has a cap** (observed experimentally) → implement:
+**Verdict**: HL handles 300+ subscriptions on one connection. **No WS pool needed.**
 
-```typescript
-// src/feed/ws-pool.ts
-export function createWsPool(maxPerConnection: number): WsPool
-// Distributes subscriptions evenly across N connections
-// Reconnect per-connection independently
-// Coin A on connection 1 drop → re-backfill coin A only, not all 50
-```
-
-This is gated on empirical test. Do not implement speculatively.
+Test script preserved at `scripts/test-ws-cap.ts` for re-verification.
 
 ---
 
@@ -395,6 +392,7 @@ Phase A (scanner incremental) was already implemented in Sprint 1 — `onCandleT
 | S2 | DONE | 2026-03-30 | CoinSelector wired into index.ts. Per-coin unsub in ws/trades/orderbook/funding. Dynamic subscribe/unsubscribe on refresh. /review: fixed fallback bug + duplicate import. 192 tests pass. |
 | S3 | DONE | 2026-03-30 | Parallel backfill with concurrency cap (20). TF priority 1m→1d. Failure isolation per coin. BackfillResult type. 197 tests pass (+5 new). /review clean. |
 | S4 | DONE | 2026-03-30 | Phase D: asset-ctx REST polling (30s), OI spike + divergence signals. oiConfirm pure fn (+0.05/+0.10). OI boost in confirm→confluence→pipeline (+0.5 weight). 214 tests pass (+17 new). /review clean (1 informational: side param unused in oiConfirm). |
+| S5 | DONE | 2026-03-30 | WS cap test: 300/300 subs, 0 errors, 1626 events in 90s. No cap detected → WS pool SKIPPED. Test script at scripts/test-ws-cap.ts. |
 
 ---
 
@@ -407,7 +405,7 @@ Sprint 1.5 is complete when:
 - [ ] Scanner runs per-coin per-tick, not scan-all
 - [ ] 50-coin backfill completes in < 30s
 - [ ] `activeAssetCtx` subscribed — OI spike visible in SETUP logs
-- [ ] WS pool: tested experimentally, implemented if needed
+- [x] WS pool: tested experimentally — no cap, pool not needed [CONFIRMED]
 - [ ] `bun test --run` passes — all Sprint 1 tests + new Sprint 1.5 tests
 - [ ] Live run: `[ARMED] 50 coins: all 6 TFs ready` log confirmed
 - [ ] STATUS line shows 50 coins with regime/grade per coin

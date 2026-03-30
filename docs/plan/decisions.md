@@ -196,3 +196,11 @@ Preliminary decisions for Sprint 3 — Intelligence + Scale. Final review after 
 - Runtime verified: starts, backfills 18 coin×TF, WS active, no errors.
 - invalidation.ts: UNCHANGED — imported by pipeline.ts.
 - StatusSnapshot extended with confluenceGrade field.
+
+---
+
+## Sprint 1.5 — S5: WS Connection Pool Decision
+
+| # | Decision | Choice | Rationale | Status |
+|---|----------|--------|-----------|--------|
+| S1.5-1 | WS connection pool | **Not needed** | Empirical test: 300 subs / 0 errors / 1626 events in 90s on single SubscriptionClient. 6 missing coins are low-volume ($10K-$237K daily), not cap-related. | [CONFIRMED] 2026-03-30 |
