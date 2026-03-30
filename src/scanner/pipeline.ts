@@ -55,6 +55,8 @@ import {
 } from '../config.js'
 import { getExchangeService } from '../execution/exchange-service.js'
 import { EventEmitter } from 'events'
+import { ANSI, formatSide, formatGrade } from '../ui/terminal.js'
+import { playSound } from '../ui/sound.js'
 
 // ── Module-level state ──────────────────────────────────────────────────────
 
@@ -292,7 +294,7 @@ function runPipeline(
   activeSetups.set(id, setup)
   if (existing) {
     console.log(
-      `[${ts()}] REPLACE | ${coin} ${interval} | ${existing.side.toUpperCase()} ${existing.type} → ${setup.side.toUpperCase()} | conf ${existing.confidence.toFixed(2)} → ${setup.confidence.toFixed(2)}`,
+      `[${ts()}] ${ANSI.dim}↻ REPLACE${ANSI.reset} | ${coin} ${interval} | ${formatSide(existing.side)} ${existing.type} → ${formatSide(setup.side)} | conf ${existing.confidence.toFixed(2)} → ${setup.confidence.toFixed(2)}`,
     )
   }
   logSetupAlert(coin, interval, setup, regime, bias.source, confluence, risk)
@@ -319,7 +321,7 @@ function invalidateSetups(
     if (result.invalidated) {
       const age = currentBarIdx - (setup.expiresAtBar - (PATTERN_TTL_BARS_LOOKUP[setup.type] ?? 10))
       console.log(
-        `[${ts()}] INVALID | ${coin} ${interval} | ${setup.type} ${setup.side.toUpperCase()} | reason: ${result.reason} | lived ${Math.max(age, 0)} bars`,
+        `[${ts()}] ${ANSI.yellow}⚠ INVALID${ANSI.reset} | ${coin} ${interval} | ${setup.type} ${formatSide(setup.side)} | reason: ${result.reason} | lived ${Math.max(age, 0)} bars`,
       )
       activeSetups.delete(id)
       // R10: Emit invalidation event for agent subscription
@@ -358,10 +360,10 @@ function logSetupAlert(
 
   const regimeTag = isAligned ? `${regime} aligned` : regime
 
-  // Layered format per Sprint 1 Step 3 spec
+  // Layered format per Sprint 1 Step 3 spec — ANSI enhanced (S15)
   console.log(
-    `[${ts()}] SETUP | ${coin} ${interval.toUpperCase()} | ${setup.side.toUpperCase()} ${setup.type} at ${setup.zoneOrigin ?? 'zone'} | ` +
-    `grade:${confluence.grade} (${confluence.count}/7) | conf:${setup.confidence.toFixed(2)} | ${regimeTag}`,
+    `[${ts()}] ${ANSI.bold}⚡ SETUP${ANSI.reset} | ${coin} ${interval.toUpperCase()} | ${formatSide(setup.side)} ${setup.type} at ${setup.zoneOrigin ?? 'zone'} | ` +
+    `${formatGrade(confluence.grade)} (${confluence.count}/7) | conf:${setup.confidence.toFixed(2)} | ${regimeTag}`,
   )
   console.log(
     `         entry:${fmt(setup.entryPrice)} sl:${fmt(setup.slPrice)} tp:${fmt(setup.tpPrice)} | ` +
@@ -395,6 +397,11 @@ function logSetupAlert(
     `         ${boostParts.length > 0 ? boostParts.join(' ') + ' | ' : ''}` +
     `trigger:${pattern ?? setup.type} | risk:${risk.suggestedSize}`,
   )
+
+  // S15: Sound alert for grade B+ setups
+  if (confluence.grade === 'B' || confluence.grade === 'A' || confluence.grade === 'A+') {
+    playSound()
+  }
 }
 
 function fmt(n: number): string {

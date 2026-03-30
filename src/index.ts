@@ -52,11 +52,12 @@ import {
 } from './db/candle-repo.js'
 import { log } from './lib/logger.js'
 import { getHealthMonitor } from './agent/self-healing.js'
+import { ANSI } from './ui/terminal.js'
 import type { CandleInterval } from './types.js'
 
 // ── Banner ───────────────────────────────────────────────────────────────────
 
-console.log(`[${ts()}] Minh (明) v1.1.0 — Dynamic Coin Selection`)
+console.log(`[${ts()}] ${ANSI.bold}${ANSI.cyan}Minh (明) v1.1.0${ANSI.reset} — Dynamic Coin Selection`)
 console.log(
   `[${ts()}] Config: dynamic top coins × ${TIMEFRAMES.join(',')} | ` +
   `min:${MIN_CONFIDENCE} | confluence:${CONFLUENCE_MIN}+ | ` +
@@ -222,7 +223,7 @@ async function main(): Promise<void> {
     return r > 0 && r < TIMEFRAMES.length
   }).length
   console.log(
-    `[${ts()}] ARMED | ${coins.length} coins: ${fullyReady} fully ready, ${partialReady} partial | ${TIMEFRAMES.length} TFs`,
+    `[${ts()}] ${ANSI.bold}${ANSI.green}ARMED${ANSI.reset} | ${coins.length} coins: ${fullyReady} fully ready, ${partialReady} partial | ${TIMEFRAMES.length} TFs`,
   )
 
   // 8. Start health monitor periodic check (S13: Self-Healing)
@@ -258,7 +259,7 @@ async function main(): Promise<void> {
       if (!info) return `${coin} — 0`
       return `${coin} ${info.regime} ${info.grade} ${info.setups} setup`
     })
-    console.log(`[${ts()}] STATUS | ${trackedCoins.length} coins | ${parts.slice(0, 10).join(' | ')}${trackedCoins.length > 10 ? ` ... +${trackedCoins.length - 10} more` : ''}`)
+    console.log(`[${ts()}] ${ANSI.dim}STATUS${ANSI.reset} | ${trackedCoins.length} coins | ${parts.slice(0, 10).join(' | ')}${trackedCoins.length > 10 ? ` ... +${trackedCoins.length - 10} more` : ''}`)
   }, STATUS_INTERVAL_MS))
 
   // 10. Staleness watchdog (candles + order book)
@@ -289,11 +290,11 @@ async function runWithReconnect(): Promise<never> {
 
   // SIGINT handler — register once, outside retry loop
   process.on('SIGINT', async () => {
-    console.log('\n[SHUTDOWN] Closing WebSocket connections...')
+    console.log(`\n${ANSI.bold}${ANSI.yellow}[SHUTDOWN]${ANSI.reset} Closing WebSocket connections...`)
     getHealthMonitor().stopPeriodicCheck()
     await cleanup()
     await closeDb()
-    console.log('[SHUTDOWN] Minh stopped gracefully.')
+    console.log(`${ANSI.bold}${ANSI.yellow}[SHUTDOWN]${ANSI.reset} Minh stopped gracefully.`)
     process.exit(0)
   })
 
