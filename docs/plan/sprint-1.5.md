@@ -353,15 +353,15 @@ Phase A (scanner incremental) was already implemented in Sprint 1 — `onCandleT
 
 Sprint 1.5 is complete when:
 
-- [x] `COINS` hardcode removed — top 30 fetched from HL on startup (volume >= $500K filter)
+- [x] `COINS` hardcode removed — top 15 fetched from HL on startup (volume >= $500K filter) [CONFIRMED]
 - [x] Active-setup coins never dropped during coin refresh [CONFIRMED] — `coin-selector.ts:113-118` filters via `getActiveSetupCoins()`, tested in `coin-selector.test.ts`
 - [x] Scanner runs per-coin per-tick, not scan-all [CONFIRMED] — `onCandleTick` callback per WS message, no scan-all loop
-- [x] Backfill completes without 429 errors [CONFIRMED] — token bucket rate limiter (`rate-limiter.ts`), all REST callers wired through `acquire()`
-- [x] `activeAssetCtx` — OI spike signals in pipeline [CONFIRMED] — REST polling 30s (`asset-ctx.ts`), `oiConfirm()` pure fn, `oiBoost` in confirm→confluence→pipeline
+- [x] Backfill completes without 429 errors [CONFIRMED] — weight-aware rate limiter (burst 12 + 1 req/3s), per-TF candle counts (500 for 1m/5m, 5000 for 15m+)
+- [x] `allDexsAssetCtxs` WS — OI spike signals in pipeline [CONFIRMED] — single WS sub, `oiConfirm()` pure fn, `oiBoost` in confirm→confluence→pipeline
 - [x] WS pool: tested experimentally — no cap, pool not needed [CONFIRMED]
 - [x] `bun test --run` passes — 216 pass, 3 skip, 0 fail (Sprint 1 + Sprint 1.5 tests)
-- [ ] Live run: `[ARMED] 30 coins: all 6 TFs ready` log confirmed — [ASSUMED] code-complete, needs network verification
-- [ ] STATUS line shows 30 coins with regime/grade per coin — [ASSUMED] code-complete, needs network verification
+- [x] Live run: `[ARMED] 15 coins: 15 fully ready, 0 partial | 6 TFs` [CONFIRMED] — 2026-03-30, ~3 min backfill
+- [x] STATUS line shows 15 coins with regime/grade per coin [CONFIRMED] — `kSHIB BULL`, `PUMP SIDEWAYS`, etc.
 
 ## Post-Sprint Fix: REST Rate Limiter (2026-03-30)
 
@@ -373,15 +373,20 @@ Live run with 30 coins exposed heavy 429 errors during backfill. Root cause:
 - `fundingHistory`: weight 20 + extra per 20 items returned
 - Effective: ~45 burst + ~1 req/1.2s sustained
 
-**Fix applied:**
-- `src/feed/rate-limiter.ts`: Token bucket — burst 45 tokens + even-spaced queue at 1 req/1.2s. Tokens refill at 1/1.2s.
-- `src/config.ts`: `REST_BURST_TOKENS=45`, `REST_REFILL_MS=1200`
+**Fix applied (v1 → v2):**
+
+v1: Token bucket burst 45 + 1 req/1.2s — still hit 429s with 30 coins because `candleSnapshot(5000)` costs ~104 weight (20 base + ceil(5000/60) surcharge), not 20.
+
+v2 (final):
+- `TOP_COINS_LIMIT`: 30 → **15** (top by OI, sufficient for agent execution)
+- `BACKFILL_CANDLE_COUNTS`: **500 for 1m/5m** (weight ~29), **5000 for 15m+** (weight ~104)
+- `REST_BURST_TOKENS`: 45 → **12** (~600 weight burst)
+- `REST_REFILL_MS`: 1.2s → **3s** (~20 req/min sustained)
+- `BACKFILL_CONCURRENCY`: 20 → **10**
 - All REST callers wired through `acquire()`: rest.ts, funding.ts, asset-ctx.ts, coin-selector.ts
-- `selector.refresh(true)` skips callback at startup → uses efficient batch path in `main()`
-- Startup backfill (180 requests) now takes ~2.7 min — expected, not a bug
 - Source: https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/rate-limits-and-user-limits
 
-**DoD update:** "50-coin backfill completes in < 30s" → revised to "backfill completes without 429 errors (~2.7 min for 30 coins)"
+**Live verified (2026-03-30):** 15 coins × 6 TFs backfill in **~3 min**, 4 retries, 0 failures.
 
 ---
 
@@ -403,28 +408,26 @@ Full audit of Hyperliquid docs vs current codebase. Items noted for future sprin
 
 | Limit | Value | Current usage | Status |
 |---|---|---|---|
-| Max subscriptions | 1000 | 240 (30 coins × 8 feeds) | Safe (24%) — no guard |
+| Max subscriptions | 1000 | ~121 (15 coins × 8 feeds + 1 allDexsAssetCtxs) | Safe (12%) — guard at 1000 |
 | Max connections | 10 | 1 | Safe |
 | New connections/min | 30 | 1 (reconnect only) | Safe |
-| Messages to platform/min | 2000 | ~240 subscribes at startup | Safe |
+| Messages to platform/min | 2000 | ~121 subscribes at startup | Safe |
 
-**Recommendation:** Add subscription count guard in `registerSubscription()` if scaling past 100 coins.
+**Status:** Subscription count guard added in `registerSubscription()` — blocks at 1000, warns at 80%.
 
 ### Unused WS Feeds (potential value)
 
-| Feed | Benefit | Subscriptions cost |
-|---|---|---|
-| `activeAssetCtx` per coin | Real-time OI/mark/oracle — replaces REST polling | +30 (270 total) |
-| `bbo` per coin | Best bid/offer only — lighter than full L2 | Replaces l2Book (same count) |
-| `allMids` (global) | All mid prices in 1 subscription | +1 |
-| `allDexsAssetCtxs` (global) | All asset contexts in 1 subscription | +1 (replaces per-coin) |
-
-**Key finding:** `allDexsAssetCtxs` WS subscription sends ALL coins' asset context in a single subscription — could replace both per-coin `activeAssetCtx` AND the REST `metaAndAssetCtxs` polling. Only costs 1 subscription slot.
+| Feed | Benefit | Subscriptions cost | Status |
+|---|---|---|---|
+| `activeAssetCtx` per coin | Real-time OI/mark/oracle per coin | +15 | Not needed — `allDexsAssetCtxs` covers all |
+| `bbo` per coin | Best bid/offer only — lighter than full L2 | Replaces l2Book | Consider if only spread needed |
+| `allMids` (global) | All mid prices in 1 subscription | +1 | Not needed — have L2 book |
+| `allDexsAssetCtxs` (global) | All asset contexts in 1 subscription | +1 | **IN USE** — replaced REST polling |
 
 ### Not Needed
 
 - **HL MCP Server**: Does not exist in registry. Not needed — `@nktkas/hyperliquid` SDK covers all endpoints directly.
-- **Pagination for candleSnapshot**: `BACKFILL_CANDLE_COUNT=5000` matches API max. Older coins may have fewer candles — handled gracefully (returns what's available).
+- **Pagination for candleSnapshot**: Max 5000/request. Per-TF counts: 500 for 1m/5m, 5000 for 15m+. Older coins may have fewer — handled gracefully.
 
 ---
 
