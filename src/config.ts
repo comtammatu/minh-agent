@@ -136,6 +136,17 @@ export const MARK_ORACLE_DIVERGENCE_THRESHOLD = 0.005  // 0.5%
 /** HL WS max subscriptions per IP (hard limit). */
 export const WS_MAX_SUBSCRIPTIONS = 1_000
 
+// ─── Database (R15: single-process, sequential writes) ────────────────────
+
+/** Max connections in pool. */
+export const DB_MAX_CONNECTIONS = 5
+
+/** Idle connection timeout (seconds). */
+export const DB_IDLE_TIMEOUT_S = 30
+
+/** Connection attempt timeout (seconds). */
+export const DB_CONNECT_TIMEOUT_S = 10
+
 // ─── WebSocket Reconnection ────────────────────────────────────────────────
 
 /** Initial delay before reconnection attempt (ms). */

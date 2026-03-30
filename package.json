@@ -11,7 +11,8 @@
     "fixtures": "bun run scripts/gen-fixtures.ts"
   },
   "dependencies": {
-    "@nktkas/hyperliquid": "^0.32.2"
+    "@nktkas/hyperliquid": "^0.32.2",
+    "postgres": "^3.4.8"
   },
   "devDependencies": {
     "@types/bun": "latest"

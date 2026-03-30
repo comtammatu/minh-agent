@@ -1,6 +1,7 @@
 node_modules/
 .env
 .env.*
+!.env.example
 *.local
 bun.lockb.bak
 .DS_Store
