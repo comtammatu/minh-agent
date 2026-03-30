@@ -219,3 +219,26 @@ export const MIN_POSITION_SIZE_PCT = 0.001
 
 /** Slippage buffer for stop market orders (Section 12.5). */
 export const STOP_SLIPPAGE_BUFFER = 0.002  // 0.2%
+
+// ─── Elysia HTTP Server (R4: localhost-only) ────────────────────────────────
+
+/** Server port. */
+export const SERVER_PORT = 3000
+
+/** Server bind address — localhost only (R4). */
+export const SERVER_HOSTNAME = '127.0.0.1'
+
+/** Environment variable name for bearer auth token. */
+export const API_TOKEN_ENV = 'MINH_API_TOKEN'
+
+/** Default max candles returned by /api/candles endpoint. */
+export const API_MAX_CANDLES = 5000
+
+/** Default candle count for /api/candles endpoint. */
+export const API_DEFAULT_CANDLE_COUNT = 200
+
+/** Default journal entries limit. */
+export const API_DEFAULT_JOURNAL_LIMIT = 50
+
+/** Max journal entries per request. */
+export const API_MAX_JOURNAL_LIMIT = 500

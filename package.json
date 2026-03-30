@@ -11,7 +11,10 @@
     "fixtures": "bun run scripts/gen-fixtures.ts"
   },
   "dependencies": {
+    "@elysiajs/bearer": "^1.4.3",
+    "@elysiajs/cors": "^1.4.1",
     "@nktkas/hyperliquid": "^0.32.2",
+    "elysia": "^1.4.28",
     "postgres": "^3.4.8"
   },
   "devDependencies": {
