@@ -16,7 +16,8 @@
  */
 
 import type { Signal, KeyZone, RiskAssessment } from '../types.js'
-import { ZONE_RISK, SIMULATED_ACCOUNT } from '../config.js'
+import { ZONE_RISK, SIMULATED_ACCOUNT, DEFAULT_RISK_PERCENT, MIN_POSITION_SIZE_PCT } from '../config.js'
+import { computePositionSize } from '../agent/exits.js'
 
 /**
  * Assess risk for a signal at a zone.
@@ -88,11 +89,11 @@ export function assessRisk(
     }
   }
 
-  // Skip: position size too small
-  const riskPerTrade = SIMULATED_ACCOUNT * 0.01  // 1% risk
-  const positionSize = stopDistance > 0 ? riskPerTrade / stopDistance : 0
-  const minSize = SIMULATED_ACCOUNT * 0.001  // 0.1% of account
-  if (positionSize < minSize) {
+  // Skip: position size too small (R12: shared computePositionSize)
+  const positionSize = computePositionSize(SIMULATED_ACCOUNT, DEFAULT_RISK_PERCENT, signal.entryPrice, signal.slPrice)
+  const positionSizeUsd = positionSize * signal.entryPrice
+  const minSize = SIMULATED_ACCOUNT * MIN_POSITION_SIZE_PCT
+  if (positionSizeUsd < minSize) {
     return {
       tradeable: false,
       reason: 'position size too small',

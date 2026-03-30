@@ -795,6 +795,7 @@ Map phases to sessions. Each session = 1 Task Contract, 20-45 min, checkpoint co
 |---|---|---|---|
 | S1 | DONE | 2026-03-30 | Docker Compose, 001_initial.sql (4 tables + 2 hypertables + matview), connection pool, migration runner, logger. pnl_hourly changed from continuous aggregate to regular matview (positions is not a hypertable). |
 | S2 | DONE | 2026-03-30 | candle-repo (upsert, bulk upsert, load, getAllLastTimestamps, gap-fill helpers), store.ts onPersist callback, index.ts PG-aware startup (load→gap-fill→backfill→wire write-through), TIMEFRAME_MS config, closeDb on SIGINT. 244 tests pass. |
+| S3 | DONE | 2026-03-30 | exits.ts: computePositionSize (R12), structure/ATR/combined SL, R:R + structure TP, trailing stop, partial close, buildExitPlan. Risk-filter refactored to shared computePositionSize. 42 new tests, 286 total pass. |
 
 ---
 

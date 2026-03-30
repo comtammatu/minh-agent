@@ -177,3 +177,45 @@ export const ZONE_RISK = {
   far: { maxDistance: 0.08, minRR: 3.0 },  // 5–8%
   skip: { maxDistance: 0.10 },               // > 10% → skip
 } as const
+
+// ─── Exit Strategy (Section 12) ─────────────────────────────────────────────
+
+/** Default risk per trade as fraction of account (1%). */
+export const DEFAULT_RISK_PERCENT = 0.01
+
+/** ATR stop multipliers by trade style. */
+export const ATR_STOP_MULTIPLIER = {
+  tight: 1.0,     // scalping / day trade
+  standard: 1.5,  // swing trade — recommended default
+  wide: 2.0,      // position trade
+  veryWide: 2.5,  // volatile crypto / weekly
+} as const
+
+/** ATR buffer added below structure stop (Section 12.2 Method 1). */
+export const STRUCTURE_STOP_ATR_BUFFER = 0.5
+
+/** Maximum stop distance as fraction of entry price. Beyond this → skip. */
+export const MAX_STOP_DISTANCE_PCT = 0.10
+
+/** Maximum leverage warning threshold. */
+export const MAX_LEVERAGE_WARN = 5.0
+
+/** Trailing stop config defaults. */
+export const TRAILING_STOP = {
+  activationPct: 0.01,  // activate trailing after +1% profit
+  trailPct: 0.005,      // trail 0.5% below highest price
+} as const
+
+/** Partial close config defaults. */
+export const PARTIAL_CLOSE = {
+  firstTpRatio: 1.0,    // first TP at 1R
+  firstClosePct: 0.5,   // close 50% at first TP
+  moveSlToBreakeven: true,
+  secondTpRatio: 2.0,   // second TP at 2R (trail rest)
+} as const
+
+/** Minimum position size as fraction of account. Below → skip. */
+export const MIN_POSITION_SIZE_PCT = 0.001
+
+/** Slippage buffer for stop market orders (Section 12.5). */
+export const STOP_SLIPPAGE_BUFFER = 0.002  // 0.2%
