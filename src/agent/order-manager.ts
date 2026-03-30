@@ -35,6 +35,7 @@ import {
   SL_IS_MARKET,
   TP_IS_MARKET,
 } from '../config.js'
+import { getExchangeService } from '../execution/exchange-service.js'
 import { log } from '../lib/logger.js'
 
 // ─── Cloid Generation ───────────────────────────────────────────────────────
@@ -45,43 +46,102 @@ export function generateCloid(): string {
   return '0x' + randomUUID().replace(/-/g, '')
 }
 
-// ─── Exchange Stubs (wired in S10) ──────────────────────────────────────────
+// ─── Exchange Wrappers (S10: real HL calls via ExchangeService) ────────────
 
 /**
- * Submit order to exchange. Stubbed — returns simulated success.
- * S10 replaces with real HL ExchangeClient call.
+ * Submit order to exchange via ExchangeService.
+ * Returns ExchangeOrderResult with exchangeOrderId = HL oid (as string).
  */
 export async function submitToExchange(
-  _coin: string,
-  _side: 'long' | 'short',
-  _type: 'limit' | 'market',
-  _price: number,
-  _size: number,
-  _cloid: string,
+  coin: string,
+  side: 'long' | 'short',
+  type: 'limit' | 'market',
+  price: number,
+  size: number,
+  cloid: string,
 ): Promise<ExchangeOrderResult> {
-  log.warn('order-manager', 'submitToExchange STUB — no real exchange call')
-  return { success: true, exchangeOrderId: `sim-${Date.now()}`, error: null }
+  try {
+    const svc = getExchangeService()
+    const result = await svc.placeOrder({
+      coin,
+      side,
+      type,
+      price,
+      size,
+      reduceOnly: false,
+      cloid,
+    })
+    if (result.success) {
+      // oid may be null for "waitingForFill"/"waitingForTrigger" — use status as fallback
+      const exchangeId = result.oid !== null ? String(result.oid) : result.status
+      return { success: true, exchangeOrderId: exchangeId, error: null }
+    }
+    return { success: false, exchangeOrderId: null, error: result.error }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { success: false, exchangeOrderId: null, error: msg }
+  }
 }
 
 /**
- * Cancel order on exchange. Stubbed.
+ * Cancel order on exchange via ExchangeService.
+ * exchangeOrderId is the HL oid (stored as string, parsed to number).
  */
 export async function cancelOnExchange(
-  _exchangeOrderId: string,
+  exchangeOrderId: string,
+  coin?: string,
 ): Promise<ExchangeOrderResult> {
-  log.warn('order-manager', 'cancelOnExchange STUB — no real exchange call')
-  return { success: true, exchangeOrderId: null, error: null }
+  try {
+    const svc = getExchangeService()
+    const oid = parseInt(exchangeOrderId, 10)
+
+    // If we have a valid oid and coin, cancel by oid (preferred)
+    if (!isNaN(oid) && coin) {
+      const result = await svc.cancelByOid(coin, oid)
+      return { success: result.success, exchangeOrderId: null, error: result.error }
+    }
+
+    // Fallback: if exchangeOrderId looks like a cloid (0x...) and coin is available
+    if (exchangeOrderId.startsWith('0x') && coin) {
+      const result = await svc.cancelByCloid(coin, exchangeOrderId)
+      return { success: result.success, exchangeOrderId: null, error: result.error }
+    }
+
+    log.warn('order-manager', `cancelOnExchange: cannot cancel without valid oid or cloid+coin (id=${exchangeOrderId})`)
+    return { success: false, exchangeOrderId: null, error: 'Missing coin for cancel' }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { success: false, exchangeOrderId: null, error: msg }
+  }
 }
 
 /**
- * Place trigger order (SL/TP) on exchange. Stubbed.
- * R9: SL = trigger-market, TP = trigger-limit.
+ * Place trigger order (SL/TP) on exchange via ExchangeService.
+ * R9: SL = trigger-market (isMarket=true), TP = trigger-limit (isMarket=false).
  */
 export async function placeTriggerOnExchange(
-  _trigger: TriggerOrder,
+  trigger: TriggerOrder,
 ): Promise<ExchangeOrderResult> {
-  log.warn('order-manager', 'placeTriggerOnExchange STUB — no real exchange call')
-  return { success: true, exchangeOrderId: `sim-trig-${Date.now()}`, error: null }
+  try {
+    const svc = getExchangeService()
+    const result = await svc.placeTrigger({
+      coin: trigger.coin,
+      side: trigger.side,
+      triggerPrice: trigger.triggerPrice,
+      size: trigger.size,
+      isMarket: trigger.isMarket,
+      tpsl: trigger.type,
+      cloid: trigger.cloid,
+    })
+    if (result.success) {
+      const exchangeId = result.oid !== null ? String(result.oid) : result.status
+      return { success: true, exchangeOrderId: exchangeId, error: null }
+    }
+    return { success: false, exchangeOrderId: null, error: result.error }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { success: false, exchangeOrderId: null, error: msg }
+  }
 }
 
 // ─── DB Operations ──────────────────────────────────────────────────────────
@@ -380,7 +440,7 @@ export class OrderManager {
 
     // Cancel on exchange if submitted
     if (order.exchangeOrderId) {
-      const result = await cancelOnExchange(order.exchangeOrderId)
+      const result = await cancelOnExchange(order.exchangeOrderId, order.coin)
       if (!result.success) {
         log.error('order-manager', `Exchange cancel failed for ${orderId}: ${result.error}`)
         // Still mark cancelled in DB — reconciliation will catch discrepancies
@@ -399,7 +459,7 @@ export class OrderManager {
 
   /**
    * Modify SL trigger order on exchange (used by PositionMonitor for trail stop).
-   * Stub — exchange call wired in S10.
+   * S10: Uses ExchangeService.modifyTrigger if oid available, else cancel+replace.
    */
   async modifySLPrice(parentOrderId: string, newSlPrice: number): Promise<void> {
     const triggers = this.triggerOrders.get(parentOrderId)
@@ -414,9 +474,46 @@ export class OrderManager {
       return
     }
 
+    const oldPrice = slTrigger.triggerPrice
     slTrigger.triggerPrice = newSlPrice
-    // TODO S10: cancel old SL trigger + place new one on exchange
-    log.info('order-manager', `SL modified: ${slTrigger.coin} new SL @ ${newSlPrice} (stub — exchange update in S10)`)
+
+    // Try to modify on exchange if we have an oid
+    if (slTrigger.exchangeOrderId) {
+      const oid = parseInt(slTrigger.exchangeOrderId, 10)
+      if (!isNaN(oid)) {
+        try {
+          const svc = getExchangeService()
+          const result = await svc.modifyTrigger(
+            slTrigger.coin,
+            oid,
+            slTrigger.side,
+            newSlPrice,
+            slTrigger.size,
+            slTrigger.isMarket,
+            'sl',
+          )
+          if (result.success) {
+            log.info('order-manager', `SL modified on exchange: ${slTrigger.coin} ${oldPrice} → ${newSlPrice}`)
+            return
+          }
+          log.warn('order-manager', `SL modify failed, trying cancel+replace: ${result.error}`)
+        } catch (err) {
+          log.warn('order-manager', `SL modify error, trying cancel+replace: ${err instanceof Error ? err.message : err}`)
+        }
+      }
+
+      // Fallback: cancel old + place new
+      await cancelOnExchange(slTrigger.exchangeOrderId, slTrigger.coin)
+      const newResult = await placeTriggerOnExchange(slTrigger)
+      if (newResult.success) {
+        slTrigger.exchangeOrderId = newResult.exchangeOrderId
+        log.info('order-manager', `SL replaced on exchange: ${slTrigger.coin} ${oldPrice} → ${newSlPrice}`)
+      } else {
+        log.error('order-manager', `SL replace failed: ${newResult.error}`)
+      }
+    } else {
+      log.info('order-manager', `SL updated in-memory: ${slTrigger.coin} ${oldPrice} → ${newSlPrice} (no exchange oid)`)
+    }
   }
 
   // ── Timeout Check ─────────────────────────────────────────────────────
@@ -485,7 +582,7 @@ export class OrderManager {
     if (triggers) {
       for (const trigger of triggers) {
         if (trigger.exchangeOrderId) {
-          await cancelOnExchange(trigger.exchangeOrderId)
+          await cancelOnExchange(trigger.exchangeOrderId, trigger.coin)
         }
       }
       this.triggerOrders.delete(entryOrder.id)

@@ -94,8 +94,31 @@ export const HTF_MAP: Record<CandleInterval, CandleInterval> = {
 /** Minimum confluence count for grade B (alert threshold). */
 export const CONFLUENCE_MIN = 3
 
-/** Simulated account size for risk filter (Sprint 1, no wallet). */
+/**
+ * @deprecated Use real account balance from ExchangeService (R17).
+ * Kept as fallback if ExchangeService is not initialized (tests, offline mode).
+ */
 export const SIMULATED_ACCOUNT = 10_000
+
+// ─── Risk Management (S10) ──────────────────────────────────────────────────
+
+/** Risk limits for position sizing and drawdown protection. */
+export const RISK = {
+  /** Max risk per trade as fraction of account (1%). */
+  maxRiskPerTrade: 0.01,
+  /** Max concurrent open positions. */
+  maxConcurrentPositions: 3,
+  /** Max daily loss as fraction of account (3%) → PAUSE agent. */
+  maxDailyLoss: 0.03,
+  /** Max weekly loss as fraction of account (5%) → PAUSE + alert. */
+  maxWeeklyLoss: 0.05,
+  /** Max single position size as fraction of account (10%). */
+  maxPositionSize: 0.10,
+  /** Max correlated assets in same direction. */
+  maxCorrelatedPositions: 2,
+  /** Max total notional exposure as multiple of account. */
+  maxTotalExposure: 3.0,
+} as const
 
 // ─── Phase B: Order Flow Config ─────────────────────────────────────────────
 

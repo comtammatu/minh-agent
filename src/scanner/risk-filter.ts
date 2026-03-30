@@ -16,16 +16,20 @@
  */
 
 import type { Signal, KeyZone, RiskAssessment } from '../types.js'
-import { ZONE_RISK, SIMULATED_ACCOUNT, DEFAULT_RISK_PERCENT, MIN_POSITION_SIZE_PCT } from '../config.js'
+import { ZONE_RISK, DEFAULT_RISK_PERCENT, MIN_POSITION_SIZE_PCT } from '../config.js'
 import { computePositionSize } from '../agent/exits.js'
 
 /**
  * Assess risk for a signal at a zone.
  *
+ * R11: accountValue is passed in by caller (real balance from ExchangeService).
+ * Pure function — no I/O.
+ *
  * @param signal       Signal from Layer 5
  * @param zone         The zone the signal was triggered at
  * @param currentPrice Current price (candle close)
  * @param atrValue     Current ATR value
+ * @param accountValue Account balance in USD (R11: from ExchangeService, not hardcoded)
  * @returns RiskAssessment
  */
 export function assessRisk(
@@ -33,6 +37,7 @@ export function assessRisk(
   zone: KeyZone,
   currentPrice: number,
   atrValue: number,
+  accountValue: number,
 ): RiskAssessment {
   const zoneMid = (zone.top + zone.bottom) / 2
   const distance = Math.abs(currentPrice - zoneMid) / currentPrice
@@ -90,9 +95,9 @@ export function assessRisk(
   }
 
   // Skip: position size too small (R12: shared computePositionSize)
-  const positionSize = computePositionSize(SIMULATED_ACCOUNT, DEFAULT_RISK_PERCENT, signal.entryPrice, signal.slPrice)
+  const positionSize = computePositionSize(accountValue, DEFAULT_RISK_PERCENT, signal.entryPrice, signal.slPrice)
   const positionSizeUsd = positionSize * signal.entryPrice
-  const minSize = SIMULATED_ACCOUNT * MIN_POSITION_SIZE_PCT
+  const minSize = accountValue * MIN_POSITION_SIZE_PCT
   if (positionSizeUsd < minSize) {
     return {
       tradeable: false,

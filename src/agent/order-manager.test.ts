@@ -1,8 +1,9 @@
 /**
- * OrderManager tests (Sprint 2 S6).
+ * OrderManager tests (Sprint 2 S6, updated S10).
  *
  * Tests the order lifecycle: place, fill, reject, cancel, timeout, SL/TP triggers.
  * Mocks DB via bun:test mock.module — pure logic verification.
+ * S10: Also mocks ExchangeService (replaces old stubs).
  */
 
 import { describe, it, expect, beforeEach, mock } from 'bun:test'
@@ -22,6 +23,39 @@ mock.module('../db/connection.js', () => {
   const sqlProxy = new Proxy(function () { return Promise.resolve([]) } as unknown as object, handler)
   return { sql: sqlProxy }
 })
+
+// S10: Mock ExchangeService so OrderManager's exchange wrappers return success
+let mockOrderSuccess = true
+let mockCancelSuccess = true
+let mockTriggerSuccess = true
+
+mock.module('../execution/exchange-service.js', () => ({
+  getExchangeService: () => ({
+    placeOrder: () => Promise.resolve(
+      mockOrderSuccess
+        ? { success: true, oid: 12345, avgPx: 50000, totalSz: 0.1, status: 'filled', error: null }
+        : { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: 'Mock rejection' }
+    ),
+    placeTrigger: () => Promise.resolve(
+      mockTriggerSuccess
+        ? { success: true, oid: 67890, avgPx: null, totalSz: null, status: 'waitingForTrigger', error: null }
+        : { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: 'Mock trigger fail' }
+    ),
+    cancelByOid: () => Promise.resolve(
+      mockCancelSuccess
+        ? { success: true, oid: null, avgPx: null, totalSz: null, status: 'cancelled', error: null }
+        : { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: 'Mock cancel fail' }
+    ),
+    cancelByCloid: () => Promise.resolve(
+      mockCancelSuccess
+        ? { success: true, oid: null, avgPx: null, totalSz: null, status: 'cancelled', error: null }
+        : { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: 'Mock cancel fail' }
+    ),
+    modifyTrigger: () => Promise.resolve(
+      { success: true, oid: 67890, avgPx: null, totalSz: null, status: 'modified', error: null }
+    ),
+  }),
+}))
 
 import {
   OrderManager,
@@ -90,6 +124,9 @@ describe('OrderManager', () => {
 
   beforeEach(() => {
     resetOrderManager()
+    mockOrderSuccess = true
+    mockCancelSuccess = true
+    mockTriggerSuccess = true
     om = new OrderManager()
     dispatchedEvents = []
     om.setAgentDispatch((coin, event) => {

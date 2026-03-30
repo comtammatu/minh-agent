@@ -1,0 +1,503 @@
+/**
+ * Exchange Service — single point of contact with Hyperliquid L1 (Sprint 2 S10).
+ *
+ * Responsibilities:
+ *   - Initialize wallet (viem privateKeyToAccount) from PRIVATE_KEY env var
+ *   - Initialize HL ExchangeClient + SymbolConverter (asset ID / szDecimals lookup)
+ *   - Place orders (market, limit, trigger SL/TP) with correct precision formatting
+ *   - Cancel orders (by oid or cloid)
+ *   - Modify trigger orders (trail stop SL updates)
+ *   - Query clearinghouseState (account balance, open positions)
+ *   - Cache accountValue for pipeline risk-filter (R11, R17)
+ *
+ * Design:
+ *   - Singleton pattern (same as OrderManager, PositionMonitor)
+ *   - ALL exchange I/O goes through this module — no other module imports @nktkas/hyperliquid exchange
+ *   - SDK's SymbolConverter handles asset ID + szDecimals mapping
+ *   - SDK's formatPrice/formatSize handle HL precision rules (5 sig figs, szDecimals rounding)
+ *   - Wallet private key loaded once, never logged, never exported
+ *
+ * HL API notes (from docs):
+ *   - Asset ID: integer index from meta.universe (perps), NOT coin name
+ *   - Price: string, max 5 sig figs, max (6 - szDecimals) decimal places for perps
+ *   - Size: string, truncated to szDecimals decimal places
+ *   - Market order: use { limit: { tif: "FrontendMarket" } } (IOC-like)
+ *   - Trigger SL: { trigger: { isMarket: true, triggerPx, tpsl: "sl" } }
+ *   - Trigger TP: { trigger: { isMarket: false, triggerPx, tpsl: "tp" } }
+ *   - Grouping: "na" for entry, "normalTpsl" for SL/TP attached to position
+ *   - Cancel by oid: { cancels: [{ a: assetId, o: oid }] }
+ *   - Cancel by cloid: { cancels: [{ asset: assetId, cloid }] }
+ *   - Nonce: timestamp in ms (SDK handles this internally)
+ *   - Numeric values in responses are strings → parseFloat
+ *   - Response status always "ok" even on error — check statuses array
+ *   - Minimum order value: $10
+ */
+
+import { ExchangeClient, HttpTransport } from '@nktkas/hyperliquid'
+import { SymbolConverter, formatPrice, formatSize } from '@nktkas/hyperliquid/utils'
+import { privateKeyToAccount } from 'viem/accounts'
+import type { ExchangePositionSnapshot } from '../agent/types.js'
+import { info } from '../feed/rest.js'
+import { acquire } from '../feed/rate-limiter.js'
+import { log } from '../lib/logger.js'
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+export interface PlaceOrderParams {
+  coin: string
+  side: 'long' | 'short'
+  type: 'market' | 'limit'
+  price: number        // reference price (market) or limit price
+  size: number         // in coin units (pre-formatting)
+  reduceOnly: boolean
+  cloid?: string       // 0x + 32 hex chars
+}
+
+export interface PlaceTriggerParams {
+  coin: string
+  side: 'long' | 'short'  // close side
+  triggerPrice: number
+  size: number
+  isMarket: boolean        // SL = true (trigger-market), TP = false (trigger-limit)
+  tpsl: 'tp' | 'sl'
+  cloid?: string
+}
+
+export interface OrderResult {
+  success: boolean
+  /** HL oid (number) — set on resting or filled */
+  oid: number | null
+  /** Fill info — set on immediate fill */
+  avgPx: number | null
+  totalSz: number | null
+  /** Status string for trigger orders */
+  status: string | null
+  error: string | null
+}
+
+export interface AccountState {
+  accountValue: number
+  totalNtlPos: number
+  totalMarginUsed: number
+  withdrawable: number
+}
+
+// ─── Exchange Service ───────────────────────────────────────────────────────
+
+export class ExchangeService {
+  private exchange: ExchangeClient | null = null
+  private converter: SymbolConverter | null = null
+  private transport: HttpTransport
+  private walletAddress: string = ''
+
+  /** Cached account value — refreshed on each getAccountState() call. */
+  private cachedAccountValue: number = 0
+
+  /** Whether the service has been initialized. */
+  private initialized = false
+
+  constructor() {
+    this.transport = new HttpTransport()
+  }
+
+  /**
+   * Initialize wallet + ExchangeClient + SymbolConverter.
+   * Must be called before any exchange operation.
+   * Safe to call multiple times (idempotent).
+   */
+  async init(): Promise<void> {
+    if (this.initialized) return
+
+    const privateKey = process.env.PRIVATE_KEY
+    if (!privateKey) {
+      throw new Error('PRIVATE_KEY env var is required for exchange operations')
+    }
+
+    // Validate format: must start with 0x
+    if (!privateKey.startsWith('0x')) {
+      throw new Error('PRIVATE_KEY must start with 0x')
+    }
+
+    const wallet = privateKeyToAccount(privateKey as `0x${string}`)
+    this.walletAddress = wallet.address
+    log.info('exchange-service', `Wallet initialized: ${this.walletAddress.slice(0, 6)}...${this.walletAddress.slice(-4)}`)
+
+    this.exchange = new ExchangeClient({ transport: this.transport, wallet })
+    this.converter = await SymbolConverter.create({ transport: this.transport })
+    this.initialized = true
+
+    log.info('exchange-service', 'ExchangeService initialized (wallet + SymbolConverter)')
+  }
+
+  /** Ensure init() has been called. */
+  private ensureInit(): void {
+    if (!this.initialized || !this.exchange || !this.converter) {
+      throw new Error('ExchangeService not initialized — call init() first')
+    }
+  }
+
+  /** Get wallet address (for clearinghouseState queries). */
+  getWalletAddress(): string {
+    return this.walletAddress
+  }
+
+  /** Reload SymbolConverter mappings (call after coin-selector refresh). */
+  async reloadSymbols(): Promise<void> {
+    this.ensureInit()
+    await this.converter!.reload()
+    log.info('exchange-service', 'SymbolConverter reloaded')
+  }
+
+  // ── Asset Lookup ──────────────────────────────────────────────────────────
+
+  /** Get HL asset ID for a coin name. Returns undefined if unknown. */
+  getAssetId(coin: string): number | undefined {
+    this.ensureInit()
+    return this.converter!.getAssetId(coin)
+  }
+
+  /** Get szDecimals for a coin. Returns undefined if unknown. */
+  getSzDecimals(coin: string): number | undefined {
+    this.ensureInit()
+    return this.converter!.getSzDecimals(coin)
+  }
+
+  // ── Order Placement ───────────────────────────────────────────────────────
+
+  /**
+   * Place a single entry order (market or limit).
+   *
+   * Market orders use tif "FrontendMarket" (IOC-like, fills immediately or cancels).
+   * Limit orders use tif "Gtc" (rests on book until filled/cancelled).
+   */
+  async placeOrder(params: PlaceOrderParams): Promise<OrderResult> {
+    this.ensureInit()
+
+    const assetId = this.converter!.getAssetId(params.coin)
+    if (assetId === undefined) {
+      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Unknown asset: ${params.coin}` }
+    }
+
+    const szDecimals = this.converter!.getSzDecimals(params.coin) ?? 0
+    const priceStr = formatPrice(params.price, szDecimals)
+    const sizeStr = formatSize(params.size, szDecimals)
+
+    // Validate minimum order value ($10)
+    const orderNotional = params.price * params.size
+    if (orderNotional < 10) {
+      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Order notional $${orderNotional.toFixed(2)} < $10 minimum` }
+    }
+
+    const isBuy = params.side === 'long'
+    const tif = params.type === 'market' ? 'FrontendMarket' as const : 'Gtc' as const
+
+    log.info('exchange-service', `Placing ${params.type} ${params.side} ${params.coin}: price=${priceStr} size=${sizeStr} [asset=${assetId}]`)
+
+    try {
+      await acquire()
+      const response = await this.exchange!.order({
+        orders: [{
+          a: assetId,
+          b: isBuy,
+          p: priceStr,
+          s: sizeStr,
+          r: params.reduceOnly,
+          t: { limit: { tif } },
+          ...(params.cloid ? { c: params.cloid as `0x${string}` } : {}),
+        }],
+        grouping: 'na',
+      })
+
+      return this.parseOrderStatus(response.response.data.statuses[0])
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.error('exchange-service', `Order failed: ${msg}`)
+      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: msg }
+    }
+  }
+
+  /**
+   * Place a trigger order (SL or TP) on exchange.
+   * Uses grouping "normalTpsl" — fixed size, doesn't adjust with position.
+   *
+   * R9: SL = trigger-market (isMarket=true), TP = trigger-limit (isMarket=false).
+   */
+  async placeTrigger(params: PlaceTriggerParams): Promise<OrderResult> {
+    this.ensureInit()
+
+    const assetId = this.converter!.getAssetId(params.coin)
+    if (assetId === undefined) {
+      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Unknown asset: ${params.coin}` }
+    }
+
+    const szDecimals = this.converter!.getSzDecimals(params.coin) ?? 0
+    const triggerPxStr = formatPrice(params.triggerPrice, szDecimals)
+    const sizeStr = formatSize(params.size, szDecimals)
+    const isBuy = params.side === 'long'
+
+    log.info('exchange-service', `Placing ${params.tpsl.toUpperCase()} trigger ${params.coin}: triggerPx=${triggerPxStr} size=${sizeStr} isMarket=${params.isMarket}`)
+
+    try {
+      await acquire()
+      const response = await this.exchange!.order({
+        orders: [{
+          a: assetId,
+          b: isBuy,
+          p: triggerPxStr,
+          s: sizeStr,
+          r: true,  // trigger orders are always reduce-only
+          t: {
+            trigger: {
+              isMarket: params.isMarket,
+              triggerPx: triggerPxStr,
+              tpsl: params.tpsl,
+            },
+          },
+          ...(params.cloid ? { c: params.cloid as `0x${string}` } : {}),
+        }],
+        grouping: 'normalTpsl',
+      })
+
+      return this.parseOrderStatus(response.response.data.statuses[0])
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.error('exchange-service', `Trigger order failed: ${msg}`)
+      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: msg }
+    }
+  }
+
+  // ── Cancel ────────────────────────────────────────────────────────────────
+
+  /** Cancel order by exchange oid. */
+  async cancelByOid(coin: string, oid: number): Promise<OrderResult> {
+    this.ensureInit()
+
+    const assetId = this.converter!.getAssetId(coin)
+    if (assetId === undefined) {
+      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Unknown asset: ${coin}` }
+    }
+
+    log.info('exchange-service', `Cancelling order: ${coin} oid=${oid}`)
+
+    try {
+      await acquire()
+      const response = await this.exchange!.cancel({
+        cancels: [{ a: assetId, o: oid }],
+      })
+
+      const status = response.response.data.statuses[0]
+      if (status === 'success') {
+        return { success: true, oid, avgPx: null, totalSz: null, status: 'cancelled', error: null }
+      }
+      const errorMsg = typeof status === 'object' && 'error' in status ? status.error : 'Unknown cancel error'
+      return { success: false, oid, avgPx: null, totalSz: null, status: null, error: errorMsg }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.error('exchange-service', `Cancel failed: ${msg}`)
+      return { success: false, oid, avgPx: null, totalSz: null, status: null, error: msg }
+    }
+  }
+
+  /** Cancel order by cloid. */
+  async cancelByCloid(coin: string, cloid: string): Promise<OrderResult> {
+    this.ensureInit()
+
+    const assetId = this.converter!.getAssetId(coin)
+    if (assetId === undefined) {
+      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Unknown asset: ${coin}` }
+    }
+
+    log.info('exchange-service', `Cancelling by cloid: ${coin} cloid=${cloid.slice(0, 10)}...`)
+
+    try {
+      await acquire()
+      const response = await this.exchange!.cancelByCloid({
+        cancels: [{ asset: assetId, cloid: cloid as `0x${string}` }],
+      })
+
+      const status = response.response.data.statuses[0]
+      if (status === 'success') {
+        return { success: true, oid: null, avgPx: null, totalSz: null, status: 'cancelled', error: null }
+      }
+      const errorMsg = typeof status === 'object' && 'error' in status ? status.error : 'Unknown cancel error'
+      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: errorMsg }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.error('exchange-service', `CancelByCloid failed: ${msg}`)
+      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: msg }
+    }
+  }
+
+  // ── Modify (trail stop SL updates) ────────────────────────────────────────
+
+  /**
+   * Modify an existing trigger order (e.g. trail stop SL update).
+   * Uses the HL modify endpoint — replaces the order in-place by oid.
+   */
+  async modifyTrigger(
+    coin: string,
+    oid: number,
+    side: 'long' | 'short',
+    newTriggerPrice: number,
+    size: number,
+    isMarket: boolean,
+    tpsl: 'tp' | 'sl',
+  ): Promise<OrderResult> {
+    this.ensureInit()
+
+    const assetId = this.converter!.getAssetId(coin)
+    if (assetId === undefined) {
+      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Unknown asset: ${coin}` }
+    }
+
+    const szDecimals = this.converter!.getSzDecimals(coin) ?? 0
+    const triggerPxStr = formatPrice(newTriggerPrice, szDecimals)
+    const sizeStr = formatSize(size, szDecimals)
+    const isBuy = side === 'long'
+
+    log.info('exchange-service', `Modifying ${tpsl.toUpperCase()} trigger: ${coin} oid=${oid} newPx=${triggerPxStr}`)
+
+    try {
+      await acquire()
+      await this.exchange!.modify({
+        oid,
+        order: {
+          a: assetId,
+          b: isBuy,
+          p: triggerPxStr,
+          s: sizeStr,
+          r: true,
+          t: {
+            trigger: {
+              isMarket,
+              triggerPx: triggerPxStr,
+              tpsl,
+            },
+          },
+        },
+      })
+      return { success: true, oid, avgPx: null, totalSz: null, status: 'modified', error: null }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.error('exchange-service', `Modify trigger failed: ${msg}`)
+      return { success: false, oid, avgPx: null, totalSz: null, status: null, error: msg }
+    }
+  }
+
+  // ── Account State ─────────────────────────────────────────────────────────
+
+  /**
+   * Query HL clearinghouseState for account summary.
+   * Updates cached accountValue (used by pipeline risk-filter R11).
+   */
+  async getAccountState(): Promise<AccountState> {
+    this.ensureInit()
+
+    try {
+      await acquire()
+      const state = await info.clearinghouseState({ user: this.walletAddress as `0x${string}` })
+
+      const result: AccountState = {
+        accountValue: parseFloat(state.marginSummary.accountValue),
+        totalNtlPos: parseFloat(state.marginSummary.totalNtlPos),
+        totalMarginUsed: parseFloat(state.marginSummary.totalMarginUsed),
+        withdrawable: parseFloat(state.withdrawable),
+      }
+
+      this.cachedAccountValue = result.accountValue
+      return result
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.error('exchange-service', `getAccountState failed: ${msg}`)
+      throw err
+    }
+  }
+
+  /** Get cached account value (from last getAccountState call). */
+  getCachedAccountValue(): number {
+    return this.cachedAccountValue
+  }
+
+  /**
+   * Query open positions from HL clearinghouseState.
+   * Returns normalized ExchangePositionSnapshot[] for PositionMonitor reconciliation.
+   */
+  async getPositions(): Promise<ExchangePositionSnapshot[]> {
+    this.ensureInit()
+
+    try {
+      await acquire()
+      const state = await info.clearinghouseState({ user: this.walletAddress as `0x${string}` })
+
+      return state.assetPositions.map(ap => {
+        const pos = ap.position
+        const szi = parseFloat(pos.szi)
+        return {
+          coin: pos.coin,
+          size: szi,  // positive = long, negative = short, 0 = closed
+          entryPrice: parseFloat(pos.entryPx),
+          unrealizedPnl: parseFloat(pos.unrealizedPnl),
+          liquidationPrice: pos.liquidationPx ? parseFloat(pos.liquidationPx) : null,
+        }
+      }).filter(p => p.size !== 0)  // only open positions
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.error('exchange-service', `getPositions failed: ${msg}`)
+      return []
+    }
+  }
+
+  // ── Response Parsing ──────────────────────────────────────────────────────
+
+  /** Parse a single order status from HL response. */
+  private parseOrderStatus(
+    status: { resting: { oid: number; cloid?: string } } | { filled: { totalSz: string; avgPx: string; oid: number; cloid?: string } } | { error: string } | 'waitingForFill' | 'waitingForTrigger' | undefined,
+  ): OrderResult {
+    if (!status) {
+      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: 'No status in response' }
+    }
+
+    if (typeof status === 'string') {
+      // "waitingForFill" or "waitingForTrigger"
+      return { success: true, oid: null, avgPx: null, totalSz: null, status, error: null }
+    }
+
+    if ('resting' in status) {
+      return { success: true, oid: status.resting.oid, avgPx: null, totalSz: null, status: 'resting', error: null }
+    }
+
+    if ('filled' in status) {
+      return {
+        success: true,
+        oid: status.filled.oid,
+        avgPx: parseFloat(status.filled.avgPx),
+        totalSz: parseFloat(status.filled.totalSz),
+        status: 'filled',
+        error: null,
+      }
+    }
+
+    if ('error' in status) {
+      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: status.error }
+    }
+
+    return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: 'Unknown status format' }
+  }
+}
+
+// ─── Singleton ──────────────────────────────────────────────────────────────
+
+let instance: ExchangeService | null = null
+
+/** Get or create the singleton ExchangeService. */
+export function getExchangeService(): ExchangeService {
+  if (!instance) {
+    instance = new ExchangeService()
+  }
+  return instance
+}
+
+/** Reset ExchangeService (tests only). */
+export function resetExchangeService(): void {
+  instance = null
+}

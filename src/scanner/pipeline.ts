@@ -51,7 +51,9 @@ import {
   MIN_CANDLES_FOR_SCAN,
   INDICATOR_WINDOW,
   HTF_MAP,
+  SIMULATED_ACCOUNT,
 } from '../config.js'
+import { getExchangeService } from '../execution/exchange-service.js'
 import { EventEmitter } from 'events'
 
 // ── Module-level state ──────────────────────────────────────────────────────
@@ -243,7 +245,9 @@ function runPipeline(
   const currentPrice = confirmedSlice[idx]!.c
   const atrVal = atr(confirmedSlice, idx, 14)
   const zone = bestZone?.zone ?? zones[0]!
-  const risk = assessRisk(signal, zone, currentPrice, atrVal)
+  // R11: Use real account balance from ExchangeService, fallback to SIMULATED_ACCOUNT
+  const accountValue = getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT
+  const risk = assessRisk(signal, zone, currentPrice, atrVal, accountValue)
   if (!risk.tradeable) {
     invalidateSetups(coin, interval, confirmedSlice, idx)
     return

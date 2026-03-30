@@ -33,17 +33,22 @@ import {
   EXCHANGE_SYNC_INTERVAL_MS,
   TRAIL_UPDATE_THRESHOLD,
 } from '../config.js'
+import { getExchangeService } from '../execution/exchange-service.js'
 import { log } from '../lib/logger.js'
 
-// ─── Exchange Stub (wired S10) ──────────────────────────────────────────────
+// ─── Exchange Query (S10: real HL clearinghouseState) ──────────────────────
 
 /**
- * Query exchange for current positions. Stubbed — returns empty.
- * S10 replaces with real HL clearinghouseState call.
+ * Query exchange for current positions via ExchangeService.
+ * Returns ExchangePositionSnapshot[] from HL clearinghouseState.
  */
 export async function queryExchangePositions(): Promise<ExchangePositionSnapshot[]> {
-  log.warn('position-monitor', 'queryExchangePositions STUB — no real exchange call')
-  return []
+  try {
+    return await getExchangeService().getPositions()
+  } catch (err) {
+    log.error('position-monitor', `queryExchangePositions failed: ${err instanceof Error ? err.message : err}`)
+    return []
+  }
 }
 
 // ─── Pure Monitor Logic ─────────────────────────────────────────────────────
