@@ -182,6 +182,52 @@ export interface ExchangePositionSnapshot {
   liquidationPrice: number | null
 }
 
+// ─── Trade Journal (S9) ─────────────────────────────────────────────────────
+
+export type JournalEventType =
+  | 'signal'
+  | 'enter'
+  | 'exit'
+  | 'skip'
+  | 'invalidate'
+  | 'circuit_break'
+  | 'pause'
+  | 'resume'
+  | 'error'
+
+/** A persisted journal row from trade_journal table. */
+export interface JournalEntry {
+  id: number
+  ts: Date
+  eventType: JournalEventType
+  coin: string | null
+  details: Record<string, unknown>
+  agentState: string | null
+}
+
+/** Filter for querying journal entries. */
+export interface JournalFilter {
+  coin?: string
+  eventType?: JournalEventType
+  since?: Date
+  until?: Date
+  limit?: number
+}
+
+/** Aggregated daily summary. */
+export interface DailySummary {
+  date: string         // YYYY-MM-DD
+  totalTrades: number
+  wins: number
+  losses: number
+  winRate: number      // 0–1
+  totalPnl: number
+  avgPnl: number
+  largestWin: number
+  largestLoss: number
+  entryCount: number   // total journal entries for the day
+}
+
 // ─── Pipeline Event (emitted by scanner) ─────────────────────────────────────
 
 export interface PipelineEvents {
