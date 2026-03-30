@@ -26,6 +26,7 @@ import type {
   TransitionResult,
   PipelineEvents,
 } from './types.js'
+import { runAllChecks, prunePnlHistory } from './circuit-breakers.js'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -35,11 +36,8 @@ const MIN_GRADE_FOR_WATCH = new Set(['B', 'A', 'A+'])
 /** Order fill timeout (ms) — cancel if not filled within this window. */
 const ORDER_TIMEOUT_MS = 5 * 60 * 1000  // 5 minutes
 
-/** Consecutive loss threshold → auto-pause (per-coin). */
-const CONSECUTIVE_LOSS_PAUSE = 3
-
-/** Consecutive loss pause duration (ms). */
-const CONSECUTIVE_LOSS_PAUSE_MS = 2 * 60 * 60 * 1000  // 2 hours
+// Consecutive loss constants moved to config.ts CIRCUIT_BREAKER (S11).
+// CB check logic moved to circuit-breakers.ts runAllChecks().
 
 // ─── Pure State Handlers ─────────────────────────────────────────────────────
 
@@ -260,34 +258,21 @@ export function handleExiting(
 ): TransitionResult {
   if (event.type === 'position_closed') {
     const pnl = event.pnl
-    const isLoss = pnl < 0
+    const exitAction = journalAction('exit', ctx.coin, { pnl, reason: event.reason, positionId: event.positionId })
 
-    // Check circuit breaker conditions
-    const newConsecutiveLosses = isLoss ? ctx.consecutiveLosses + 1 : 0
-
-    if (newConsecutiveLosses >= CONSECUTIVE_LOSS_PAUSE) {
-      return {
-        nextState: 'PAUSED',
-        actions: [
-          journalAction('exit', ctx.coin, { pnl, reason: event.reason, positionId: event.positionId }),
-          journalAction('circuit_break', ctx.coin, {
-            reason: `${newConsecutiveLosses} consecutive losses`,
-            pauseUntil: Date.now() + CONSECUTIVE_LOSS_PAUSE_MS,
-          }),
-        ],
-      }
-    }
-
+    // CB checks are now run by the orchestrator (TradingAgent.checkCircuitBreakers)
+    // after recording PnL. handleExiting just logs the exit and goes IDLE or PAUSED
+    // if globally paused.
     if (global.globalPaused) {
       return {
         nextState: 'PAUSED',
-        actions: [journalAction('exit', ctx.coin, { pnl, reason: event.reason, positionId: event.positionId })],
+        actions: [exitAction],
       }
     }
 
     return {
       nextState: 'IDLE',
-      actions: [journalAction('exit', ctx.coin, { pnl, reason: event.reason, positionId: event.positionId })],
+      actions: [exitAction],
     }
   }
 
@@ -357,6 +342,7 @@ export class TradingAgent {
       globalPaused: false,
       globalPauseReason: null,
       startedAt: Date.now(),
+      pnlHistory: [],
     }
   }
 
@@ -437,20 +423,100 @@ export class TradingAgent {
     this.dispatchAll({ type: 'resume' })
   }
 
-  /** Update daily PnL (called by position monitor on close). */
-  recordPnl(pnl: number): void {
+  /**
+   * Update daily PnL + pnlHistory (called by position monitor on close).
+   * Runs circuit breaker checks after recording. If tripped, pauses all
+   * non-IN_POSITION coins (R5).
+   *
+   * @param pnl - Realized PnL from this trade
+   * @param accountValue - Current account value from exchange (for CB % checks)
+   */
+  recordPnl(pnl: number, accountValue?: number): void {
+    const now = Date.now()
     this.global.dailyPnl += pnl
-    this.global.lastTradeTime = Date.now()
+    this.global.lastTradeTime = now
+    this.global.pnlHistory.push({ ts: now, pnl })
+
     if (pnl < 0) {
       this.global.totalConsecutiveLosses++
     } else {
       this.global.totalConsecutiveLosses = 0
+    }
+
+    // Update peak if account value provided
+    if (accountValue !== undefined && accountValue > this.global.peakAccountValue) {
+      this.global.peakAccountValue = accountValue
+    }
+
+    // Run CB checks if we have account value
+    if (accountValue !== undefined) {
+      this.checkCircuitBreakers(accountValue, now)
     }
   }
 
   /** Reset daily PnL (called at UTC midnight). */
   resetDailyPnl(): void {
     this.global.dailyPnl = 0
+  }
+
+  /**
+   * Update account value — call on startup and periodically from exchange sync.
+   * Tracks peak for max drawdown CB.
+   */
+  updateAccountValue(accountValue: number): void {
+    if (accountValue > this.global.peakAccountValue) {
+      this.global.peakAccountValue = accountValue
+    }
+  }
+
+  /**
+   * Run all circuit breaker checks against current global state.
+   * If any trips, dispatch circuit_break to all non-IN_POSITION coins.
+   * R5: IN_POSITION keeps SL/TP on exchange — only new entries blocked.
+   */
+  checkCircuitBreakers(accountValue: number, now: number = Date.now()): void {
+    // Prune stale pnlHistory entries
+    this.global.pnlHistory = prunePnlHistory(this.global.pnlHistory, now)
+
+    const result = runAllChecks({
+      dailyPnl: this.global.dailyPnl,
+      accountValue,
+      peakAccountValue: this.global.peakAccountValue,
+      consecutiveLosses: this.global.totalConsecutiveLosses,
+      pnlHistory: this.global.pnlHistory,
+      now,
+    })
+
+    if (result.tripped && !this.global.globalPaused) {
+      // Set global pause — prevents new entries
+      this.global.globalPaused = true
+      this.global.globalPauseReason = result.reason
+
+      // Dispatch circuit_break to all coins NOT in position (R5)
+      for (const [coin, ctx] of this.coins) {
+        if (ctx.state !== 'IN_POSITION') {
+          this.dispatch(coin, {
+            type: 'circuit_break',
+            reason: result.reason!,
+            pauseUntil: result.pauseUntil,
+          })
+        }
+      }
+
+      // Emit alert action for orchestrator (Telegram, logs)
+      this.emitter.emit('action', {
+        type: 'log_journal',
+        eventType: 'circuit_break',
+        coin: '*',
+        details: {
+          reason: result.reason,
+          pauseUntil: result.pauseUntil,
+          dailyPnl: this.global.dailyPnl,
+          accountValue,
+          peakAccountValue: this.global.peakAccountValue,
+        },
+      })
+    }
   }
 
   // ── Crash Recovery Skeleton (R1) ─────────────────────────────────────────

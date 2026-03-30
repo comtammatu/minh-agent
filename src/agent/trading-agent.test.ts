@@ -64,6 +64,7 @@ function makeGlobal(overrides: Partial<GlobalContext> = {}): GlobalContext {
     globalPaused: false,
     globalPauseReason: null,
     startedAt: Date.now(),
+    pnlHistory: [],
     ...overrides,
   }
 }
@@ -285,13 +286,14 @@ describe('handleExiting', () => {
     expect(result.nextState).toBe('IDLE')
   })
 
-  it('transitions to PAUSED on 3 consecutive losses', () => {
+  it('transitions to IDLE on loss (CB checks moved to orchestrator S11)', () => {
+    // S11: Inline CB logic removed from handleExiting. CB checks run via
+    // TradingAgent.checkCircuitBreakers() after recordPnl(). Handler just exits.
     const ctx = makeCoinCtx({ state: 'EXITING', positionId: 'pos-1', consecutiveLosses: 2 })
     const result = handleExiting(ctx, {
       type: 'position_closed', positionId: 'pos-1', closePrice: 49000, pnl: -100, reason: 'sl_hit',
     }, makeGlobal())
-    expect(result.nextState).toBe('PAUSED')
-    expect(result.actions.some(a => a.type === 'log_journal' && a.eventType === 'circuit_break')).toBe(true)
+    expect(result.nextState).toBe('IDLE')
   })
 
   it('transitions to PAUSED when global paused', () => {
@@ -513,5 +515,87 @@ describe('TradingAgent', () => {
     expect(agent.getCoinState('SOL')).toBe('IN_POSITION')
     const snap = agent.getSnapshot()
     expect(snap.coins['SOL']!.positionId).toContain('orphan')
+  })
+
+  // ── Circuit Breaker Integration (S11) ───────────────────────────────────
+
+  it('checkCircuitBreakers pauses on daily loss', () => {
+    // Put BTC in WATCHING
+    agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup({ confluenceGrade: 'A' }) })
+    expect(agent.getCoinState('BTC')).toBe('WATCHING')
+
+    // Simulate daily loss > 3% of 10000
+    agent.recordPnl(-350, 10000)  // -3.5% → trips daily loss CB
+
+    expect(agent.getGlobal().globalPaused).toBe(true)
+    expect(agent.getCoinState('BTC')).toBe('PAUSED')
+  })
+
+  it('checkCircuitBreakers does NOT pause IN_POSITION coins (R5)', () => {
+    // Put BTC in IN_POSITION
+    const btcCtx = (agent as unknown as { coins: Map<string, CoinContext> }).coins
+    btcCtx.set('BTC', makeCoinCtx({ state: 'IN_POSITION', positionId: 'pos-1', coin: 'BTC' }))
+
+    // Put ETH in WATCHING
+    agent.dispatch('ETH', { type: 'setup_detected', setup: makeSetup({ coin: 'ETH', id: 'ETH:1h:ob:long', confluenceGrade: 'A' }) })
+
+    // Trigger daily loss CB
+    agent.recordPnl(-400, 10000)
+
+    // R5: BTC stays IN_POSITION, ETH gets paused
+    expect(agent.getCoinState('BTC')).toBe('IN_POSITION')
+    expect(agent.getCoinState('ETH')).toBe('PAUSED')
+  })
+
+  it('checkCircuitBreakers trips on rapid loss', () => {
+    agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup({ confluenceGrade: 'A' }) })
+
+    // Two rapid losses within 1h window that total > 2%
+    agent.recordPnl(-120, 10000)  // -1.2%
+    agent.recordPnl(-100, 10000)  // cumulative -2.2% in window → trips rapid
+
+    expect(agent.getGlobal().globalPaused).toBe(true)
+  })
+
+  it('checkCircuitBreakers trips on max drawdown', () => {
+    agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup({ confluenceGrade: 'A' }) })
+
+    // Set peak high, then check with low current value
+    agent.updateAccountValue(10000)
+    agent.checkCircuitBreakers(8900)  // 11% drawdown from peak → trips
+
+    expect(agent.getGlobal().globalPaused).toBe(true)
+    expect(agent.getCoinState('BTC')).toBe('PAUSED')
+  })
+
+  it('updateAccountValue tracks peak', () => {
+    agent.updateAccountValue(10000)
+    expect(agent.getGlobal().peakAccountValue).toBe(10000)
+
+    agent.updateAccountValue(11000)
+    expect(agent.getGlobal().peakAccountValue).toBe(11000)
+
+    // Lower value does not update peak
+    agent.updateAccountValue(9000)
+    expect(agent.getGlobal().peakAccountValue).toBe(11000)
+  })
+
+  it('recordPnl pushes to pnlHistory', () => {
+    agent.recordPnl(-50, 10000)
+    agent.recordPnl(100, 10000)
+    expect(agent.getGlobal().pnlHistory).toHaveLength(2)
+    expect(agent.getGlobal().pnlHistory[0]!.pnl).toBe(-50)
+    expect(agent.getGlobal().pnlHistory[1]!.pnl).toBe(100)
+  })
+
+  it('checkCircuitBreakers emits journal action', () => {
+    const actions: unknown[] = []
+    agent.onAction((a) => actions.push(a))
+
+    agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup({ confluenceGrade: 'A' }) })
+    agent.recordPnl(-400, 10000)  // 4% daily loss → CB trips
+
+    const cbActions = actions.filter((a: any) => a.eventType === 'circuit_break')
+    expect(cbActions.length).toBeGreaterThan(0)
   })
 })

@@ -43,6 +43,12 @@ export interface CoinContext {
 
 // ─── Global Context ──────────────────────────────────────────────────────────
 
+/** Timestamped PnL entry for sliding-window circuit breaker checks. */
+export interface PnlEntry {
+  ts: number   // ms timestamp
+  pnl: number  // realized PnL of this trade
+}
+
 export interface GlobalContext {
   /** Daily realized PnL (resets at UTC midnight). */
   dailyPnl: number
@@ -58,6 +64,8 @@ export interface GlobalContext {
   globalPauseReason: string | null
   /** Agent start time. */
   startedAt: number
+  /** Recent trade PnL history for rapid-loss sliding window (S11). */
+  pnlHistory: PnlEntry[]
 }
 
 // ─── Actions (returned by handlers, executed by orchestrator) ────────────────

@@ -171,6 +171,29 @@ export const TIMEFRAME_MS: Record<CandleInterval, number> = {
   '1d':  86_400_000,
 } as const
 
+// ─── Circuit Breakers (S11) ────────────────────────────────────────────────
+
+/** Circuit breaker thresholds and cooldown durations. */
+export const CIRCUIT_BREAKER = {
+  /** Daily loss limit as fraction of account (3%) → pause until next UTC day. */
+  dailyLossLimit: 0.03,
+
+  /** Consecutive losses (per-coin) to trigger pause. */
+  consecutiveLossCount: 3,
+  /** Consecutive loss pause duration (ms) — 2 hours. */
+  consecutiveLossPauseMs: 2 * 60 * 60 * 1000,
+
+  /** Rapid loss: max loss as fraction of account within the time window (2%). */
+  rapidLossLimit: 0.02,
+  /** Rapid loss time window (ms) — 1 hour. */
+  rapidLossWindowMs: 60 * 60 * 1000,
+  /** Rapid loss pause duration (ms) — 4 hours. */
+  rapidLossPauseMs: 4 * 60 * 60 * 1000,
+
+  /** Max drawdown from peak account value as fraction (10%) → pause + alert. */
+  maxDrawdownLimit: 0.10,
+} as const
+
 // ─── Database (R15: single-process, sequential writes) ────────────────────
 
 /** Max connections in pool. */
