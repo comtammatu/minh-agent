@@ -23,14 +23,91 @@ Sprint 2 (Agent):
            + TimescaleDB         Breakers     HTTP API   Journal
 ```
 
+### Full System Architecture (Sprint 2)
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        Minh (明) Sprint 2                               │
+│                                                                         │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │  Sprint 1 (unchanged)                                            │   │
+│  │  Feed (REST+WS) → Store → Pipeline (5 layers) → Signal+Grade    │   │
+│  │  Pipeline emits 'setup' events via EventEmitter                  │   │
+│  └──────────────────────────────┬───────────────────────────────────┘   │
+│                                 │ EventEmitter 'setup'                  │
+│                                 ▼                                       │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │  AGENT STATE MACHINE (src/agent/trading-agent.ts)                │   │
+│  │  State-handler pattern: handleIdle, handleWatching, etc.         │   │
+│  │                                                                  │   │
+│  │  IDLE ──► WATCHING ──► ENTERING ──► IN_POSITION ──► EXITING     │   │
+│  │   ▲          │            │              │              │        │   │
+│  │   │          ▼            ▼              ▼              ▼        │   │
+│  │   └── invalidate    reject/timeout   trail/TP/SL    close done  │   │
+│  │   ▲                                                     │        │   │
+│  │   └─────────────────────────────────────────────────────┘        │   │
+│  │                     ANY ──► PAUSED (circuit breaker / override)  │   │
+│  │  CB pauses NEW entries only. IN_POSITION keeps SL/TP on exchange │   │
+│  └─────┬──────────┬──────────┬──────────┬──────────┬───────────────┘   │
+│        │          │          │          │          │                     │
+│  ┌─────▼────┐ ┌──▼───┐ ┌───▼────┐ ┌──▼─────┐ ┌─▼──────────┐         │
+│  │ Order    │ │ Pos  │ │ Risk   │ │Circuit │ │ Invalidation│         │
+│  │ Manager  │ │ Mon  │ │ Mgmt   │ │Breakers│ │ Bridge      │         │
+│  │ +SL/TP   │ │ +sync│ │ real $ │ │        │ │             │         │
+│  │ trigger  │ │ hbeat│ │        │ │        │ │             │         │
+│  └─────┬────┘ └──────┘ └───┬────┘ └────────┘ └─────────────┘         │
+│        │                    │                                           │
+│  ┌─────▼────────────────────▼──────────────────────────────────────┐   │
+│  │  EXECUTION LAYER                                                 │   │
+│  │  viem wallet → HL ExchangeClient → sign (EIP-712) → submit     │   │
+│  │  Single ExchangeClient instance, shared by OrderManager + sync  │   │
+│  └─────────────────────────┬───────────────────────────────────────┘   │
+│                            │                                            │
+│  ┌─────────────────────────▼───────────────────────────────────────┐   │
+│  │  PERSISTENCE + API                                               │   │
+│  │  PostgreSQL+TimescaleDB ◄──► Elysia HTTP (localhost:3000 only)  │   │
+│  │  candles, orders, positions, trade_journal                       │   │
+│  │  Numbered SQL migrations (src/db/migrations/001_*.sql)           │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│  ┌──────────────┐  ┌──────────────┐                                    │
+│  │ Telegram Bot │  │ Terminal UI  │  Notifications                     │
+│  └──────────────┘  └──────────────┘                                    │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
 ### Tech Stack Decisions
 
 | Component | Choice | Rationale (see decisions.md S1-S7) |
 |---|---|---|
 | Runtime | Bun/TypeScript | Rule-based agent, type safety, 2-5ms/tick |
 | Database | PostgreSQL + TimescaleDB | ACID for orders/positions, hypertables for candles, continuous aggregates |
-| HTTP | Elysia | Execution endpoints need validation, auth, error handling |
+| DB deploy | Docker Compose | `docker-compose.yml` with `timescale/timescaledb` image |
+| Migrations | Numbered SQL files | `src/db/migrations/001_initial.sql`, simple runner on startup |
+| HTTP | Elysia (localhost only) | Execution endpoints need validation, auth; bound to 127.0.0.1 |
 | Wallet | viem | EIP-712 signing for Hyperliquid |
+
+### Review Decisions (CEO + Eng)
+
+| # | Decision | Rationale | Session |
+|---|---|---|---|
+| R1 | Exchange-authoritative crash recovery | On startup: query HL `clearinghouseState` → reconcile with DB → resume correct state | S5 |
+| R2 | State-handler pattern | Each state gets own handler (handleIdle, handleWatching, etc.) — testable in isolation | S5 |
+| R3 | Exchange-sync heartbeat (~10s) | Poll HL `clearinghouseState` to detect liquidations, external closes, missed fills. Idempotency key on orders | S7 |
+| R4 | Localhost-only Elysia binding | Bind to 127.0.0.1. No remote attack surface. Reverse proxy later if needed | S4 |
+| R5 | Circuit breaker holds position | CB pauses NEW entries only. Existing positions keep SL/TP on exchange | S11 |
+| R6 | Simple log helper | 20-line utility with levels (DEBUG/INFO/WARN/ERROR) + timestamps + component tags. No dependency | S1 |
+| R7 | Docker Compose for PostgreSQL | `docker-compose.yml` with `timescale/timescaledb` image in repo | S1 |
+| R8 | Skip dead man's switch | HL `scheduleCancel` cancels ALL orders including SL/TP — worse than doing nothing. SL/TP on exchange IS the safety net | — |
+| R9 | HL trigger orders for SL/TP | Place SL (trigger-market) + TP (trigger-limit) on HL immediately after fill. Exchange-managed safety | S6 |
+| R10 | EventEmitter for pipeline → agent | Pipeline emits 'setup' events, agent subscribes | S5 |
+| R11 | `assessRisk()` gets `accountValue` param | Pure function stays pure. Caller passes real balance from HL | S10 |
+| R12 | Extract `computePositionSize()` | Shared pure function used by risk-filter + order-manager. DRY | S3 |
+| R13 | Numbered SQL migrations | `src/db/migrations/001_*.sql` + simple runner. No ORM | S1 |
+| R14 | Sync PG write-through | `await` each candle insert. ~1-5ms latency, guaranteed persistence | S2 |
+| R15 | Connection pool max: 5 | Single-process, sequential writes. 5 handles Elysia reads + write-through | S1 |
+| R16 | Tests within each session | Each session writes its own tests. No session "done" without passing tests | All |
+| R17 | Remove SIMULATED_ACCOUNT | Replace with real balance from HL `clearinghouseState`. Full real-money operation | S10 |
 
 ---
 
@@ -135,7 +212,7 @@ GROUP BY bucket, coin;
 import postgres from 'postgres'
 
 const sql = postgres(process.env.DATABASE_URL!, {
-  max: 20,                    // connection pool
+  max: 5,                     // connection pool (R15: single-process, sequential)
   idle_timeout: 30,
   connect_timeout: 10,
 })
@@ -151,7 +228,7 @@ After:
   Typical: ~1s (if restarted within hours)
 ```
 
-Save strategy: write-through on each new candle (async, non-blocking).
+Save strategy: write-through on each new candle (sync, `await` each insert — R14).
 
 ---
 
@@ -204,7 +281,7 @@ const app = new Elysia()
     })
   )
 
-  .listen(3000)
+  .listen({ port: 3000, hostname: '127.0.0.1' })  // R4: localhost-only
 ```
 
 ---
@@ -225,6 +302,24 @@ Exit types:
 Section 12 rules from domain knowledge (structure stop > ATR stop > trailing):
 - Stop placement = invalidation level, NOT "comfortable" level
 - Position size adjusts to stop distance, never the other way
+
+**R12: Shared position sizing function** (pure, zero I/O):
+```typescript
+// src/agent/exits.ts (pure functions — exit strategy computations)
+// Also exports computePositionSize() used by risk-filter + order-manager
+
+export function computePositionSize(
+  accountValue: number,
+  riskPercent: number,
+  entryPrice: number,
+  slPrice: number,
+): number {
+  const stopDistance = Math.abs(entryPrice - slPrice)
+  if (stopDistance === 0) return 0
+  const riskAmount = accountValue * riskPercent
+  return riskAmount / stopDistance
+}
+```
 
 ---
 
@@ -257,33 +352,52 @@ interface AgentContext {
 class TradingAgent {
   private ctx: AgentContext
 
-  // Core loop — called on every new candle
+  // R2: State-handler pattern — each state has its own handler
+  // R10: Pipeline emits 'setup' events, agent subscribes
   async onSignal(signals: ScanResult[]): Promise<void> {
     // Log every decision to trade journal
-    switch (this.ctx.state) {
-      case 'IDLE':
-        // Evaluate signals → if grade B+ and risk budget OK → transition to WATCHING/ENTERING
-        break
-      case 'WATCHING':
-        // Monitor for entry trigger or invalidation
-        // Invalidation → back to IDLE + journal entry
-        // Entry trigger → place order → ENTERING
-        break
-      case 'ENTERING':
-        // Check order status: filled → IN_POSITION, rejected → IDLE, timeout → cancel + IDLE
-        break
-      case 'IN_POSITION':
-        // Monitor: check SL/TP, trail stop, partial close
-        // Pattern invalidation → close position → EXITING
-        // TP hit → EXITING
-        break
-      case 'EXITING':
-        // Confirm position closed → journal PnL → check circuit breakers → IDLE or PAUSED
-        break
-      case 'PAUSED':
-        // Check if cooldown expired or manual resume → IDLE
-        break
-    }
+    const handler = this.handlers[this.ctx.state]
+    await handler(signals)
+  }
+
+  private handlers = {
+    IDLE: (signals) => this.handleIdle(signals),
+    WATCHING: (signals) => this.handleWatching(signals),
+    ENTERING: (signals) => this.handleEntering(signals),
+    IN_POSITION: (signals) => this.handleInPosition(signals),
+    EXITING: (signals) => this.handleExiting(signals),
+    PAUSED: (signals) => this.handlePaused(signals),
+  }
+
+  private async handleIdle(signals): Promise<void> {
+    // Evaluate signals → if grade B+ and risk budget OK → transition to WATCHING/ENTERING
+  }
+  private async handleWatching(signals): Promise<void> {
+    // Monitor for entry trigger or invalidation
+    // Invalidation → back to IDLE + journal entry
+    // Entry trigger → place order → ENTERING
+  }
+  private async handleEntering(signals): Promise<void> {
+    // Check order status: filled → IN_POSITION, rejected → IDLE, timeout → cancel + IDLE
+  }
+  private async handleInPosition(signals): Promise<void> {
+    // Monitor: check SL/TP, trail stop, partial close
+    // Pattern invalidation → close position → EXITING
+    // TP hit → EXITING
+  }
+  private async handleExiting(signals): Promise<void> {
+    // Confirm position closed → journal PnL → check circuit breakers → IDLE or PAUSED
+    // R5: CB pauses NEW entries only, existing positions keep SL/TP on exchange
+  }
+  private async handlePaused(signals): Promise<void> {
+    // Check if cooldown expired or manual resume → IDLE
+  }
+
+  // R1: Exchange-authoritative crash recovery
+  async recoverFromCrash(): Promise<void> {
+    // 1. Query HL clearinghouseState for open positions
+    // 2. Reconcile with DB positions table
+    // 3. Resume agent in correct state (IDLE or IN_POSITION)
   }
 }
 ```
@@ -315,15 +429,17 @@ type OrderStatus = 'pending' | 'submitted' | 'filled' | 'partial' | 'cancelled' 
 
 class OrderManager {
   // Place order with SL/TP
+  // R9: After entry fill, place SL (trigger-market) + TP (trigger-limit) on HL
+  //     Exchange-managed safety — protected even if agent dies
   async placeOrder(setup: ActiveSetup): Promise<Order>
 
   // Check order status from exchange
   async syncOrderStatus(orderId: string): Promise<OrderStatus>
 
-  // Cancel unfilled order
+  // Cancel unfilled order (idempotency key prevents double-submit — R3)
   async cancelOrder(orderId: string): Promise<void>
 
-  // Modify SL/TP (trail stop)
+  // Modify SL/TP on exchange (trail stop)
   async modifyOrder(orderId: string, updates: Partial<Order>): Promise<void>
 
   // Handle partial fills
@@ -346,6 +462,11 @@ class OrderManager {
 class PositionMonitor {
   // Called every tick while IN_POSITION
   async monitor(position: Position, currentPrice: number, candles: Candle[]): Promise<MonitorAction>
+
+  // R3: Exchange-sync heartbeat (~10s)
+  // Poll HL clearinghouseState → reconcile positions
+  // Detects: liquidation, external close, missed fills
+  async syncWithExchange(): Promise<void>
 
   // Actions: 'hold' | 'trail_stop' | 'partial_close' | 'close' | 'alert'
 }
@@ -629,27 +750,27 @@ Map phases to sessions. Each session = 1 Task Contract, 20-45 min, checkpoint co
 
 | Session | Task | Items | Est. | Dependencies |
 |---|---|---|---|---|
-| S1 | PostgreSQL + TimescaleDB setup | Schema, connection, migration | 30-40 min | Docker/local PG running |
-| S2 | Candle persistence layer | Write-through store, gap-fill on restart | 30-40 min | S1 |
-| S3 | Exit strategies | SL/TP computation, trail/partial types | 25-35 min | None (pure functions) |
-| S4 | Elysia HTTP server | Routes, validation, auth, CORS | 30-40 min | S1 (DB queries) |
+| S1 | PostgreSQL + TimescaleDB setup | Schema, docker-compose.yml (R7), numbered SQL migrations (R13), connection pool max:5 (R15), simple log helper (R6) | 30-40 min | Docker installed |
+| S2 | Candle persistence layer | Sync write-through (R14), gap-fill on restart, PG ↔ in-memory store | 30-40 min | S1 |
+| S3 | Exit strategies | SL/TP computation, trail/partial types, extract computePositionSize (R12) | 25-35 min | None (pure functions) |
+| S4 | Elysia HTTP server | Routes, validation, bearer auth, localhost-only binding (R4) | 30-40 min | S1 (DB queries) |
 
 ### Phase 2B: Agent Core (Sessions 5-10)
 
 | Session | Task | Items | Est. | Dependencies |
 |---|---|---|---|---|
-| S5 | Agent State Machine | States, transitions, core loop | 35-45 min | S2, S3 |
-| S6 | Order Lifecycle Manager | Place/fill/reject/cancel/timeout | 30-40 min | S5 |
-| S7 | Position Monitor | Trail stop, partial close, exit trigger | 30-40 min | S5, S6 |
+| S5 | Agent State Machine | State-handler pattern (R2), EventEmitter pipeline wiring (R10), crash recovery (R1) | 35-45 min | S2, S3 |
+| S6 | Order Lifecycle Manager | Place/fill/reject/cancel/timeout, HL trigger orders for SL/TP (R9), idempotency key | 30-40 min | S5 |
+| S7 | Position Monitor | Trail stop, partial close, exchange-sync heartbeat ~10s (R3) | 30-40 min | S5, S6 |
 | S8 | Invalidation → Action Bridge | Pattern invalid → cancel/close | 20-30 min | S5, S6 |
 | S9 | Trade Journal | Log decisions to PostgreSQL | 20-30 min | S1 |
-| S10 | Wallet + Execution + Risk Mgmt | viem, order signing, position sizing | 35-45 min | S5, S6 |
+| S10 | Wallet + Execution + Risk Mgmt | viem, order signing, assessRisk accountValue param (R11), remove SIMULATED_ACCOUNT (R17) | 35-45 min | S5, S6 |
 
 ### Phase 2C: Safety (Sessions 11-13)
 
 | Session | Task | Items | Est. | Dependencies |
 |---|---|---|---|---|
-| S11 | Circuit Breakers | Daily loss, consecutive loss, rapid loss, max drawdown | 25-35 min | S5, S9 |
+| S11 | Circuit Breakers | Daily loss, consecutive loss, rapid loss, max drawdown. CB holds position with SL/TP (R5) | 25-35 min | S5, S9 |
 | S12 | Anti-Correlation Guard | Correlated position detection + blocking | 20-30 min | S5 |
 | S13 | Self-Healing | Reconnect, retry, queue, health check | 25-35 min | S4, S6 |
 
@@ -693,3 +814,11 @@ Sprint 2 is complete when:
 - [ ] All Sprint 1 tests still pass
 - [ ] New agent + execution tests pass
 - [ ] Agent runs autonomously for 24h on testnet without human intervention
+
+### Carried from Sprint 1 `[CARRIED]`
+
+These items were not live-verified in Sprint 1 (covered by unit tests only). Will naturally verify during Sprint 2 agent testing:
+- [ ] SETUP alerts show grade (B/A/A+), layer count, VSA/VP boosts
+- [ ] Each STOP point verified: neutral bias → no scan, structure deny → no zones
+- [ ] HTF gate works: LTF counter-HTF signals blocked
+- [ ] Staleness WARNING fires when WiFi disconnected 60s

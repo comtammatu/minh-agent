@@ -525,12 +525,12 @@ Sprint 1 is complete when:
 - [x] `bun test --run` passes all test files (indicators + layers + pipeline + feed + invalidation + store) — **175 pass / 3 skip / 0 fail**
 - [x] `bun run src/index.ts` starts, backfills, shows ARMED for all 3 coins — [CONFIRMED] 2026-03-30 live run
 - [x] STATUS lines print with regime + bias + confluence grade every 60s — [CONFIRMED] 2026-03-30 live run
-- [ ] SETUP alerts show grade (B/A/A+), layer count, VSA/VP boosts ← needs live run
-- [ ] Each STOP point verified: neutral bias → no scan, structure deny → no zones ← pipeline tests cover this
-- [ ] HTF gate works: LTF counter-HTF signals blocked ← covered by bias.test.ts
+- [ ] SETUP alerts show grade (B/A/A+), layer count, VSA/VP boosts ← needs live run `[CARRIED]` → Sprint 2
+- [ ] Each STOP point verified: neutral bias → no scan, structure deny → no zones ← pipeline tests cover this `[CARRIED]` → Sprint 2
+- [ ] HTF gate works: LTF counter-HTF signals blocked ← covered by bias.test.ts `[CARRIED]` → Sprint 2
 - [x] Phase B: Delta, Book imbalance, Funding rate integrated into Layer 4 + visible in SETUP logs
-- [ ] Staleness WARNING fires when WiFi disconnected 60s ← needs live run
-- [ ] INVALID fires when active setup pattern broken ← covered by invalidation.test.ts
+- [ ] Staleness WARNING fires when WiFi disconnected 60s ← needs live run `[CARRIED]` → Sprint 2
+- [ ] INVALID fires when active setup pattern broken ← covered by invalidation.test.ts `[CARRIED]` → Sprint 2
 
 ### Post-Sprint Fix: WS Reconnection (2026-03-30)
 

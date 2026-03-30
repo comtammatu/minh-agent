@@ -205,3 +205,44 @@ Preliminary decisions for Sprint 3 — Intelligence + Scale. Final review after 
 |---|----------|--------|-----------|--------|
 | S1.5-1 | WS connection pool | **Not needed** | Empirical test: 300 subs / 0 errors / 1626 events in 90s on single SubscriptionClient. 6 missing coins are low-volume ($10K-$237K daily), not cap-related. | [CONFIRMED] 2026-03-30 |
 | S1.5-2 | Coin quality filter | **Volume floor $500K + top 30** | 24/50 coins had vol <$500K (zombie coins: HMSTR $7.3B OI but $10K vol). Volume filter removes noise, ensures candle quality for PA/SMC/VSA. Reduced from 50→30 (only ~26 pass filter anyway). | [CONFIRMED] 2026-03-30 |
+
+---
+
+## Sprint 2 CEO Review (2026-03-30)
+
+Mode: **HOLD SCOPE** — review with maximum rigor, no scope changes.
+
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| R1 | Crash recovery | **Exchange-authoritative reconciliation** | On startup: query HL `clearinghouseState` → reconcile with DB → resume correct state. Exchange is source of truth, DB is audit trail |
+| R2 | State machine structure | **State-handler pattern** | Each state gets own handler (handleIdle, handleWatching, etc.). Testable in isolation, avoids god-function |
+| R3 | Order/position sync | **Exchange-sync heartbeat (~10s)** | Poll HL `clearinghouseState` to detect liquidations, external closes, missed fills. Idempotency key on orders prevents double-submit |
+| R4 | API security | **Localhost-only Elysia binding** | Bind to 127.0.0.1. No remote attack surface. Reverse proxy later if needed |
+| R5 | Circuit breaker + position | **Hold position with SL/TP** | CB pauses NEW entries only. Existing positions keep SL/TP on exchange. Closing on CB could remove SL protection |
+| R6 | Logging | **Simple log helper** | 20-line utility with levels (DEBUG/INFO/WARN/ERROR) + timestamps + component tags. No dependency |
+| R7 | Database deployment | **Docker Compose** | `docker-compose.yml` with `timescale/timescaledb` image in repo. One-command start |
+
+---
+
+## Sprint 2 Eng Review (2026-03-30)
+
+Mode: **BIG CHANGE** — full interactive review across Architecture, Code Quality, Tests, Performance.
+
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| R8 | Dead man's switch | **Skip** | HL `scheduleCancel` cancels ALL orders including SL/TP — would remove crash protection. SL/TP on exchange IS the safety net |
+| R9 | SL/TP placement | **HL trigger orders** | Place SL (trigger-market) + TP (trigger-limit) on HL immediately after entry fill. Exchange-managed — protected even if agent dies |
+| R10 | Pipeline → Agent wiring | **EventEmitter** | Pipeline emits 'setup' events, agent subscribes. Decoupled integration |
+| R11 | risk-filter purity | **Add `accountValue` parameter** | `assessRisk(signal, zone, price, atr, accountValue)`. Caller passes real balance. Pure function stays pure |
+| R12 | Position sizing DRY | **Extract `computePositionSize()`** | Shared pure function in `src/agent/exits.ts`. Used by risk-filter + order-manager |
+| R13 | DB migration strategy | **Numbered SQL files** | `src/db/migrations/001_*.sql` + simple runner on startup. No ORM dependency |
+| R14 | PG write-through | **Sync (`await` each insert)** | ~1-5ms latency, guaranteed persistence. In-memory store + PG always consistent |
+| R15 | Connection pool | **max: 5** | Single-process, sequential writes. 5 handles Elysia reads + write-through. Reduced from plan's 20 |
+| R16 | Test timing | **Tests within each session** | Each session writes its own tests. No session "done" without passing `bun test --run` |
+| R17 | Remove SIMULATED_ACCOUNT | **Replace with real HL balance** | Query `clearinghouseState` → real `accountValue`. Full real-money operation in Sprint 2 |
+
+### Key Finding: No Critical Gaps
+
+Error & rescue map: 17 error paths mapped, 0 unhandled.
+Failure modes: 12 production failure scenarios reviewed, 0 silent failures.
+Security: 9 threat vectors assessed, all mitigated by review decisions.
