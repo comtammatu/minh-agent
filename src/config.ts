@@ -234,6 +234,14 @@ export const SL_IS_MARKET = true
 /** TP trigger order type: limit (better fill price on target). */
 export const TP_IS_MARKET = false
 
+// ─── Position Monitor (S7) ────────────────────────────────────────────────
+
+/** Exchange-sync heartbeat interval (R3). Poll HL clearinghouseState. */
+export const EXCHANGE_SYNC_INTERVAL_MS = 10_000  // 10 seconds
+
+/** Minimum SL price change (fraction) to send update to exchange. Avoids rate limit burn. */
+export const TRAIL_UPDATE_THRESHOLD = 0.001  // 0.1% minimum change before modifying SL on exchange
+
 // ─── Elysia HTTP Server (R4: localhost-only) ────────────────────────────────
 
 /** Server port. */

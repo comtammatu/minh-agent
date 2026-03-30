@@ -143,6 +143,45 @@ export interface ExchangeOrderResult {
   error: string | null
 }
 
+// ─── Position Monitor (S7) ──────────────────────────────────────────────────
+
+/** Tracked state for an open position. Managed by PositionMonitor. */
+export interface PositionState {
+  positionId: string
+  coin: string
+  side: 'long' | 'short'
+  entryPrice: number
+  currentSize: number         // remaining size (decreases on partial close)
+  originalSize: number
+  slPrice: number
+  tpPrice: number
+  entryOrderId: string        // links to Order.id
+  /** Trailing stop state — null until first monitor() call. */
+  trailingState: import('./exits.js').TrailingStopState | null
+  /** Which partial close levels have been triggered (by index). */
+  partialClosesFired: number[]
+  /** Timestamp of last exchange sync. */
+  lastSyncAt: number
+  openedAt: number
+}
+
+/** Action returned by monitor() — tells orchestrator what to do. */
+export type MonitorAction =
+  | { type: 'hold' }
+  | { type: 'trail_update'; positionId: string; newSlPrice: number }
+  | { type: 'partial_close'; positionId: string; closePct: number; newSlPrice: number | null }
+  | { type: 'close'; positionId: string; reason: string }
+  | { type: 'alert'; positionId: string; message: string }
+
+/** Exchange position snapshot from clearinghouseState (stubbed until S10). */
+export interface ExchangePositionSnapshot {
+  coin: string
+  size: number          // positive = long, negative = short, 0 = closed
+  entryPrice: number
+  unrealizedPnl: number
+  liquidationPrice: number | null
+}
+
 // ─── Pipeline Event (emitted by scanner) ─────────────────────────────────────
 
 export interface PipelineEvents {

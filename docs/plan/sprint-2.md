@@ -799,6 +799,7 @@ Map phases to sessions. Each session = 1 Task Contract, 20-45 min, checkpoint co
 | S4 | DONE | 2026-03-30 | Elysia HTTP server: 8 read routes (health, status, setups, candles, agent state/journal/positions), 4 auth-protected execution stubs (pause/resume/close-all/cancel). Bearer auth, localhost-only (R4), validation. 20 new tests, 306 total pass. |
 | S5 | DONE | 2026-03-30 | Agent state machine: 6 states (IDLE/WATCHING/ENTERING/IN_POSITION/EXITING/PAUSED), per-coin Map<coin,CoinContext>, state-handler pattern (R2), EventEmitter pipeline→agent (R10), crash recovery skeleton (R1), CB holds position (R5), API wired. 47 new tests, 353 total pass. |
 | S6 | DONE | 2026-03-30 | Order Lifecycle Manager: place/fill/reject/cancel/timeout, idempotency (cloid + 1-order-per-coin), R9 SL trigger-market + TP trigger-limit after fill, DB persist (insert/update/query), handleAction bridge to TradingAgent, exchange stubs (S10). Multi-position DCA deferred. 23 new tests, 376 total pass. |
+| S7 | DONE | 2026-03-30 | Position Monitor: evaluatePosition (pure), trail stop (activate +1%, trail 0.5%, hit→close), partial close (50% at 1R, SL→breakeven, 2R remainder), exchange-sync heartbeat R3 (10s interval stub, reconcilePositions detects liquidation/external close/size mismatch), PositionState tracking, TRAIL_UPDATE_THRESHOLD dedup. 34 new tests, 410 total pass. |
 
 ---
 
