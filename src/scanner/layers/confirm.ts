@@ -12,13 +12,15 @@ import type { VSASignal } from '../../indicators/vsa.js'
 import { detectVSA } from '../../indicators/vsa.js'
 import { buildVolumeProfile } from '../../indicators/volume-profile.js'
 import { atr } from '../../indicators/core.js'
-import { deltaConfirm, bookConfirm, fundingConfirm } from '../../indicators/order-flow.js'
+import { deltaConfirm, bookConfirm, fundingConfirm, oiConfirm } from '../../indicators/order-flow.js'
 
-/** Optional order flow data passed from Phase B feeds. */
+/** Optional order flow data passed from Phase B + D feeds. */
 export interface OrderFlowContext {
   delta?: DeltaState | null
   book?: OrderBookSnapshot | null
   funding?: FundingSnapshot | null
+  oiDelta?: number | null          // Phase D: OI % change vs previous snapshot
+  divergenceWarning?: boolean      // Phase D: mark/oracle divergence flag
   signalSide?: SignalSide
 }
 
@@ -107,6 +109,9 @@ export function confirmZones(
     const fundingBoost = (orderFlow?.funding && orderFlow?.signalSide)
       ? fundingConfirm(orderFlow.funding.rate, orderFlow.signalSide)
       : 0
+    const oiBoost = orderFlow?.signalSide
+      ? oiConfirm(orderFlow.oiDelta ?? null, orderFlow.signalSide)
+      : 0
 
     results.push({
       zone,
@@ -115,8 +120,10 @@ export function confirmZones(
       deltaBoost,
       bookBoost,
       fundingBoost,
+      oiBoost,
+      divergenceWarning: orderFlow?.divergenceWarning ?? false,
       throughZone: proximity.throughZone,
-      confirmed: vsaBoost > 0 || vpBoost > 0 || deltaBoost > 0 || bookBoost > 0 || proximity.throughZone,
+      confirmed: vsaBoost > 0 || vpBoost > 0 || deltaBoost > 0 || bookBoost > 0 || oiBoost > 0 || proximity.throughZone,
     })
   }
 

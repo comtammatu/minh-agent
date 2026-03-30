@@ -30,6 +30,7 @@ import { appendCandle, getCandles } from '../feed/store.js'
 import { getLatestDelta } from '../feed/trades.js'
 import { getLatestBook } from '../feed/orderbook.js'
 import { getLatestFunding } from '../feed/funding.js'
+import { getOiDelta, hasDivergence } from '../feed/asset-ctx.js'
 import type { OrderFlowContext } from './layers/confirm.js'
 import { detectRegime } from '../indicators/core.js'
 import { findPivots } from '../indicators/smc.js'
@@ -196,6 +197,8 @@ function runPipeline(
     delta: getLatestDelta(coin),
     book: getLatestBook(coin),
     funding: getLatestFunding(coin),
+    oiDelta: getOiDelta(coin),
+    divergenceWarning: hasDivergence(coin),
     signalSide: bias.bias as 'long' | 'short',
   }
   const confirmed = confirmZones(confirmedSlice, idx, zones, orderFlow)
@@ -353,6 +356,8 @@ function logSetupAlert(
   const deltaBoost = pd['deltaBoost'] as number | undefined
   const bookBoost = pd['bookBoost'] as number | undefined
   const fundingBoost = pd['fundingBoost'] as number | undefined
+  const oiBoost = pd['oiBoost'] as number | undefined
+  const divergenceWarning = pd['divergenceWarning'] as boolean | undefined
 
   const boostParts: string[] = []
   if (vsaBoost && vsaBoost > 0) boostParts.push(`VSA(+${vsaBoost.toFixed(2)})`)
@@ -360,6 +365,8 @@ function logSetupAlert(
   if (deltaBoost && deltaBoost > 0) boostParts.push(`Δ(+${deltaBoost.toFixed(2)})`)
   if (bookBoost && bookBoost > 0) boostParts.push(`Book(+${bookBoost.toFixed(2)})`)
   if (fundingBoost && fundingBoost > 0) boostParts.push(`Fund(+${fundingBoost.toFixed(2)})`)
+  if (oiBoost && oiBoost > 0) boostParts.push(`OI(+${oiBoost.toFixed(2)})`)
+  if (divergenceWarning) boostParts.push('⚠DIV')
   if (throughZone) boostParts.push('through-zone')
 
   console.log(

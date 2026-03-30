@@ -11,6 +11,7 @@ import {
   bidAskImbalance,
   bookConfirm,
   fundingConfirm,
+  oiConfirm,
 } from '../../src/indicators/order-flow.js'
 import type { RawTrade } from '../../src/indicators/order-flow.js'
 import type { KeyZone, DeltaState } from '../../src/types.js'
@@ -268,5 +269,39 @@ describe('fundingConfirm', () => {
   it('barely positive rate (below -threshold) → 0 for short', () => {
     // 0.00005 < 0.0001 (which is -FUNDING_CONTRARIAN_THRESHOLD)
     expect(fundingConfirm(0.00005, 'short')).toBe(0)
+  })
+})
+
+// ── oiConfirm ──────────────────────────────────────────────────────────────
+
+describe('oiConfirm', () => {
+  // OI_SPIKE_THRESHOLD = 0.05 (5%)
+
+  it('OI spike (>= 5%) + long → +0.10', () => {
+    expect(oiConfirm(0.08, 'long')).toBe(0.10)
+  })
+
+  it('OI spike (>= 5%) + short → +0.10', () => {
+    expect(oiConfirm(0.06, 'short')).toBe(0.10)
+  })
+
+  it('moderate OI increase (positive but < 5%) → +0.05', () => {
+    expect(oiConfirm(0.03, 'long')).toBe(0.05)
+  })
+
+  it('exactly at threshold → +0.10', () => {
+    expect(oiConfirm(0.05, 'short')).toBe(0.10)
+  })
+
+  it('flat OI (0) → 0', () => {
+    expect(oiConfirm(0, 'long')).toBe(0)
+  })
+
+  it('declining OI (negative) → 0', () => {
+    expect(oiConfirm(-0.03, 'short')).toBe(0)
+  })
+
+  it('null delta → 0', () => {
+    expect(oiConfirm(null, 'long')).toBe(0)
   })
 })

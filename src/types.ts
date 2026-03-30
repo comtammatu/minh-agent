@@ -146,6 +146,18 @@ export interface OrderBookSnapshot {
   timestamp: number
 }
 
+// ─── Asset Context (Phase D) ────────────────────────────────────────────────
+
+export interface AssetCtxSnapshot {
+  coin: string
+  openInterest: number   // total OI in USD
+  markPrice: number
+  oraclePrice: number
+  funding: number        // current funding rate
+  premium: number        // mark/oracle divergence
+  timestamp: number      // ms epoch
+}
+
 // ─── Backfill ────────────────────────────────────────────────────────────────
 
 /** Per-coin backfill result: how many TFs succeeded. */
@@ -185,6 +197,8 @@ export interface ZoneConfirmation {
   deltaBoost?: number      // -0.10 to 0.15 (Phase B)
   bookBoost?: number       // -0.10 to 0.20 (Phase B)
   fundingBoost?: number    // 0 to 0.10 (Phase B)
+  oiBoost?: number         // 0 to 0.10 (Phase D)
+  divergenceWarning?: boolean  // mark/oracle divergence flag (Phase D)
   throughZone: boolean     // Spring/Sweep detected
   confirmed: boolean
 }

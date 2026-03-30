@@ -394,6 +394,7 @@ Phase A (scanner incremental) was already implemented in Sprint 1 — `onCandleT
 | S1 | DONE | 2026-03-30 | fetchTopCoins + CoinSelector + config. Phase A skipped (already done). 192 tests pass. |
 | S2 | DONE | 2026-03-30 | CoinSelector wired into index.ts. Per-coin unsub in ws/trades/orderbook/funding. Dynamic subscribe/unsubscribe on refresh. /review: fixed fallback bug + duplicate import. 192 tests pass. |
 | S3 | DONE | 2026-03-30 | Parallel backfill with concurrency cap (20). TF priority 1m→1d. Failure isolation per coin. BackfillResult type. 197 tests pass (+5 new). /review clean. |
+| S4 | DONE | 2026-03-30 | Phase D: asset-ctx REST polling (30s), OI spike + divergence signals. oiConfirm pure fn (+0.05/+0.10). OI boost in confirm→confluence→pipeline (+0.5 weight). 214 tests pass (+17 new). /review clean (1 informational: side param unused in oiConfirm). |
 
 ---
 

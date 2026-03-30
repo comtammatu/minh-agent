@@ -8,6 +8,7 @@
  *   +1 if zone has multiple origins (Layer 3 multi-source)
  *   +1 if zone.vsaBoost > 0       (Layer 4 VSA)
  *   +1 if zone.vpBoost > 0        (Layer 4 VP)
+ *   +0.5 if zone.oiBoost > 0      (Layer 4 OI — Phase D)
  *   +1 if trigger exists           (Layer 5 PA)
  *   +1 if regime aligned           (Regime context)
  *
@@ -65,6 +66,7 @@ export function scoreConfluence(
   if (zone && (zone.deltaBoost ?? 0) > 0) count += 1
   if (zone && (zone.bookBoost ?? 0) > 0) count += 1
   if (zone && (zone.fundingBoost ?? 0) > 0) count += 0.5
+  if (zone && (zone.oiBoost ?? 0) > 0) count += 0.5
 
   // Layer 5: Trigger pattern
   if (trigger) count += 1

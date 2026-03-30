@@ -10,6 +10,7 @@ import {
   DELTA_STRONG_THRESHOLD,
   BOOK_IMBALANCE_THRESHOLD,
   FUNDING_CONTRARIAN_THRESHOLD,
+  OI_SPIKE_THRESHOLD,
 } from '../config.js'
 
 // ── Delta ───────────────────────────────────────────────────────────────────
@@ -146,6 +147,29 @@ export function fundingConfirm(rate: number | null, side: SignalSide): number {
 
   if (side === 'long' && rate < FUNDING_CONTRARIAN_THRESHOLD) return 0.10
   if (side === 'short' && rate > -FUNDING_CONTRARIAN_THRESHOLD) return 0.10
+
+  return 0
+}
+
+// ── OI Confirmation ────────────────────────────────────────────────────────
+
+/**
+ * OI spike confirmation boost.
+ *
+ * OI increasing (spike) aligned with setup side → momentum confirmation.
+ * - OI spike (> OI_SPIKE_THRESHOLD) at demand zone + long side → +0.10
+ * - OI spike (> OI_SPIKE_THRESHOLD) at supply zone + short side → +0.10
+ * - Moderate OI increase (positive but below threshold) → +0.05
+ * - No delta or flat/declining OI → 0
+ *
+ * Range: 0 to +0.10
+ */
+export function oiConfirm(oiDelta: number | null, side: SignalSide): number {
+  if (oiDelta === null) return 0
+
+  // OI increasing → participants entering → momentum signal
+  if (oiDelta >= OI_SPIKE_THRESHOLD) return 0.10
+  if (oiDelta > 0) return 0.05
 
   return 0
 }
