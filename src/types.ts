@@ -146,6 +146,14 @@ export interface OrderBookSnapshot {
   timestamp: number
 }
 
+// ─── Backfill ────────────────────────────────────────────────────────────────
+
+/** Per-coin backfill result: how many TFs succeeded. */
+export interface BackfillResult {
+  coin: string
+  readyTFs: number
+}
+
 // ─── Config / invalidation ────────────────────────────────────────────────────
 
 export type InvalidationReason =

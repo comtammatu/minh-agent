@@ -25,6 +25,9 @@ export const MIN_CANDLES_FOR_SCAN = 50
 // Candles to fetch per REST backfill call
 export const BACKFILL_CANDLE_COUNT = 5000
 
+// Max concurrent REST backfill requests (respect HL 800 req/min rate limit)
+export const BACKFILL_CONCURRENCY = 20
+
 // Candles to use for indicator calculation
 export const INDICATOR_WINDOW = 200
 

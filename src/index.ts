@@ -25,7 +25,7 @@ import {
   WS_RECONNECT_MAX_MS,
   WS_RECONNECT_BACKOFF,
 } from './config.js'
-import { fetchCandles, backfillStartTime } from './feed/rest.js'
+import { backfillAllCoins } from './feed/rest.js'
 import { setCandles, clearCoinData } from './feed/store.js'
 import { subscribeCandles, unsubscribeCandles, closeAll, checkStaleness } from './feed/ws.js'
 import { startFundingPolling, stopFundingPolling, addFundingCoin, removeFundingCoin } from './feed/funding.js'
@@ -56,25 +56,12 @@ async function subscribeCoin(coin: string): Promise<void> {
   await subscribeOrderBook(coin)
 }
 
-/** Backfill all timeframes for a coin via REST. */
+/** Backfill a single coin (used during mid-run coin additions). */
 async function backfillCoin(coin: string): Promise<number> {
-  let ready = 0
-  for (const tf of TIMEFRAMES) {
-    const interval = tf as CandleInterval
-    const startTime = backfillStartTime(interval)
-    const candles = await fetchCandles(coin, interval, startTime)
-
-    if (candles === null) {
-      console.log(`[${ts()}] BACKFILL | ${coin} ${tf}: FAILED — skipping`)
-    } else if (candles.length === 0) {
-      console.log(`[${ts()}] BACKFILL | ${coin} ${tf}: empty`)
-    } else {
-      setCandles(coin, interval, candles)
-      ready++
-      console.log(`[${ts()}] BACKFILL | ${coin} ${tf}: ${candles.length} candles`)
-    }
-  }
-  return ready
+  const results = await backfillAllCoins([coin], (c, interval, candles) => {
+    setCandles(c, interval, candles)
+  })
+  return results[0]?.readyTFs ?? 0
 }
 
 /** Unsubscribe all feeds + clear all state for a coin. */
@@ -129,12 +116,12 @@ async function main(): Promise<void> {
     await subscribeCoin(coin)
   }
 
-  // 3. REST backfill all coins
+  // 3. REST backfill all coins (parallel with concurrency cap)
+  const backfillResults = await backfillAllCoins(coins, (coin, interval, candles) => {
+    setCandles(coin, interval, candles)
+  })
   const tfReady = new Map<string, number>()
-  for (const coin of coins) {
-    const ready = await backfillCoin(coin)
-    tfReady.set(coin, ready)
-  }
+  for (const r of backfillResults) tfReady.set(r.coin, r.readyTFs)
 
   // 4. Start funding polling for all coins
   await startFundingPolling(coins)

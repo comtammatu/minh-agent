@@ -4,8 +4,8 @@
  */
 
 import { HttpTransport, InfoClient } from '@nktkas/hyperliquid'
-import type { Candle, CandleInterval } from '../types.js'
-import { BACKFILL_CANDLE_COUNT } from '../config.js'
+import type { Candle, CandleInterval, BackfillResult } from '../types.js'
+import { BACKFILL_CANDLE_COUNT, BACKFILL_CONCURRENCY } from '../config.js'
 
 const transport = new HttpTransport()
 export const info = new InfoClient({ transport })
@@ -87,4 +87,81 @@ export function backfillStartTime(interval: CandleInterval, count = BACKFILL_CAN
     '1d': 86_400_000,
   }
   return Date.now() - count * intervalMs[interval]
+}
+
+/** TF priority order: small TFs first so scanner starts producing signals earlier. */
+const TF_PRIORITY: CandleInterval[] = ['1m', '5m', '15m', '1h', '4h', '1d']
+
+/**
+ * Backfill all coins × all TFs in parallel with a concurrency cap.
+ * - Small TFs first (1m before 1d) so scanner can start early
+ * - Individual failures logged + skipped, never block others
+ * - Returns per-coin ready count
+ */
+export async function backfillAllCoins(
+  coins: string[],
+  onCandles: (coin: string, interval: CandleInterval, candles: Candle[]) => void,
+  concurrency = BACKFILL_CONCURRENCY,
+): Promise<BackfillResult[]> {
+  // Build task list: coins × TFs, TF-priority order within each coin
+  const tasks: { coin: string; interval: CandleInterval }[] = []
+  for (const interval of TF_PRIORITY) {
+    for (const coin of coins) {
+      tasks.push({ coin, interval })
+    }
+  }
+
+  // Track per-coin ready count
+  const readyMap = new Map<string, number>()
+  for (const coin of coins) readyMap.set(coin, 0)
+
+  // Semaphore: run at most `concurrency` tasks at once
+  let running = 0
+  let idx = 0
+  const total = tasks.length
+
+  await new Promise<void>((resolve, reject) => {
+    if (total === 0) { resolve(); return }
+
+    let settled = 0
+
+    function next(): void {
+      while (running < concurrency && idx < total) {
+        const task = tasks[idx++]
+        running++
+        runTask(task.coin, task.interval)
+          .then(() => {
+            running--
+            settled++
+            if (settled === total) resolve()
+            else next()
+          })
+          .catch(reject)
+      }
+    }
+
+    async function runTask(coin: string, interval: CandleInterval): Promise<void> {
+      try {
+        const startTime = backfillStartTime(interval)
+        const candles = await fetchCandles(coin, interval, startTime)
+
+        if (candles === null) {
+          console.log(`[BACKFILL] ${coin} ${interval}: FAILED — skipping`)
+        } else if (candles.length === 0) {
+          console.log(`[BACKFILL] ${coin} ${interval}: empty`)
+        } else {
+          onCandles(coin, interval, candles)
+          readyMap.set(coin, (readyMap.get(coin) ?? 0) + 1)
+          console.log(`[BACKFILL] ${coin} ${interval}: ${candles.length} candles`)
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.log(`[BACKFILL] ${coin} ${interval}: unexpected error — ${msg}`)
+      }
+    }
+
+    next()
+  })
+
+  return coins.map(coin => ({ coin, readyTFs: readyMap.get(coin) ?? 0 }))
 }
