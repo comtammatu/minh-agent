@@ -1,5 +1,7 @@
 # Minh (明) — Architecture
 
+> **v2.0.0 (Sprint 2 complete, 2026-03-30)** — Autonomous trading agent. Sprint 1 analysis engine + Sprint 2 agent/execution/persistence layers.
+
 ## System Overview — Layered Decision Framework (Sprint 1)
 
 ```

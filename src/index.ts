@@ -65,7 +65,7 @@ import type { CandleInterval } from './types.js'
 
 // ── Banner ───────────────────────────────────────────────────────────────────
 
-console.log(`[${ts()}] ${ANSI.bold}${ANSI.cyan}Minh (明) v1.1.0${ANSI.reset} — Dynamic Coin Selection`)
+console.log(`[${ts()}] ${ANSI.bold}${ANSI.cyan}Minh (明) v2.0.0${ANSI.reset} — Autonomous Trading Agent`)
 console.log(
   `[${ts()}] Config: dynamic top coins × ${TIMEFRAMES.join(',')} | ` +
   `min:${MIN_CONFIDENCE} | confluence:${CONFLUENCE_MIN}+ | ` +

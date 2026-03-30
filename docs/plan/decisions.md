@@ -269,3 +269,67 @@ Security: 9 threat vectors assessed, all mitigated by review decisions.
 - `trade_journal` PK changed from `(id)` to TimescaleDB auto-managed (BIGSERIAL id + ts hypertable). Required because hypertables need the partitioning column in PK.
 
 **Tests:** 226 pass, 3 skip, 0 fail.
+
+### S2 — Candle Persistence Layer (2026-03-30)
+
+**Design decisions:**
+- Gap-fill strategy: load from PG → compute gap start → fetch only missing candles via REST. Avoids full re-backfill on restart.
+- `setOnPersist` callback wired AFTER backfill: startup uses bulk operations, live WS uses per-candle upsert.
+- `computeGapStart` / `shouldGapFill` are pure helpers — testable without DB.
+
+### S3 — Exit Strategies (2026-03-30)
+
+**Design decisions:**
+- `computePositionSize` extracted to `exits.ts` and shared by risk-filter + order-manager. Single source of truth for sizing.
+- Exit strategy types (`SLMethod`, `TPMethod`) are discriminated unions, not string enums.
+- Trail stop activation at +1% gain, trail distance 0.5% — configurable via `config.ts`.
+
+### S5 — Agent State Machine (2026-03-30)
+
+**Design decisions:**
+- State-handler pattern (not switch/case): each state is a pure function `(event, ctx) → CoinContext`. Easy to test, no hidden mutation.
+- Per-coin Map (not global state): each coin has independent CoinContext. Multiple coins never interfere.
+- WATCHING→ENTERING has **no automatic transition**. Orchestrator must manually promote. This is by design — entry requires explicit price-zone trigger not yet implemented. Noted as Sprint 3 gap.
+- PAUSED is a global flag, not a per-coin state. CB pauses NEW entries only; IN_POSITION keeps running.
+
+### S6 — Order Lifecycle Manager (2026-03-30)
+
+**Design decisions:**
+- One active order per coin enforced by `pendingOrderId` check. DCA / multi-leg deferred.
+- cloid (client order ID) = `0x` + 32 hex chars, generated from timestamp + coin hash for idempotency.
+- SL/TP placed as HL trigger orders immediately after fill (not after position-monitor heartbeat).
+- DB persist is fire-and-forget on placement — in-memory Map is source of truth for active orders.
+
+### S8 — Invalidation Bridge (2026-03-30)
+
+**Design decisions:**
+- Bridge matches `setupId` exactly to prevent cross-TF/cross-type invalidation triggering wrong coin/setup.
+- State-aware dispatch: WATCHING → silent drop, ENTERING → cancel order, IN_POSITION → close position.
+- Fixed bug: original `subscribeToPipeline` dispatched every invalidation without ID matching.
+- History ring buffer capped at 200 entries to prevent unbounded memory growth.
+
+### S10 — Wallet + Execution (2026-03-30)
+
+**Design decisions:**
+- Single `ExchangeService` singleton: all HL exchange I/O goes through this module. No other module imports `@nktkas/hyperliquid` exchange client.
+- `PRIVATE_KEY` loaded once at `init()`, never logged (only truncated wallet address), never exported.
+- `SymbolConverter` from SDK handles asset ID + szDecimals — no manual mapping table.
+- `SIMULATED_ACCOUNT_VALUE` deprecated (R17). All sizing uses live `clearinghouseState`.
+- `cancelByCloid` preferred over `cancelByOid` during ENTERING phase (oid not yet known at order placement time).
+
+### S13 — Self-Healing (2026-03-30)
+
+**Design decisions:**
+- `withRetry()` is a pure utility in `lib/retry.ts` — no side effects, injectable `shouldRetry` predicate.
+- HealthMonitor tracks 3 components (feed/db/exchange) independently. `consecutiveErrors` resets on any success.
+- 503 detection specifically for HL maintenance windows — logs `[MAINTENANCE]` and retries with longer backoff.
+- RSS memory threshold at 512MB (configurable) — triggers `health.overall = 'degraded'` but does NOT crash.
+
+### S16 — End-to-End Integration (2026-03-30)
+
+**Design decisions:**
+- Wiring in `index.ts` follows exact same pattern as `integration.test.ts` — test validates production wiring.
+- `om.loadActiveOrders()` called before pipeline wiring — crash recovery loads DB state before new events arrive.
+- `pm.startSync()` called after all wiring — exchange heartbeat starts only when agent is fully connected.
+- Elysia `/override/close-all` pauses agent first (prevent new entries), then cancels pending orders, then closes positions via `handleAction`.
+- Key discovery: WATCHING→ENTERING gap confirmed real — logged as Sprint 3 P0 (auto-promote trigger when price hits entry zone).
