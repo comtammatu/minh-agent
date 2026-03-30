@@ -574,6 +574,7 @@ Phase 3C: Web Dashboard MVP           ← visibility, debug tool
 |---|---|---|---|
 | S1 | DONE | 2026-03-31 | Engine + simulator + metrics + 17 tests. 4 pre-existing logger test failures (not caused by S1). |
 | S2 | DONE | 2026-03-31 | Data manager: detectGaps + computeDownloadWindows (pure) + BacktestDataManager class + 18 tests. |
+| S3 | DONE | 2026-03-31 | Results store: migration 002, save/load/list/delete/compare + DI for test isolation + 15 tests. |
 
 ---
 

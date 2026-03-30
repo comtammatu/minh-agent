@@ -191,6 +191,42 @@ function computeSortino(dailyReturns: number[]): number {
   return (mean / downsideStd) * Math.sqrt(TRADING_DAYS_PER_YEAR)
 }
 
+// ─── Metrics Delta (pure) ───────────────────────────────────────────────────
+
+/** Delta between two runs' metrics. */
+export interface MetricsDelta {
+  totalTrades: number
+  winRate: number
+  netPnl: number
+  profitFactor: number
+  expectancy: number
+  maxDrawdown: number
+  sharpeRatio: number
+  sortinoRatio: number
+  calmarRatio: number
+  avgRR: number
+  avgHoldingBars: number
+}
+
+/** Compute delta between two metric sets. B - A. Pure function. */
+export function computeMetricsDelta(a: BacktestMetrics, b: BacktestMetrics): MetricsDelta {
+  return {
+    totalTrades: b.totalTrades - a.totalTrades,
+    winRate: b.winRate - a.winRate,
+    netPnl: b.netPnl - a.netPnl,
+    profitFactor: b.profitFactor - a.profitFactor,
+    expectancy: b.expectancy - a.expectancy,
+    maxDrawdown: b.maxDrawdown - a.maxDrawdown,
+    sharpeRatio: b.sharpeRatio - a.sharpeRatio,
+    sortinoRatio: b.sortinoRatio - a.sortinoRatio,
+    calmarRatio: b.calmarRatio - a.calmarRatio,
+    avgRR: b.avgRR - a.avgRR,
+    avgHoldingBars: b.avgHoldingBars - a.avgHoldingBars,
+  }
+}
+
+// ─── Internal helpers ───────────────────────────────────────────────────────
+
 function zeroMetrics(): BacktestMetrics {
   return {
     totalTrades: 0,

@@ -35,7 +35,11 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  if (dbAvailable) await sql.end()
+  if (dbAvailable) {
+    // Re-run migrations to restore DB state for other parallel tests
+    await runMigrations(sql)
+    await sql.end()
+  }
 })
 
 describe('runMigrations', () => {
@@ -46,7 +50,7 @@ describe('runMigrations', () => {
     }
 
     const count = await runMigrations(sql)
-    expect(count).toBe(1) // 001_initial.sql
+    expect(count).toBeGreaterThanOrEqual(1) // 001_initial.sql + any subsequent migrations
 
     // Verify tables exist
     const tables = await sql<{ tablename: string }[]>`
