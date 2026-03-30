@@ -2,11 +2,27 @@
  * In-memory candle store.
  * Map<"BTC:1h", Candle[]> — upserts by timestamp, sorted ascending.
  * Single module-level instance (one process, one store).
+ *
+ * Optional onPersist callback: injected by index.ts to write-through to PG.
+ * Keeps this module pure (no direct DB import). Tests run without DB.
  */
 
 import type { Candle, CandleInterval } from '../types.js'
 
 const store = new Map<string, Candle[]>()
+
+/** Callback invoked after each candle upsert. Set via setOnPersist(). */
+let onPersist: ((coin: string, interval: CandleInterval, candle: Candle) => void) | null = null
+
+/** Register a persistence callback (fire-and-forget from caller's perspective). */
+export function setOnPersist(fn: (coin: string, interval: CandleInterval, candle: Candle) => void): void {
+  onPersist = fn
+}
+
+/** Clear the persistence callback (used in tests). */
+export function clearOnPersist(): void {
+  onPersist = null
+}
 
 function key(coin: string, interval: CandleInterval): string {
   return `${coin}:${interval}`
@@ -22,11 +38,13 @@ export function appendCandle(coin: string, interval: CandleInterval, candle: Can
   if (last && candle.t === last.t) {
     arr[arr.length - 1] = candle
     store.set(k, arr)
+    onPersist?.(coin, interval, candle)
     return
   }
   if (last && candle.t > last.t) {
     arr.push(candle)
     store.set(k, arr)
+    onPersist?.(coin, interval, candle)
     return
   }
 
@@ -37,6 +55,7 @@ export function appendCandle(coin: string, interval: CandleInterval, candle: Can
     if (arr[mid]!.t === candle.t) {
       arr[mid] = candle
       store.set(k, arr)
+      onPersist?.(coin, interval, candle)
       return
     }
     if (arr[mid]!.t < candle.t) lo = mid + 1
@@ -45,6 +64,7 @@ export function appendCandle(coin: string, interval: CandleInterval, candle: Can
   // Insert at position `lo` to maintain sort
   arr.splice(lo, 0, candle)
   store.set(k, arr)
+  onPersist?.(coin, interval, candle)
 }
 
 /** Set entire candle array for a coin/interval (replaces on backfill). */

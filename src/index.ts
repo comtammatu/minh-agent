@@ -2,20 +2,23 @@
  * Minh (明) — entry point.
  *
  * Startup sequence:
+ *   0. Run DB migrations
  *   1. CoinSelector: fetch top coins from HL by OI
- *   2. For each tracked coin:
- *      a. WS subscribe (candles × 6 TFs + trades + order book)
- *      b. REST backfill (sequential per coin)
- *   3. Start funding polling
- *   4. Print ARMED + coin counts
- *   5. Start coin refresh loop (1h interval)
- *   6. setInterval: STATUS line every 60s
- *   7. setInterval: staleness check every 30s
- *   8. SIGINT: stop refresh → close WS → log → exit
+ *   2. Load candles from PG → memory, gap-fill missing via REST
+ *   3. WS subscribe all coins (candles × 6 TFs + trades + order book)
+ *   4. REST backfill remaining (coins not in PG get full backfill)
+ *   5. Wire PG write-through for live WS candles
+ *   6. Start funding + OI polling
+ *   7. Print ARMED + coin counts
+ *   8. Start coin refresh loop (1h interval)
+ *   9. setInterval: STATUS line every 60s
+ *  10. setInterval: staleness check every 30s
+ *  SIGINT: stop refresh → close WS → close DB → exit
  */
 
 import {
   TIMEFRAMES,
+  TIMEFRAME_MS,
   STALENESS_CHECK_INTERVAL_MS,
   STATUS_INTERVAL_MS,
   MIN_CONFIDENCE,
@@ -24,9 +27,11 @@ import {
   WS_RECONNECT_INITIAL_MS,
   WS_RECONNECT_MAX_MS,
   WS_RECONNECT_BACKOFF,
+  BACKFILL_CANDLE_COUNTS,
+  BACKFILL_CANDLE_COUNT,
 } from './config.js'
-import { backfillAllCoins } from './feed/rest.js'
-import { setCandles, clearCoinData } from './feed/store.js'
+import { backfillAllCoins, fetchCandles } from './feed/rest.js'
+import { setCandles, clearCoinData, setOnPersist, appendCandle } from './feed/store.js'
 import { subscribeCandles, unsubscribeCandles, closeAll, checkStaleness } from './feed/ws.js'
 import { startFundingPolling, stopFundingPolling, addFundingCoin, removeFundingCoin } from './feed/funding.js'
 import { startOiFeed, stopOiFeed, addOiCoin, removeOiCoin } from './feed/asset-ctx.js'
@@ -35,6 +40,17 @@ import { subscribeOrderBook, unsubscribeOrderBook, checkBookStaleness } from './
 import { createCoinSelector } from './feed/coin-selector.js'
 import type { RefreshResult } from './feed/coin-selector.js'
 import { onCandleTick, getStatus, getActiveSetupCoins, clearCoinState } from './scanner/pipeline.js'
+import { sql, closeDb } from './db/connection.js'
+import { runMigrations } from './db/migrate.js'
+import {
+  upsertCandle,
+  bulkUpsertCandles,
+  getAllLastTimestamps,
+  loadCandles,
+  computeGapStart,
+  shouldGapFill,
+} from './db/candle-repo.js'
+import { log } from './lib/logger.js'
 import type { CandleInterval } from './types.js'
 
 // ── Banner ───────────────────────────────────────────────────────────────────
@@ -104,6 +120,9 @@ const selector = createCoinSelector(getActiveSetupCoins, onCoinsRefreshed)
 const activeIntervals: ReturnType<typeof setInterval>[] = []
 
 async function main(): Promise<void> {
+  // 0. Run DB migrations
+  await runMigrations(sql)
+
   // 1. Fetch top coins from HL — fatal if empty at startup (spec requirement)
   //    skipCallback=true: main() handles initial subscribe+backfill in batch (efficient)
   //    onCoinsRefreshed is only for mid-run coin additions/removals
@@ -116,23 +135,79 @@ async function main(): Promise<void> {
 
   console.log(`[${ts()}] COINS | ${coins.length} coins selected (${initialResult.added.length} from HL)`)
 
-  // 2. Subscribe all coins (WS first, before backfill — captures candles during backfill)
+  // 2. Load candles from PG → memory, then gap-fill missing candles via REST
+  const pgTimestamps = await getAllLastTimestamps()
+  const now = Date.now()
+  let pgLoadedTotal = 0
+  let gapFillTotal = 0
+
+  for (const coin of coins) {
+    for (const tf of TIMEFRAMES) {
+      const interval = tf as CandleInterval
+      const storeKey = `${coin}:${interval}`
+      const lastPgTs = pgTimestamps.get(storeKey) ?? null
+      const intervalMs = TIMEFRAME_MS[interval]
+      const fullCount = BACKFILL_CANDLE_COUNTS[interval] ?? BACKFILL_CANDLE_COUNT
+
+      if (shouldGapFill(lastPgTs, now, intervalMs, fullCount)) {
+        // Load existing candles from PG into memory
+        const pgCandles = await loadCandles(coin, interval, fullCount)
+        if (pgCandles.length > 0) {
+          setCandles(coin, interval, pgCandles)
+          pgLoadedTotal += pgCandles.length
+        }
+
+        // Gap-fill: fetch only missing candles from REST
+        const gapStart = computeGapStart(lastPgTs, intervalMs)!
+        const gapCandles = await fetchCandles(coin, interval, gapStart, now)
+        if (gapCandles && gapCandles.length > 0) {
+          // Persist gap-fill candles to PG
+          await bulkUpsertCandles(coin, interval, gapCandles)
+          // Merge into in-memory store (setCandles would overwrite, so append each)
+          for (const c of gapCandles) {
+            appendCandle(coin, interval, c)
+          }
+          gapFillTotal += gapCandles.length
+        }
+      }
+      // else: no PG data → will do full REST backfill below
+    }
+  }
+
+  if (pgLoadedTotal > 0 || gapFillTotal > 0) {
+    log.info('startup', `PG load: ${pgLoadedTotal} candles | Gap-fill: ${gapFillTotal} candles`)
+  }
+
+  // 3. Subscribe all coins (WS first, before backfill — captures candles during backfill)
   for (const coin of coins) {
     await subscribeCoin(coin)
   }
 
-  // 3. REST backfill all coins (parallel with concurrency cap)
+  // 4. REST backfill all coins — skips coin/TFs already loaded from PG
+  //    (setCandles replaces, so only coins with 0 candles will get full backfill)
   const backfillResults = await backfillAllCoins(coins, (coin, interval, candles) => {
     setCandles(coin, interval, candles)
+    // Persist backfilled candles to PG
+    bulkUpsertCandles(coin, interval, candles).catch(err => {
+      log.error('persist', `bulk upsert failed ${coin}:${interval}: ${err instanceof Error ? err.message : String(err)}`)
+    })
   })
   const tfReady = new Map<string, number>()
   for (const r of backfillResults) tfReady.set(r.coin, r.readyTFs)
 
-  // 4. Start funding + OI polling for all coins
+  // 5. Wire PG write-through for live WS candles (R14: sync write-through)
+  //    Wired AFTER backfill so startup uses efficient bulk operations, not per-candle upserts
+  setOnPersist((coin, interval, candle) => {
+    upsertCandle(coin, interval, candle).catch(err => {
+      log.error('persist', `upsert failed ${coin}:${interval} t=${candle.t}: ${err instanceof Error ? err.message : String(err)}`)
+    })
+  })
+
+  // 6. Start funding + OI polling for all coins
   await startFundingPolling(coins)
   await startOiFeed(coins)
 
-  // 5. ARMED readiness gate
+  // 7. ARMED readiness gate
   const fullyReady = coins.filter(c => (tfReady.get(c) ?? 0) === TIMEFRAMES.length).length
   const partialReady = coins.filter(c => {
     const r = tfReady.get(c) ?? 0
@@ -142,10 +217,10 @@ async function main(): Promise<void> {
     `[${ts()}] ARMED | ${coins.length} coins: ${fullyReady} fully ready, ${partialReady} partial | ${TIMEFRAMES.length} TFs`,
   )
 
-  // 6. Start coin refresh loop
+  // 8. Start coin refresh loop
   selector.startRefreshLoop()
 
-  // 7. STATUS interval — per-coin compact aggregate
+  // 9. STATUS interval — per-coin compact aggregate
   activeIntervals.push(setInterval(() => {
     const trackedCoins = selector.getTrackedCoins()
     const snapshots = getStatus()
@@ -175,7 +250,7 @@ async function main(): Promise<void> {
     console.log(`[${ts()}] STATUS | ${trackedCoins.length} coins | ${parts.slice(0, 10).join(' | ')}${trackedCoins.length > 10 ? ` ... +${trackedCoins.length - 10} more` : ''}`)
   }, STATUS_INTERVAL_MS))
 
-  // 8. Staleness watchdog (candles + order book)
+  // 10. Staleness watchdog (candles + order book)
   activeIntervals.push(setInterval(() => {
     checkStaleness()
     checkBookStaleness()
@@ -187,7 +262,7 @@ async function main(): Promise<void> {
   })
 }
 
-/** Clean up intervals, WS connections, refresh loop, and polling before reconnect. */
+/** Clean up intervals, WS connections, refresh loop, polling, and DB before reconnect. */
 async function cleanup(): Promise<void> {
   selector.stopRefreshLoop()
   for (const id of activeIntervals) clearInterval(id)
@@ -205,6 +280,7 @@ async function runWithReconnect(): Promise<never> {
   process.on('SIGINT', async () => {
     console.log('\n[SHUTDOWN] Closing WebSocket connections...')
     await cleanup()
+    await closeDb()
     console.log('[SHUTDOWN] Minh stopped gracefully.')
     process.exit(0)
   })

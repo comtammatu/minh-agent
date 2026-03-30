@@ -136,6 +136,18 @@ export const MARK_ORACLE_DIVERGENCE_THRESHOLD = 0.005  // 0.5%
 /** HL WS max subscriptions per IP (hard limit). */
 export const WS_MAX_SUBSCRIPTIONS = 1_000
 
+// ─── Timeframe Durations (ms) ────────────────────────────────────────────
+
+/** Milliseconds per candle interval — used for gap-fill computation. */
+export const TIMEFRAME_MS: Record<CandleInterval, number> = {
+  '1m':  60_000,
+  '5m':  300_000,
+  '15m': 900_000,
+  '1h':  3_600_000,
+  '4h':  14_400_000,
+  '1d':  86_400_000,
+} as const
+
 // ─── Database (R15: single-process, sequential writes) ────────────────────
 
 /** Max connections in pool. */
