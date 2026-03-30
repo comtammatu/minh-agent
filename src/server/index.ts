@@ -37,6 +37,7 @@ import {
 import { getCandles } from '../feed/store.js'
 import { getStatus, getActiveSetups } from '../scanner/pipeline.js'
 import { sql } from '../db/connection.js'
+import { getAgent } from '../agent/trading-agent.js'
 
 const startedAt = Date.now()
 
@@ -124,14 +125,7 @@ function createApp() {
     // ── Agent endpoints (no auth, read-only) ──────────────────────────────
 
     .get('/api/agent/state', () => {
-      // Stub — agent state machine wired in S5
-      return {
-        state: 'IDLE',
-        positions: [],
-        dailyPnl: 0,
-        circuitBreakers: { active: false },
-        message: 'Agent state machine not yet wired (Sprint 2 S5)',
-      }
+      return getAgent().getSnapshot()
     })
 
     .get('/api/agent/journal', async ({ query, set }) => {
@@ -194,13 +188,13 @@ function createApp() {
         })
 
         .post('/override/pause', () => {
-          // Stub — wired in S5
-          return { ok: true, action: 'pause', message: 'Agent pause not yet wired (Sprint 2 S5)' }
+          getAgent().pauseAll('manual override via API')
+          return { ok: true, action: 'pause' }
         })
 
         .post('/override/resume', () => {
-          // Stub — wired in S5
-          return { ok: true, action: 'resume', message: 'Agent resume not yet wired (Sprint 2 S5)' }
+          getAgent().resumeAll()
+          return { ok: true, action: 'resume' }
         })
 
         .post('/override/close-all', () => {

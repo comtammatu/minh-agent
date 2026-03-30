@@ -7,6 +7,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test'
 import { buildApp } from './index.js'
 import { setCandles, clearStore } from '../feed/store.js'
 import { clearPipelineState } from '../scanner/pipeline.js'
+import { resetAgent } from '../agent/trading-agent.js'
 import type { Candle } from '../types.js'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -47,6 +48,7 @@ describe('Elysia HTTP Server', () => {
   beforeEach(() => {
     clearStore()
     clearPipelineState()
+    resetAgent()
   })
 
   // ── Health endpoint ──────────────────────────────────────────────────────
@@ -151,13 +153,16 @@ describe('Elysia HTTP Server', () => {
   // ── Agent state endpoint ─────────────────────────────────────────────────
 
   describe('GET /api/agent/state', () => {
-    it('returns stub agent state', async () => {
+    it('returns agent snapshot', async () => {
       const res = await get(app, '/api/agent/state')
       expect(res.status).toBe(200)
       const body = await json(res)
-      expect(body.state).toBe('IDLE')
-      expect(body.positions).toEqual([])
-      expect(body.dailyPnl).toBe(0)
+      expect(body.coins).toBeDefined()
+      expect(body.global).toBeDefined()
+      const global = body.global as Record<string, unknown>
+      expect(global.dailyPnl).toBe(0)
+      expect(global.globalPaused).toBe(false)
+      expect(typeof global.uptime).toBe('number')
     })
   })
 

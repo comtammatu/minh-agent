@@ -52,10 +52,23 @@ import {
   INDICATOR_WINDOW,
   HTF_MAP,
 } from '../config.js'
+import { EventEmitter } from 'events'
 
 // ── Module-level state ──────────────────────────────────────────────────────
 
 const activeSetups = new Map<string, ActiveSetup>()
+
+/**
+ * Pipeline EventEmitter (R10).
+ * Emits 'setup' when a new setup is tracked, 'invalidation' when one is removed.
+ * Agent subscribes via getPipelineEmitter().
+ */
+const pipelineEmitter = new EventEmitter()
+
+/** Get the pipeline event emitter for agent subscription. */
+export function getPipelineEmitter(): EventEmitter {
+  return pipelineEmitter
+}
 const lastCandleTs = new Map<string, number>()
 
 export interface StatusSnapshot {
@@ -280,6 +293,9 @@ function runPipeline(
   }
   logSetupAlert(coin, interval, setup, regime, bias.source, confluence, risk)
 
+  // R10: Emit setup event for agent subscription
+  pipelineEmitter.emit('setup', setup)
+
   // Invalidate after processing
   invalidateSetups(coin, interval, confirmedSlice, idx)
 }
@@ -302,6 +318,8 @@ function invalidateSetups(
         `[${ts()}] INVALID | ${coin} ${interval} | ${setup.type} ${setup.side.toUpperCase()} | reason: ${result.reason} | lived ${Math.max(age, 0)} bars`,
       )
       activeSetups.delete(id)
+      // R10: Emit invalidation event for agent subscription
+      pipelineEmitter.emit('invalidation', id, result.reason ?? 'unknown')
     }
   }
 }

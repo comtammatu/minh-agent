@@ -797,6 +797,7 @@ Map phases to sessions. Each session = 1 Task Contract, 20-45 min, checkpoint co
 | S2 | DONE | 2026-03-30 | candle-repo (upsert, bulk upsert, load, getAllLastTimestamps, gap-fill helpers), store.ts onPersist callback, index.ts PG-aware startup (load→gap-fill→backfill→wire write-through), TIMEFRAME_MS config, closeDb on SIGINT. 244 tests pass. |
 | S3 | DONE | 2026-03-30 | exits.ts: computePositionSize (R12), structure/ATR/combined SL, R:R + structure TP, trailing stop, partial close, buildExitPlan. Risk-filter refactored to shared computePositionSize. 42 new tests, 286 total pass. |
 | S4 | DONE | 2026-03-30 | Elysia HTTP server: 8 read routes (health, status, setups, candles, agent state/journal/positions), 4 auth-protected execution stubs (pause/resume/close-all/cancel). Bearer auth, localhost-only (R4), validation. 20 new tests, 306 total pass. |
+| S5 | DONE | 2026-03-30 | Agent state machine: 6 states (IDLE/WATCHING/ENTERING/IN_POSITION/EXITING/PAUSED), per-coin Map<coin,CoinContext>, state-handler pattern (R2), EventEmitter pipeline→agent (R10), crash recovery skeleton (R1), CB holds position (R5), API wired. 47 new tests, 353 total pass. |
 
 ---
 
