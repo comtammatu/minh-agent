@@ -79,6 +79,7 @@ export async function closeAll(): Promise<void> {
     try { await sub.unsubscribe() } catch { /* ignore */ }
   }
   activeSubscriptions.length = 0
+  lastCandleTime.clear()
   if (wsClient) {
     try { (wsClient as unknown as { close?: () => void }).close?.() } catch { /* ignore */ }
     wsClient = null

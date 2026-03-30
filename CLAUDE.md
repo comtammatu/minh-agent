@@ -57,7 +57,7 @@ Runtime: Bun | SDK: @nktkas/hyperliquid | Store: In-memory Map<string, Candle[]>
 
 ## References
 
-- Sprint plans: `docs/plan/sprint-1.md`, `docs/plan/sprint-2.md`
+- Sprint plans: `docs/plan/sprint-1.md`, `docs/plan/sprint-2.md`, `docs/plan/sprint-3.md`
 - Architecture + diagrams: `docs/spec/architecture.md`
 - Knowledge spec (detect/invalidate rules): `docs/spec/knowledge-spec.md`
 - Domain knowledge (trading schools): `docs/ref/domain-knowledge.md`

@@ -63,13 +63,13 @@ REGIME CONTEXT (parallel)  LAYER 1: BIAS
 
 ## Phase A: Layered Pipeline (OHLCV only)
 
-### Step 0: Pre-implementation ✅ PARTIAL (2026-03-29)
+### Step 0: Pre-implementation ✅ DONE (2026-03-29)
 
 ```bash
 git init && git add -A && git commit -m "chore: initial commit — flat architecture baseline"
 ```
 
-- [ ] Sync `docs/ref/domain-knowledge.md` (cp source — sections 11+12 missing) ← DEFERRED
+- [x] Sync `docs/ref/domain-knowledge.md` — sections 11+12 already present (verified 2026-03-30)
 - [x] Export `classifySwings`, `detectStructuralBias`, `compileKeyZones` from `indicators/structure.ts` ← Done in Step 1
 - [x] `findPivots` already exported in `indicators/smc.ts`
 - [x] Verify: `bun test --run` passes (79 pass, 3 skip)
@@ -517,13 +517,14 @@ interface OrderBookSnapshot { coin: string; bids: [number, number][]; asks: [num
 | Phase B trades burst | High volatility | Aggregate per-second |
 | Phase B L2 stale | No updates 30s | Staleness watchdog WARNING |
 | All existing feed errors | REST 429, WS disconnect, etc. | Existing handling unchanged |
+| WS connection drop | SDK throws WebSocketRequestError | Auto-reconnect with exponential backoff (1s→30s max) |
 
 ## Definition of Done
 
 Sprint 1 is complete when:
 - [x] `bun test --run` passes all test files (indicators + layers + pipeline + feed + invalidation + store) — **175 pass / 3 skip / 0 fail**
-- [ ] `bun run src/index.ts` starts, backfills, shows ARMED for all 3 coins ← needs live run
-- [ ] STATUS lines print with regime + bias + confluence grade every 60s ← needs live run
+- [x] `bun run src/index.ts` starts, backfills, shows ARMED for all 3 coins — [CONFIRMED] 2026-03-30 live run
+- [x] STATUS lines print with regime + bias + confluence grade every 60s — [CONFIRMED] 2026-03-30 live run
 - [ ] SETUP alerts show grade (B/A/A+), layer count, VSA/VP boosts ← needs live run
 - [ ] Each STOP point verified: neutral bias → no scan, structure deny → no zones ← pipeline tests cover this
 - [ ] HTF gate works: LTF counter-HTF signals blocked ← covered by bias.test.ts
@@ -531,4 +532,11 @@ Sprint 1 is complete when:
 - [ ] Staleness WARNING fires when WiFi disconnected 60s ← needs live run
 - [ ] INVALID fires when active setup pattern broken ← covered by invalidation.test.ts
 
-**Remaining before Sprint 1 fully done:** live run verification (git init + `bun run src/index.ts`)
+### Post-Sprint Fix: WS Reconnection (2026-03-30)
+
+Live run exposed crash on WS disconnect (`WebSocketRequestError: WebSocket connection closed`). Added:
+- `src/config.ts`: `WS_RECONNECT_INITIAL_MS` (1s), `WS_RECONNECT_MAX_MS` (30s), `WS_RECONNECT_BACKOFF` (2x)
+- `src/index.ts`: `runWithReconnect()` loop — on error: cleanup (clear intervals, stop polling, close WS) → backoff delay → re-run `main()` (fresh subscriptions + backfill)
+- `src/feed/ws.ts`: `closeAll()` now clears `lastCandleTime` to avoid false staleness warnings post-reconnect
+
+**Remaining before Sprint 1 fully done:** live run verification of remaining 3 items (SETUP alert, staleness WARNING, INVALID)

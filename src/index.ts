@@ -20,6 +20,9 @@ import {
   MIN_CONFIDENCE,
   CONFLUENCE_MIN,
   REGIME_MULTIPLIERS,
+  WS_RECONNECT_INITIAL_MS,
+  WS_RECONNECT_MAX_MS,
+  WS_RECONNECT_BACKOFF,
 } from './config.js'
 import { fetchCandles, backfillStartTime } from './feed/rest.js'
 import { setCandles, candleCount } from './feed/store.js'
@@ -40,6 +43,9 @@ console.log(
 )
 
 // ── Main ─────────────────────────────────────────────────────────────────────
+
+// Track intervals so we can clear them before reconnect
+const activeIntervals: ReturnType<typeof setInterval>[] = []
 
 async function main(): Promise<void> {
   // WS subscribe first (before backfill) to capture any candles during backfill
@@ -85,7 +91,7 @@ async function main(): Promise<void> {
   console.log(`[${ts()}] ARMED | ${armedParts.join(' | ')}`)
 
   // STATUS interval — per-coin compact aggregate
-  setInterval(() => {
+  activeIntervals.push(setInterval(() => {
     const snapshots = getStatus()
     if (snapshots.length === 0) return
 
@@ -109,32 +115,66 @@ async function main(): Promise<void> {
     const parts = COINS.map(coin => {
       const info = byCoin.get(coin)
       if (!info) return `${coin} — 0`
-      return `${coin} ${info.regime} ${info.grade} ${info.setups}setup`
+      return `${coin} ${info.regime} ${info.grade} ${info.setups} setup`
     })
     console.log(`[${ts()}] STATUS | ${parts.join(' | ')}`)
-  }, STATUS_INTERVAL_MS)
+  }, STATUS_INTERVAL_MS))
 
   // Staleness watchdog (candles + order book)
-  setInterval(() => {
+  activeIntervals.push(setInterval(() => {
     checkStaleness()
     checkBookStaleness()
-  }, STALENESS_CHECK_INTERVAL_MS)
+  }, STALENESS_CHECK_INTERVAL_MS))
 
-  // SIGINT handler
+  // Keep alive — resolve when WS dies (detected via staleness or thrown error)
+  // This promise never resolves normally; it only rejects on WS error
+  // which bubbles up to runWithReconnect for retry
+  await new Promise(() => {
+    // intentionally never resolves — process stays alive via setIntervals
+  })
+}
+
+/** Clean up intervals, WS connections, and polling before reconnect. */
+async function cleanup(): Promise<void> {
+  for (const id of activeIntervals) clearInterval(id)
+  activeIntervals.length = 0
+  stopFundingPolling()
+  await closeAll()
+}
+
+/** Run main() with exponential backoff reconnection on failure. */
+async function runWithReconnect(): Promise<never> {
+  let delay = WS_RECONNECT_INITIAL_MS
+
+  // SIGINT handler — register once, outside retry loop
   process.on('SIGINT', async () => {
     console.log('\n[SHUTDOWN] Closing WebSocket connections...')
-    stopFundingPolling()
-    await closeAll()
+    await cleanup()
     console.log('[SHUTDOWN] Minh stopped gracefully.')
     process.exit(0)
   })
+
+  while (true) {
+    try {
+      await main()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[${ts()}] CONNECTION LOST | ${msg}`)
+      console.log(`[${ts()}] RECONNECT | retrying in ${Math.round(delay / 1000)}s...`)
+
+      // Tear down everything before retry
+      await cleanup()
+
+      await new Promise(r => setTimeout(r, delay))
+      delay = Math.min(delay * WS_RECONNECT_BACKOFF, WS_RECONNECT_MAX_MS)
+
+      console.log(`[${ts()}] RECONNECT | restarting subscriptions + backfill...`)
+    }
+  }
 }
 
 function ts(): string {
   return new Date().toISOString().slice(11, 19)
 }
 
-main().catch(err => {
-  console.error('[FATAL]', err)
-  process.exit(1)
-})
+runWithReconnect()

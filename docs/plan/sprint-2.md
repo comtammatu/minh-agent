@@ -1,83 +1,224 @@
-# Minh (明) — Sprint 2: Trading + Infrastructure
+# Minh (明) — Sprint 2: Algorithmic Agent Trading
 
 ## Goal
 
-Add order execution capability, persistence, HTTP API, and alerting infrastructure on top of the Sprint 1 layered analysis engine.
+Transform the Sprint 1 analysis engine into an **autonomous trading agent** — self-deciding, self-executing, self-adapting. No human in the loop for trade execution.
 
-**Sprint 2 = execution + infrastructure. Analysis engine (Sprint 1) is foundation.**
+**Sprint 2 = Agent Core + Execution + Infrastructure. Analysis engine (Sprint 1) is foundation.**
+
+Key distinction: **Agent ≠ Tool.** Tool needs human approval. Agent autonomously decides, executes, monitors, and adapts.
+
+---
+
+## Architecture Overview
+
+```
+Sprint 1 (Analysis):
+  Market Data → Pipeline (5 layers) → Signal + Confluence Grade
+
+Sprint 2 (Agent):
+  Signal → Agent State Machine → Risk Gate → Execute → Monitor → Adapt
+              ↕                      ↕          ↕         ↕
+           PostgreSQL            Circuit      Elysia    Trade
+           + TimescaleDB         Breakers     HTTP API   Journal
+```
+
+### Tech Stack Decisions
+
+| Component | Choice | Rationale (see decisions.md S1-S7) |
+|---|---|---|
+| Runtime | Bun/TypeScript | Rule-based agent, type safety, 2-5ms/tick |
+| Database | PostgreSQL + TimescaleDB | ACID for orders/positions, hypertables for candles, continuous aggregates |
+| HTTP | Elysia | Execution endpoints need validation, auth, error handling |
+| Wallet | viem | EIP-712 signing for Hyperliquid |
 
 ---
 
 ## Phase 2A: Infrastructure
 
-### 2A-1. SQLite Persistence
+### 2A-1. PostgreSQL + TimescaleDB
 
-**Why**: Eliminate cold start backfill time. Candle store survives restart.
-
-**Approach**: `bun:sqlite` (built-in, zero deps)
-
-```typescript
-// feed/sqlite.ts
-class SQLiteStore {
-  constructor(dbPath: string)  // default: ./data/minh.db
-
-  saveCandles(coin, interval, candles: Candle[]): void
-  loadCandles(coin, interval): Candle[]
-  getLastTimestamp(coin, interval): number | null
-}
-```
+**Why**: Agent Trading needs ACID transactions (orders, positions), time-series optimization (candles), and audit trail (trade journal).
 
 **Schema**:
 ```sql
+-- Candles: TimescaleDB hypertable
 CREATE TABLE candles (
   coin TEXT NOT NULL,
   interval TEXT NOT NULL,
-  t INTEGER NOT NULL,
-  o REAL NOT NULL, h REAL NOT NULL, l REAL NOT NULL, c REAL NOT NULL, v REAL NOT NULL,
+  t TIMESTAMPTZ NOT NULL,
+  o DOUBLE PRECISION NOT NULL,
+  h DOUBLE PRECISION NOT NULL,
+  l DOUBLE PRECISION NOT NULL,
+  c DOUBLE PRECISION NOT NULL,
+  v DOUBLE PRECISION NOT NULL,
   PRIMARY KEY (coin, interval, t)
 );
+SELECT create_hypertable('candles', 't');
+
+-- Compression policy (90%+ reduction)
+ALTER TABLE candles SET (
+  timescaledb.compress,
+  timescaledb.compress_segmentby = 'coin,interval'
+);
+SELECT add_compression_policy('candles', INTERVAL '7 days');
+
+-- Retention policy
+SELECT add_retention_policy('candles', INTERVAL '1 year');
+
+-- Orders: ACID transactional
+CREATE TABLE orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  coin TEXT NOT NULL,
+  side TEXT NOT NULL CHECK (side IN ('long', 'short')),
+  type TEXT NOT NULL CHECK (type IN ('limit', 'market')),
+  price DOUBLE PRECISION NOT NULL,
+  size DOUBLE PRECISION NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'submitted', 'filled', 'partial', 'cancelled', 'rejected')),
+  setup_id TEXT,           -- link to signal that triggered this order
+  sl_price DOUBLE PRECISION,
+  tp_price DOUBLE PRECISION,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  filled_at TIMESTAMPTZ,
+  fill_price DOUBLE PRECISION,
+  exchange_order_id TEXT
+);
+
+-- Positions: current state
+CREATE TABLE positions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  coin TEXT NOT NULL,
+  side TEXT NOT NULL CHECK (side IN ('long', 'short')),
+  entry_price DOUBLE PRECISION NOT NULL,
+  size DOUBLE PRECISION NOT NULL,
+  sl_price DOUBLE PRECISION,
+  tp_price DOUBLE PRECISION,
+  unrealized_pnl DOUBLE PRECISION DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'open'
+    CHECK (status IN ('open', 'closing', 'closed')),
+  opened_at TIMESTAMPTZ DEFAULT NOW(),
+  closed_at TIMESTAMPTZ,
+  close_price DOUBLE PRECISION,
+  realized_pnl DOUBLE PRECISION
+);
+
+-- Trade Journal: audit trail for every agent decision
+CREATE TABLE trade_journal (
+  id BIGSERIAL PRIMARY KEY,
+  ts TIMESTAMPTZ DEFAULT NOW(),
+  event_type TEXT NOT NULL,    -- 'signal', 'enter', 'exit', 'skip', 'invalidate', 'circuit_break', 'error'
+  coin TEXT,
+  details JSONB NOT NULL,      -- flexible: signal data, order data, reason, etc.
+  agent_state TEXT             -- state at time of event
+);
+SELECT create_hypertable('trade_journal', 'ts');
+
+-- Continuous aggregate: hourly PnL summary
+CREATE MATERIALIZED VIEW pnl_hourly
+WITH (timescaledb.continuous) AS
+SELECT
+  time_bucket('1 hour', closed_at) AS bucket,
+  coin,
+  COUNT(*) AS trades,
+  SUM(realized_pnl) AS total_pnl,
+  AVG(realized_pnl) AS avg_pnl
+FROM positions
+WHERE status = 'closed'
+GROUP BY bucket, coin;
+```
+
+**Connection**:
+```typescript
+// src/db/connection.ts
+import postgres from 'postgres'
+
+const sql = postgres(process.env.DATABASE_URL!, {
+  max: 20,                    // connection pool
+  idle_timeout: 30,
+  connect_timeout: 10,
+})
 ```
 
 **Startup flow change**:
 ```
-Before (Sprint 1): REST backfill ALL 5000 × 18 + Readiness Gate
+Before (Sprint 1): REST backfill ALL 5000 × 18 + Readiness Gate (~9s)
 After:
-  1. Load SQLite → memory
-  2. For each coin/tf: REST gap-fill (lastTimestamp → now) — only missing candles
+  1. Load candles from PostgreSQL → memory
+  2. Gap-fill (lastTimestamp → now) via REST — only missing candles
   3. Readiness Gate + WS subscribe
   Typical: ~1s (if restarted within hours)
 ```
 
-Save strategy: flush to SQLite on SIGINT + every 5 minutes.
+Save strategy: write-through on each new candle (async, non-blocking).
 
 ---
 
 ### 2A-2. Elysia HTTP Server
 
-**Why**: Programmatic access to analysis state. Foundation for web dashboard.
+**Why**: Programmatic access to agent state + execution control. Validation and auth critical for write endpoints.
 
-```
-GET /health     → { status, uptime, coins, tfs, activeSetups }
-GET /status     → { coins: [{ coin, regimes, bias, confluenceGrades, setupCount }] }
-GET /setups     → { setups: [{ id, coin, interval, type, side, entry, sl, tp, grade, confidence }] }
-GET /structure/:coin/:tf → { bias, biasConfidence, swings, demandZones, supplyZones, regime }
-GET /candles/:coin/:tf?count=200 → { candles: [...] }
-```
+```typescript
+// src/server/index.ts
+import { Elysia, t } from 'elysia'
+import { cors } from '@elysiajs/cors'
+import { bearer } from '@elysiajs/bearer'
 
-Pure read endpoints. CORS enabled for local frontend.
+const app = new Elysia()
+  .use(cors())
+  .use(bearer())
+  .onError(({ error, set }) => { /* centralized DB/business error handling */ })
+
+  // Read endpoints (no auth)
+  .group('/api', app => app
+    .get('/health', () => ({ status, uptime, coins, agentState }))
+    .get('/status', () => ({ coins, regimes, bias, confluenceGrades, setupCount }))
+    .get('/setups', () => ({ activeSetups }))
+    .get('/structure/:coin/:tf', ({ params }) => ({ bias, swings, zones, regime }))
+    .get('/candles/:coin/:tf', ({ params, query }) => ({ candles }), {
+      query: t.Object({ count: t.Optional(t.Number({ default: 200, maximum: 5000 })) })
+    })
+  )
+
+  // Agent state endpoints (no auth, read-only)
+  .group('/api/agent', app => app
+    .get('/state', () => ({ state, positions, dailyPnl, circuitBreakers }))
+    .get('/journal', ({ query }) => ({ entries }), {
+      query: t.Object({
+        limit: t.Optional(t.Number({ default: 50 })),
+        type: t.Optional(t.String())
+      })
+    })
+    .get('/positions', () => ({ openPositions, totalExposure }))
+  )
+
+  // Execution endpoints (auth required)
+  .group('/api/execution', app => app
+    .guard({ beforeHandle: ({ bearer }) => { /* verify API token */ }})
+    .post('/override/pause', () => { /* pause agent */ })
+    .post('/override/resume', () => { /* resume agent */ })
+    .post('/override/close-all', () => { /* emergency close all positions */ })
+    .delete('/order/:id', ({ params }) => { /* cancel specific order */ }, {
+      params: t.Object({ id: t.String() })
+    })
+  )
+
+  .listen(3000)
+```
 
 ---
 
 ### 2A-3. Exit Strategies
 
-**Why**: SL/TP computation needed for order execution.
+**Why**: SL/TP computation needed for order execution. Agent must know when to exit.
 
 ```
 Exit types:
-  structure: SL/TP from nearest zones (already in risk-filter.ts)
-  atr: SL = entry ± ATR×N
-  rr-ratio: TP = entry + (entry - SL) × ratio
-  trailing: activate at +X%, trail at Y%
+  structure:     SL/TP from nearest zones (already in risk-filter.ts)
+  atr:           SL = entry ± ATR×N
+  rr-ratio:      TP = entry + (entry - SL) × ratio
+  trailing:      activate at +X%, trail at Y%
   partial-close: close 50% at first TP, trail rest
 ```
 
@@ -87,94 +228,225 @@ Section 12 rules from domain knowledge (structure stop > ATR stop > trailing):
 
 ---
 
-### 2A-4. Fancy Terminal UI
+## Phase 2B: Agent Core
 
-ANSI escape codes (no dependency):
-- Green LONG, Red SHORT, Yellow WARNING, Dim STATUS
-- Bold SETUP alerts with confluence grade badge
-- Box drawing for setup detail cards
+### 2B-1. Agent State Machine
+
+**Why**: The heart of the agent. Without a state machine, execution is a one-shot script, not an agent.
+
+```typescript
+// src/agent/trading-agent.ts
+
+type AgentState =
+  | 'IDLE'          // no active setups, scanning
+  | 'WATCHING'      // setup detected, waiting for confirmation/entry
+  | 'ENTERING'      // order placed, awaiting fill
+  | 'IN_POSITION'   // position open, monitoring
+  | 'EXITING'       // closing position (trailing hit, invalidation, TP)
+  | 'PAUSED'        // circuit breaker tripped, manual override, or cooldown
+
+interface AgentContext {
+  state: AgentState
+  positions: Position[]
+  pendingOrders: Order[]
+  dailyPnl: number
+  consecutiveLosses: number
+  lastTradeTime: number
+}
+
+class TradingAgent {
+  private ctx: AgentContext
+
+  // Core loop — called on every new candle
+  async onSignal(signals: ScanResult[]): Promise<void> {
+    // Log every decision to trade journal
+    switch (this.ctx.state) {
+      case 'IDLE':
+        // Evaluate signals → if grade B+ and risk budget OK → transition to WATCHING/ENTERING
+        break
+      case 'WATCHING':
+        // Monitor for entry trigger or invalidation
+        // Invalidation → back to IDLE + journal entry
+        // Entry trigger → place order → ENTERING
+        break
+      case 'ENTERING':
+        // Check order status: filled → IN_POSITION, rejected → IDLE, timeout → cancel + IDLE
+        break
+      case 'IN_POSITION':
+        // Monitor: check SL/TP, trail stop, partial close
+        // Pattern invalidation → close position → EXITING
+        // TP hit → EXITING
+        break
+      case 'EXITING':
+        // Confirm position closed → journal PnL → check circuit breakers → IDLE or PAUSED
+        break
+      case 'PAUSED':
+        // Check if cooldown expired or manual resume → IDLE
+        break
+    }
+  }
+}
+```
+
+**State transitions**:
+```
+IDLE → WATCHING           signal detected, grade B+
+WATCHING → ENTERING       entry trigger confirmed
+WATCHING → IDLE           signal invalidated
+ENTERING → IN_POSITION    order filled
+ENTERING → IDLE           order rejected/timeout
+IN_POSITION → EXITING     SL/TP/trail/invalidation
+EXITING → IDLE            position closed, risk budget OK
+EXITING → PAUSED          circuit breaker tripped
+PAUSED → IDLE             cooldown expired / manual resume
+ANY → PAUSED              emergency override
+```
 
 ---
 
-## Phase 2B: Execution
+### 2B-2. Order Lifecycle Manager
 
-### 2B-1. viem Wallet Integration
+**Why**: Orders have states. Place → fill is not instant. Partials, rejects, timeouts must be handled.
 
 ```typescript
-// src/wallet.ts
+// src/agent/order-manager.ts
+
+type OrderStatus = 'pending' | 'submitted' | 'filled' | 'partial' | 'cancelled' | 'rejected'
+
+class OrderManager {
+  // Place order with SL/TP
+  async placeOrder(setup: ActiveSetup): Promise<Order>
+
+  // Check order status from exchange
+  async syncOrderStatus(orderId: string): Promise<OrderStatus>
+
+  // Cancel unfilled order
+  async cancelOrder(orderId: string): Promise<void>
+
+  // Modify SL/TP (trail stop)
+  async modifyOrder(orderId: string, updates: Partial<Order>): Promise<void>
+
+  // Handle partial fills
+  async onPartialFill(orderId: string, filledSize: number): Promise<void>
+
+  // Timeout: cancel if not filled within N bars
+  async checkTimeouts(): Promise<void>
+}
+```
+
+---
+
+### 2B-3. Position Monitor
+
+**Why**: Once in position, agent must actively manage — trail stop, partial close, exit on invalidation.
+
+```typescript
+// src/agent/position-monitor.ts
+
+class PositionMonitor {
+  // Called every tick while IN_POSITION
+  async monitor(position: Position, currentPrice: number, candles: Candle[]): Promise<MonitorAction>
+
+  // Actions: 'hold' | 'trail_stop' | 'partial_close' | 'close' | 'alert'
+}
+
+// Trail stop logic
+// 1. Price moves +X% from entry → activate trailing
+// 2. Trail at Y% below highest price since entry
+// 3. If price drops to trail level → close
+
+// Partial close logic
+// 1. Price hits TP1 (1R) → close 50%
+// 2. Move SL to breakeven for remaining 50%
+// 3. Trail remaining to TP2 (2R) or trail stop
+```
+
+---
+
+### 2B-4. Invalidation → Action Bridge
+
+**Why**: Sprint 1 detects pattern invalidation. Sprint 2 must ACT on it — cancel orders, close positions.
+
+```typescript
+// src/agent/invalidation-bridge.ts
+
+// Connect Sprint 1 invalidation engine to Sprint 2 execution
+async function onInvalidation(invalidation: InvalidationEvent): Promise<void> {
+  // 1. Check if any open order is linked to this pattern
+  //    → Cancel order
+  // 2. Check if any open position was entered on this pattern
+  //    → Close position (market order)
+  // 3. Log to trade journal with reason
+}
+```
+
+---
+
+### 2B-5. Trade Journal
+
+**Why**: Every agent decision must be auditable. Debug, improve, and review.
+
+```typescript
+// src/agent/journal.ts
+
+interface JournalEntry {
+  ts: Date
+  eventType: 'signal' | 'enter' | 'exit' | 'skip' | 'invalidate' | 'circuit_break' | 'error'
+  coin: string
+  details: {
+    reason: string           // why this decision was made
+    signalGrade?: string     // confluence grade at time of decision
+    agentState: AgentState   // agent state at time of event
+    price?: number
+    pnl?: number
+    riskBudget?: number      // remaining risk budget
+    [key: string]: unknown
+  }
+}
+
+class TradeJournal {
+  async log(entry: JournalEntry): Promise<void>        // write to PostgreSQL
+  async getEntries(filter: JournalFilter): Promise<JournalEntry[]>
+  async dailySummary(date: Date): Promise<DailySummary> // aggregate PnL, win rate, etc.
+}
+```
+
+---
+
+### 2B-6. Wallet + Execution
+
+```typescript
+// src/execution/wallet.ts
 import { createWalletClient, http } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 
 const account = privateKeyToAccount(process.env.PRIVATE_KEY as `0x${string}`)
 ```
 
-Security: `.env` file, `.gitignore` includes `.env`.
-
----
-
-### 2B-2. Order Execution
-
 ```typescript
 // src/execution/order.ts
-async function placeOrder(setup: ActiveSetup, wallet): Promise<OrderResult> {
-  // 1. Calculate position size from risk management (Section 12)
+async function executeOrder(setup: ActiveSetup, wallet): Promise<OrderResult> {
+  // 1. Calculate position size (Section 12 formula)
   // 2. Round price to HL tick size (szDecimals from meta)
   // 3. Check minimum order size
   // 4. Sign with viem (EIP-712)
   // 5. Submit via ExchangeClient
-  // 6. Return order ID
+  // 6. Return order ID + log to journal
 }
 ```
 
-Config: `AUTO_EXECUTE = false` default. When false → "ORDER READY" prompt, await `y/n`.
-
 ---
 
-### 2B-3. Position Tracking
+### 2B-7. Risk Management
 
-```typescript
-// src/execution/positions.ts
-interface Position {
-  coin: string; side: 'long' | 'short'
-  entryPrice: number; size: number
-  unrealizedPnl: number; margin: number
-}
-
-// Fetch from HL clearinghouseState
-async function getPositions(): Promise<Position[]>
-```
-
-Poll every 30s or on fill event.
-
----
-
-### 2B-4. Setup → Order Bridge
-
-```
-Pipeline detects setup (grade B+) →
-  If AUTO_EXECUTE:
-    → Calculate position size (Section 12 risk rules)
-    → Place limit order at setup.entryPrice
-    → Set SL/TP orders
-    → Track in position manager
-  If manual:
-    → Print "ORDER READY | BTC 4H LONG OB | grade:A | entry:67250 size:0.1 | [y/n]"
-    → Await stdin
-    → On 'y': execute
-```
-
----
-
-### 2B-5. Risk Management
-
-Replace Sprint 1 `SIMULATED_ACCOUNT` with real account balance from HL.
+Real account balance from HL (replaces Sprint 1 `SIMULATED_ACCOUNT`).
 
 ```typescript
 export const RISK = {
   maxRiskPerTrade: 0.01,         // 1% of account per trade
   maxConcurrentPositions: 3,
-  maxDailyLoss: 0.03,            // 3% daily max loss → stop trading
-  maxWeeklyLoss: 0.05,           // 5% weekly loss → review
+  maxDailyLoss: 0.03,            // 3% daily max loss → PAUSE agent
+  maxWeeklyLoss: 0.05,           // 5% weekly loss → PAUSE + alert
   maxPositionSize: 0.10,         // 10% of account in single position
   maxCorrelatedPositions: 2,     // max 2 correlated assets same direction
   maxTotalExposure: 3.0,         // 3x account total exposure
@@ -197,7 +469,65 @@ HL-specific (Section 12.6):
 
 ---
 
-### 2B-6. Telegram Alerts
+## Phase 2C: Safety & Resilience
+
+### 2C-1. Circuit Breakers
+
+**Why**: Agent must protect capital. Automatic pause when things go wrong.
+
+```typescript
+// src/agent/circuit-breakers.ts
+
+interface CircuitBreakers {
+  // Daily loss limit: 3% → pause until next day
+  checkDailyLoss(pnl: number, accountValue: number): boolean
+
+  // Consecutive losses: 3 in a row → pause 2 hours
+  checkConsecutiveLosses(count: number): boolean
+
+  // Rapid loss: 2%+ in 1 hour → pause 4 hours
+  checkRapidLoss(recentPnl: number, window: number): boolean
+
+  // Max drawdown from peak: 10% → pause + alert owner
+  checkMaxDrawdown(currentValue: number, peakValue: number): boolean
+}
+```
+
+---
+
+### 2C-2. Anti-Correlation Guard
+
+**Why**: BTC long + ETH long = effectively 2x the same bet.
+
+```typescript
+// src/agent/correlation-guard.ts
+
+// Block or warn when opening correlated positions
+// BTC/ETH correlation > 0.8 → count as 1 position for exposure
+// If already long BTC, long ETH signal → reduce size or skip
+```
+
+---
+
+### 2C-3. Self-Healing
+
+**Why**: Agent runs 24/7. Must recover from transient failures.
+
+```typescript
+// src/agent/self-healing.ts
+
+// WS disconnect → auto-reconnect (already in Sprint 1)
+// DB connection lost → retry with backoff, queue writes
+// Order API error → retry 2x, then skip + alert
+// Exchange maintenance → detect 503, pause agent, resume when healthy
+// Memory leak → monitor RSS, restart if > threshold
+```
+
+---
+
+## Phase 2D: Notifications
+
+### 2D-1. Telegram Alerts
 
 ```typescript
 // src/alert/telegram.ts
@@ -207,11 +537,17 @@ const CHAT_ID = process.env.TELEGRAM_CHAT_ID
 async function sendTelegramAlert(message: string): Promise<void>
 ```
 
-Alert types: SETUP detected, ORDER filled, INVALID, daily P&L summary.
+Alert types:
+- SETUP detected (grade A/A+)
+- ORDER filled
+- POSITION closed (with PnL)
+- CIRCUIT BREAKER tripped
+- INVALID pattern (if position affected)
+- Daily P&L summary
 
 ---
 
-### 2B-7. Sound Alerts
+### 2D-2. Sound Alerts
 
 ```typescript
 function soundAlert(): void {
@@ -219,70 +555,141 @@ function soundAlert(): void {
 }
 ```
 
-Trigger on SETUP detection only (grade B+).
+Trigger on SETUP detection (grade B+) and circuit breaker events.
 
 ---
 
-## Phase 2C: Enhancements
+### 2D-3. Fancy Terminal UI
 
-### 2C-1. Regime Lag Warning
+ANSI escape codes (no dependency):
+- Green LONG, Red SHORT, Yellow WARNING, Dim STATUS
+- Bold SETUP alerts with confluence grade badge
+- Agent state indicator: `[IDLE]` `[WATCHING]` `[IN_POSITION]` `[PAUSED]`
+- Live P&L display
 
-Alert when Indicator-Based regime (detectRegime → BULL) conflicts with Wyckoff phase (Distribution). This is a leading signal that regime is about to change.
+---
+
+## Phase 2E: Enhancements (Sprint 2 late or Sprint 3)
+
+### 2E-1. Regime Lag Warning
+
+Alert when Indicator-Based regime (detectRegime → BULL) conflicts with Wyckoff phase (Distribution).
 
 ```
 [WARNING] BTC | Regime BULL but Wyckoff Distribution — regime may be lagging
 ```
 
-### 2C-2. Multi-Exchange (CCXT)
+### 2E-2. Web Dashboard
 
-Abstract feed layer behind interface:
-```typescript
-interface FeedProvider {
-  fetchCandles(coin, interval, start, end): Promise<Candle[]>
-  subscribeCandles(coin, interval, onCandle): Promise<() => void>
-}
-
-class HyperliquidFeed implements FeedProvider { ... }  // existing
-class CCXTFeed implements FeedProvider { ... }          // new
-```
-
-Deferred to Sprint 2 late or Sprint 3.
-
-### 2C-3. Web Dashboard
-
-Elysia SSE + htmx (or lightweight React). Chart with zones, setups, structure overlaid.
-
-Deferred to Sprint 3. Terminal + Telegram sufficient initially.
+Elysia SSE + lightweight frontend. Chart with zones, setups, structure overlaid.
 
 ---
 
 ## Sprint 2 Priority Order
 
 ```
-1. SQLite persistence        ← fast restart
-2. Exit strategies           ← unblocks execution
-3. Risk management           ← unblocks execution (upgrade risk-filter.ts to real account)
-4. viem wallet               ← unblocks execution
-5. Order execution           ← core Sprint 2 feature
-6. Position tracking         ← monitors executed orders
-7. Setup→Order bridge        ← connects pipeline to execution
-8. Elysia server             ← API access
-9. Telegram alerts           ← remote notifications
-10. Sound alerts             ← local notifications
-11. Fancy terminal           ← visual polish
-12. Regime lag warning        ← quality enhancement
-13. Multi-exchange           ← Sprint 2 late or Sprint 3
-14. Web dashboard            ← Sprint 3
+Phase 2A: Infrastructure
+  1. PostgreSQL + TimescaleDB     ← foundation for everything
+  2. Exit strategies              ← unblocks agent execution
+  3. Elysia HTTP server           ← API access + execution control
+
+Phase 2B: Agent Core
+  4. Agent State Machine          ← heart of the agent
+  5. Order Lifecycle Manager      ← place/fill/reject/cancel/timeout
+  6. Position Monitor             ← trail stop, partial close, exit
+  7. Invalidation → Action Bridge ← pattern invalid → cancel/close
+  8. Trade Journal                ← audit every decision
+  9. Wallet + Execution           ← sign and submit orders
+  10. Risk Management             ← position sizing, real account balance
+
+Phase 2C: Safety
+  11. Circuit Breakers            ← protect capital automatically
+  12. Anti-Correlation Guard      ← block correlated positions
+  13. Self-Healing                ← recover from transient failures
+
+Phase 2D: Notifications
+  14. Telegram alerts             ← remote notifications
+  15. Sound alerts                ← local notifications
+  16. Fancy terminal UI           ← visual polish
+
+Phase 2E: Enhancements (late Sprint 2 or Sprint 3)
+  17. Regime lag warning
+  18. Web dashboard
 ```
+
+---
+
+## Session Roadmap
+
+Map phases to sessions. Each session = 1 Task Contract, 20-45 min, checkpoint commit before/after.
+
+**Rule**: Only detail the next 2-3 sessions. Re-plan after each phase completes.
+
+### Phase 2A: Infrastructure (Sessions 1-4)
+
+| Session | Task | Items | Est. | Dependencies |
+|---|---|---|---|---|
+| S1 | PostgreSQL + TimescaleDB setup | Schema, connection, migration | 30-40 min | Docker/local PG running |
+| S2 | Candle persistence layer | Write-through store, gap-fill on restart | 30-40 min | S1 |
+| S3 | Exit strategies | SL/TP computation, trail/partial types | 25-35 min | None (pure functions) |
+| S4 | Elysia HTTP server | Routes, validation, auth, CORS | 30-40 min | S1 (DB queries) |
+
+### Phase 2B: Agent Core (Sessions 5-10)
+
+| Session | Task | Items | Est. | Dependencies |
+|---|---|---|---|---|
+| S5 | Agent State Machine | States, transitions, core loop | 35-45 min | S2, S3 |
+| S6 | Order Lifecycle Manager | Place/fill/reject/cancel/timeout | 30-40 min | S5 |
+| S7 | Position Monitor | Trail stop, partial close, exit trigger | 30-40 min | S5, S6 |
+| S8 | Invalidation → Action Bridge | Pattern invalid → cancel/close | 20-30 min | S5, S6 |
+| S9 | Trade Journal | Log decisions to PostgreSQL | 20-30 min | S1 |
+| S10 | Wallet + Execution + Risk Mgmt | viem, order signing, position sizing | 35-45 min | S5, S6 |
+
+### Phase 2C: Safety (Sessions 11-13)
+
+| Session | Task | Items | Est. | Dependencies |
+|---|---|---|---|---|
+| S11 | Circuit Breakers | Daily loss, consecutive loss, rapid loss, max drawdown | 25-35 min | S5, S9 |
+| S12 | Anti-Correlation Guard | Correlated position detection + blocking | 20-30 min | S5 |
+| S13 | Self-Healing | Reconnect, retry, queue, health check | 25-35 min | S4, S6 |
+
+### Phase 2D: Notifications (Sessions 14-15)
+
+| Session | Task | Items | Est. | Dependencies |
+|---|---|---|---|---|
+| S14 | Telegram alerts | Bot setup, alert types, formatting | 20-30 min | S5 |
+| S15 | Terminal UI + Sound | ANSI formatting, agent state display, BEL | 20-30 min | S5 |
+
+### Phase 2E: Integration (Session 16)
+
+| Session | Task | Items | Est. | Dependencies |
+|---|---|---|---|---|
+| S16 | End-to-end integration test | Full agent loop on testnet, 24h soak test | 45-60 min | All above |
+
+**Total: ~16 sessions, ~8-10 hours estimated**
+
+### Session Progress
+
+| Session | Status | Date | Notes |
+|---|---|---|---|
+| S1 | NOT STARTED | — | — |
+
+---
 
 ## Definition of Done
 
 Sprint 2 is complete when:
-- [ ] SQLite: restart in < 1s (vs 9s+ cold)
-- [ ] Order execution: manual mode works (y/n prompt)
-- [ ] Risk management: position size auto-calculated from real account balance
+- [ ] PostgreSQL + TimescaleDB: candles persisted, restart gap-fill < 1s
+- [ ] Agent State Machine: full lifecycle IDLE → WATCHING → ENTERING → IN_POSITION → EXITING
+- [ ] Order Lifecycle: place, fill, reject, cancel, timeout all handled
+- [ ] Position Monitor: trail stop, partial close working
+- [ ] Invalidation Bridge: pattern invalid → order cancelled / position closed
+- [ ] Trade Journal: every decision logged with reason
+- [ ] Risk Management: position size auto-calculated from real account balance
+- [ ] Circuit Breakers: daily loss pause, consecutive loss pause working
 - [ ] Section 12 rules enforced: stop placement, minimum R:R, skip conditions
-- [ ] Position tracking: live PnL visible
-- [ ] Telegram: SETUP alert arrives within 5s
+- [ ] Telegram: critical alerts arrive within 5s
+- [ ] Elysia: all endpoints respond, execution endpoints auth-protected
 - [ ] All Sprint 1 tests still pass
-- [ ] New execution tests pass
+- [ ] New agent + execution tests pass
+- [ ] Agent runs autonomously for 24h on testnet without human intervention

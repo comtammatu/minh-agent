@@ -1,6 +1,6 @@
 import type { CandleInterval } from './types.js'
 
-export const COINS = ['BTC', 'ETH', 'SOL'] as const
+export const COINS = ['BTC', 'ETH', 'SOL', 'HYPE', 'TAO'] as const
 export type Coin = typeof COINS[number]
 
 export const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'] as const
@@ -93,10 +93,21 @@ export const BOOK_IMBALANCE_THRESHOLD = 0.3
 /** Negative funding rate threshold for contrarian boost. */
 export const FUNDING_CONTRARIAN_THRESHOLD = -0.0001
 
+// ─── WebSocket Reconnection ────────────────────────────────────────────────
+
+/** Initial delay before reconnection attempt (ms). */
+export const WS_RECONNECT_INITIAL_MS = 1_000
+
+/** Maximum delay between reconnection attempts (ms). */
+export const WS_RECONNECT_MAX_MS = 30_000
+
+/** Backoff multiplier per failed attempt. */
+export const WS_RECONNECT_BACKOFF = 2
+
 /** Zone distance → position sizing + minimum R:R. */
 export const ZONE_RISK = {
-  near:   { maxDistance: 0.02, minRR: 1.5 },  // < 2%
+  near: { maxDistance: 0.02, minRR: 1.5 },  // < 2%
   medium: { maxDistance: 0.05, minRR: 2.0 },  // 2–5%
-  far:    { maxDistance: 0.08, minRR: 3.0 },  // 5–8%
-  skip:   { maxDistance: 0.10 },               // > 10% → skip
+  far: { maxDistance: 0.08, minRR: 3.0 },  // 5–8%
+  skip: { maxDistance: 0.10 },               // > 10% → skip
 } as const

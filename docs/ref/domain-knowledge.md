@@ -1,319 +1,319 @@
 # Minh (明) — Domain Knowledge Reference
 
-> Domain Knowledge — triết lý, ý nghĩa, ưu/nhược điểm của các trường phái trading.
-> Cho detect/validate/invalidate rules (pseudocode), xem [`knowledge-spec.md`](../spec/knowledge-spec.md).
+> Domain Knowledge — philosophy, meaning, pros/cons of each trading school.
+> For detect/validate/invalidate rules (pseudocode), see [`knowledge-spec.md`](../spec/knowledge-spec.md).
 
 ---
 
-## 1. Phân Tích Kỹ Thuật (Technical Analysis)
+## 1. Technical Analysis
 
-Nhóm trường phái lớn nhất, dựa trên phân tích biểu đồ giá và dữ liệu lịch sử để dự đoán hướng đi tương lai của thị trường.
+The largest group of trading schools, based on analyzing price charts and historical data to predict future market direction.
 
 ### 1.1 Price Action
 
-- **Triết lý**: Giá phản ánh tất cả. Đọc hành vi giá thuần túy mà không cần indicator.
-- **Công cụ chính**: Candlestick patterns, mô hình giá (Head & Shoulders, Double Top/Bottom, Wedge, Triangle), Support & Resistance, Trendline.
-- **Khái niệm cốt lõi**:
+- **Philosophy**: Price reflects everything. Read pure price behavior without indicators.
+- **Core tools**: Candlestick patterns, chart patterns (Head & Shoulders, Double Top/Bottom, Wedge, Triangle), Support & Resistance, Trendlines.
+- **Core concepts**:
   - Pin Bar, Engulfing, Inside Bar
   - Breakout & Retest
   - Higher High / Higher Low, Lower High / Lower Low
-  - Key Level (vùng giá quan trọng)
-- **Đại diện**: Al Brooks, Bob Volman, Lance Beggs, Nial Fuller.
-- **Ưu điểm**: Đơn giản, phản ứng nhanh với thị trường, áp dụng được trên mọi khung thời gian và thị trường.
-- **Nhược điểm**: Chủ quan, phụ thuộc nhiều vào kinh nghiệm người đọc chart.
-- **Phù hợp với**: Mọi thị trường (Forex, Crypto, Stock, Futures).
+  - Key Level (significant price zones)
+- **Notable figures**: Al Brooks, Bob Volman, Lance Beggs, Nial Fuller.
+- **Pros**: Simple, fast market reaction, applicable across all timeframes and markets.
+- **Cons**: Subjective, heavily depends on the chart reader's experience.
+- **Best suited for**: All markets (Forex, Crypto, Stocks, Futures).
 
 ### 1.2 Smart Money Concepts (SMC) / ICT
 
-- **Triết lý**: "Tiền thông minh" (ngân hàng, quỹ đầu tư, market maker) thao túng thị trường để lấy thanh khoản từ retail trader. Trader cần học cách đọc dấu vết của smart money.
-- **Người sáng lập**: ICT — Inner Circle Trader (Michael Huddleston).
-- **Khái niệm cốt lõi**:
-  - **Order Block (OB)**: Vùng giá nơi smart money đặt lệnh lớn, thường là nến cuối cùng trước một movement mạnh.
-  - **Fair Value Gap (FVG)**: Khoảng trống giá trị hợp lý — vùng mất cân bằng giữa 3 cây nến liên tiếp mà giá có xu hướng quay lại lấp.
-  - **Liquidity Sweep / Liquidity Grab**: Smart money đẩy giá qua vùng stop-loss của retail để lấy thanh khoản trước khi đảo chiều.
-  - **Break of Structure (BOS)**: Xác nhận xu hướng tiếp tục khi giá phá vỡ đỉnh/đáy trước đó.
-  - **Change of Character (CHoCH)**: Tín hiệu đảo chiều xu hướng khi cấu trúc thị trường thay đổi.
-  - **Premium / Discount Zone**: Chia range thành vùng cao (premium — nên bán) và vùng thấp (discount — nên mua) dựa trên Fibonacci 50%.
-  - **Inducement**: Bẫy thanh khoản nhỏ trước khi giá đến Order Block chính.
-  - **Optimal Trade Entry (OTE)**: Vùng vào lệnh tối ưu, thường ở Fibonacci 62%-79% của một swing.
-- **Ưu điểm**: Framework logic chặt chẽ, cho điểm vào/ra cụ thể, giải thích được nhiều "bẫy" trên thị trường.
-- **Nhược điểm**: Phức tạp với người mới, dễ bị over-analysis, một số khái niệm chưa được kiểm chứng thống kê.
-- **Phù hợp với**: Forex, Crypto, Indices.
+- **Philosophy**: "Smart money" (banks, hedge funds, market makers) manipulates the market to capture liquidity from retail traders. Traders must learn to read smart money footprints.
+- **Founder**: ICT — Inner Circle Trader (Michael Huddleston).
+- **Core concepts**:
+  - **Order Block (OB)**: Price zone where smart money placed large orders, typically the last candle before a strong move.
+  - **Fair Value Gap (FVG)**: An imbalance zone between 3 consecutive candles that price tends to revisit and fill.
+  - **Liquidity Sweep / Liquidity Grab**: Smart money pushes price past retail stop-losses to capture liquidity before reversing.
+  - **Break of Structure (BOS)**: Confirms trend continuation when price breaks a previous high/low.
+  - **Change of Character (CHoCH)**: Trend reversal signal when market structure changes.
+  - **Premium / Discount Zone**: Divides range into high zone (premium — sell) and low zone (discount — buy) based on Fibonacci 50%.
+  - **Inducement**: Small liquidity trap before price reaches the main Order Block.
+  - **Optimal Trade Entry (OTE)**: Optimal entry zone, typically at Fibonacci 62%-79% of a swing.
+- **Pros**: Tight logical framework, provides specific entry/exit points, explains many market "traps."
+- **Cons**: Complex for beginners, prone to over-analysis, some concepts lack statistical validation.
+- **Best suited for**: Forex, Crypto, Indices.
 
 ### 1.3 Volume Spread Analysis (VSA)
 
-- **Triết lý**: Mối quan hệ giữa spread (biên độ nến) và volume tiết lộ ý đồ của "big boys" — họ đang tích lũy hay phân phối.
-- **Nền tảng**: Richard Wyckoff → phát triển bởi Tom Williams.
-- **Khái niệm cốt lõi**:
-  - **No Demand**: Nến tăng nhỏ + volume thấp → không có lực mua thực sự.
-  - **No Supply**: Nến giảm nhỏ + volume thấp → không có lực bán thực sự.
-  - **Stopping Volume**: Volume cao bất thường tại đáy → big boys đang mua.
-  - **Climactic Action**: Volume cực cao + spread rộng → đỉnh/đáy tiềm năng.
-  - **Test**: Giá quay lại vùng cũ với volume thấp → xác nhận không còn cung/cầu.
-  - **Upthrust / Spring**: Bẫy giá ở đỉnh/đáy trước khi đảo chiều.
-- **Ưu điểm**: Đọc được ý đồ thực sự đằng sau price action.
-- **Nhược điểm**: Cần data volume chính xác (khó với Forex spot), đòi hỏi kinh nghiệm cao.
-- **Phù hợp với**: Stocks, Futures (nơi có volume thực).
+- **Philosophy**: The relationship between spread (candle range) and volume reveals "big boys'" intent — whether they're accumulating or distributing.
+- **Foundation**: Richard Wyckoff → developed by Tom Williams.
+- **Core concepts**:
+  - **No Demand**: Small up candle + low volume → no real buying pressure.
+  - **No Supply**: Small down candle + low volume → no real selling pressure.
+  - **Stopping Volume**: Abnormally high volume at bottom → big players are buying.
+  - **Climactic Action**: Extremely high volume + wide spread → potential top/bottom.
+  - **Test**: Price revisits an old zone with low volume → confirms no remaining supply/demand.
+  - **Upthrust / Spring**: Price trap at top/bottom before reversal.
+- **Pros**: Reads the real intent behind price action.
+- **Cons**: Requires accurate volume data (difficult with Forex spot), demands high experience.
+- **Best suited for**: Stocks, Futures (where real volume exists).
 
 ### 1.4 Indicator-Based Trading
 
-- **Triết lý**: Sử dụng các công thức toán học tính trên dữ liệu giá/volume để tạo tín hiệu mua/bán.
-- **Các indicator phổ biến**:
+- **Philosophy**: Use mathematical formulas calculated on price/volume data to generate buy/sell signals.
+- **Common indicators**:
   - **Trend**: Moving Averages (SMA, EMA), MACD, ADX, Ichimoku Cloud.
   - **Momentum**: RSI, Stochastic Oscillator, CCI, Williams %R.
   - **Volatility**: Bollinger Bands, ATR, Keltner Channel.
   - **Volume**: OBV, Volume Profile, VWAP, MFI.
-- **Phương pháp giao dịch**:
-  - Crossover (giao cắt MA, MACD signal line)
+- **Trading methods**:
+  - Crossover (MA crossover, MACD signal line)
   - Overbought / Oversold (RSI > 70 / < 30)
-  - Divergence (phân kỳ giữa giá và indicator)
-  - Squeeze (Bollinger Band thu hẹp → chuẩn bị breakout)
-- **Ưu điểm**: Dễ học, có tín hiệu rõ ràng, dễ backtest và tự động hóa.
-- **Nhược điểm**: Lagging (chậm so với giá), dễ bị whipsaw trong sideway, tạo cảm giác chắc chắn giả.
-- **Phù hợp với**: Người mới bắt đầu, mọi thị trường.
+  - Divergence (price vs indicator divergence)
+  - Squeeze (Bollinger Band narrows → breakout imminent)
+- **Pros**: Easy to learn, clear signals, easy to backtest and automate.
+- **Cons**: Lagging (behind price), prone to whipsaw in sideways markets, creates false sense of certainty.
+- **Best suited for**: Beginners, all markets.
 
 ### 1.5 Harmonic Patterns
 
-- **Triết lý**: Thị trường vận động theo các mô hình hình học lặp lại dựa trên tỷ lệ Fibonacci chính xác.
-- **Đại diện**: Scott Carney (người hệ thống hóa).
-- **Các pattern chính**:
+- **Philosophy**: Markets move in repeating geometric patterns based on precise Fibonacci ratios.
+- **Notable figure**: Scott Carney (systematized the approach).
+- **Key patterns**:
   - **Gartley** (222 pattern): XA → AB (61.8%) → BC (38.2%-88.6%) → CD (78.6% XA).
-  - **Bat**: CD kết thúc tại 88.6% XA.
-  - **Butterfly**: CD vượt quá X, kết thúc tại 127% XA.
-  - **Crab**: CD kết thúc tại 161.8% XA — pattern có PRZ (Potential Reversal Zone) xa nhất.
-  - **Cypher**: Biến thể đặc biệt với tỷ lệ Fibonacci riêng.
-  - **Shark (5-0)**: Pattern mới hơn với cấu trúc khác biệt.
-- **Ưu điểm**: Cho điểm vào/ra rất cụ thể với stop-loss chặt chẽ, risk/reward thường tốt.
-- **Nhược điểm**: Hiếm khi pattern hoàn hảo 100%, cần kiên nhẫn chờ đợi, tỷ lệ thắng không cao nếu dùng đơn lẻ.
-- **Phù hợp với**: Forex, Stocks, dùng kết hợp với các phương pháp khác.
+  - **Bat**: CD completes at 88.6% XA.
+  - **Butterfly**: CD extends beyond X, completing at 127% XA.
+  - **Crab**: CD completes at 161.8% XA — pattern with farthest PRZ (Potential Reversal Zone).
+  - **Cypher**: Special variant with unique Fibonacci ratios.
+  - **Shark (5-0)**: Newer pattern with distinct structure.
+- **Pros**: Very specific entry/exit points with tight stop-loss, typically good risk/reward.
+- **Cons**: Patterns rarely form perfectly, requires patience, win rate not high when used alone.
+- **Best suited for**: Forex, Stocks, combined with other methods.
 
 ### 1.6 Elliott Wave Theory
 
-- **Triết lý**: Thị trường vận động theo chu kỳ sóng lặp lại ở mọi khung thời gian (fractal). Phản ánh tâm lý đám đông.
-- **Người sáng lập**: Ralph Nelson Elliott (1930s).
-- **Cấu trúc cốt lõi**:
-  - **Impulse Wave (5 sóng đẩy)**: Sóng 1 → 2 → 3 → 4 → 5 theo hướng xu hướng chính.
-  - **Corrective Wave (3 sóng hiệu chỉnh)**: Sóng A → B → C ngược hướng xu hướng chính.
-  - **Quy tắc bất biến**: Sóng 2 không vượt đáy sóng 1; Sóng 3 không phải sóng ngắn nhất; Sóng 4 không chồng lấn sóng 1.
-- **Kết hợp Fibonacci**: Sóng 3 thường = 161.8% sóng 1; Sóng 2 retrace 50%-61.8%; Sóng 5 = sóng 1 hoặc 61.8% sóng 1.
-- **Ưu điểm**: Cho cái nhìn toàn cảnh về vị trí hiện tại trong chu kỳ lớn, xác định target xa.
-- **Nhược điểm**: Rất chủ quan trong đếm sóng — 10 người đếm 10 kiểu khác nhau, khó áp dụng real-time.
-- **Đại diện**: Robert Prechter, Glenn Neely.
-- **Phù hợp với**: Mọi thị trường, thường dùng cho phân tích dài hạn.
+- **Philosophy**: Markets move in repeating wave cycles across all timeframes (fractal). Reflects crowd psychology.
+- **Founder**: Ralph Nelson Elliott (1930s).
+- **Core structure**:
+  - **Impulse Wave (5 motive waves)**: Waves 1 → 2 → 3 → 4 → 5 in the main trend direction.
+  - **Corrective Wave (3 corrective waves)**: Waves A → B → C against the main trend.
+  - **Invariant rules**: Wave 2 cannot retrace below Wave 1 start; Wave 3 is never the shortest; Wave 4 cannot overlap Wave 1.
+- **Fibonacci integration**: Wave 3 often = 161.8% of Wave 1; Wave 2 retraces 50%-61.8%; Wave 5 = Wave 1 or 61.8% of Wave 1.
+- **Pros**: Provides big-picture view of current position in the larger cycle, identifies distant targets.
+- **Cons**: Very subjective wave counting — 10 people produce 10 different counts, hard to apply in real-time.
+- **Notable figures**: Robert Prechter, Glenn Neely.
+- **Best suited for**: All markets, typically used for long-term analysis.
 
 ### 1.7 Wyckoff Method
 
-- **Triết lý**: Thị trường được điều khiển bởi "Composite Man" (tổng hợp của các tay to). Trader cần đọc hành vi của Composite Man qua giá và volume.
-- **Người sáng lập**: Richard D. Wyckoff (đầu thế kỷ 20).
-- **4 giai đoạn thị trường**:
-  - **Accumulation (Tích lũy)**: Tay to mua gom lặng lẽ sau downtrend. Giá sideway, volume giảm dần.
-  - **Markup (Tăng giá)**: Giá bắt đầu uptrend sau khi tích lũy đủ.
-  - **Distribution (Phân phối)**: Tay to bán ra sau uptrend. Giá sideway ở đỉnh, volume bất thường.
-  - **Markdown (Giảm giá)**: Giá bắt đầu downtrend sau khi phân phối xong.
-- **Sự kiện quan trọng trong Accumulation**: PS (Preliminary Support) → SC (Selling Climax) → AR (Automatic Rally) → ST (Secondary Test) → Spring → SOS (Sign of Strength) → LPS (Last Point of Support).
-- **3 quy luật Wyckoff**: Supply & Demand, Cause & Effect, Effort vs Result.
-- **Ưu điểm**: Framework toàn diện, nền tảng lý thuyết cho SMC và VSA.
-- **Nhược điểm**: Cần nhiều thời gian và kinh nghiệm để nhận diện chính xác.
-- **Phù hợp với**: Mọi thị trường, đặc biệt Stocks và Crypto.
+- **Philosophy**: Markets are driven by the "Composite Man" (aggregate of large players). Traders must read the Composite Man's behavior through price and volume.
+- **Founder**: Richard D. Wyckoff (early 20th century).
+- **4 market phases**:
+  - **Accumulation**: Large players quietly buy after a downtrend. Price moves sideways, volume gradually decreases.
+  - **Markup**: Price begins uptrend after sufficient accumulation.
+  - **Distribution**: Large players sell after an uptrend. Price moves sideways at top, abnormal volume.
+  - **Markdown**: Price begins downtrend after distribution is complete.
+- **Key Accumulation events**: PS (Preliminary Support) → SC (Selling Climax) → AR (Automatic Rally) → ST (Secondary Test) → Spring → SOS (Sign of Strength) → LPS (Last Point of Support).
+- **3 Wyckoff laws**: Supply & Demand, Cause & Effect, Effort vs Result.
+- **Pros**: Comprehensive framework, theoretical foundation for SMC and VSA.
+- **Cons**: Requires significant time and experience to identify accurately.
+- **Best suited for**: All markets, especially Stocks and Crypto.
 
 ### 1.8 Supply & Demand
 
-- **Triết lý**: Giá di chuyển do mất cân bằng cung cầu. Xác định vùng cung/cầu mạnh trên chart để vào lệnh khi giá quay lại.
-- **Đại diện**: Sam Seiden (Online Trading Academy).
-- **Khái niệm cốt lõi**:
-  - **Demand Zone**: Vùng giá nơi lực mua lớn hơn lực bán, tạo ra movement tăng mạnh.
-  - **Supply Zone**: Vùng giá nơi lực bán lớn hơn lực mua, tạo ra movement giảm mạnh.
-  - **Fresh Zone**: Vùng chưa được test lại — có xác suất phản ứng cao nhất.
-  - **Origin of Move**: Nến/cụm nến gốc trước khi giá di chuyển mạnh.
-  - **Rally-Base-Drop (RBD)**: Supply zone hình thành khi giá tăng → sideway → giảm mạnh.
-  - **Drop-Base-Rally (DBR)**: Demand zone hình thành khi giá giảm → sideway → tăng mạnh.
-- **Khác biệt với Support/Resistance**: S&R là đường, S&D là vùng. S&D nhấn mạnh vào "fresh" và cơ chế hình thành.
-- **Ưu điểm**: Logic đơn giản, risk/reward tốt, điểm vào rõ ràng.
-- **Nhược điểm**: Khó phân biệt zone mạnh/yếu, không phải zone nào cũng hold.
-- **Phù hợp với**: Forex, Crypto, Stocks.
+- **Philosophy**: Price moves due to supply-demand imbalances. Identify strong supply/demand zones on chart to enter when price revisits.
+- **Notable figure**: Sam Seiden (Online Trading Academy).
+- **Core concepts**:
+  - **Demand Zone**: Price area where buying force exceeds selling force, creating a strong upward move.
+  - **Supply Zone**: Price area where selling force exceeds buying force, creating a strong downward move.
+  - **Fresh Zone**: Untested zone — has the highest probability of reaction.
+  - **Origin of Move**: The candle/cluster of candles before price moved strongly.
+  - **Rally-Base-Drop (RBD)**: Supply zone formed when price rises → consolidates → drops sharply.
+  - **Drop-Base-Rally (DBR)**: Demand zone formed when price drops → consolidates → rises sharply.
+- **Difference from Support/Resistance**: S/R are lines, S/D are zones. S/D emphasizes "freshness" and formation mechanism.
+- **Pros**: Simple logic, good risk/reward, clear entry points.
+- **Cons**: Hard to distinguish strong/weak zones, not all zones hold.
+- **Best suited for**: Forex, Crypto, Stocks.
 
 ### 1.9 Order Flow / Market Profile
 
-- **Triết lý**: Đọc dòng lệnh thực tế — ai đang mua/bán, ở mức giá nào, với khối lượng bao nhiêu. Thấy "behind the scenes" của mỗi cây nến.
-- **Công cụ chính**:
-  - **DOM (Depth of Market)**: Sổ lệnh hiển thị các lệnh chờ mua/bán ở từng mức giá.
-  - **Footprint Chart**: Biểu đồ hiển thị volume mua/bán thực tế tại từng mức giá trong mỗi nến.
-  - **Market Profile (TPO)**: Phân bổ thời gian giá ở từng mức → xác định Value Area, POC (Point of Control).
-  - **Volume Profile**: Phân bổ volume theo mức giá → tìm HVN (High Volume Node) và LVN (Low Volume Node).
-  - **Delta**: Chênh lệch giữa volume mua chủ động và bán chủ động.
-  - **Cumulative Delta**: Tích lũy delta qua thời gian → đo áp lực mua/bán tổng thể.
-- **Phần mềm phổ biến**: Bookmap, Sierra Chart, Jigsaw Trading, ATAS, Exocharts (Crypto).
-- **Ưu điểm**: Dữ liệu khách quan nhất, thấy được "thực tế" thay vì "diễn giải".
-- **Nhược điểm**: Đắt (phần mềm + data feed), learning curve cao, chỉ hiệu quả với thị trường có volume thực (Futures, Crypto on-exchange).
-- **Phù hợp với**: Futures (ES, NQ, CL), Crypto (order book exchanges).
+- **Philosophy**: Read actual order flow — who is buying/selling, at what price, with what volume. See "behind the scenes" of each candle.
+- **Core tools**:
+  - **DOM (Depth of Market)**: Order book showing pending buy/sell orders at each price level.
+  - **Footprint Chart**: Chart showing actual buy/sell volume at each price level within each candle.
+  - **Market Profile (TPO)**: Time distribution at each price level → identifies Value Area, POC (Point of Control).
+  - **Volume Profile**: Volume distribution by price level → finds HVN (High Volume Node) and LVN (Low Volume Node).
+  - **Delta**: Difference between aggressive buy volume and aggressive sell volume.
+  - **Cumulative Delta**: Accumulated delta over time → measures overall buy/sell pressure.
+- **Popular software**: Bookmap, Sierra Chart, Jigsaw Trading, ATAS, Exocharts (Crypto).
+- **Pros**: Most objective data, sees "reality" instead of "interpretation."
+- **Cons**: Expensive (software + data feed), steep learning curve, only effective in markets with real volume (Futures, Crypto on-exchange).
+- **Best suited for**: Futures (ES, NQ, CL), Crypto (order book exchanges).
 
 ---
 
-## 2. Phân Tích Cơ Bản (Fundamental Analysis)
+## 2. Fundamental Analysis
 
-Đánh giá giá trị nội tại của tài sản dựa trên dữ liệu kinh tế, tài chính, và kinh doanh.
+Evaluates intrinsic value of assets based on economic, financial, and business data.
 
 ### 2.1 Value Investing
 
-- **Triết lý**: Mua tài sản khi giá thị trường thấp hơn giá trị nội tại (intrinsic value). "Margin of Safety" — biên an toàn.
-- **Đại diện**: Benjamin Graham ("The Intelligent Investor"), Warren Buffett, Charlie Munger, Seth Klarman.
-- **Phương pháp định giá**: P/E, P/B, P/S, EV/EBITDA, DCF (Discounted Cash Flow), DDM (Dividend Discount Model).
-- **Tiêu chí chọn cổ phiếu**: Lợi nhuận ổn định, nợ thấp, ROE cao, ban lãnh đạo tốt, competitive moat (hào nước cạnh tranh).
-- **Ưu điểm**: Nền tảng lý luận vững chắc, phù hợp đầu tư dài hạn.
-- **Nhược điểm**: Cần nhiều thời gian phân tích, có thể "value trap", không hiệu quả ngắn hạn.
-- **Phù hợp với**: Chứng khoán (Stocks), đầu tư dài hạn.
+- **Philosophy**: Buy assets when market price is below intrinsic value. "Margin of Safety."
+- **Notable figures**: Benjamin Graham ("The Intelligent Investor"), Warren Buffett, Charlie Munger, Seth Klarman.
+- **Valuation methods**: P/E, P/B, P/S, EV/EBITDA, DCF (Discounted Cash Flow), DDM (Dividend Discount Model).
+- **Stock selection criteria**: Stable earnings, low debt, high ROE, good management, competitive moat.
+- **Pros**: Solid theoretical foundation, suited for long-term investing.
+- **Cons**: Requires extensive analysis time, potential "value trap," ineffective short-term.
+- **Best suited for**: Stocks, long-term investing.
 
 ### 2.2 Macro Trading / Global Macro
 
-- **Triết lý**: Giao dịch dựa trên xu hướng kinh tế vĩ mô toàn cầu — lãi suất, lạm phát, GDP, chính sách tiền tệ, địa chính trị.
-- **Đại diện**: George Soros, Ray Dalio, Paul Tudor Jones, Stanley Druckenmiller.
-- **Yếu tố theo dõi**:
-  - Chính sách của Fed, ECB, BOJ (lãi suất, QE/QT)
-  - CPI, PPI, PCE (lạm phát)
-  - NFP, Unemployment Rate (thị trường lao động)
-  - GDP, PMI (sức khỏe kinh tế)
+- **Philosophy**: Trade based on global macroeconomic trends — interest rates, inflation, GDP, monetary policy, geopolitics.
+- **Notable figures**: George Soros, Ray Dalio, Paul Tudor Jones, Stanley Druckenmiller.
+- **Key factors to monitor**:
+  - Central bank policy (Fed, ECB, BOJ) — interest rates, QE/QT
+  - CPI, PPI, PCE (inflation)
+  - NFP, Unemployment Rate (labor market)
+  - GDP, PMI (economic health)
   - Yield Curve, Bond Spread
   - Commodity prices (Oil, Gold)
   - Geopolitics, Trade wars
-- **Ưu điểm**: Nắm được bức tranh lớn, giao dịch nhiều loại tài sản.
-- **Nhược điểm**: Phức tạp, nhiều biến số, timing khó.
-- **Phù hợp với**: Forex, Bonds, Commodities, Indices.
+- **Pros**: Big-picture understanding, trades multiple asset classes.
+- **Cons**: Complex, many variables, difficult timing.
+- **Best suited for**: Forex, Bonds, Commodities, Indices.
 
 ### 2.3 Growth Investing
 
-- **Triết lý**: Đầu tư vào công ty có tốc độ tăng trưởng doanh thu/lợi nhuận vượt trội, chấp nhận định giá cao (P/E cao).
-- **Đại diện**: Peter Lynch ("One Up on Wall Street"), Philip Fisher, Cathie Wood (ARK Invest), William O'Neil (CANSLIM).
-- **Tiêu chí**: Revenue growth > 20%/năm, market share mở rộng, sản phẩm/dịch vụ disruptive, TAM (Total Addressable Market) lớn.
+- **Philosophy**: Invest in companies with superior revenue/earnings growth, accepting high valuations (high P/E).
+- **Notable figures**: Peter Lynch ("One Up on Wall Street"), Philip Fisher, Cathie Wood (ARK Invest), William O'Neil (CANSLIM).
+- **Criteria**: Revenue growth > 20%/year, expanding market share, disruptive product/service, large TAM (Total Addressable Market).
 - **CANSLIM (William O'Neil)**: Current earnings, Annual earnings, New products, Supply/demand, Leader/laggard, Institutional sponsorship, Market direction.
-- **Ưu điểm**: Tiềm năng lợi nhuận lớn khi chọn đúng.
-- **Nhược điểm**: Rủi ro cao khi tăng trưởng chậm lại, dễ bị "overpay".
-- **Phù hợp với**: Stocks (đặc biệt Tech), đầu tư trung-dài hạn.
+- **Pros**: Large profit potential when picking correctly.
+- **Cons**: High risk when growth slows, prone to "overpaying."
+- **Best suited for**: Stocks (especially Tech), medium to long-term investing.
 
 ---
 
-## 3. Định Lượng & Thuật Toán (Quantitative / Algorithmic)
+## 3. Quantitative / Algorithmic
 
-Sử dụng toán học, thống kê, và lập trình để phát triển & thực thi chiến lược giao dịch.
+Uses mathematics, statistics, and programming to develop & execute trading strategies.
 
 ### 3.1 Algorithmic Trading (Algo Trading)
 
-- **Triết lý**: Hệ thống hóa chiến lược thành code, loại bỏ cảm xúc, backtest trên data lịch sử, và cho bot thực thi tự động.
-- **Quy trình**: Ý tưởng → Code hóa → Backtest → Optimize → Paper trade → Live trade → Monitor.
-- **Ngôn ngữ phổ biến**: Python (Backtrader, Zipline, QuantConnect), Pine Script (TradingView), MQL4/5 (MetaTrader), C++ (HFT).
-- **Chiến lược phổ biến**:
+- **Philosophy**: Systematize strategies into code, eliminate emotions, backtest on historical data, and let bots execute automatically.
+- **Workflow**: Idea → Code → Backtest → Optimize → Paper trade → Live trade → Monitor.
+- **Common languages**: Python (Backtrader, Zipline, QuantConnect), Pine Script (TradingView), MQL4/5 (MetaTrader), C++ (HFT).
+- **Common strategies**:
   - Trend Following (MA crossover, Breakout)
   - Mean Reversion (Bollinger Band bounce, RSI extremes)
   - Arbitrage (cross-exchange, triangular)
   - Market Making (spread capture)
   - Grid Trading
-- **Ưu điểm**: Không cảm xúc, scalable, chạy 24/7, backtest được.
-- **Nhược điểm**: Overfitting khi backtest, cần maintain liên tục, slippage & latency, regime change.
-- **Phù hợp với**: Mọi thị trường, đặc biệt Crypto (24/7) và Forex.
+- **Pros**: Emotion-free, scalable, runs 24/7, backtestable.
+- **Cons**: Overfitting in backtests, requires continuous maintenance, slippage & latency, regime change.
+- **Best suited for**: All markets, especially Crypto (24/7) and Forex.
 
 ### 3.2 Statistical Arbitrage (Stat Arb)
 
-- **Triết lý**: Khai thác sai lệch thống kê giữa các tài sản có tương quan. Khi spread lệch khỏi mean, bet vào mean reversion.
-- **Chiến lược chính**:
-  - **Pairs Trading**: Long tài sản underperform + Short tài sản outperform trong cặp tương quan (VD: Coca-Cola vs Pepsi).
-  - **Mean Reversion**: Giá/spread sẽ quay về trung bình.
-  - **Cointegration-based**: Tìm cặp tài sản cointegrated (không chỉ correlated).
+- **Philosophy**: Exploit statistical deviations between correlated assets. When spread deviates from mean, bet on mean reversion.
+- **Key strategies**:
+  - **Pairs Trading**: Long underperforming asset + Short outperforming asset in a correlated pair (e.g., Coca-Cola vs Pepsi).
+  - **Mean Reversion**: Price/spread will revert to mean.
+  - **Cointegration-based**: Find cointegrated asset pairs (not just correlated).
   - **Factor Models**: Fama-French, momentum, value factors.
-- **Công cụ toán học**: Z-score, Augmented Dickey-Fuller test, Johansen test, Kalman Filter, PCA.
-- **Ưu điểm**: Market-neutral (ít phụ thuộc hướng thị trường), có nền tảng toán học.
-- **Nhược điểm**: Spread có thể diverge thêm, cần vốn lớn, model risk.
-- **Phù hợp với**: Stocks, ETFs, Futures.
+- **Mathematical tools**: Z-score, Augmented Dickey-Fuller test, Johansen test, Kalman Filter, PCA.
+- **Pros**: Market-neutral (less dependent on market direction), solid mathematical foundation.
+- **Cons**: Spread can diverge further, requires large capital, model risk.
+- **Best suited for**: Stocks, ETFs, Futures.
 
 ### 3.3 High Frequency Trading (HFT)
 
-- **Triết lý**: Giao dịch tốc độ cực cao (microsecond đến nanosecond) để khai thác các inefficiency siêu nhỏ.
-- **Chiến lược**: Market Making, Latency Arbitrage, Statistical Arbitrage tốc độ cao, News-based (NLP).
-- **Yêu cầu hạ tầng**: Co-location (đặt server cạnh sàn giao dịch), FPGA/ASIC hardware, direct market access, low-latency network.
-- **Đại diện**: Citadel Securities, Virtu Financial, Jump Trading, Two Sigma.
-- **Ưu điểm**: Lợi nhuận ổn định (cho ai có hạ tầng), cung cấp thanh khoản cho thị trường.
-- **Nhược điểm**: Chi phí hạ tầng cực lớn, không dành cho retail trader, bị quản lý chặt.
-- **Phù hợp với**: Chỉ institutional/prop firm.
+- **Philosophy**: Ultra-high speed trading (microsecond to nanosecond) to exploit tiny inefficiencies.
+- **Strategies**: Market Making, Latency Arbitrage, high-speed Statistical Arbitrage, News-based (NLP).
+- **Infrastructure requirements**: Co-location (servers next to exchange), FPGA/ASIC hardware, direct market access, low-latency network.
+- **Notable firms**: Citadel Securities, Virtu Financial, Jump Trading, Two Sigma.
+- **Pros**: Stable returns (for those with infrastructure), provides market liquidity.
+- **Cons**: Extremely high infrastructure costs, not for retail traders, heavily regulated.
+- **Best suited for**: Institutional/prop firms only.
 
 ---
 
-## 4. Tâm Lý & Dòng Tiền (Sentiment-Based)
+## 4. Sentiment-Based
 
-Giao dịch dựa trên tâm lý đám đông và dòng tiền thay vì chỉ phân tích chart hay fundamentals.
+Trading based on crowd psychology and money flow rather than just chart analysis or fundamentals.
 
 ### 4.1 Sentiment Analysis
 
-- **Triết lý**: Đo lường và giao dịch dựa trên tâm lý tổng thể của thị trường.
-- **Công cụ đo sentiment**:
+- **Philosophy**: Measure and trade based on overall market sentiment.
+- **Sentiment measurement tools**:
   - **Fear & Greed Index**: CNN (Stocks), Alternative.me (Crypto).
-  - **COT Report (Commitments of Traders)**: Vị thế của Commercial, Non-commercial, Retail trên Futures.
-  - **Put/Call Ratio**: Tỷ lệ quyền chọn bán/mua → đo mức bi quan.
-  - **VIX (Volatility Index)**: "Chỉ số sợ hãi" của thị trường.
-  - **Social Sentiment**: Phân tích Twitter/X, Reddit, TikTok, Google Trends.
-  - **Funding Rate** (Crypto): Đo lệch vị thế Long/Short trên Perpetual Futures.
-  - **Open Interest**: Tổng số hợp đồng mở → đo mức quan tâm.
-- **Ưu điểm**: Bắt được các điểm cực đoan (extreme fear/greed), dẫn trước price action.
-- **Nhược điểm**: Khó timing chính xác, sentiment có thể kéo dài.
-- **Phù hợp với**: Mọi thị trường, dùng kết hợp.
+  - **COT Report (Commitments of Traders)**: Positions of Commercial, Non-commercial, Retail on Futures.
+  - **Put/Call Ratio**: Options put/call ratio → measures pessimism level.
+  - **VIX (Volatility Index)**: Market "fear index."
+  - **Social Sentiment**: Twitter/X, Reddit, TikTok, Google Trends analysis.
+  - **Funding Rate** (Crypto): Measures Long/Short position skew on Perpetual Futures.
+  - **Open Interest**: Total open contracts → measures market interest level.
+- **Pros**: Catches extreme points (extreme fear/greed), leads price action.
+- **Cons**: Difficult to time precisely, sentiment can persist for extended periods.
+- **Best suited for**: All markets, best used in combination.
 
 ### 4.2 Contrarian Trading
 
-- **Triết lý**: Đi ngược đám đông. Khi tất cả đều bullish → chuẩn bị đảo chiều giảm. Khi tất cả đều bearish → cơ hội mua.
-- **Câu nói kinh điển**: "Be fearful when others are greedy, and greedy when others are fearful." — Warren Buffett.
-- **Tín hiệu vào lệnh**: Sentiment cực đoan, coverage truyền thông bão hòa, retail FOMO/panic, divergence giữa giá và sentiment.
-- **Ưu điểm**: Bắt đỉnh/đáy tiềm năng, risk/reward tốt.
-- **Nhược điểm**: "The market can stay irrational longer than you can stay solvent." Timing cực kỳ khó.
-- **Phù hợp với**: Mọi thị trường, đặc biệt Crypto (volatility cao).
+- **Philosophy**: Go against the crowd. When everyone is bullish → prepare for a reversal down. When everyone is bearish → buying opportunity.
+- **Classic quote**: "Be fearful when others are greedy, and greedy when others are fearful." — Warren Buffett.
+- **Entry signals**: Extreme sentiment, saturated media coverage, retail FOMO/panic, price-sentiment divergence.
+- **Pros**: Catches potential tops/bottoms, good risk/reward.
+- **Cons**: "The market can stay irrational longer than you can stay solvent." Timing is extremely difficult.
+- **Best suited for**: All markets, especially Crypto (high volatility).
 
 ### 4.3 Momentum Trading
 
-- **Triết lý**: "Trend is your friend." Tài sản đang tăng có xu hướng tiếp tục tăng, đang giảm tiếp tục giảm. Nhảy lên tàu đang chạy.
-- **Công cụ**:
-  - Relative Strength (so sánh hiệu suất giữa các tài sản)
+- **Philosophy**: "Trend is your friend." Rising assets tend to keep rising, falling assets tend to keep falling. Jump on the moving train.
+- **Tools**:
+  - Relative Strength (cross-asset performance comparison)
   - Rate of Change (ROC)
   - ADX (Average Directional Index)
   - Volume confirmation
   - 52-week high/low breakout
-- **Chiến lược**: Mua tài sản outperform, bán/short tài sản underperform. Rotate theo sector/industry mạnh.
-- **Ưu điểm**: Đi theo xu hướng — xác suất cao hơn, không cần dự đoán đỉnh/đáy.
-- **Nhược điểm**: Bị whipsaw khi trend kết thúc, drawdown lớn khi reversal.
-- **Phù hợp với**: Stocks (sector rotation), Crypto, Futures.
+- **Strategy**: Buy outperforming assets, sell/short underperforming assets. Rotate by strong sector/industry.
+- **Pros**: Follows trend — higher probability, no need to predict tops/bottoms.
+- **Cons**: Gets whipsawed when trends end, large drawdown on reversals.
+- **Best suited for**: Stocks (sector rotation), Crypto, Futures.
 
 ---
 
-## 5. Các Phương Pháp Kết Hợp Phổ Biến
+## 5. Popular Method Combinations
 
-Trong thực tế, trader chuyên nghiệp thường kết hợp nhiều trường phái. Dưới đây là các combo phổ biến:
+In practice, professional traders often combine multiple schools. Below are common combos:
 
-| Combo | Mô tả | Phù hợp |
+| Combo | Description | Best for |
 |---|---|---|
-| SMC + Price Action | Dùng SMC để xác định bias & vùng quan tâm, PA để xác nhận entry | Forex, Crypto |
-| Wyckoff + VSA | Framework Wyckoff cho big picture, VSA để confirm accumulation/distribution | Stocks, Futures |
-| Supply & Demand + Order Flow | S&D cho vùng quan tâm, Order Flow để xác nhận có volume thực | Futures, Crypto |
-| Elliott Wave + Fibonacci + Price Action | EW cho bias, Fib cho target, PA cho entry | Mọi thị trường |
-| Macro + Technical | Fundamental cho bias direction, Technical cho timing entry | Forex, Indices |
-| Momentum + Growth Investing | Chọn stock growth, timing entry bằng momentum | Stocks |
-| Algo + Statistical Arbitrage | Code hóa stat arb strategy, chạy tự động | Stocks, Crypto |
+| SMC + Price Action | Use SMC for bias & zones of interest, PA for entry confirmation | Forex, Crypto |
+| Wyckoff + VSA | Wyckoff framework for big picture, VSA to confirm accumulation/distribution | Stocks, Futures |
+| Supply & Demand + Order Flow | S&D for zones of interest, Order Flow to confirm real volume | Futures, Crypto |
+| Elliott Wave + Fibonacci + Price Action | EW for bias, Fib for targets, PA for entry | All markets |
+| Macro + Technical | Fundamental for bias direction, Technical for entry timing | Forex, Indices |
+| Momentum + Growth Investing | Pick growth stocks, time entry with momentum | Stocks |
+| Algo + Statistical Arbitrage | Code stat arb strategy, run automatically | Stocks, Crypto |
 | Sentiment + Contrarian + Technical | Sentiment extreme → Contrarian bias → Technical entry | Crypto, Stocks |
 
 ---
 
-## 6. Phân Loại Theo Timeframe
+## 6. Classification by Timeframe
 
-| Phong cách | Timeframe | Trường phái thường dùng |
+| Style | Timeframe | Common schools |
 |---|---|---|
-| **Scalping** | Tick → 5 phút | Order Flow, Price Action, HFT |
-| **Day Trading** | 5 phút → 1 giờ | SMC, Price Action, Indicator, Order Flow |
-| **Swing Trading** | 1 giờ → Daily | SMC, Elliott Wave, Supply & Demand, Harmonic |
+| **Scalping** | Tick → 5 min | Order Flow, Price Action, HFT |
+| **Day Trading** | 5 min → 1 hour | SMC, Price Action, Indicator, Order Flow |
+| **Swing Trading** | 1 hour → Daily | SMC, Elliott Wave, Supply & Demand, Harmonic |
 | **Position Trading** | Daily → Weekly | Wyckoff, Macro, Value Investing, Growth |
 | **Investing** | Monthly → Years | Value, Growth, Macro |
 
 ---
 
-## 7. Tài Nguyên Học Tập Theo Trường Phái
+## 7. Learning Resources by School
 
-| Trường phái | Sách / Khóa học gốc |
+| School | Core books / courses |
 |---|---|
 | Price Action | Al Brooks — "Trading Price Action" series; Nial Fuller blog |
-| SMC / ICT | ICT YouTube Channel (miễn phí), ICT Mentorship |
+| SMC / ICT | ICT YouTube Channel (free), ICT Mentorship |
 | VSA | Tom Williams — "Master the Markets" |
 | Wyckoff | Hank Pruden — "The Three Skills of Top Trading"; Wyckoff Analytics |
 | Elliott Wave | Robert Prechter — "Elliott Wave Principle" |
@@ -325,207 +325,207 @@ Trong thực tế, trader chuyên nghiệp thường kết hợp nhiều trườ
 
 ---
 
-## 8. Lưu Ý Quan Trọng Cho Agent
+## 8. Important Notes for the Agent
 
-1. **Không có trường phái nào là "tốt nhất"** — mỗi phương pháp có ưu/nhược điểm riêng và phù hợp với từng tính cách, vốn, và thời gian của trader.
-2. **Risk Management > Strategy** — Quản lý rủi ro (stop-loss, position sizing, risk/reward ratio) quan trọng hơn phương pháp phân tích.
-3. **Cảnh giác với bias**: Khi tư vấn, tránh thiên vị một trường phái. Luôn đề cập đến nhược điểm.
-4. **Backtest & Forward Test**: Bất kỳ chiến lược nào cũng cần được kiểm chứng trước khi dùng tiền thật.
-5. **Tâm lý trading**: Trading psychology (discipline, patience, emotional control) là yếu tố quyết định thành bại, không phải strategy.
-6. **Thị trường thay đổi**: Chiến lược hiệu quả trong giai đoạn trending có thể thất bại trong ranging, và ngược lại. Trader cần biết khi nào nên "ngồi ngoài".
+1. **No single school is "the best"** — each method has its own pros/cons and suits different trader personalities, capital, and time availability.
+2. **Risk Management > Strategy** — Risk management (stop-loss, position sizing, risk/reward ratio) is more important than analysis method.
+3. **Beware of bias**: When advising, avoid favoring one school. Always mention drawbacks.
+4. **Backtest & Forward Test**: Any strategy must be validated before using real money.
+5. **Trading psychology**: Discipline, patience, emotional control are the deciding factors of success, not the strategy itself.
+6. **Markets change**: A strategy that works in trending markets may fail in ranging conditions and vice versa. Traders must know when to stay out.
 
 ---
 
-## 9. Cách Các Trường Phái Phân Tích Kỹ Thuật Bổ Trợ Nhau
+## 9. How Technical Analysis Schools Complement Each Other
 
-### 9.1 Nguyên tắc cốt lõi: Mỗi trường phái trả lời một câu hỏi khác nhau
+### 9.1 Core principle: Each school answers a different question
 
-Các trường phái TA không đối lập hay thay thế nhau — chúng nhìn thị trường từ các góc độ khác nhau và xếp chồng lên nhau như các lớp lọc. Càng nhiều lớp xác nhận đồng thuận, xác suất thành công của trade càng cao.
+TA schools don't oppose or replace each other — they view the market from different angles and stack like filter layers. The more layers of confirmation that agree, the higher the trade's probability of success.
 
-| Lớp | Trường phái | Câu hỏi trả lời | Vai trò |
+| Layer | School | Question answered | Role |
 |---|---|---|---|
-| 1 — Bias | Wyckoff / SMC | "Tay to đang làm gì?" | Xác định hướng giao dịch (Long hay Short) |
-| 2 — Structure | Price Action | "Cấu trúc giá đang thế nào?" | Xác nhận hoặc phủ nhận bias |
-| 3 — Zone | Supply & Demand / Harmonic | "Vào lệnh ở đâu?" | Tìm điểm entry cụ thể |
-| 4 — Confirm | VSA / Order Flow | "Có volume xác nhận không?" | Lọc bỏ zone yếu, xác nhận zone mạnh |
-| 5 — Trigger | Indicator / Elliott Wave | "Timing & target?" | Trigger vào lệnh + mục tiêu chốt lời |
-| 6 — Context | Sentiment / Macro | "Bối cảnh thị trường ra sao?" | Gió thuận hay gió ngược |
+| 1 — Bias | Wyckoff / SMC | "What is smart money doing?" | Determine trade direction (Long or Short) |
+| 2 — Structure | Price Action | "What is the current price structure?" | Confirm or deny bias |
+| 3 — Zone | Supply & Demand / Harmonic | "Where to enter?" | Find specific entry point |
+| 4 — Confirm | VSA / Order Flow | "Is there volume confirmation?" | Filter weak zones, confirm strong zones |
+| 5 — Trigger | Indicator / Elliott Wave | "Timing & target?" | Trigger entry + take-profit target |
+| 6 — Context | Sentiment / Macro | "What is the market context?" | Tailwind or headwind |
 
-### 9.2 Quy trình ra quyết định theo lớp — Ví dụ thực tế BTC/USDT
+### 9.2 Layered decision process — BTC/USDT real example
 
-**Lớp 1 — Wyckoff / SMC: Xác định Bias**
+**Layer 1 — Wyckoff / SMC: Determine Bias**
 
-Nhìn vào Daily/4H chart để xác định giai đoạn thị trường:
-- Wyckoff: Đang ở Accumulation, Markup, Distribution, hay Markdown?
-- SMC: Có Liquidity Sweep vừa xảy ra không? Break of Structure (BOS) hay Change of Character (CHoCH)?
-- Kết luận: "Tôi nên Long hay Short?" — nếu chưa trả lời được, KHÔNG tiếp tục.
+Look at Daily/4H chart to identify market phase:
+- Wyckoff: Currently in Accumulation, Markup, Distribution, or Markdown?
+- SMC: Has a Liquidity Sweep just occurred? Break of Structure (BOS) or Change of Character (CHoCH)?
+- Conclusion: "Should I go Long or Short?" — if can't answer, DO NOT proceed.
 
-**Lớp 2 — Price Action: Xác nhận cấu trúc**
+**Layer 2 — Price Action: Confirm Structure**
 
-Sau khi có bias, đọc cấu trúc giá hiện tại:
-- Giá đang tạo Higher High / Higher Low (uptrend) hay Lower High / Lower Low (downtrend)?
-- Có mô hình nào đang hình thành (wedge, channel, flag)?
-- Nếu Wyckoff nói "accumulation" nhưng PA vẫn tạo Lower Low liên tục → chưa phải lúc vào.
+After establishing bias, read current price structure:
+- Is price making Higher High / Higher Low (uptrend) or Lower High / Lower Low (downtrend)?
+- Is any pattern forming (wedge, channel, flag)?
+- If Wyckoff says "accumulation" but PA still making consecutive Lower Lows → not time to enter.
 
-**Lớp 3 — Supply & Demand / Harmonic: Tìm điểm vào**
+**Layer 3 — Supply & Demand / Harmonic: Find Entry**
 
-Khi bias và structure đồng thuận, tìm entry cụ thể:
-- Supply & Demand: Demand zone (nếu Long) hoặc Supply zone (nếu Short) chưa được test.
-- Harmonic: PRZ (Potential Reversal Zone) tại tỷ lệ Fibonacci chính xác.
-- SMC: Order Block hoặc Fair Value Gap (FVG) gần nhất.
-- Tất cả trả lời: "đặt limit order ở mức giá nào?"
+When bias and structure agree, find specific entry:
+- Supply & Demand: Untested demand zone (if Long) or supply zone (if Short).
+- Harmonic: PRZ (Potential Reversal Zone) at precise Fibonacci ratios.
+- SMC: Nearest Order Block or Fair Value Gap (FVG).
+- All answer: "at what price to place limit order?"
 
-**Lớp 4 — VSA / Order Flow: Xác nhận bằng volume**
+**Layer 4 — VSA / Order Flow: Confirm with Volume**
 
-Khi giá chạm zone, kiểm tra volume:
-- VSA: Có Stopping Volume không (volume cao + spread hẹp + close giữa = có người mua mạnh)?
-- Order Flow / Footprint: Delta dương đột biến tại zone? Có absorption trên DOM?
-- Nếu giá chạm zone mà volume im ắng → zone yếu, nên skip.
+When price reaches zone, check volume:
+- VSA: Is there Stopping Volume (high volume + narrow spread + mid-close = strong buyer)?
+- Order Flow / Footprint: Sudden positive delta at zone? Absorption on DOM?
+- If price touches zone but volume is silent → weak zone, should skip.
 
-**Lớp 5 — Indicator / Elliott Wave: Timing & Target**
+**Layer 5 — Indicator / Elliott Wave: Timing & Target**
 
-Trigger vào lệnh chính xác:
-- RSI divergence tại demand zone, MACD cross, giá close trên EMA 21.
-- Elliott Wave: Nếu đang ở sóng 3, target = 161.8% extension sóng 1.
-- Fibonacci extension/projection cho take-profit levels.
+Precise entry trigger:
+- RSI divergence at demand zone, MACD cross, price closes above EMA 21.
+- Elliott Wave: If in wave 3, target = 161.8% extension of wave 1.
+- Fibonacci extension/projection for take-profit levels.
 
-**Lớp 6 — Sentiment / Macro: Bối cảnh**
+**Layer 6 — Sentiment / Macro: Context**
 
-Lớp bao trùm bên ngoài:
-- Funding rate âm (nhiều người Short) mà mình muốn Long → đi ngược đám đông = tốt.
-- Fear & Greed Index ở Extreme Fear → cơ hội mua.
-- Fed dovish → bullish cho risk assets.
-- Không cho tín hiệu cụ thể nhưng cho "gió thuận" hoặc "gió ngược".
+Overarching external layer:
+- Negative funding rate (many are Short) while wanting to Long → going against crowd = good.
+- Fear & Greed Index at Extreme Fear → buying opportunity.
+- Fed dovish → bullish for risk assets.
+- Doesn't give specific signals but provides "tailwind" or "headwind."
 
-### 9.3 Bản đồ DNA chung giữa các trường phái
+### 9.3 Shared DNA map across schools
 
-Hầu hết các trường phái TA đều có chung tổ tiên là Wyckoff và chia sẻ nhiều "DNA":
+Most TA schools share a common ancestor in Wyckoff and share significant "DNA":
 
-**Dòng chảy Wyckoff:**
-- Wyckoff (1930s) → VSA (Tom Williams) → Order Flow (hiện đại)
+**Wyckoff lineage:**
+- Wyckoff (1930s) → VSA (Tom Williams) → Order Flow (modern)
 - Wyckoff (1930s) → SMC / ICT (Michael Huddleston) → Supply & Demand
-- Cùng triết lý, khác thuật ngữ và công cụ.
+- Same philosophy, different terminology and tools.
 
-**Thuật ngữ tương đương giữa các trường phái:**
+**Equivalent terminology across schools:**
 
-| Hiện tượng thị trường | Wyckoff | SMC / ICT | Price Action | VSA |
+| Market phenomenon | Wyckoff | SMC / ICT | Price Action | VSA |
 |---|---|---|---|---|
-| Tay to gom hàng | Accumulation | Order Block | Support zone | Stopping Volume |
-| Tay to xả hàng | Distribution | Supply zone | Resistance zone | Climactic Action |
-| Bẫy giá đáy | Spring | Liquidity Sweep | False breakout | No Supply test |
-| Bẫy giá đỉnh | Upthrust | Liquidity Grab | Bull trap | Upthrust on high volume |
-| Xác nhận đảo chiều | Sign of Strength | Change of Character | Trend reversal | Effort vs Result |
-| Vùng giá quan trọng | Trading Range | Order Block / FVG | S/R level | High Volume Node |
+| Smart money buying | Accumulation | Order Block | Support zone | Stopping Volume |
+| Smart money selling | Distribution | Supply zone | Resistance zone | Climactic Action |
+| Bottom trap | Spring | Liquidity Sweep | False breakout | No Supply test |
+| Top trap | Upthrust | Liquidity Grab | Bull trap | Upthrust on high volume |
+| Reversal confirmation | Sign of Strength | Change of Character | Trend reversal | Effort vs Result |
+| Key price zone | Trading Range | Order Block / FVG | S/R level | High Volume Node |
 
-**Fibonacci — sợi chỉ đỏ xuyên suốt:**
-- Elliott Wave: đo chiều dài và retrace sóng.
-- Harmonic: xác định tỷ lệ XABCD.
-- SMC: chia Premium/Discount zone (Fib 50%), tìm OTE (Fib 62%-79%).
-- Supply & Demand: đo chiều sâu pullback vào zone.
-- Khi 3+ phương pháp dùng Fibonacci cùng chỉ vào một vùng giá → confluence cực mạnh.
+**Fibonacci — the common thread:**
+- Elliott Wave: measures wave length and retracement.
+- Harmonic: defines XABCD ratios.
+- SMC: divides Premium/Discount zone (Fib 50%), finds OTE (Fib 62%-79%).
+- Supply & Demand: measures pullback depth into zone.
+- When 3+ methods using Fibonacci all point to the same price zone → extremely strong confluence.
 
-### 9.4 Nguyên tắc Confluence (Hợp lưu)
+### 9.4 Confluence Principle
 
-Confluence là khi nhiều phương pháp phân tích độc lập cùng chỉ vào cùng một vùng giá hoặc cùng một hướng giao dịch. Đây là nền tảng của việc kết hợp trường phái.
+Confluence is when multiple independent analysis methods point to the same price zone or the same trade direction. This is the foundation of combining schools.
 
-**Hệ thống chấm điểm Confluence (gợi ý cho Agent):**
+**Confluence scoring system (suggestion for Agent):**
 
-| Số yếu tố confluence | Đánh giá | Hành động |
+| Confluence factors | Rating | Action |
 |---|---|---|
-| 1-2 yếu tố | Setup yếu (C-grade) | Skip hoặc size rất nhỏ (0.5% risk) |
-| 3-4 yếu tố | Setup trung bình (B-grade) | Vào lệnh với size tiêu chuẩn (1% risk) |
-| 5-6 yếu tố | Setup mạnh (A-grade) | Vào lệnh với size lớn hơn (1.5-2% risk) |
-| 7+ yếu tố | Setup xuất sắc (A+ grade) | Maximum conviction, có thể scale in |
+| 1-2 factors | Weak setup (C-grade) | Skip or very small size (0.5% risk) |
+| 3-4 factors | Average setup (B-grade) | Enter with standard size (1% risk) |
+| 5-6 factors | Strong setup (A-grade) | Enter with larger size (1.5-2% risk) |
+| 7+ factors | Excellent setup (A+ grade) | Maximum conviction, can scale in |
 
-**Ví dụ setup A+ trên BTC:**
-1. Wyckoff: Phase C — Spring vừa xảy ra (Liquidity Sweep đáy).
-2. Price Action: Bullish Engulfing tại vùng Spring.
-3. Supply & Demand: Đúng demand zone (Drop-Base-Rally) chưa test.
-4. VSA: Stopping Volume xuất hiện (volume cao + spread hẹp + close giữa).
-5. RSI: Divergence dương tại vùng oversold.
-6. Fibonacci: Giá retrace đúng 78.6% — trùng OTE zone của SMC.
-7. Funding rate: Đang âm mạnh (đám đông Short) → contrarian bullish.
+**A+ setup example on BTC:**
+1. Wyckoff: Phase C — Spring just occurred (bottom Liquidity Sweep).
+2. Price Action: Bullish Engulfing at Spring zone.
+3. Supply & Demand: At untested demand zone (Drop-Base-Rally).
+4. VSA: Stopping Volume appeared (high volume + narrow spread + mid-close).
+5. RSI: Positive divergence at oversold zone.
+6. Fibonacci: Price retraced exactly to 78.6% — coincides with SMC OTE zone.
+7. Funding rate: Strongly negative (crowd is Short) → contrarian bullish.
 
-### 9.5 Các Combo Kết Hợp Hiệu Quả Nhất (Chi Tiết)
+### 9.5 Most Effective Combinations (Detailed)
 
-**Combo 1: SMC + Price Action + Order Flow (Phổ biến nhất cho Crypto/Forex)**
-- SMC: Xác định bias qua market structure (BOS/CHoCH), tìm Order Block & FVG.
-- Price Action: Chờ confirmation candle (engulfing, pin bar) tại OB/FVG.
-- Order Flow: Xác nhận có volume thực đang vào tại vùng đó (delta, absorption).
-- Ưu điểm: Framework chặt chẽ, áp dụng được mọi timeframe.
-- Timeframe gợi ý: HTF bias (4H/Daily) → LTF entry (15m/5m).
+**Combo 1: SMC + Price Action + Order Flow (Most popular for Crypto/Forex)**
+- SMC: Determine bias via market structure (BOS/CHoCH), find Order Block & FVG.
+- Price Action: Wait for confirmation candle (engulfing, pin bar) at OB/FVG.
+- Order Flow: Confirm real volume entering the zone (delta, absorption).
+- Advantage: Tight framework, applicable across all timeframes.
+- Suggested timeframe: HTF bias (4H/Daily) → LTF entry (15m/5m).
 
-**Combo 2: Wyckoff + VSA + Supply & Demand (Classic, cho Stocks/Futures)**
-- Wyckoff: Xác định phase (Accumulation/Distribution) trên Weekly/Daily.
-- VSA: Confirm volume behavior tại các sự kiện Wyckoff (SC, Spring, SOS).
-- S&D: Xác định vùng entry cụ thể trong range.
-- Ưu điểm: Nền tảng lý thuyết vững nhất, logic chặt chẽ.
-- Timeframe gợi ý: Weekly bias → Daily zone → 4H entry.
+**Combo 2: Wyckoff + VSA + Supply & Demand (Classic, for Stocks/Futures)**
+- Wyckoff: Identify phase (Accumulation/Distribution) on Weekly/Daily.
+- VSA: Confirm volume behavior at Wyckoff events (SC, Spring, SOS).
+- S&D: Identify specific entry zone within the range.
+- Advantage: Strongest theoretical foundation, tight logic.
+- Suggested timeframe: Weekly bias → Daily zone → 4H entry.
 
-**Combo 3: Elliott Wave + Fibonacci + Harmonic (Cho swing/position trading)**
-- Elliott: Xác định vị trí trong chu kỳ sóng lớn → biết đang ở sóng mấy.
-- Fibonacci: Tìm target dựa trên extension/projection.
-- Harmonic: Tìm PRZ cho entry chính xác.
-- Ưu điểm: Cho target rất xa và cụ thể, R:R ratio thường cao.
-- Nhược điểm: Chủ quan trong đếm sóng, cần kiên nhẫn.
+**Combo 3: Elliott Wave + Fibonacci + Harmonic (For swing/position trading)**
+- Elliott: Identify position in the larger wave cycle → know which wave you're in.
+- Fibonacci: Find targets based on extension/projection.
+- Harmonic: Find PRZ for precise entry.
+- Advantage: Very distant and specific targets, typically high R:R ratio.
+- Disadvantage: Subjective wave counting, requires patience.
 
-**Combo 4: Indicator + Price Action + Sentiment (Cho người mới)**
-- Indicator: EMA/RSI/MACD cho tín hiệu cơ bản.
-- Price Action: Confirmation candle tại vùng indicator chỉ ra.
-- Sentiment: Fear & Greed, Funding rate cho context.
-- Ưu điểm: Dễ học, có tín hiệu rõ ràng, ít chủ quan.
-- Nhược điểm: Indicator lagging, miss nhiều cơ hội.
+**Combo 4: Indicator + Price Action + Sentiment (For beginners)**
+- Indicator: EMA/RSI/MACD for basic signals.
+- Price Action: Confirmation candle at indicator-identified zones.
+- Sentiment: Fear & Greed, Funding rate for context.
+- Advantage: Easy to learn, clear signals, less subjective.
+- Disadvantage: Indicators lag, misses many opportunities.
 
-### 9.6 Lưu ý khi kết hợp trường phái
+### 9.6 Notes on combining schools
 
-1. **Không dùng quá nhiều phương pháp cùng lúc**: 2-3 phương pháp chính + 1-2 bổ trợ là đủ. Quá nhiều dẫn đến "analysis paralysis" — phân tích mãi mà không dám vào lệnh.
-2. **Phân biệt "confirmation" và "redundancy"**: RSI + Stochastic + CCI cùng là momentum oscillator → đó là redundancy (thừa), không phải confirmation. Confirmation thực sự đến từ các góc nhìn KHÁC NHAU (giá + volume + sentiment).
-3. **Higher Timeframe luôn ưu tiên**: Khi HTF và LTF mâu thuẫn, tin HTF. Daily bias > 1H bias > 5m bias.
-4. **Không phải lúc nào cũng cần đủ confluence**: Trong trending market mạnh, 2-3 yếu tố là đủ. Trong ranging/choppy market, cần 5+ yếu tố.
-5. **Mỗi trader nên có "core method" + "supporting methods"**: Chọn 1 trường phái làm nền tảng (VD: SMC), sau đó bổ sung 1-2 phương pháp hỗ trợ (VD: Order Flow + Sentiment). Đừng cố master tất cả.
+1. **Don't use too many methods simultaneously**: 2-3 primary methods + 1-2 supporting is enough. Too many leads to "analysis paralysis" — analyzing endlessly without entering a trade.
+2. **Distinguish "confirmation" from "redundancy"**: RSI + Stochastic + CCI are all momentum oscillators → that's redundancy, not confirmation. Real confirmation comes from DIFFERENT perspectives (price + volume + sentiment).
+3. **Higher timeframe always takes priority**: When HTF and LTF conflict, trust HTF. Daily bias > 1H bias > 5m bias.
+4. **Not always necessary to have full confluence**: In strong trending markets, 2-3 factors suffice. In ranging/choppy markets, need 5+ factors.
+5. **Every trader should have a "core method" + "supporting methods"**: Choose 1 school as foundation (e.g., SMC), then add 1-2 supporting methods (e.g., Order Flow + Sentiment). Don't try to master everything.
 
 ---
 
-## 10. Algorithmic Trading — Chi Tiết Mở Rộng
+## 10. Algorithmic Trading — Extended Detail
 
-### 10.1 Định nghĩa
+### 10.1 Definition
 
-Algorithmic Trading (Algo Trading) là việc sử dụng chương trình máy tính để tự động thực thi giao dịch dựa trên bộ quy tắc đã định nghĩa trước. Loại bỏ cảm xúc, tăng tốc độ phản ứng, và cho phép chạy 24/7.
+Algorithmic Trading (Algo Trading) uses computer programs to automatically execute trades based on predefined rules. Eliminates emotion, increases reaction speed, and enables 24/7 operation.
 
-### 10.2 Pipeline phát triển Algo Trading
+### 10.2 Algo Trading Development Pipeline
 
 ```
-Research → Code Strategy → Backtest → Evaluate Metrics → Optimize (tránh overfitting)
+Research → Code Strategy → Backtest → Evaluate Metrics → Optimize (avoid overfitting)
     ↑                                                           |
-    |← Fail: quay lại Research ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←|
+    |← Fail: return to Research ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←|
                                                                 |
     Pass ↓
 Walk-Forward Test (Out-of-Sample) → Paper Trade → Live Trading → Monitor & Maintain
                                                                         |
-    ↑←←←←←←←←←←←← Liên tục cải tiến ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←|
+    ↑←←←←←←←←←←←← Continuous improvement ←←←←←←←←←←←←←←←←←←←←←←←←←←←|
 ```
 
-### 10.3 Các loại chiến lược Algo (xếp theo độ phức tạp)
+### 10.3 Algo Strategy Types (by complexity)
 
-**Cơ bản:**
-- **Trend Following**: MA crossover, Donchian/Keltner channel breakout. Hiệu quả trong trending, bị whipsaw trong sideway.
-- **Mean Reversion**: RSI extreme, Bollinger Band bounce, z-score reversion. Hiệu quả trong ranging, thất bại khi trend mạnh.
+**Basic:**
+- **Trend Following**: MA crossover, Donchian/Keltner channel breakout. Effective in trending markets, whipsawed in sideways.
+- **Mean Reversion**: RSI extreme, Bollinger Band bounce, z-score reversion. Effective in ranging markets, fails in strong trends.
 
-**Trung cấp:**
-- **Grid Trading**: Lưới lệnh mua/bán cách đều nhau, DCA tự động. Rủi ro: trend một chiều kéo dài.
+**Intermediate:**
+- **Grid Trading**: Evenly spaced buy/sell order grid, automatic DCA. Risk: prolonged one-directional trend.
 - **Momentum / Breakout**: Volume spike detection, range breakout, relative strength ranking.
-- **Arbitrage**: Cross-exchange (chênh lệch giá giữa sàn), triangular (3 cặp tiền), funding rate arb.
-- **Pairs / Stat Arb**: Long/Short cặp tài sản cointegrated khi spread lệch. Cần kiến thức thống kê.
+- **Arbitrage**: Cross-exchange (price differences between exchanges), triangular (3 currency pairs), funding rate arb.
+- **Pairs / Stat Arb**: Long/Short cointegrated asset pairs when spread deviates. Requires statistical knowledge.
 
-**Nâng cao:**
-- **Market Making**: Đặt bid/ask đồng thời, thu lợi từ spread. Rủi ro inventory khi giá di chuyển một chiều.
-- **Sentiment / NLP**: Phân tích news, social media, on-chain data bằng NLP để tạo tín hiệu.
-- **Machine Learning**: LSTM (time series), Random Forest (feature engineering), Reinforcement Learning (dynamic decision). Mạnh nhất nhưng dễ overfit nhất.
-- **Multi-Strategy Portfolio**: Ensemble nhiều strategy, regime detection để switch. Phức tạp nhất nhưng ổn định nhất.
-- **MEV / On-chain**: Sandwich attack, frontrunning, flash loan arbitrage. Đặc thù DeFi/blockchain.
-- **HFT**: Latency arbitrage, co-location. Chỉ dành cho institutional với hạ tầng phần cứng đặc biệt.
+**Advanced:**
+- **Market Making**: Place simultaneous bid/ask, profit from spread. Risk: inventory when price moves one direction.
+- **Sentiment / NLP**: Analyze news, social media, on-chain data with NLP to generate signals.
+- **Machine Learning**: LSTM (time series), Random Forest (feature engineering), Reinforcement Learning (dynamic decision). Most powerful but most prone to overfitting.
+- **Multi-Strategy Portfolio**: Ensemble multiple strategies, regime detection to switch. Most complex but most stable.
+- **MEV / On-chain**: Sandwich attack, frontrunning, flash loan arbitrage. DeFi/blockchain specific.
+- **HFT**: Latency arbitrage, co-location. Institutional only with specialized hardware infrastructure.
 
-### 10.4 Kiến trúc hệ thống Algo Trading
+### 10.4 Algo Trading System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -553,355 +553,355 @@ Walk-Forward Test (Out-of-Sample) → Paper Trade → Live Trading → Monitor &
 └─────────────────────────────────────────────────────────┘
 ```
 
-**Giải thích từng module:**
-- **Data Layer**: Thu thập real-time qua REST (OHLCV, account) + WebSocket (orderbook, trades stream). Normalize và lưu DB.
-- **Strategy Engine**: Não bộ — nhận data → tính signal → quyết định entry/exit. Phải viết để chạy được cả live và backtest (cùng code, khác data source).
-- **Risk Manager**: Bộ lọc cuối trước khi gửi lệnh. Kiểm tra position size, max allocation, drawdown threshold, correlation exposure.
-- **Execution Engine**: Gửi lệnh, chọn order type (market/limit), xử lý slippage, retry logic, nonce management.
+**Module explanations:**
+- **Data Layer**: Collects real-time data via REST (OHLCV, account) + WebSocket (orderbook, trades stream). Normalizes and stores to DB.
+- **Strategy Engine**: The brain — receives data → computes signals → decides entry/exit. Must be written to run both live and backtest (same code, different data source).
+- **Risk Manager**: Final filter before order submission. Checks position size, max allocation, drawdown threshold, correlation exposure.
+- **Execution Engine**: Sends orders, selects order type (market/limit), handles slippage, retry logic, nonce management.
 - **Monitoring**: PnL tracking, alert system, performance dashboard.
-- **Backtester**: Cùng strategy engine nhưng chạy trên dữ liệu lịch sử.
+- **Backtester**: Same strategy engine but runs on historical data.
 
-### 10.5 Metrics đánh giá quan trọng
+### 10.5 Key Evaluation Metrics
 
-| Metric | Công thức / Ý nghĩa | Target |
+| Metric | Formula / Meaning | Target |
 |---|---|---|
-| **Sharpe Ratio** | (Return - Risk-free) / Std Dev. Lợi nhuận trên mỗi đơn vị rủi ro. | > 1.5 (tốt), > 2.0 (rất tốt), > 3.0 (xuất sắc, nghi overfitting) |
-| **Max Drawdown** | Mức tụt vốn lớn nhất peak-to-trough. Metric tâm lý quan trọng nhất. | < 20% |
-| **Win Rate** | % lệnh thắng. Phải xem kèm Risk:Reward ratio. | Tùy R:R (40% win + 1:3 R:R vẫn profitable) |
+| **Sharpe Ratio** | (Return - Risk-free) / Std Dev. Return per unit of risk. | > 1.5 (good), > 2.0 (very good), > 3.0 (excellent, suspect overfitting) |
+| **Max Drawdown** | Largest peak-to-trough capital decline. Most important psychological metric. | < 20% |
+| **Win Rate** | % winning trades. Must be viewed alongside Risk:Reward ratio. | Depends on R:R (40% win + 1:3 R:R is still profitable) |
 | **Profit Factor** | Gross Profit / Gross Loss. | > 1.5 |
-| **Sortino Ratio** | Như Sharpe nhưng chỉ tính downside deviation. | > 2.0 |
-| **Expectancy** | (Win% × Avg Win) - (Loss% × Avg Loss). Trung bình $/trade. | Phải dương |
+| **Sortino Ratio** | Like Sharpe but only counts downside deviation. | > 2.0 |
+| **Expectancy** | (Win% × Avg Win) - (Loss% × Avg Loss). Average $/trade. | Must be positive |
 | **Calmar Ratio** | Annualized Return / Max Drawdown. | > 1.0 |
-| **Recovery Factor** | Net Profit / Max Drawdown. Khả năng phục hồi. | > 3.0 |
+| **Recovery Factor** | Net Profit / Max Drawdown. Recovery capability. | > 3.0 |
 
-### 10.6 Các bẫy chết người trong Algo Trading
+### 10.6 Fatal Traps in Algo Trading
 
-1. **Overfitting**: Bot tuyệt vời trên backtest, thua ngay khi live. Nguyên nhân: optimize quá nhiều parameter trên cùng dataset. Giải pháp: Walk-Forward Analysis, chia in-sample/out-of-sample, giữ số parameter tối thiểu, kiểm tra trên nhiều thị trường/timeframe.
+1. **Overfitting**: Bot performs beautifully in backtest, loses immediately when live. Cause: over-optimizing parameters on the same dataset. Solution: Walk-Forward Analysis, split in-sample/out-of-sample, minimize parameter count, test across multiple markets/timeframes.
 
-2. **Survivorship Bias**: Backtest trên danh sách coin/stock hiện tại (đã "sống sót"), quên những coin đã delist/chết. Kết quả backtest quá lạc quan.
+2. **Survivorship Bias**: Backtesting on current coin/stock list (those that "survived"), forgetting delisted/dead assets. Backtest results are overly optimistic.
 
-3. **Look-ahead Bias**: Vô tình dùng dữ liệu tương lai trong backtest. VD: dùng close price nến hiện tại để quyết định entry ngay lúc nến mở.
+3. **Look-ahead Bias**: Accidentally using future data in backtest. E.g., using current candle's close price to decide entry at candle open.
 
-4. **Slippage & Fees**: Backtest với fill price lý tưởng, bỏ qua slippage và phí. Maker/taker fee + funding rate ăn mòn lợi nhuận đáng kể với strategy tần suất cao.
+4. **Slippage & Fees**: Backtesting with ideal fill prices, ignoring slippage and fees. Maker/taker fees + funding rate significantly erode PnL in high-frequency strategies.
 
-5. **Regime Change**: Thị trường thay đổi tính chất. Strategy trending tốt trong bull nhưng bị "cưa nát" trong ranging. Giải pháp: regime detection (ADX, volatility filter) hoặc multi-strategy portfolio.
+5. **Regime Change**: Market character changes. Trending strategy works in bull but gets "chopped up" in ranging. Solution: regime detection (ADX, volatility filter) or multi-strategy portfolio.
 
-6. **Data Quality**: Dữ liệu lịch sử sai (missing candles, wrong OHLCV) dẫn đến backtest sai. Luôn validate data trước khi backtest.
+6. **Data Quality**: Incorrect historical data (missing candles, wrong OHLCV) leads to wrong backtest results. Always validate data before backtesting.
 
-7. **Curve Fitting**: Thêm filter/condition cho đến khi backtest "đẹp" — nhưng mỗi filter thêm vào là một giả định thêm có thể sai trong tương lai.
+7. **Curve Fitting**: Adding filters/conditions until backtest looks "beautiful" — but each added filter is another assumption that could be wrong in the future.
 
-### 10.7 Tech Stack gợi ý
+### 10.7 Suggested Tech Stack
 
-**Ngôn ngữ:**
+**Languages:**
 - Python: Backtest, research, ML (Backtrader, VectorBT, QuantConnect).
 - TypeScript/JavaScript: Execution bot, real-time processing.
-- Pine Script: Prototyping nhanh trên TradingView.
-- C++/Rust: HFT (không cần cho retail).
+- Pine Script: Quick prototyping on TradingView.
+- C++/Rust: HFT (not needed for retail).
 
-**Framework backtest:**
-- VectorBT: Nhanh nhất (vectorized), tốt cho research.
-- Backtrader: Linh hoạt nhất, event-driven, gần giống live trading.
-- QuantConnect: Cloud-based, multi-asset, có sẵn data.
-- Freqtrade: Open-source, tích hợp sẵn nhiều sàn crypto.
+**Backtest frameworks:**
+- VectorBT: Fastest (vectorized), great for research.
+- Backtrader: Most flexible, event-driven, closest to live trading.
+- QuantConnect: Cloud-based, multi-asset, built-in data.
+- Freqtrade: Open-source, built-in integration for many crypto exchanges.
 
 **Data:**
 - PostgreSQL / TimescaleDB: OHLCV time-series.
-- Redis: Cache real-time data, order state.
+- Redis: Real-time data cache, order state.
 - InfluxDB: Metrics & monitoring.
 
 **Execution:**
-- CCXT: Thư viện Python/JS hỗ trợ 100+ sàn crypto.
-- SDK chuyên biệt: `@nktkas/hyperliquid` (Hyperliquid), `python-binance`.
+- CCXT: Python/JS library supporting 100+ crypto exchanges.
+- Specialized SDKs: `@nktkas/hyperliquid` (Hyperliquid), `python-binance`.
 
 **Monitoring:**
 - Grafana + Prometheus: Metrics dashboard.
-- Custom dashboard: Tích hợp vào hệ thống hiện có.
+- Custom dashboard: Integrate into existing system.
 
 ---
 
-## 11. Tình Huống Xung Đột Giữa Các Trường Phái — Cách Xử Lý
+## 11. Conflict Situations Between Schools — Resolution Strategies
 
-Khi kết hợp nhiều trường phái, xung đột tín hiệu là không thể tránh khỏi. Dưới đây là 6 tình huống phổ biến nhất và cách giải quyết cho Agent tham khảo.
+When combining multiple schools, signal conflicts are inevitable. Below are the 6 most common situations and resolution strategies for Agent reference.
 
-### 11.1 RSI Oversold nhưng Trend vẫn giảm mạnh
+### 11.1 RSI Oversold but Trend Still Falling Strongly
 
-**Xung đột**: Indicator (RSI < 30 = oversold, "nên mua") vs Price Action / Trend Following (Lower Low liên tục, EMA dốc xuống, "trend vẫn giảm").
+**Conflict**: Indicator (RSI < 30 = oversold, "should buy") vs Price Action / Trend Following (consecutive Lower Lows, EMA sloping down, "trend is still bearish").
 
-**Bản chất**: RSI oversold trong downtrend mạnh là "tín hiệu giả" phổ biến nhất. RSI có thể duy trì dưới 30 suốt nhiều tuần trong trending market.
+**Root cause**: RSI oversold in a strong downtrend is the most common "false signal." RSI can remain below 30 for weeks in a trending market.
 
-**Giải pháp**: Nghe Price Action. Chỉ hành động khi có RSI **divergence** (giá tạo Lower Low nhưng RSI tạo Higher Low) VÀ Price Action cho candle đảo chiều (engulfing, pin bar). Không có divergence = không có trade.
+**Resolution**: Listen to Price Action. Only act when there is RSI **divergence** (price makes Lower Low but RSI makes Higher Low) AND Price Action shows a reversal candle (engulfing, pin bar). No divergence = no trade.
 
-**Bẫy**: Trader mới mua ngay khi RSI chạm 30, bị "cưa" liên tục. RSI chỉ đo momentum, không phải tín hiệu đảo chiều.
+**Trap**: New traders buy immediately when RSI hits 30, getting "chopped" repeatedly. RSI only measures momentum, it's not a reversal signal.
 
-**Quy tắc cho Agent**: Khi RSI oversold + downtrend → khuyên "chờ divergence + PA confirmation", không khuyên "mua vì oversold".
+**Agent rule**: When RSI oversold + downtrend → advise "wait for divergence + PA confirmation", do not advise "buy because oversold."
 
-### 11.2 Giá chạm Demand Zone nhưng Price Action không rejection
+### 11.2 Price Touches Demand Zone but Price Action Shows No Rejection
 
-**Xung đột**: Supply & Demand (demand zone đẹp, fresh, "nên mua") vs Price Action (nến đỏ liên tục, spread rộng, close sát đáy zone, "không có rejection").
+**Conflict**: Supply & Demand (beautiful, fresh demand zone, "should buy") vs Price Action (consecutive red candles, wide spread, close near zone bottom, "no rejection").
 
-**Bản chất**: Không phải demand zone nào cũng hold. Theo thống kê, chỉ khoảng 50-60% fresh zone có reaction đủ mạnh.
+**Root cause**: Not every demand zone holds. Statistically, only about 50-60% of fresh zones have a sufficiently strong reaction.
 
-**Giải pháp**: Có 2 cách tiếp cận:
-- **Aggressive**: Đặt limit order tại zone, stop dưới zone, chấp nhận rủi ro cao.
-- **Conservative** (khuyến nghị): Chờ PA confirmation (pin bar, engulfing) tại zone rồi mới vào. Nếu giá close dưới zone với spread rộng + volume cao → zone đã bị phá, hủy kịch bản.
+**Resolution**: Two approaches:
+- **Aggressive**: Place limit order at zone, stop below zone, accept higher risk.
+- **Conservative** (recommended): Wait for PA confirmation (pin bar, engulfing) at zone before entering. If price closes below zone with wide spread + high volume → zone is broken, cancel the scenario.
 
-**Bẫy**: Đặt limit order "blind" tại mọi demand zone mà không chờ confirmation.
+**Trap**: Placing "blind" limit orders at every demand zone without waiting for confirmation.
 
-**Quy tắc cho Agent**: Luôn khuyên kiểm tra PA confirmation tại zone trước khi vào lệnh. Zone chỉ là "vùng quan tâm", không phải "vùng chắc chắn bật".
+**Agent rule**: Always advise checking PA confirmation at zone before entering. A zone is only an "area of interest," not a "guaranteed bounce point."
 
-### 11.3 Elliott Wave đếm sóng 5 (sắp đảo chiều) nhưng SMC vẫn bullish BOS liên tục
+### 11.3 Elliott Wave Counts Wave 5 (Reversal Coming) but SMC Still Shows Bullish BOS
 
-**Xung đột**: Elliott Wave (sóng 5 gần kết thúc, "chuẩn bị Short") vs SMC (Higher High liên tục, bullish BOS, chưa CHoCH, "vẫn bullish").
+**Conflict**: Elliott Wave (wave 5 nearing completion, "prepare to Short") vs SMC (consecutive Higher Highs, bullish BOS, no CHoCH yet, "still bullish").
 
-**Bản chất**: Elliott Wave dự đoán trước (leading), SMC xác nhận sau (lagging nhưng chắc chắn hơn). Sóng 5 có thể extend rất xa (161.8%, thậm chí 261.8%).
+**Root cause**: Elliott Wave predicts ahead (leading), SMC confirms after (lagging but more reliable). Wave 5 can extend very far (161.8%, even 261.8%).
 
-**Giải pháp**: Nghe SMC cho hành động, dùng Elliott cho cảnh giác:
-1. Không Short cho đến khi CHoCH bearish xuất hiện trên SMC.
-2. Giảm size Long mới khi EW nói gần cuối sóng 5.
-3. Thắt chặt trailing stop trên position Long đang có.
-4. Khi CHoCH bearish xuất hiện → EW và SMC đồng thuận: đó là điểm bắt đầu sóng A correction → Short.
+**Resolution**: Listen to SMC for action, use Elliott for awareness:
+1. Don't Short until bearish CHoCH appears on SMC.
+2. Reduce new Long size when EW says near end of wave 5.
+3. Tighten trailing stop on existing Long positions.
+4. When bearish CHoCH appears → EW and SMC agree: that's the start of wave A correction → Short.
 
-**Công thức**: EW = "chuẩn bị", SMC CHoCH = "hành động".
+**Formula**: EW = "prepare", SMC CHoCH = "act."
 
-**Bẫy**: Short "đoán đỉnh" vì EW nói sóng 5 sắp xong. 10 người đếm sóng, 10 cách đếm khác nhau.
+**Trap**: Shorting to "call the top" because EW says wave 5 is almost done. 10 people counting waves, 10 different counts.
 
-**Quy tắc cho Agent**: Không bao giờ khuyên Short chỉ dựa trên wave count. Luôn yêu cầu CHoCH hoặc tín hiệu structure trước.
+**Agent rule**: Never advise Shorting based solely on wave count. Always require CHoCH or structure signal first.
 
-### 11.4 Giá Breakout lên nhưng Volume không tăng (VSA bearish divergence)
+### 11.4 Price Breaks Out but Volume Doesn't Increase (VSA Bearish Divergence)
 
-**Xung đột**: Price Action (breakout đẹp, close mạnh trên resistance) vs VSA / Order Flow (volume giảm hoặc bình thường, delta không ấn tượng).
+**Conflict**: Price Action (clean breakout, strong close above resistance) vs VSA / Order Flow (volume declining or flat, delta unimpressive).
 
-**Bản chất**: Quy luật Effort vs Result (Wyckoff): Giá phá lên (Result) nhưng volume không tăng (Effort thiếu) → mất cân bằng → breakout có thể không bền vững. Có thể là Upthrust / Bull Trap.
+**Root cause**: Effort vs Result law (Wyckoff): Price breaks up (Result) but volume doesn't increase (insufficient Effort) → imbalance → breakout may not be sustainable. Could be an Upthrust / Bull Trap.
 
-**Giải pháp**: Nghe VSA/Order Flow — volume là "sự thật", price có thể bị "diễn". Có 3 kịch bản sau breakout không volume:
-1. **Upthrust / Bull trap**: Giá sẽ quay về range, thậm chí giảm mạnh. Không mua.
-2. **Low-volume breakout thành công**: Hiếm nhưng có thể xảy ra. Chờ retest + volume tăng.
-3. **Volume đến sau**: Đôi khi breakout real nhưng volume trễ 1-2 nến.
+**Resolution**: Listen to VSA/Order Flow — volume is "truth," price can be "manipulated." Three scenarios after a no-volume breakout:
+1. **Upthrust / Bull trap**: Price will return to range, possibly drop sharply. Don't buy.
+2. **Low-volume breakout success**: Rare but possible. Wait for retest + volume increase.
+3. **Volume arrives late**: Sometimes a real breakout but volume lags 1-2 candles.
 
-**Cách an toàn**: Chờ nến tiếp theo. Nến sau breakout có volume tăng + close strong → breakout real. Nến sau yếu / doji / volume giảm → likely fake breakout.
+**Safe approach**: Wait for the next candle. If next candle after breakout has increasing volume + strong close → real breakout. If next candle is weak / doji / volume declining → likely fake breakout.
 
-**Bẫy**: FOMO mua ngay khi thấy breakout mà không kiểm tra volume. Đây là nguyên nhân phổ biến nhất của "buy high, sell low".
+**Trap**: FOMO buying immediately on breakout without checking volume. This is the most common cause of "buy high, sell low."
 
-**Quy tắc cho Agent**: Luôn kiểm tra volume khi phân tích breakout. Breakout + volume thấp = cảnh báo đỏ.
+**Agent rule**: Always check volume when analyzing breakouts. Breakout + low volume = red flag.
 
-### 11.5 HTF Bullish (Daily uptrend) nhưng LTF Bearish (1H bearish CHoCH)
+### 11.5 HTF Bullish (Daily Uptrend) but LTF Bearish (1H Bearish CHoCH)
 
-**Xung đột**: Daily chart (uptrend, Higher High / Higher Low, giá trên EMA 200) vs 1H chart (bearish CHoCH, Break of Structure giảm, supply zone mới).
+**Conflict**: Daily chart (uptrend, Higher High / Higher Low, price above EMA 200) vs 1H chart (bearish CHoCH, bearish Break of Structure, new supply zone).
 
-**Bản chất**: Hai timeframe nhìn hai giai đoạn khác nhau. LTF bearish trong HTF bullish thường chỉ là pullback/correction.
+**Root cause**: Two timeframes see two different phases. LTF bearish within HTF bullish is usually just a pullback/correction.
 
-**Giải pháp**: Tùy phong cách trading:
-- **Swing trader**: Nghe Daily. CHoCH trên 1H chỉ là pullback. Chờ giá về demand zone Daily → tìm bullish CHoCH mới trên 1H → Long.
-- **Day trader**: Có thể Short theo LTF, nhưng: target ngắn (chỉ đến demand zone HTF gần nhất), size nhỏ hơn (counter-trend), stop chặt.
-- **Không chắc chắn**: Ngồi ngoài. Khi HTF và LTF mâu thuẫn mà không resolve được → thị trường chưa rõ ràng.
+**Resolution**: Depends on trading style:
+- **Swing trader**: Listen to Daily. CHoCH on 1H is just a pullback. Wait for price to reach Daily demand zone → find new bullish CHoCH on 1H → Long.
+- **Day trader**: Can Short following LTF, but: short target (only to nearest HTF demand zone), smaller size (counter-trend), tight stop.
+- **Uncertain**: Stay out. When HTF and LTF conflict and can't be resolved → market is unclear.
 
-**Quy tắc vàng**: HTF bias > LTF bias. Daily bearish + 1H bullish → chỉ Long với size nhỏ, target ngắn. Daily bullish + 1H bearish → 1H chỉ đang pullback.
+**Golden rule**: HTF bias > LTF bias. Daily bearish + 1H bullish → only Long with small size, short target. Daily bullish + 1H bearish → 1H is just pulling back.
 
-**Bẫy**: Short counter-trend với full size vì "LTF đã bearish". Bearish CHoCH trên 1H trong uptrend Daily thường bị invalidate nhanh khi giá chạm demand zone Daily.
+**Trap**: Shorting counter-trend with full size because "LTF has gone bearish." Bearish CHoCH on 1H in a Daily uptrend is often quickly invalidated when price hits Daily demand zone.
 
-**Quy tắc cho Agent**: Luôn hỏi trader đang dùng timeframe nào trước khi tư vấn. Counter-trend trade phải luôn nhỏ size và chốt lời sớm.
+**Agent rule**: Always ask which timeframe the trader uses before advising. Counter-trend trades must always be smaller size with early profit-taking.
 
-### 11.6 Sentiment Extreme Fear nhưng Chart vẫn Downtrend
+### 11.6 Extreme Fear Sentiment but Chart Still in Downtrend
 
-**Xung đột**: Sentiment / Contrarian (Fear & Greed < 15 = Extreme Fear, funding rate âm sâu, "nên mua") vs Technical Analysis (Lower Low, bearish BOS, chưa Spring/CHoCH, "chart vẫn bearish").
+**Conflict**: Sentiment / Contrarian (Fear & Greed < 15 = Extreme Fear, deeply negative funding rate, "should buy") vs Technical Analysis (Lower Low, bearish BOS, no Spring/CHoCH, "chart is still bearish").
 
-**Bản chất**: Sentiment cho biết "thị trường gần đáy" (vùng), TA cho timing chính xác (điểm). Extreme Fear có thể kéo dài hàng tháng (VD: Crypto winter 2022 — Fear index < 20 suốt 6 tháng).
+**Root cause**: Sentiment indicates "market is near bottom" (zone), TA provides precise timing (point). Extreme Fear can persist for months (e.g., Crypto winter 2022 — Fear index < 20 for 6 months).
 
-**Giải pháp**: Phân biệt "invest" vs "trade":
-- **Nếu INVEST** (dài hạn, spot, không leverage): Sentiment đúng. Extreme Fear là vùng DCA tốt nhất lịch sử. Không cần timing hoàn hảo, mua dần theo % vốn cố định.
-- **Nếu TRADE** (ngắn hạn, leverage, futures): Nghe TA. Không Long leverage khi chart bearish, dù sentiment cực đoan. Chờ Wyckoff Spring + SMC CHoCH + PA confirmation → rồi mới Long.
+**Resolution**: Distinguish "invest" vs "trade":
+- **If INVESTING** (long-term, spot, no leverage): Sentiment is correct. Extreme Fear is historically the best DCA zone. No need for perfect timing, buy gradually with fixed capital %.
+- **If TRADING** (short-term, leverage, futures): Listen to TA. Don't Long with leverage when chart is bearish, even with extreme sentiment. Wait for Wyckoff Spring + SMC CHoCH + PA confirmation → then Long.
 
-**Công thức**: Sentiment = "chuẩn bị đạn" (allocate vốn, lên watchlist). TA = "bóp cò" (timing entry cụ thể).
+**Formula**: Sentiment = "prepare ammunition" (allocate capital, build watchlist). TA = "pull the trigger" (specific entry timing).
 
-**Bẫy**: "Bắt dao rơi" bằng leverage vì "Fear & Greed nói quá sợ rồi". Sentiment cho vùng, không cho điểm.
+**Trap**: "Catching a falling knife" with leverage because "Fear & Greed says too scared." Sentiment provides zones, not points.
 
-**Quy tắc cho Agent**: Luôn hỏi trader đang "invest" hay "trade" trước khi tư vấn về sentiment. Nếu trade với leverage → yêu cầu TA confirmation bắt buộc.
+**Agent rule**: Always ask if the trader is "investing" or "trading" before advising on sentiment. If trading with leverage → require mandatory TA confirmation.
 
-### 11.7 Quy Tắc Ưu Tiên Tổng Quát Khi Xung Đột
+### 11.7 General Priority Rules for Conflicts
 
-Dưới đây là bộ quy tắc để Agent xử lý khi các trường phái cho tín hiệu mâu thuẫn:
+Below are rules for the Agent to handle conflicting signals between schools:
 
-**Thứ tự ưu tiên tín hiệu:**
+**Signal priority order:**
 
-| Ưu tiên | Loại tín hiệu | Vai trò | Ví dụ |
+| Priority | Signal type | Role | Example |
 |---|---|---|---|
-| 1 (Cao nhất) | Market Structure | Sự thật khách quan | BOS, CHoCH, Higher High/Lower Low |
-| 2 | Volume / Order Flow | Xác nhận ý đồ | VSA, Delta, Footprint |
-| 3 | Price Action | Confirmation tại zone | Pin bar, Engulfing, Inside Bar |
-| 4 | Indicator | Bổ trợ timing | RSI, MACD, EMA |
-| 5 | Elliott Wave / Harmonic | Dự đoán target | Wave count, PRZ |
-| 6 (Thấp nhất) | Sentiment | Context lớn | Fear & Greed, Funding rate |
+| 1 (Highest) | Market Structure | Objective fact | BOS, CHoCH, Higher High/Lower Low |
+| 2 | Volume / Order Flow | Confirms intent | VSA, Delta, Footprint |
+| 3 | Price Action | Confirmation at zone | Pin bar, Engulfing, Inside Bar |
+| 4 | Indicator | Supplementary timing | RSI, MACD, EMA |
+| 5 | Elliott Wave / Harmonic | Predicts targets | Wave count, PRZ |
+| 6 (Lowest) | Sentiment | Broad context | Fear & Greed, Funding rate |
 
-**5 quy tắc xử lý xung đột:**
+**5 conflict resolution rules:**
 
-1. **Structure > Indicator > Sentiment**: Price Action và Market Structure (BOS, CHoCH) luôn là "vua". Indicator là công cụ bổ trợ. Sentiment cho context, không cho trigger.
+1. **Structure > Indicator > Sentiment**: Price Action and Market Structure (BOS, CHoCH) are always "king." Indicators are supplementary tools. Sentiment provides context, not triggers.
 
-2. **Timeframe cao hơn thắng timeframe thấp hơn**: Daily bias > 4H bias > 1H bias > 15m bias. Khi HTF và LTF mâu thuẫn, tin HTF.
+2. **Higher timeframe beats lower timeframe**: Daily bias > 4H bias > 1H bias > 15m bias. When HTF and LTF conflict, trust HTF.
 
-3. **Volume xác nhận giá, không phải ngược lại**: Breakout mà không có volume → nghi ngờ. Volume tăng mà giá không đi → chuẩn bị explosive move. "Price is what happened, volume is why it happened."
+3. **Volume confirms price, not the other way around**: Breakout without volume → suspect. Volume increases but price doesn't move → preparing for explosive move. "Price is what happened, volume is why it happened."
 
-4. **Khi mâu thuẫn không resolve được → hạ size hoặc ngồi ngoài**: Không bắt buộc phải trade mọi lúc. Khi 2+ framework xung đột → tín hiệu "thị trường chưa rõ ràng". Giảm size 50% hoặc skip.
+4. **When conflict can't be resolved → reduce size or stay out**: Not required to trade at all times. When 2+ frameworks conflict → signal is "market is unclear." Reduce size 50% or skip.
 
-5. **Phân biệt "dự đoán" (leading) vs "xác nhận" (lagging)**: Elliott Wave, Sentiment, Harmonic → dự đoán trước. SMC CHoCH, PA confirmation, VSA → xác nhận sau. Dùng leading để "chuẩn bị", dùng lagging để "hành động".
+5. **Distinguish "prediction" (leading) vs "confirmation" (lagging)**: Elliott Wave, Sentiment, Harmonic → predict ahead. SMC CHoCH, PA confirmation, VSA → confirm after. Use leading to "prepare," use lagging to "act."
 
 ---
 
-## 12. Risk Management & Stop Loss — Khi Zone Cách Xa Giá Hiện Tại
+## 12. Risk Management & Stop Loss — When Zone Is Far from Current Price
 
-### 12.1 Nguyên tắc nền tảng
+### 12.1 Foundational Principle
 
-Stop loss KHÔNG có con số cố định (không phải "luôn đặt 2%"). Stop phải đặt ở nơi mà nếu giá chạm tới → kịch bản của trader SAI. Câu hỏi đúng không phải "stop bao nhiêu %" mà là "stop ở đâu thì trade không còn hợp lệ, và position size bao nhiêu để risk dollar chấp nhận được."
+Stop loss has NO fixed number (not "always set 2%"). Stop must be placed where, if price reaches it → the trader's scenario is WRONG. The right question isn't "what % for stop" but "where does the trade become invalid, and what position size keeps dollar risk acceptable."
 
-**Công thức vàng (bất biến):**
+**Golden formula (invariant):**
 
 ```
 Position Size = (Account × Risk%) / Stop Distance%
 
-Ví dụ: Account $10,000, Risk 1% = $100 max loss
-  Zone cách 2%  → Size = $100/2% = $5,000 (0.50x leverage)
-  Zone cách 5%  → Size = $100/5% = $2,000 (0.20x leverage)
-  Zone cách 10% → Size = $100/10% = $1,000 (0.10x leverage)
+Example: Account $10,000, Risk 1% = $100 max loss
+  Zone 2% away  → Size = $100/2% = $5,000 (0.50x leverage)
+  Zone 5% away  → Size = $100/5% = $2,000 (0.20x leverage)
+  Zone 10% away → Size = $100/10% = $1,000 (0.10x leverage)
 ```
 
-Khi zone xa → stop rộng → position size TỰ ĐỘNG giảm để giữ risk dollar không đổi. Không bao giờ di chuyển stop gần hơn để "vừa size" — đó là cách cháy tài khoản nhanh nhất.
+When zone is far → wider stop → position size AUTOMATICALLY reduces to keep dollar risk constant. Never move stop closer to "fit the size" — that's the fastest way to blow an account.
 
-### 12.2 Bốn phương pháp đặt stop khi zone xa
+### 12.2 Four Stop Methods When Zone Is Far
 
-#### Phương pháp 1: Structure-based stop (Mặc định — dùng cho hầu hết mọi trade)
+#### Method 1: Structure-based stop (Default — use for most trades)
 
-Stop đặt tại điểm invalidate kịch bản theo từng trường phái:
+Stop placed at scenario invalidation point per each school:
 
-| Trường phái | Vị trí stop | Logic invalidation |
+| School | Stop placement | Invalidation logic |
 |---|---|---|
-| SMC — Order Block | Dưới đáy OB + buffer | Giá phá qua OB → OB fail → kịch bản sai |
-| Supply & Demand | Dưới đáy demand zone + 0.5-1 ATR buffer | Zone bị phá → mất cân bằng cung cầu không còn |
-| Wyckoff — Spring | Dưới đáy Spring | Giá phá dưới Spring → đó không phải Spring thật |
-| Harmonic — PRZ | Dưới đáy PRZ | Extension vượt quá PRZ → pattern fail |
+| SMC — Order Block | Below OB bottom + buffer | Price breaks through OB → OB failed → scenario wrong |
+| Supply & Demand | Below demand zone bottom + 0.5-1 ATR buffer | Zone broken → supply-demand imbalance no longer exists |
+| Wyckoff — Spring | Below Spring bottom | Price breaks below Spring → that wasn't a real Spring |
+| Harmonic — PRZ | Below PRZ bottom | Extension beyond PRZ → pattern failed |
 
-**Buffer quan trọng**: Thêm 0.5-1 ATR dưới zone/structure level. Market maker thường quét vài tick dưới zone rồi bật lên (wick hunt / stop hunt). Buffer giúp tránh bị quét bởi wick giả.
+**Buffer is critical**: Add 0.5-1 ATR below zone/structure level. Market makers often sweep a few ticks below the zone before bouncing (wick hunt / stop hunt). Buffer helps avoid being swept by fake wicks.
 
-**Khi zone xa, position size tự giảm** — đây là cơ chế tự bảo vệ. Size nhỏ + đúng hướng vẫn profitable. Không bao giờ tăng % risk để giữ size lớn khi zone xa.
+**When zone is far, position size auto-reduces** — this is the self-protection mechanism. Small size + right direction is still profitable. Never increase risk % to maintain large size when zone is far.
 
-#### Phương pháp 2: ATR-based stop (Khi không có zone rõ ràng)
+#### Method 2: ATR-based stop (When no clear zone exists)
 
-ATR (Average True Range) đo biên độ trung bình của nến trong N kỳ. Stop dựa trên ATR tự động co giãn theo volatility — market calm thì stop chặt, market volatile thì stop rộng.
+ATR (Average True Range) measures average candle range over N periods. ATR-based stop automatically expands/contracts with volatility — calm market means tighter stop, volatile market means wider stop.
 
-**Công thức:**
+**Formula:**
 
 ```
 Stop = Entry - (ATR(14) × Multiplier)
 
-Multiplier phổ biến:
-  1.0x ATR → Chặt (scalping, day trade)
-  1.5x ATR → Chuẩn (swing trade) — KHUYẾN NGHỊ MẶC ĐỊNH
-  2.0x ATR → Rộng (position trade)
-  2.5-3.0x ATR → Rất rộng (crypto volatile, weekly chart)
+Common multipliers:
+  1.0x ATR → Tight (scalping, day trade)
+  1.5x ATR → Standard (swing trade) — RECOMMENDED DEFAULT
+  2.0x ATR → Wide (position trade)
+  2.5-3.0x ATR → Very wide (volatile crypto, weekly chart)
 ```
 
-**Ví dụ BTC trên Hyperliquid:**
+**BTC example on Hyperliquid:**
 ```
-BTC giá $65,000. ATR(14) trên 4H = $1,200. Swing trade dùng 1.5x ATR:
+BTC price $65,000. ATR(14) on 4H = $1,200. Swing trade using 1.5x ATR:
   Stop = $65,000 - ($1,200 × 1.5) = $63,200
   Stop distance = $1,800 = 2.77%
   Risk $100 → Size = $100/$1,800 = 0.0556 BTC = $3,611
 ```
 
-**Kết hợp ATR + Structure (cách tốt nhất):** Đặt stop tại structure level + thêm buffer bằng ATR. VD: đáy demand zone ở $63,500, ATR buffer = $400 → Stop = $63,100. Vừa có logic invalidation, vừa có buffer chống wick hunt.
+**Combining ATR + Structure (best approach):** Place stop at structure level + add ATR buffer. E.g., demand zone bottom at $63,500, ATR buffer = $400 → Stop = $63,100. Has both invalidation logic and wick-hunt buffer.
 
-**Khi nào dùng ATR thuần:** Không có demand zone rõ ràng gần đó. Trade breakout/momentum (không dựa trên zone). Scalping trên LTF (1m-5m) nơi zone không có ý nghĩa.
+**When to use pure ATR:** No clear demand zone nearby. Breakout/momentum trade (not zone-based). Scalping on LTF (1m-5m) where zones aren't meaningful.
 
-#### Phương pháp 3: Partial entry / Scale-in (Khi zone xa nhưng setup quá đẹp để bỏ qua)
+#### Method 3: Partial entry / Scale-in (When zone is far but setup is too good to skip)
 
-Thay vì vào 1 lệnh full size với stop rộng, chia thành 2-3 entries:
+Instead of one full-size entry with wide stop, split into 2-3 entries:
 
 ```
-Tổng risk cho trade: 1% ($100)
+Total trade risk: 1% ($100)
 
 Entry 1 (40% risk = $40):
-  Vào tại giá hiện tại
-  Stop = ATR-based (chặt hơn)
-  Mục đích: test hướng đi, "pilot position"
+  Enter at current price
+  Stop = ATR-based (tighter)
+  Purpose: test direction, "pilot position"
 
 Entry 2 (60% risk = $60):
-  Vào khi giá pullback về gần zone hơn
-  Stop = structure-based (dưới zone)
-  Mục đích: entry giá tốt hơn, stop chặt hơn
+  Enter when price pulls back closer to zone
+  Stop = structure-based (below zone)
+  Purpose: better entry price, tighter stop
 ```
 
 **Logic:**
-- Nếu Entry 1 hit stop → Entry 2 có thể không cần vào nữa (bias bị invalidate). Tổng loss chỉ $40 thay vì $100.
-- Nếu Entry 1 profit → trailing stop Entry 1 + vào Entry 2 tại pullback → average entry tốt hơn, tổng size lớn hơn.
+- If Entry 1 hits stop → Entry 2 may not need to be placed (bias invalidated). Total loss is only $40 instead of $100.
+- If Entry 1 profits → trail stop on Entry 1 + enter Entry 2 at pullback → better average entry, larger total size.
 
-**Khi nào dùng partial entry:**
-- Zone cách 4-8% nhưng setup có confluence mạnh (5+ yếu tố).
-- Đang trong trending market (pullback likely).
-- Tin bias đúng nhưng muốn entry giá tốt hơn.
+**When to use partial entry:**
+- Zone is 4-8% away but setup has strong confluence (5+ factors).
+- In a trending market (pullback likely).
+- Confident in bias but want better entry price.
 
-#### Phương pháp 4: Skip trade + Alert (Khi R:R không xứng đáng)
+#### Method 4: Skip trade + Alert (When R:R isn't worthwhile)
 
-Biết khi nào KHÔNG nên vào là kỹ năng khó nhất trong trading.
+Knowing when NOT to enter is the hardest skill in trading.
 
-**Nên skip khi thỏa BẤT KỲ điều kiện nào:**
-- R:R < 1.5 — Stop rộng hơn potential profit.
-- Stop > 3x ATR — Quá rộng so với biên độ bình thường.
-- Position size < 0.1x account — Size quá nhỏ, profit không đáng kể.
-- Zone cách > 10% — Size quá nhỏ để có ý nghĩa trên hầu hết account size.
+**Skip when ANY of these conditions are met:**
+- R:R < 1.5 — Stop is wider than potential profit.
+- Stop > 3x ATR — Too wide relative to normal range.
+- Position size < 0.1x account — Size too small, profit is negligible.
+- Zone distance > 10% — Size too small to be meaningful for most account sizes.
 
-**Thay vì skip hoàn toàn — đặt alert:** Alert tại 60-70% khoảng cách đến zone. Khi giá pullback → zone gần hơn → stop chặt hơn → size lớn hơn → R:R tốt hơn. Kiên nhẫn chờ giá đến với mình, không đuổi theo giá.
+**Instead of skipping entirely — set an alert:** Alert at 60-70% of the distance to zone. When price pulls back → zone is closer → tighter stop → larger size → better R:R. Be patient and let price come to you, don't chase price.
 
-### 12.3 Bảng tham chiếu nhanh theo khoảng cách zone
+### 12.3 Quick Reference Table by Zone Distance
 
-| Zone distance | Đánh giá | Hành động | Stop method | R:R tối thiểu |
+| Zone distance | Assessment | Action | Stop method | Min R:R |
 |---|---|---|---|---|
-| < 2% | Lý tưởng | Full size, vào ngay | Structure + 0.5 ATR buffer | >= 1.5 |
-| 2-3% | Tốt | Size chuẩn (công thức tự giảm) | Structure + 0.5 ATR buffer | >= 1.5 |
-| 3-5% | Hơi xa | Giảm size hoặc partial entry | Structure hoặc ATR 1.5x | >= 2.0 |
-| 5-8% | Xa | Partial entry hoặc chờ pullback | ATR 2.0x hoặc chờ giá gần zone | >= 2.5 |
-| 8-10% | Rất xa | Chỉ setup A+ (7+ confluence). Hoặc skip | ATR 2.5x, size rất nhỏ | >= 3.0 |
-| > 10% | Quá xa | Skip. Đặt alert chờ pullback | Không vào lệnh | N/A |
+| < 2% | Ideal | Full size, enter immediately | Structure + 0.5 ATR buffer | >= 1.5 |
+| 2-3% | Good | Standard size (formula auto-reduces) | Structure + 0.5 ATR buffer | >= 1.5 |
+| 3-5% | Somewhat far | Reduce size or partial entry | Structure or ATR 1.5x | >= 2.0 |
+| 5-8% | Far | Partial entry or wait for pullback | ATR 2.0x or wait for price near zone | >= 2.5 |
+| 8-10% | Very far | A+ setup only (7+ confluence). Or skip | ATR 2.5x, very small size | >= 3.0 |
+| > 10% | Too far | Skip. Set alert and wait for pullback | Do not enter | N/A |
 
-### 12.4 Ba nguyên tắc sống còn
+### 12.4 Three Survival Principles
 
-**1. Không bao giờ di chuyển stop gần hơn để "vừa size"**
+**1. Never move stop closer to "fit the size"**
 
-Stop phải đặt ở nơi invalidate kịch bản — không phải ở nơi "account chịu được." Nếu stop đúng phải ở $63,000 mà dời lên $64,200 cho "vừa size" → sẽ bị stop out ở $64,200, rồi nhìn giá bật lên từ $63,100 (đúng zone). Giải pháp duy nhất: giảm size, KHÔNG dời stop.
+Stop must be placed at scenario invalidation point — not where "the account can handle." If the correct stop should be at $63,000 but you move it to $64,200 to "fit the size" → you'll get stopped at $64,200, then watch price bounce from $63,100 (the correct zone). The only solution: reduce size, NEVER move stop.
 
-**2. R:R tối thiểu phải tỷ lệ thuận với stop distance**
+**2. Minimum R:R must be proportional to stop distance**
 
-- Zone gần (stop 1-2%) → R:R >= 1.5 là đủ.
-- Zone xa (stop 3-5%) → R:R >= 2.0 bắt buộc.
-- Zone rất xa (stop 5%+) → R:R >= 3.0.
+- Near zone (stop 1-2%) → R:R >= 1.5 is sufficient.
+- Far zone (stop 3-5%) → R:R >= 2.0 mandatory.
+- Very far zone (stop 5%+) → R:R >= 3.0.
 
-Logic: stop rộng = xác suất hit stop thấp hơn, nhưng khi sai thì mất nhiều hơn → cần reward lớn hơn để bù đắp.
+Logic: wider stop = lower probability of hitting stop, but when wrong the loss is larger → needs bigger reward to compensate.
 
-**3. Đặt alert thay vì đặt lệnh khi zone xa > 5%**
+**3. Set alert instead of placing order when zone is > 5% away**
 
-Thay vì vào lệnh ngay với size nhỏ → đặt price alert tại 60-70% khoảng cách. Khi giá pullback → zone gần hơn → stop chặt hơn → size lớn hơn → trade chất lượng hơn. Kiên nhẫn là edge lớn nhất của retail trader.
+Instead of entering immediately with small size → set price alert at 60-70% of the distance. When price pulls back → zone is closer → tighter stop → larger size → better trade quality. Patience is the retail trader's biggest edge.
 
-### 12.5 Stop Loss trên Hyperliquid — Lưu ý kỹ thuật cho Agent
+### 12.5 Stop Loss on Hyperliquid — Technical Notes for Agent
 
-Khi triển khai trên Hyperliquid (hoặc bất kỳ sàn perpetual futures nào), Agent cần kiểm tra thêm:
+When implementing on Hyperliquid (or any perpetual futures exchange), the Agent must additionally check:
 
-1. **Minimum order size**: Mỗi asset có `szDecimals` và minimum notional. Khi stop rộng → position size tính ra có thể nhỏ hơn minimum → trade không khả thi. Agent phải check trước khi đặt lệnh.
+1. **Minimum order size**: Each asset has `szDecimals` and minimum notional. When stop is wide → calculated position size may be below minimum → trade is not feasible. Agent must check before placing orders.
 
-2. **Funding rate impact**: Với stop rộng, trade có thể kéo dài nhiều ngày. Funding rate tích lũy (8h/lần) ăn mòn PnL. Nếu funding rate đang -0.05% mỗi 8h và hold 3 ngày → mất thêm ~0.45% chỉ từ funding.
+2. **Funding rate impact**: With wide stops, trades may last several days. Accumulated funding rate (every 8h) erodes PnL. If funding rate is -0.05% per 8h and holding 3 days → additional ~0.45% loss from funding alone.
 
-3. **Liquidation price vs Stop price**: Đảm bảo stop price LUÔN được trigger trước liquidation price. Với leverage cao + stop rộng, liquidation có thể gần hơn stop → bị liquidate trước khi stop được fill.
+3. **Liquidation price vs Stop price**: Ensure stop price is ALWAYS triggered before liquidation price. With high leverage + wide stop, liquidation can be closer than stop → liquidated before stop is filled.
 
-4. **Slippage trên stop market order**: Stop market order trên Hyperliquid có thể bị slippage, đặc biệt khi volatility cao hoặc low liquidity. Agent nên tính thêm 0.1-0.3% slippage buffer khi tính risk.
+4. **Slippage on stop market orders**: Stop market orders on Hyperliquid can experience slippage, especially during high volatility or low liquidity. Agent should add 0.1-0.3% slippage buffer when calculating risk.
 
-5. **Trailing stop**: Khi trade đã profit, nên trailing stop (dời stop lên break-even, rồi dời theo structure mới) thay vì để stop cố định. Hyperliquid hỗ trợ trailing stop qua API.
+5. **Trailing stop**: Once trade is in profit, should trail stop (move to break-even, then follow new structure) instead of keeping stop fixed. Hyperliquid supports trailing stop via API.
 
-### 12.6 Công thức tổng hợp cho Agent tính toán
+### 12.6 Consolidated Calculation Formula for Agent
 
 ```
 INPUT:
-  account_balance    = tổng vốn ($)
-  risk_percent       = % risk mỗi trade (khuyến nghị 0.5-2%)
-  entry_price        = giá vào lệnh
-  zone_bottom        = đáy zone / structure level
-  atr_value          = ATR(14) trên timeframe đang trade
-  tp_price           = giá chốt lời (từ Fibonacci extension, structure target)
+  account_balance    = total capital ($)
+  risk_percent       = % risk per trade (recommended 0.5-2%)
+  entry_price        = entry price
+  zone_bottom        = zone bottom / structure level
+  atr_value          = ATR(14) on trading timeframe
+  tp_price           = take-profit price (from Fibonacci extension, structure target)
 
 CALCULATE:
   risk_amount        = account_balance × risk_percent / 100
@@ -916,18 +916,18 @@ CALCULATE:
   rr_ratio           = tp_distance_pct / stop_distance_pct
 
 VALIDATE:
-  IF stop_distance_pct > 10%    → SKIP trade, đặt alert
-  IF rr_ratio < 1.5             → SKIP trade hoặc tìm TP xa hơn
-  IF leverage > 5x              → CẢNH BÁO leverage cao
-  IF position_size_coin < min_size → SKIP trade (dưới minimum order)
-  IF stop_price > liquidation   → CẢNH BÁO cần giảm leverage
+  IF stop_distance_pct > 10%    → SKIP trade, set alert
+  IF rr_ratio < 1.5             → SKIP trade or find farther TP
+  IF leverage > 5x              → WARNING high leverage
+  IF position_size_coin < min_size → SKIP trade (below minimum order)
+  IF stop_price > liquidation   → WARNING must reduce leverage
 
 OUTPUT:
   stop_price, position_size_usd, position_size_coin, leverage, rr_ratio
-  + verdict (GOOD / WARN / SKIP) với lý do
+  + verdict (GOOD / WARN / SKIP) with reason
 ```
 
 ---
 
-*Cập nhật lần cuối: Tháng 3/2026*
-*Tài liệu tham vấn nội bộ — Domain Knowledge cho Trading Agent*
+*Last updated: March 2026*
+*Internal reference document — Domain Knowledge for Trading Agent*
