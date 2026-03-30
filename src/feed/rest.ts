@@ -5,7 +5,7 @@
 
 import { HttpTransport, InfoClient } from '@nktkas/hyperliquid'
 import type { Candle, CandleInterval, BackfillResult } from '../types.js'
-import { BACKFILL_CANDLE_COUNT, BACKFILL_CONCURRENCY } from '../config.js'
+import { BACKFILL_CANDLE_COUNT, BACKFILL_CANDLE_COUNTS, BACKFILL_CONCURRENCY } from '../config.js'
 import { acquire } from './rate-limiter.js'
 
 const transport = new HttpTransport()
@@ -79,7 +79,8 @@ export async function fetchCandles(
  * Compute the startTime for a full backfill of N candles.
  * Each interval has a known duration in ms.
  */
-export function backfillStartTime(interval: CandleInterval, count = BACKFILL_CANDLE_COUNT): number {
+export function backfillStartTime(interval: CandleInterval, count?: number): number {
+  if (count === undefined) count = BACKFILL_CANDLE_COUNTS[interval] ?? BACKFILL_CANDLE_COUNT
   const intervalMs: Record<CandleInterval, number> = {
     '1m': 60_000,
     '5m': 300_000,

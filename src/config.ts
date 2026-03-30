@@ -4,7 +4,7 @@ import type { CandleInterval } from './types.js'
 export const FALLBACK_COINS = ['BTC', 'ETH', 'SOL', 'HYPE', 'TAO'] as const
 
 /** Number of top coins by OI to track (after volume filter). */
-export const TOP_COINS_LIMIT = 30
+export const TOP_COINS_LIMIT = 15
 
 /** Minimum 24h notional volume ($) to qualify for tracking. */
 export const MIN_24H_VOLUME = 500_000
@@ -25,17 +25,29 @@ export const REGIME_MULTIPLIERS = {
 // Minimum candles required before scanning
 export const MIN_CANDLES_FOR_SCAN = 50
 
-// Candles to fetch per REST backfill call
+// Candles to fetch per REST backfill call (per TF)
+// Small TFs: 500 candles (low weight, recent data sufficient for structure)
+// Large TFs: 5000 candles (full history for regime/structure detection)
+export const BACKFILL_CANDLE_COUNTS: Record<string, number> = {
+  '1m': 500,
+  '5m': 500,
+  '15m': 5000,
+  '1h': 5000,
+  '4h': 5000,
+  '1d': 5000,
+}
+/** Default fallback if TF not in map. */
 export const BACKFILL_CANDLE_COUNT = 5000
 
 // Max concurrent REST backfill requests
-export const BACKFILL_CONCURRENCY = 20
+export const BACKFILL_CONCURRENCY = 10
 
-// HL REST weight budget: 1200/min. Info requests cost weight ~20-26 each.
-// Burst: first N requests pass immediately (startup backfill).
-// Sustained: 1 request per REFILL_MS after burst exhaustion.
-export const REST_BURST_TOKENS = 45
-export const REST_REFILL_MS = 1_200  // ~50 req/min sustained, safe under 1200 weight/min
+// HL REST weight budget: 1200/min per IP.
+// candleSnapshot weight = 20 base + ceil(items/60) surcharge.
+//   500 candles → ~29 weight, 5000 candles → ~104 weight
+// Burst 12 (~600 weight) + sustained 1 req/3s (~20 req/min, ~800 weight/min avg)
+export const REST_BURST_TOKENS = 12
+export const REST_REFILL_MS = 3_000
 
 // Candles to use for indicator calculation
 export const INDICATOR_WINDOW = 200
