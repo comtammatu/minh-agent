@@ -1,0 +1,36 @@
+{
+  "date": "2026-03-30",
+  "window": "7d",
+  "scope": "Phase 2C retro (S11-S13)",
+  "metrics": {
+    "commits": 32,
+    "contributors": 1,
+    "prs_merged": 0,
+    "insertions": 25658,
+    "deletions": 1388,
+    "net_loc": 24270,
+    "test_loc": 7578,
+    "test_ratio": 0.295,
+    "active_days": 2,
+    "sessions": 3,
+    "deep_sessions": 2,
+    "avg_session_minutes": 270,
+    "loc_per_session_hour": 2700,
+    "feat_pct": 0.66,
+    "fix_pct": 0.0,
+    "peak_hour": 12,
+    "ai_assisted_commits": 0
+  },
+  "authors": {
+    "Luong The Binh": {
+      "commits": 32,
+      "insertions": 25658,
+      "deletions": 1388,
+      "test_ratio": 0.295,
+      "top_area": "src/agent/"
+    }
+  },
+  "version_range": ["sprint-1-done", "sprint-2-s13"],
+  "streak_days": 2,
+  "tweetable": "Week of Mar 29: 32 commits (solo), 25.7k LOC, 29.5% tests, Sprint 1.5 + Sprint 2 S1-S13 shipped | Streak: 2d"
+}
