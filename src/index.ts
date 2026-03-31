@@ -31,6 +31,7 @@ import {
   WS_RECONNECT_BACKOFF,
   BACKFILL_CANDLE_COUNTS,
   BACKFILL_CANDLE_COUNT,
+  PAPER_TRADE,
 } from './config.js'
 import { backfillAllCoins, fetchCandles } from './feed/rest.js'
 import { setCandles, clearCoinData, setOnPersist, appendCandle } from './feed/store.js'
@@ -233,6 +234,12 @@ async function main(): Promise<void> {
   console.log(
     `[${ts()}] ${ANSI.bold}${ANSI.green}ARMED${ANSI.reset} | ${coins.length} coins: ${fullyReady} fully ready, ${partialReady} partial | ${TIMEFRAMES.length} TFs`,
   )
+
+  if (PAPER_TRADE) {
+    console.log(
+      `[${ts()}] ${ANSI.bold}${ANSI.yellow}⚠ PAPER TRADE MODE${ANSI.reset} | Orders are SIMULATED — no real exchange calls. Set PAPER_TRADE=false for live trading.`,
+    )
+  }
 
   // 8. Start health monitor periodic check (S13: Self-Healing)
   health.startPeriodicCheck()

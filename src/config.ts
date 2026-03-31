@@ -335,6 +335,14 @@ export const WF_MIN_WINDOWS = 2
 /** Walk-forward: overfit ratio threshold. IS/OOS > this = flagged. */
 export const WF_OVERFIT_THRESHOLD = 2.0
 
+// ─── Paper Trade Mode ─────────────────────────────────────────────────────────
+
+/** Paper trade mode: simulate fills instead of calling HL exchange. */
+export const PAPER_TRADE = process.env.PAPER_TRADE === 'true'
+
+/** Slippage applied to paper fills (0.05% = 5 bps). */
+export const PAPER_SLIPPAGE_PCT = 0.0005
+
 // ─── Order Lifecycle (S6) ────────────────────────────────────────────────────
 
 /** Order fill timeout (ms) — cancel entry if not filled. */

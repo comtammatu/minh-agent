@@ -61,6 +61,9 @@ import {
   OrderManager,
   resetOrderManager,
   generateCloid,
+  paperSimulateFill,
+  paperSimulateCancel,
+  paperSimulateTrigger,
 } from './order-manager.js'
 import type { AgentEvent, Order } from './types.js'
 
@@ -366,6 +369,74 @@ describe('OrderManager', () => {
       const order = makeOrder()
       injectOrder(om, order)
       expect(om.getOrders().size).toBe(1)
+    })
+  })
+})
+
+// ── Paper Trade Simulation Functions ─────────────────────────────────────────
+
+describe('Paper Trade Simulation', () => {
+  describe('paperSimulateFill', () => {
+    it('returns success with paper_ prefixed exchangeOrderId', () => {
+      const result = paperSimulateFill('BTC', 'long', 50000, 0.1, '0xabcdef1234567890')
+      expect(result.success).toBe(true)
+      expect(result.exchangeOrderId).toStartWith('paper_')
+      expect(result.error).toBeNull()
+    })
+
+    it('always succeeds regardless of parameters', () => {
+      const result = paperSimulateFill('ETH', 'short', 3000, 1.5, '0x0000000000000000')
+      expect(result.success).toBe(true)
+      expect(result.exchangeOrderId).toStartWith('paper_')
+    })
+  })
+
+  describe('paperSimulateCancel', () => {
+    it('always returns success', () => {
+      const result = paperSimulateCancel('paper_abc123', 'BTC')
+      expect(result.success).toBe(true)
+      expect(result.exchangeOrderId).toBeNull()
+      expect(result.error).toBeNull()
+    })
+
+    it('handles missing coin gracefully', () => {
+      const result = paperSimulateCancel('paper_abc123')
+      expect(result.success).toBe(true)
+    })
+  })
+
+  describe('paperSimulateTrigger', () => {
+    it('returns success with paper_trigger_ prefixed exchangeOrderId', () => {
+      const result = paperSimulateTrigger({
+        type: 'sl',
+        coin: 'BTC',
+        side: 'short',
+        triggerPrice: 49000,
+        size: 0.1,
+        isMarket: true,
+        cloid: generateCloid(),
+        exchangeOrderId: null,
+        parentOrderId: 'test-order-id',
+      })
+      expect(result.success).toBe(true)
+      expect(result.exchangeOrderId).toStartWith('paper_trigger_')
+      expect(result.error).toBeNull()
+    })
+
+    it('works for TP triggers', () => {
+      const result = paperSimulateTrigger({
+        type: 'tp',
+        coin: 'ETH',
+        side: 'long',
+        triggerPrice: 3500,
+        size: 1.0,
+        isMarket: false,
+        cloid: generateCloid(),
+        exchangeOrderId: null,
+        parentOrderId: 'test-order-id',
+      })
+      expect(result.success).toBe(true)
+      expect(result.exchangeOrderId).toStartWith('paper_trigger_')
     })
   })
 })

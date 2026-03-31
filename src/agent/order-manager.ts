@@ -35,6 +35,8 @@ import {
   SL_IS_MARKET,
   TP_IS_MARKET,
   RETRY,
+  PAPER_TRADE,
+  PAPER_SLIPPAGE_PCT,
 } from '../config.js'
 import { getExchangeService } from '../execution/exchange-service.js'
 import { log } from '../lib/logger.js'
@@ -144,6 +146,38 @@ export async function placeTriggerOnExchange(
     const msg = err instanceof Error ? err.message : String(err)
     return { success: false, exchangeOrderId: null, error: msg }
   }
+}
+
+// ─── Paper Trade Simulation ─────────────────────────────────────────────────
+
+/**
+ * Simulate a fill for paper trade mode.
+ * Applies slippage: longs fill slightly higher, shorts fill slightly lower.
+ * @internal Exported for testing.
+ */
+export function paperSimulateFill(
+  coin: string,
+  side: 'long' | 'short',
+  price: number,
+  size: number,
+  cloid: string,
+): ExchangeOrderResult {
+  const slippageDir = side === 'long' ? 1 : -1
+  const fillPrice = price * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
+  log.info('order-manager', `[PAPER] Simulated fill: ${coin} ${side} ${size} @ ${fillPrice.toFixed(2)} (slippage ${(PAPER_SLIPPAGE_PCT * 100).toFixed(3)}%)`)
+  return { success: true, exchangeOrderId: `paper_${cloid.slice(0, 16)}`, error: null }
+}
+
+/** Simulate cancel for paper trade mode. Always succeeds. @internal */
+export function paperSimulateCancel(exchangeOrderId: string, coin?: string): ExchangeOrderResult {
+  log.info('order-manager', `[PAPER] Simulated cancel: ${coin ?? 'unknown'} orderId=${exchangeOrderId}`)
+  return { success: true, exchangeOrderId: null, error: null }
+}
+
+/** Simulate trigger placement for paper trade mode. Always succeeds. @internal */
+export function paperSimulateTrigger(trigger: TriggerOrder): ExchangeOrderResult {
+  log.info('order-manager', `[PAPER] Simulated ${trigger.type.toUpperCase()} trigger: ${trigger.coin} @ ${trigger.triggerPrice}`)
+  return { success: true, exchangeOrderId: `paper_trigger_${generateCloid().slice(0, 12)}`, error: null }
 }
 
 // ─── DB Operations ──────────────────────────────────────────────────────────
@@ -277,8 +311,10 @@ export class OrderManager {
     this.orders.set(order.id, order)
     log.info('order-manager', `Order created: ${order.id} ${coin} ${side} @ ${entryPrice} [cloid=${cloid.slice(0, 10)}...]`)
 
-    // Submit to exchange
-    const result = await submitToExchange(coin, side, order.type, entryPrice, order.size, cloid)
+    // Submit to exchange (or simulate in paper mode)
+    const result = PAPER_TRADE
+      ? paperSimulateFill(coin, side, entryPrice, order.size, cloid)
+      : await submitToExchange(coin, side, order.type, entryPrice, order.size, cloid)
 
     if (result.success) {
       order.status = 'submitted'
@@ -287,6 +323,13 @@ export class OrderManager {
       await updateOrderInDb(order)
       this.orders.set(order.id, order)
       log.info('order-manager', `Order submitted: ${order.id} exchangeId=${result.exchangeOrderId}`)
+
+      // Paper mode: auto-fill immediately (no exchange WS to notify us)
+      if (PAPER_TRADE) {
+        const slippageDir = side === 'long' ? 1 : -1
+        const paperFillPrice = entryPrice * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
+        await this.onOrderFilled(order.id, paperFillPrice, order.size)
+      }
     } else {
       order.status = 'rejected'
       order.updatedAt = Date.now()
@@ -388,7 +431,9 @@ export class OrderManager {
       exchangeOrderId: null,
       parentOrderId: entryOrder.id,
     }
-    const slResult = await this.placeTriggerWithRetry(slTrigger, 'SL', entryOrder.coin)
+    const slResult = PAPER_TRADE
+      ? paperSimulateTrigger(slTrigger)
+      : await this.placeTriggerWithRetry(slTrigger, 'SL', entryOrder.coin)
     if (slResult.success) {
       slTrigger.exchangeOrderId = slResult.exchangeOrderId
       log.info('order-manager', `SL trigger placed: ${entryOrder.coin} @ ${entryOrder.slPrice} [${slResult.exchangeOrderId}]`)
@@ -409,7 +454,9 @@ export class OrderManager {
       exchangeOrderId: null,
       parentOrderId: entryOrder.id,
     }
-    const tpResult = await this.placeTriggerWithRetry(tpTrigger, 'TP', entryOrder.coin)
+    const tpResult = PAPER_TRADE
+      ? paperSimulateTrigger(tpTrigger)
+      : await this.placeTriggerWithRetry(tpTrigger, 'TP', entryOrder.coin)
     if (tpResult.success) {
       tpTrigger.exchangeOrderId = tpResult.exchangeOrderId
       log.info('order-manager', `TP trigger placed: ${entryOrder.coin} @ ${entryOrder.tpPrice} [${tpResult.exchangeOrderId}]`)
@@ -482,9 +529,11 @@ export class OrderManager {
       return
     }
 
-    // Cancel on exchange if submitted
+    // Cancel on exchange if submitted (or simulate in paper mode)
     if (order.exchangeOrderId) {
-      const result = await cancelOnExchange(order.exchangeOrderId, order.coin)
+      const result = PAPER_TRADE
+        ? paperSimulateCancel(order.exchangeOrderId, order.coin)
+        : await cancelOnExchange(order.exchangeOrderId, order.coin)
       if (!result.success) {
         log.error('order-manager', `Exchange cancel failed for ${orderId}: ${result.error}`)
         // Still mark cancelled in DB — reconciliation will catch discrepancies
@@ -520,6 +569,12 @@ export class OrderManager {
 
     const oldPrice = slTrigger.triggerPrice
     slTrigger.triggerPrice = newSlPrice
+
+    // Paper mode: just update in-memory, no exchange calls
+    if (PAPER_TRADE) {
+      log.info('order-manager', `[PAPER] SL updated: ${slTrigger.coin} ${oldPrice} → ${newSlPrice}`)
+      return
+    }
 
     // Try to modify on exchange if we have an oid
     if (slTrigger.exchangeOrderId) {
@@ -626,7 +681,11 @@ export class OrderManager {
     if (triggers) {
       for (const trigger of triggers) {
         if (trigger.exchangeOrderId) {
-          await cancelOnExchange(trigger.exchangeOrderId, trigger.coin)
+          if (PAPER_TRADE) {
+            paperSimulateCancel(trigger.exchangeOrderId, trigger.coin)
+          } else {
+            await cancelOnExchange(trigger.exchangeOrderId, trigger.coin)
+          }
         }
       }
       this.triggerOrders.delete(entryOrder.id)
@@ -636,7 +695,11 @@ export class OrderManager {
     const closeSide: 'long' | 'short' = entryOrder.side === 'long' ? 'short' : 'long'
     const closeSize = entryOrder.fillSize > 0 ? entryOrder.fillSize : entryOrder.size
     const cloid = generateCloid()
-    await submitToExchange(entryOrder.coin, closeSide, 'market', 0, closeSize, cloid)
+    if (PAPER_TRADE) {
+      paperSimulateFill(entryOrder.coin, closeSide, 0, closeSize, cloid)
+    } else {
+      await submitToExchange(entryOrder.coin, closeSide, 'market', 0, closeSize, cloid)
+    }
 
     log.info('order-manager', `Position close submitted: ${entryOrder.coin} reason=${reason}`)
   }
