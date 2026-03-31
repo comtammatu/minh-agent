@@ -121,6 +121,18 @@ async function main() {
   const diagResult = runBacktest(candles, backtestConfig)
   if (diagResult.pipelineStats) {
     console.log('\n' + formatPipelineStats(diagResult.pipelineStats))
+
+    // L5 rejection detail log
+    const rejections = diagResult.pipelineStats.l5Rejections
+    if (rejections.length > 0) {
+      console.log(`\n=== L5 REJECTION LOG (${rejections.length} events) ===`)
+      for (const r of rejections) {
+        const date = new Date(r.ts).toISOString().slice(0, 16)
+        const patterns = r.patternsDetected.length > 0 ? r.patternsDetected.join(', ') : 'NONE'
+        console.log(`  ${r.coin} ${r.interval} idx=${r.idx} ${date} | bias=${r.biasDir} confirmed=${r.confirmedCount} | patterns: ${patterns}`)
+      }
+      console.log('==========================================')
+    }
   }
   log.info('gate-check', `Diagnostic: ${diagResult.trades.length} trades on full dataset`)
 

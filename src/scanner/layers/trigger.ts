@@ -18,6 +18,8 @@ const BULLISH_PATTERNS: Set<PAPatternName> = new Set([
   'hammer',
   'tweezer_bottom',
   'dragonfly_doji',
+  'inside_bar',    // breakout potential — direction checked via CandlePattern.direction
+  'outside_bar',   // momentum confirmation — direction checked via CandlePattern.direction
 ])
 
 /** Bearish PA patterns for short bias. */
@@ -27,6 +29,8 @@ const BEARISH_PATTERNS: Set<PAPatternName> = new Set([
   'shooting_star',
   'tweezer_top',
   'gravestone_doji',
+  'inside_bar',    // breakout potential — direction checked via CandlePattern.direction
+  'outside_bar',   // momentum confirmation — direction checked via CandlePattern.direction
 ])
 
 /**
@@ -114,13 +118,14 @@ export function findTrigger(
 
 function filterByBias(patterns: CandlePattern[], bias: 'long' | 'short' | 'neutral'): CandlePattern[] {
   const allowed = bias === 'long' ? BULLISH_PATTERNS : BEARISH_PATTERNS
+  const wantDir = bias === 'long' ? 'bullish' : 'bearish'
   return patterns.filter(p => {
-    // pin_bar is directional — check direction field
-    if (p.name === 'pin_bar') {
-      return (bias === 'long' && p.direction === 'bullish') ||
-             (bias === 'short' && p.direction === 'bearish')
+    if (!allowed.has(p.name)) return false
+    // Directional patterns — must match bias direction
+    if (p.name === 'pin_bar' || p.name === 'inside_bar' || p.name === 'outside_bar') {
+      return p.direction === wantDir
     }
-    return allowed.has(p.name)
+    return true
   })
 }
 

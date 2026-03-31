@@ -40,6 +40,7 @@ import { confirmStructure } from './layers/structure.js'
 import { findEntryZones } from './layers/zones.js'
 import { confirmZones } from './layers/confirm.js'
 import { findTrigger } from './layers/trigger.js'
+import { detectPriceAction } from '../indicators/price-action.js'
 import { scoreConfluence } from './confluence.js'
 import { applyRegimeModifier } from './regime.js'
 import { assessRisk } from './risk-filter.js'
@@ -89,6 +90,12 @@ export interface PipelineStats {
   l4ZonesAtZone: number
   /** Layer 4 detail: zones confirmed (boost threshold met). */
   l4ZonesConfirmed: number
+  /** L5 detail: ticks with confirmed zones but no PA pattern at all. */
+  l5NoPatternsDetected: number
+  /** L5 detail: ticks with PA patterns but wrong direction (filtered by bias). */
+  l5WrongDirection: number
+  /** L5 rejection log: detailed info for each L4-pass L5-reject event. */
+  l5Rejections: Array<{ coin: string; interval: string; idx: number; ts: number; patternsDetected: string[]; biasDir: string; confirmedCount: number }>
 }
 
 function zeroPipelineStats(): PipelineStats {
@@ -107,6 +114,9 @@ function zeroPipelineStats(): PipelineStats {
     l3ZonesFresh: 0,
     l4ZonesAtZone: 0,
     l4ZonesConfirmed: 0,
+    l5NoPatternsDetected: 0,
+    l5WrongDirection: 0,
+    l5Rejections: [],
   }
 }
 
@@ -137,6 +147,8 @@ export function formatPipelineStats(stats: PipelineStats): string {
     `  L4 zones at zone:  ${stats.l4ZonesAtZone}`,
     `  L4 zones confirmed:${stats.l4ZonesConfirmed}`,
     `L5 Trigger pass:     ${stats.passL5Trigger} (${pct(stats.passL5Trigger)})`,
+    `  L5 no pattern:     ${stats.l5NoPatternsDetected}`,
+    `  L5 wrong dir:      ${stats.l5WrongDirection}`,
     `Confluence pass:     ${stats.passConfluence} (${pct(stats.passConfluence)})`,
     `Risk pass:           ${stats.passRisk} (${pct(stats.passRisk)})`,
     `Regime pass:         ${stats.passRegime} (${pct(stats.passRegime)})`,
@@ -326,6 +338,24 @@ function runPipeline(
   // ── Layer 5: Trigger ───────────────────────────────────────────────────
   const signal = findTrigger(confirmedSlice, idx, confirmed, bias)
   if (!signal) {
+    // L5 rejection diagnostic — only when confirmed zones exist
+    if (confirmed.length > 0) {
+      const rawPatterns = detectPriceAction(confirmedSlice, idx)
+      if (rawPatterns.length === 0) {
+        pipelineStats.l5NoPatternsDetected++
+      } else {
+        pipelineStats.l5WrongDirection++
+      }
+      pipelineStats.l5Rejections.push({
+        coin,
+        interval,
+        idx,
+        ts: confirmedSlice[idx]!.t,
+        patternsDetected: rawPatterns.map(p => `${p.name}(${p.direction})`),
+        biasDir: bias.bias,
+        confirmedCount: confirmed.filter(z => z.confirmed).length,
+      })
+    }
     invalidateSetups(coin, interval, confirmedSlice, idx)
     return
   }
