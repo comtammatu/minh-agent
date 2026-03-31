@@ -31,6 +31,7 @@ import {
   WS_RECONNECT_BACKOFF,
   BACKFILL_CANDLE_COUNTS,
   BACKFILL_CANDLE_COUNT,
+  BACKFILL_REPLACEMENT_ROUNDS,
   PAPER_TRADE,
 } from './config.js'
 import { backfillAllCoins, fetchCandles } from './feed/rest.js'
@@ -138,7 +139,7 @@ async function main(): Promise<void> {
   //    skipCallback=true: main() handles initial subscribe+backfill in batch (efficient)
   //    onCoinsRefreshed is only for mid-run coin additions/removals
   const initialResult = await selector.refresh(true)
-  const coins = selector.getTrackedCoins()
+  let coins = selector.getTrackedCoins()
 
   if (coins.length === 0) {
     throw new Error('fetchTopCoins returned empty at startup — cannot proceed without coin list')
@@ -205,6 +206,50 @@ async function main(): Promise<void> {
   })
   const tfReady = new Map<string, number>()
   for (const r of backfillResults) tfReady.set(r.coin, r.readyTFs)
+
+  // 4b. Replace coins that completely failed backfill (0 readyTFs)
+  //     Pull next-ranked candidates from the full HL list, up to BACKFILL_REPLACEMENT_ROUNDS
+  const allFailed = new Set<string>()
+  for (let round = 1; round <= BACKFILL_REPLACEMENT_ROUNDS; round++) {
+    const failedThisRound = coins.filter(c => (tfReady.get(c) ?? 0) === 0 && !allFailed.has(c))
+    if (failedThisRound.length === 0) break
+
+    for (const fc of failedThisRound) allFailed.add(fc)
+    console.log(`[${ts()}] COIN-REPLACE | round ${round}: removing ${failedThisRound.join(', ')} (0 readyTFs)`)
+
+    // Unsubscribe failed coins (already subscribed in step 3)
+    for (const fc of failedThisRound) {
+      await unsubscribeCoin(fc)
+    }
+
+    // Get replacements from ranked list
+    const replacements = selector.replaceFailed(failedThisRound)
+    if (replacements.length === 0) {
+      console.log(`[${ts()}] COIN-REPLACE | no more candidates available`)
+      break
+    }
+
+    console.log(`[${ts()}] COIN-REPLACE | adding ${replacements.join(', ')}`)
+
+    // Subscribe + backfill replacements
+    for (const rc of replacements) {
+      await subscribeCoin(rc)
+    }
+    const replResults = await backfillAllCoins(replacements, (coin, interval, candles) => {
+      setCandles(coin, interval, candles)
+      bulkUpsertCandles(coin, interval, candles).catch(err => {
+        log.error('persist', `bulk upsert failed ${coin}:${interval}: ${err instanceof Error ? err.message : String(err)}`)
+      })
+    })
+    for (const r of replResults) tfReady.set(r.coin, r.readyTFs)
+
+    // Update coins list for subsequent steps
+    coins = selector.getTrackedCoins()
+  }
+
+  if (allFailed.size > 0) {
+    console.log(`[${ts()}] COIN-REPLACE | done — replaced ${allFailed.size} failed coins | now tracking ${coins.length}`)
+  }
 
   // 5. Wire PG write-through for live WS candles (R14: sync write-through)
   //    Wired AFTER backfill so startup uses efficient bulk operations, not per-candle upserts

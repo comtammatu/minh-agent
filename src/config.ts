@@ -42,6 +42,9 @@ export const BACKFILL_CANDLE_COUNT = 5000
 // Max concurrent REST backfill requests
 export const BACKFILL_CONCURRENCY = 10
 
+// Max rounds to replace coins that fail backfill (0 readyTFs) at startup
+export const BACKFILL_REPLACEMENT_ROUNDS = 2
+
 // HL REST weight budget: 1200/min per IP.
 // candleSnapshot weight = 20 base + ceil(items/60) surcharge.
 //   500 candles → ~29 weight, 5000 candles → ~104 weight

@@ -12,12 +12,11 @@ import { acquire } from './rate-limiter.js'
 import { TOP_COINS_LIMIT, MIN_24H_VOLUME, COIN_REFRESH_INTERVAL_MS } from '../config.js'
 
 /**
- * Fetch top N coins from HL ranked by open interest (descending).
+ * Fetch all qualifying coins from HL ranked by open interest (descending).
  * Filters delisted coins and coins below MIN_24H_VOLUME.
- * Returns coin name strings. Returns [] on error (caller decides fallback).
+ * Returns full ranked list. Returns [] on error (caller decides fallback).
  */
-export async function fetchTopCoins(
-  limit: number = TOP_COINS_LIMIT,
+export async function fetchRankedCoins(
   minVolume: number = MIN_24H_VOLUME,
 ): Promise<string[]> {
   try {
@@ -45,14 +44,26 @@ export async function fetchTopCoins(
       coins.push({ name: asset.name, oi, vol })
     }
 
-    // Sort by OI descending, take top N
+    // Sort by OI descending — full list, caller slices
     coins.sort((a, b) => b.oi - a.oi)
-    return coins.slice(0, limit).map(c => c.name)
+    return coins.map(c => c.name)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    console.log(`[COIN-SELECTOR] fetchTopCoins failed: ${msg}`)
+    console.log(`[COIN-SELECTOR] fetchRankedCoins failed: ${msg}`)
     return []
   }
+}
+
+/**
+ * Fetch top N coins from HL ranked by open interest (descending).
+ * Convenience wrapper over fetchRankedCoins.
+ */
+export async function fetchTopCoins(
+  limit: number = TOP_COINS_LIMIT,
+  minVolume: number = MIN_24H_VOLUME,
+): Promise<string[]> {
+  const ranked = await fetchRankedCoins(minVolume)
+  return ranked.slice(0, limit)
 }
 
 // ── CoinSelector ────────────────────────────────────────────────────────────
@@ -67,8 +78,12 @@ export interface CoinSelector {
   getTopCoins(): string[]
   /** topCoins ∪ activeSetupCoins — never drops a coin mid-setup. */
   getTrackedCoins(): string[]
+  /** Full ranked list from last refresh (for replacement candidates). */
+  getRankedCoins(): string[]
   /** Fetch new top coins, compute diff vs current. skipCallback=true for initial load. */
   refresh(skipCallback?: boolean): Promise<RefreshResult>
+  /** Replace failed coins with next-ranked candidates. Returns newly added coins. */
+  replaceFailed(failedCoins: string[]): string[]
   /** Start periodic refresh loop. */
   startRefreshLoop(): void
   /** Stop periodic refresh loop. */
@@ -85,6 +100,7 @@ export function createCoinSelector(
   onRefresh?: (result: RefreshResult) => void | Promise<void>,
 ): CoinSelector {
   let topCoins: string[] = []
+  let rankedCoins: string[] = []
   let refreshTimer: ReturnType<typeof setInterval> | null = null
 
   function getTrackedCoins(): string[] {
@@ -95,13 +111,16 @@ export function createCoinSelector(
   }
 
   async function refresh(skipCallback = false): Promise<RefreshResult> {
-    const newTop = await fetchTopCoins()
+    const newRanked = await fetchRankedCoins()
 
     // If fetch failed (empty), keep current list
-    if (newTop.length === 0 && topCoins.length > 0) {
+    if (newRanked.length === 0 && topCoins.length > 0) {
       console.log('[COIN-SELECTOR] refresh failed — keeping current list')
       return { added: [], dropped: [] }
     }
+
+    rankedCoins = newRanked
+    const newTop = newRanked.slice(0, TOP_COINS_LIMIT)
 
     const oldSet = new Set(topCoins)
     const newSet = new Set(newTop)
@@ -151,10 +170,40 @@ export function createCoinSelector(
     }
   }
 
+  /**
+   * Replace failed coins with next-ranked candidates from the full list.
+   * Removes failedCoins from topCoins and fills slots from rankedCoins.
+   * Returns the newly added replacement coins.
+   */
+  function replaceFailed(failedCoins: string[]): string[] {
+    if (failedCoins.length === 0) return []
+
+    const failedSet = new Set(failedCoins)
+    const currentSet = new Set(topCoins)
+
+    // Remove failed coins from topCoins
+    topCoins = topCoins.filter(c => !failedSet.has(c))
+
+    // Find candidates: in ranked list, not already tracked, not failed
+    const slotsToFill = TOP_COINS_LIMIT - topCoins.length
+    const replacements: string[] = []
+    for (const candidate of rankedCoins) {
+      if (replacements.length >= slotsToFill) break
+      if (currentSet.has(candidate)) continue
+      if (failedSet.has(candidate)) continue
+      replacements.push(candidate)
+    }
+
+    topCoins.push(...replacements)
+    return replacements
+  }
+
   return {
     getTopCoins: () => [...topCoins],
     getTrackedCoins,
+    getRankedCoins: () => [...rankedCoins],
     refresh,
+    replaceFailed,
     startRefreshLoop,
     stopRefreshLoop,
   }
