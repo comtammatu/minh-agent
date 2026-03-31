@@ -22,7 +22,7 @@ import type { ActiveSetup } from '../types.js'
 
 function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
   return {
-    id: 'BTC:1h:order-block:long',
+    id: 'BTC|1h|order-block|long',
     coin: 'BTC',
     interval: '1h',
     type: 'order-block',
@@ -198,7 +198,7 @@ describe('handleEntering', () => {
   it('cancels order and goes IDLE on setup_invalidated', () => {
     const ctx = makeCoinCtx({ state: 'ENTERING', pendingOrderId: 'ord-1' })
     const result = handleEntering(ctx, {
-      type: 'setup_invalidated', setupId: 'BTC:1h:ob:long', reason: 'zone-broken',
+      type: 'setup_invalidated', setupId: 'BTC|1h|ob|long', reason: 'zone-broken',
     }, makeGlobal())
     expect(result.nextState).toBe('IDLE')
     expect(result.actions.some(a => a.type === 'cancel_order')).toBe(true)
@@ -240,7 +240,7 @@ describe('handleInPosition', () => {
   it('closes position on setup_invalidated', () => {
     const ctx = makeCoinCtx({ state: 'IN_POSITION', positionId: 'pos-1' })
     const result = handleInPosition(ctx, {
-      type: 'setup_invalidated', setupId: 'BTC:1h:ob:long', reason: 'zone-broken',
+      type: 'setup_invalidated', setupId: 'BTC|1h|ob|long', reason: 'zone-broken',
     }, makeGlobal())
     expect(result.nextState).toBe('EXITING')
     expect(result.actions.some(a => a.type === 'close_position' && a.positionId === 'pos-1')).toBe(true)
@@ -403,7 +403,7 @@ describe('TradingAgent', () => {
 
   it('tracks multiple coins independently', () => {
     agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup({ coin: 'BTC', confluenceGrade: 'A' }) })
-    agent.dispatch('ETH', { type: 'setup_detected', setup: makeSetup({ coin: 'ETH', id: 'ETH:1h:ob:long', confluenceGrade: 'B' }) })
+    agent.dispatch('ETH', { type: 'setup_detected', setup: makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', confluenceGrade: 'B' }) })
 
     expect(agent.getCoinState('BTC')).toBe('WATCHING')
     expect(agent.getCoinState('ETH')).toBe('WATCHING')
@@ -412,7 +412,7 @@ describe('TradingAgent', () => {
 
   it('pauseAll pauses all coins', () => {
     agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup({ confluenceGrade: 'A' }) })
-    agent.dispatch('ETH', { type: 'setup_detected', setup: makeSetup({ coin: 'ETH', id: 'ETH:1h:ob:long', confluenceGrade: 'B' }) })
+    agent.dispatch('ETH', { type: 'setup_detected', setup: makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', confluenceGrade: 'B' }) })
 
     agent.pauseAll('daily loss limit')
 
@@ -474,7 +474,7 @@ describe('TradingAgent', () => {
     expect(agent.getCoinState('BTC')).toBe('WATCHING')
 
     // Invalidate — bridge validates setupId match before dispatch
-    emitter.emit('invalidation', 'BTC:1h:order-block:long', 'zone-broken')
+    emitter.emit('invalidation', 'BTC|1h|order-block|long', 'zone-broken')
     expect(agent.getCoinState('BTC')).toBe('IDLE')
   })
 
@@ -538,7 +538,7 @@ describe('TradingAgent', () => {
     btcCtx.set('BTC', makeCoinCtx({ state: 'IN_POSITION', positionId: 'pos-1', coin: 'BTC' }))
 
     // Put ETH in WATCHING
-    agent.dispatch('ETH', { type: 'setup_detected', setup: makeSetup({ coin: 'ETH', id: 'ETH:1h:ob:long', confluenceGrade: 'A' }) })
+    agent.dispatch('ETH', { type: 'setup_detected', setup: makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', confluenceGrade: 'A' }) })
 
     // Trigger daily loss CB
     agent.recordPnl(-400, 10000)
@@ -630,7 +630,7 @@ describe('TradingAgent — correlation guard', () => {
     )
 
     // Try to enter ORDI (also btc-ecosystem) — should be blocked
-    agent.onSetup(makeSetup({ coin: 'ORDI', id: 'ORDI:1h:ob:long', confluenceGrade: 'A' }))
+    agent.onSetup(makeSetup({ coin: 'ORDI', id: 'ORDI|1h|ob|long', confluenceGrade: 'A' }))
 
     // ORDI should still be IDLE (blocked)
     expect(agent.getCoinState('ORDI')).toBe('IDLE')
@@ -649,7 +649,7 @@ describe('TradingAgent — correlation guard', () => {
     )
 
     // ETH is in eth-ecosystem, not btc-ecosystem — should be allowed
-    agent.onSetup(makeSetup({ coin: 'ETH', id: 'ETH:1h:ob:long', confluenceGrade: 'A' }))
+    agent.onSetup(makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', confluenceGrade: 'A' }))
     expect(agent.getCoinState('ETH')).toBe('WATCHING')
   })
 
@@ -661,7 +661,7 @@ describe('TradingAgent — correlation guard', () => {
     )
 
     // HYPE is not in any correlation group — should always pass
-    agent.onSetup(makeSetup({ coin: 'HYPE', id: 'HYPE:1h:ob:long', confluenceGrade: 'A' }))
+    agent.onSetup(makeSetup({ coin: 'HYPE', id: 'HYPE|1h|ob|long', confluenceGrade: 'A' }))
     expect(agent.getCoinState('HYPE')).toBe('WATCHING')
   })
 
@@ -677,7 +677,7 @@ describe('TradingAgent — correlation guard', () => {
     coinsMap.set('STX', makeCoinCtx({ state: 'ENTERING', coin: 'STX', pendingOrderId: 'o2' }))
 
     // ORDI blocked — BTC (IN_POSITION) + STX (ENTERING) = 2 in btc-ecosystem
-    agent.onSetup(makeSetup({ coin: 'ORDI', id: 'ORDI:1h:ob:long', confluenceGrade: 'A' }))
+    agent.onSetup(makeSetup({ coin: 'ORDI', id: 'ORDI|1h|ob|long', confluenceGrade: 'A' }))
     expect(agent.getCoinState('ORDI')).toBe('IDLE')
   })
 
@@ -688,7 +688,7 @@ describe('TradingAgent — correlation guard', () => {
     )
 
     // ETH in WATCHING — not counted as open
-    agent.dispatch('ETH', { type: 'setup_detected', setup: makeSetup({ coin: 'ETH', id: 'ETH:1h:ob:long', confluenceGrade: 'A' }) })
+    agent.dispatch('ETH', { type: 'setup_detected', setup: makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', confluenceGrade: 'A' }) })
 
     const openCoins = agent.getOpenPositionCoins()
     expect(openCoins).toContain('BTC')       // IN_POSITION
@@ -701,7 +701,7 @@ describe('TradingAgent — correlation guard', () => {
     expect(agent.getCoinState('BTC')).toBe('WATCHING')
 
     // Sending another setup while WATCHING — guard runs but no correlated open positions
-    agent.onSetup(makeSetup({ coin: 'BTC', id: 'BTC:1h:ob2:long', confluenceGrade: 'A+', confidence: 0.9 }))
+    agent.onSetup(makeSetup({ coin: 'BTC', id: 'BTC|1h|ob2|long', confluenceGrade: 'A+', confidence: 0.9 }))
     // Should still be WATCHING (upgraded setup)
     expect(agent.getCoinState('BTC')).toBe('WATCHING')
   })

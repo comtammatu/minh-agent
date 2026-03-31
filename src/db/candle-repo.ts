@@ -123,7 +123,7 @@ export async function getAllLastTimestamps(): Promise<Map<string, number>> {
   `
   const result = new Map<string, number>()
   for (const r of rows) {
-    result.set(`${r.coin}:${r.interval}`, r.last_t.getTime())
+    result.set(`${r.coin}|${r.interval}`, r.last_t.getTime())
   }
   return result
 }

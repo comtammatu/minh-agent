@@ -2,14 +2,23 @@
  * Dynamic coin selection based on Hyperliquid open interest.
  *
  * fetchTopCoins(): fetch top N coins by OI from HL metaAndAssetCtxs.
- * CoinSelector: stateful manager that tracks top coins + active-setup coins.
- *   - topCoins: latest top N from HL (refreshed every COIN_REFRESH_INTERVAL_MS)
- *   - trackedCoins: topCoins ∪ {coins with active setups} — never drops mid-setup
+ * fetchHip3RankedCoins(): fetch HIP-3 (builder-deployed perp) coins via raw API.
+ * CoinSelector: stateful manager that tracks top coins + HIP-3 coins + active-setup coins.
+ *   - topCoins: latest top N native perps from HL
+ *   - hip3Coins: latest top N HIP-3 coins from configured DEXes
+ *   - trackedCoins: topCoins ∪ hip3Coins ∪ {coins with active setups}
  */
 
 import { info } from './rest.js'
 import { acquire } from './rate-limiter.js'
-import { TOP_COINS_LIMIT, MIN_24H_VOLUME, COIN_REFRESH_INTERVAL_MS } from '../config.js'
+import {
+  TOP_COINS_LIMIT,
+  MIN_24H_VOLUME,
+  COIN_REFRESH_INTERVAL_MS,
+  HIP3_DEXES,
+  HIP3_TOP_COINS_LIMIT,
+  HIP3_MIN_24H_VOLUME,
+} from '../config.js'
 
 /**
  * Fetch all qualifying coins from HL ranked by open interest (descending).
@@ -66,6 +75,67 @@ export async function fetchTopCoins(
   return ranked.slice(0, limit)
 }
 
+// ── HIP-3 (builder-deployed perps) ──────────────────────────────────────────
+
+/** Response shape from HL metaAndAssetCtxs (same for native and HIP-3). */
+interface MetaAndCtxsResponse {
+  universe: { name: string; isDelisted?: true }[]
+}
+
+interface AssetCtx {
+  openInterest: string
+  dayNtlVlm: string
+}
+
+/**
+ * Fetch HIP-3 coins from configured DEXes, ranked by OI descending.
+ * Uses raw fetch (SDK doesn't support the `dex` parameter on metaAndAssetCtxs).
+ * Returns full ranked list across all configured DEXes.
+ */
+export async function fetchHip3RankedCoins(
+  dexes: string[] = HIP3_DEXES,
+  minVolume: number = HIP3_MIN_24H_VOLUME,
+): Promise<string[]> {
+  const allCoins: { name: string; oi: number }[] = []
+
+  for (const dex of dexes) {
+    try {
+      await acquire()
+      const res = await fetch('https://api.hyperliquid.xyz/info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'metaAndAssetCtxs', dex }),
+      })
+      if (!res.ok) {
+        console.log(`[COIN-SELECTOR] HIP-3 ${dex}: HTTP ${res.status}`)
+        continue
+      }
+      const [meta, ctxs] = (await res.json()) as [MetaAndCtxsResponse, AssetCtx[]]
+
+      for (let i = 0; i < meta.universe.length; i++) {
+        const asset = meta.universe[i]!
+        const ctx = ctxs[i]
+        if (asset.isDelisted) continue
+        if (!ctx) continue
+
+        const oi = parseFloat(ctx.openInterest)
+        if (isNaN(oi) || oi <= 0) continue
+
+        const vol = parseFloat(ctx.dayNtlVlm)
+        if (isNaN(vol) || vol < minVolume) continue
+
+        allCoins.push({ name: asset.name, oi })
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.log(`[COIN-SELECTOR] fetchHip3RankedCoins ${dex} failed: ${msg}`)
+    }
+  }
+
+  allCoins.sort((a, b) => b.oi - a.oi)
+  return allCoins.map(c => c.name)
+}
+
 // ── CoinSelector ────────────────────────────────────────────────────────────
 
 export interface RefreshResult {
@@ -74,13 +144,15 @@ export interface RefreshResult {
 }
 
 export interface CoinSelector {
-  /** Current top N coins from HL (latest refresh). */
+  /** Current top N native perp coins from HL (latest refresh). */
   getTopCoins(): string[]
-  /** topCoins ∪ activeSetupCoins — never drops a coin mid-setup. */
+  /** Current top N HIP-3 coins (latest refresh). */
+  getHip3Coins(): string[]
+  /** topCoins ∪ hip3Coins ∪ activeSetupCoins — never drops a coin mid-setup. */
   getTrackedCoins(): string[]
   /** Full ranked list from last refresh (for replacement candidates). */
   getRankedCoins(): string[]
-  /** Fetch new top coins, compute diff vs current. skipCallback=true for initial load. */
+  /** Fetch new top coins + HIP-3 coins, compute diff vs current. skipCallback=true for initial load. */
   refresh(skipCallback?: boolean): Promise<RefreshResult>
   /** Replace failed coins with next-ranked candidates. Returns newly added coins. */
   replaceFailed(failedCoins: string[]): string[]
@@ -100,35 +172,44 @@ export function createCoinSelector(
   onRefresh?: (result: RefreshResult) => void | Promise<void>,
 ): CoinSelector {
   let topCoins: string[] = []
+  let hip3Coins: string[] = []
   let rankedCoins: string[] = []
+  let hip3RankedCoins: string[] = []
   let refreshTimer: ReturnType<typeof setInterval> | null = null
 
   function getTrackedCoins(): string[] {
     const activeCoins = getActiveSetupCoins()
-    const set = new Set(topCoins)
+    const set = new Set([...topCoins, ...hip3Coins])
     for (const coin of activeCoins) set.add(coin)
     return Array.from(set)
   }
 
   async function refresh(skipCallback = false): Promise<RefreshResult> {
-    const newRanked = await fetchRankedCoins()
+    // Fetch native perps + HIP-3 in parallel
+    const [newRanked, newHip3Ranked] = await Promise.all([
+      fetchRankedCoins(),
+      HIP3_DEXES.length > 0 ? fetchHip3RankedCoins() : Promise.resolve([]),
+    ])
 
-    // If fetch failed (empty), keep current list
+    // If native fetch failed (empty), keep current list
     if (newRanked.length === 0 && topCoins.length > 0) {
       console.log('[COIN-SELECTOR] refresh failed — keeping current list')
       return { added: [], dropped: [] }
     }
 
     rankedCoins = newRanked
+    hip3RankedCoins = newHip3Ranked
     const newTop = newRanked.slice(0, TOP_COINS_LIMIT)
+    const newHip3 = newHip3Ranked.slice(0, HIP3_TOP_COINS_LIMIT)
 
-    const oldSet = new Set(topCoins)
-    const newSet = new Set(newTop)
+    // Compute diff across both lists
+    const oldAll = new Set([...topCoins, ...hip3Coins])
+    const newAll = new Set([...newTop, ...newHip3])
 
-    const added = newTop.filter(c => !oldSet.has(c))
-    const allDropped = topCoins.filter(c => !newSet.has(c))
+    const added = [...newAll].filter(c => !oldAll.has(c))
+    const allDropped = [...oldAll].filter(c => !newAll.has(c))
 
-    // Coins that dropped from top but have active setups — keep tracking
+    // Coins that dropped but have active setups — keep tracking
     const activeCoins = new Set(getActiveSetupCoins())
     const dropped = allDropped.filter(c => !activeCoins.has(c))
     const kept = allDropped.filter(c => activeCoins.has(c))
@@ -138,6 +219,11 @@ export function createCoinSelector(
     }
 
     topCoins = newTop
+    hip3Coins = newHip3
+
+    if (newHip3.length > 0) {
+      console.log(`[COIN-SELECTOR] HIP-3: ${newHip3.length} coins — ${newHip3.join(', ')}`)
+    }
 
     const result: RefreshResult = { added, dropped }
     if (!skipCallback) {
@@ -172,34 +258,52 @@ export function createCoinSelector(
 
   /**
    * Replace failed coins with next-ranked candidates from the full list.
-   * Removes failedCoins from topCoins and fills slots from rankedCoins.
+   * Removes failedCoins from topCoins/hip3Coins and fills slots from ranked lists.
    * Returns the newly added replacement coins.
    */
   function replaceFailed(failedCoins: string[]): string[] {
     if (failedCoins.length === 0) return []
 
     const failedSet = new Set(failedCoins)
-    const currentSet = new Set(topCoins)
-
-    // Remove failed coins from topCoins
-    topCoins = topCoins.filter(c => !failedSet.has(c))
-
-    // Find candidates: in ranked list, not already tracked, not failed
-    const slotsToFill = TOP_COINS_LIMIT - topCoins.length
+    const currentSet = new Set([...topCoins, ...hip3Coins])
     const replacements: string[] = []
-    for (const candidate of rankedCoins) {
-      if (replacements.length >= slotsToFill) break
-      if (currentSet.has(candidate)) continue
-      if (failedSet.has(candidate)) continue
-      replacements.push(candidate)
+
+    // Replace failed native perps from rankedCoins
+    const failedNative = failedCoins.filter(c => !c.includes(':'))
+    if (failedNative.length > 0) {
+      topCoins = topCoins.filter(c => !failedSet.has(c))
+      const slotsToFill = TOP_COINS_LIMIT - topCoins.length
+      for (const candidate of rankedCoins) {
+        if (replacements.length >= slotsToFill) break
+        if (currentSet.has(candidate)) continue
+        if (failedSet.has(candidate)) continue
+        replacements.push(candidate)
+      }
+      topCoins.push(...replacements)
     }
 
-    topCoins.push(...replacements)
+    // Replace failed HIP-3 coins from hip3RankedCoins
+    const failedHip3 = failedCoins.filter(c => c.includes(':'))
+    if (failedHip3.length > 0) {
+      hip3Coins = hip3Coins.filter(c => !failedSet.has(c))
+      const slotsToFill = HIP3_TOP_COINS_LIMIT - hip3Coins.length
+      const hip3Replacements: string[] = []
+      for (const candidate of hip3RankedCoins) {
+        if (hip3Replacements.length >= slotsToFill) break
+        if (currentSet.has(candidate)) continue
+        if (failedSet.has(candidate)) continue
+        hip3Replacements.push(candidate)
+      }
+      hip3Coins.push(...hip3Replacements)
+      replacements.push(...hip3Replacements)
+    }
+
     return replacements
   }
 
   return {
     getTopCoins: () => [...topCoins],
+    getHip3Coins: () => [...hip3Coins],
     getTrackedCoins,
     getRankedCoins: () => [...rankedCoins],
     refresh,

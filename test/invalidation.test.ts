@@ -15,7 +15,7 @@ function makeSetup(
 ): ActiveSetup {
   const expiresAtBar = computeExpiresAtBar(type, detectedAtBar)
   return {
-    id: `BTC:1h:${type}:${side}`,
+    id: `BTC|1h|${type}|${side}`,
     coin: 'BTC',
     interval: '1h' as CandleInterval,
     type,
@@ -172,7 +172,7 @@ describe('invalidation — 0-bar skip', () => {
 
 describe('setupId', () => {
   it('generates correct id', () => {
-    expect(setupId('BTC', '4h', 'fvg')).toBe('BTC:4h:fvg')
+    expect(setupId('BTC', '4h', 'fvg')).toBe('BTC|4h|fvg')
   })
 })
 

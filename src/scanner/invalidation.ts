@@ -176,5 +176,5 @@ export function setupId(
   interval: CandleInterval,
   type: ActiveSetup['type'],
 ): string {
-  return `${coin}:${interval}:${type}`
+  return `${coin}|${interval}|${type}`
 }

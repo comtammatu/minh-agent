@@ -1,6 +1,6 @@
 /**
  * In-memory candle store.
- * Map<"BTC:1h", Candle[]> — upserts by timestamp, sorted ascending.
+ * Map<"BTC|1h", Candle[]> — upserts by timestamp, sorted ascending.
  * Single module-level instance (one process, one store).
  *
  * Optional onPersist callback: injected by index.ts to write-through to PG.
@@ -25,7 +25,7 @@ export function clearOnPersist(): void {
 }
 
 function key(coin: string, interval: CandleInterval): string {
-  return `${coin}:${interval}`
+  return `${coin}|${interval}`
 }
 
 /** Upsert a candle by timestamp. Overwrites existing entry with same t. */
@@ -88,7 +88,7 @@ export function candleCount(coin: string, interval: CandleInterval): number {
 /** Clear all candle data for a specific coin (all timeframes). */
 export function clearCoinData(coin: string): void {
   for (const k of store.keys()) {
-    if (k.startsWith(`${coin}:`)) store.delete(k)
+    if (k.startsWith(`${coin}|`)) store.delete(k)
   }
 }
 

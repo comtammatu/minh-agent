@@ -57,7 +57,7 @@ import type { ActiveSetup, AgentAction } from './types.js'
 
 function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
   return {
-    id: 'BTC:15m:order-block:long',
+    id: 'BTC|15m|order-block|long',
     coin: 'BTC',
     interval: '15m',
     detectedAt: Date.now(),
@@ -272,8 +272,8 @@ describe('End-to-end integration', () => {
   })
 
   it('multiple coins run independently', () => {
-    const btcSetup = makeSetup({ coin: 'BTC', id: 'BTC:15m:order-block:long' })
-    const ethSetup = makeSetup({ coin: 'ETH', id: 'ETH:15m:fvg:short', side: 'short', type: 'fvg' })
+    const btcSetup = makeSetup({ coin: 'BTC', id: 'BTC|15m|order-block|long' })
+    const ethSetup = makeSetup({ coin: 'ETH', id: 'ETH|15m|fvg|short', side: 'short', type: 'fvg' })
 
     pipelineEmitter.emit('setup', btcSetup)
     pipelineEmitter.emit('setup', ethSetup)

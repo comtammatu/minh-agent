@@ -260,7 +260,7 @@ export class BacktestDataManager {
       for (const interval of intervals) {
         const all = await loadCandles(coin, interval, 100_000)
         const filtered = all.filter(c => c.t >= startMs && c.t <= endMs)
-        const key = `${coin}:${interval}`
+        const key = `${coin}|${interval}`
         result.set(key, filtered)
 
         log.debug('backtest-data', `Loaded ${key}: ${filtered.length} candles`)
@@ -272,7 +272,7 @@ export class BacktestDataManager {
         const htfStartMs = startMs - warmupMs
         const all = await loadCandles(coin, htf, 100_000)
         const filtered = all.filter(c => c.t >= htfStartMs && c.t <= endMs)
-        const key = `${coin}:${htf}`
+        const key = `${coin}|${htf}`
         result.set(key, filtered)
 
         log.debug('backtest-data', `Loaded HTF ${key}: ${filtered.length} candles (warmup: ${Math.round(warmupMs / 86_400_000)}d)`)

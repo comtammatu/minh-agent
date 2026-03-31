@@ -149,9 +149,9 @@ export class InvalidationBridge {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-/** Parse coin name from setupId format: `coin:interval:type:side` */
+/** Parse coin name from setupId format: `coin|interval|type|side` */
 export function parseCoinFromSetupId(setupId: string): string | null {
-  const parts = setupId.split(':')
+  const parts = setupId.split('|')
   return parts[0] && parts.length >= 3 ? parts[0] : null
 }
 

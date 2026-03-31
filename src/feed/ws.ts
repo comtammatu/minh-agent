@@ -17,7 +17,7 @@ const activeSubscriptions: ISubscription[] = []
 // Per-coin subscription tracking for selective unsubscribe
 const coinSubs = new Map<string, ISubscription[]>()
 
-// lastCandleTime: key = "BTC:4h", value = Date.now() at last received candle
+// lastCandleTime: key = "BTC|4h", value = Date.now() at last received candle
 const lastCandleTime = new Map<string, number>()
 
 function getClient(): SubscriptionClient {
@@ -74,7 +74,7 @@ export async function subscribeCandles(
   onCandle: (coin: string, interval: CandleInterval, candle: Candle) => void,
 ): Promise<void> {
   const client = getClient()
-  const k = `${coin}:${interval}`
+  const k = `${coin}|${interval}`
 
   const sub = await client.candle({ coin, interval }, (event) => {
     try {
@@ -108,7 +108,7 @@ export async function unsubscribeCandles(coin: string): Promise<void> {
 
   // Clear staleness entries for this coin
   for (const k of lastCandleTime.keys()) {
-    if (k.startsWith(`${coin}:`)) lastCandleTime.delete(k)
+    if (k.startsWith(`${coin}|`)) lastCandleTime.delete(k)
   }
 }
 

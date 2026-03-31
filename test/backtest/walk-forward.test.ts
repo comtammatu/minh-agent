@@ -94,7 +94,7 @@ describe('walkForward — edge cases', () => {
       stepMs: 7 * DAY_MS,
     }
 
-    const candleMap = new Map([['BTC:1h', candles]])
+    const candleMap = new Map([['BTC|1h', candles]])
     const result = walkForward(candleMap, wfConfig)
 
     expect(result.windows.length).toBeLessThan(2)
@@ -109,7 +109,7 @@ describe('walkForward — edge cases', () => {
       stepMs: 3 * DAY_MS,
     }
 
-    const candleMap = new Map<string, Candle[]>([['BTC:1h', []]])
+    const candleMap = new Map<string, Candle[]>([['BTC|1h', []]])
     const result = walkForward(candleMap, wfConfig)
 
     expect(result.windows.length).toBe(0)
@@ -143,7 +143,7 @@ describe('walkForward — window generation', () => {
       stepMs: 7 * DAY_MS,
     }
 
-    const candleMap = new Map([['BTC:1h', candles]])
+    const candleMap = new Map([['BTC|1h', candles]])
     const result = walkForward(candleMap, wfConfig)
 
     expect(result.windows.length).toBe(6)
@@ -172,7 +172,7 @@ describe('walkForward — window generation', () => {
       stepMs: 7 * DAY_MS,
     }
 
-    const candleMap = new Map([['BTC:1h', candles]])
+    const candleMap = new Map([['BTC|1h', candles]])
     const result = walkForward(candleMap, wfConfig)
 
     for (let i = 0; i < result.windows.length; i++) {
@@ -197,7 +197,7 @@ describe('walkForward — metrics', () => {
       stepMs: 7 * DAY_MS,
     }
 
-    const candleMap = new Map([['BTC:1h', candles]])
+    const candleMap = new Map([['BTC|1h', candles]])
     const result = walkForward(candleMap, wfConfig)
 
     expect(result.windows.length).toBeGreaterThanOrEqual(2)
@@ -227,7 +227,7 @@ describe('walkForward — metrics', () => {
       stepMs: 7 * DAY_MS,
     }
 
-    const candleMap = new Map([['BTC:1h', candles]])
+    const candleMap = new Map([['BTC|1h', candles]])
     const result = walkForward(candleMap, wfConfig)
 
     // Gate verdict should match expectancy sign
@@ -252,7 +252,7 @@ describe('walkForward — metrics', () => {
       stepMs: 3 * DAY_MS,
     }
 
-    const candleMap = new Map([['BTC:1h', candles]])
+    const candleMap = new Map([['BTC|1h', candles]])
     const result = walkForward(candleMap, wfConfig)
 
     if (result.oosMetrics.expectancy === 0 && result.isMetrics.expectancy === 0) {
@@ -284,7 +284,7 @@ describe('walkForward — multi-coin', () => {
     }
 
     const candleMap = new Map([
-      ['BTC:1h', btcCandles],
+      ['BTC|1h', btcCandles],
       ['ETH:1h', ethCandles],
     ])
     const result = walkForward(candleMap, wfConfig)
@@ -315,7 +315,7 @@ describe('walkForward — overfit detection', () => {
       stepMs: 7 * DAY_MS,
     }
 
-    const candleMap = new Map([['BTC:1h', candles]])
+    const candleMap = new Map([['BTC|1h', candles]])
     const result = walkForward(candleMap, wfConfig)
 
     // Can't force this scenario with real pipeline, but verify the logic:

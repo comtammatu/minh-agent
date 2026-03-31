@@ -12,6 +12,16 @@ export const MIN_24H_VOLUME = 500_000
 /** How often to refresh the top coins list (ms). */
 export const COIN_REFRESH_INTERVAL_MS = 3_600_000  // 1 hour
 
+// ── HIP-3 (builder-deployed perps) ────────────────────────────────────────
+/** Which HIP-3 DEXes to track (e.g., 'xyz' for traditional finance assets). */
+export const HIP3_DEXES: string[] = ['xyz']
+
+/** Number of top HIP-3 coins by OI to track (separate from native perps). */
+export const HIP3_TOP_COINS_LIMIT = 5
+
+/** Minimum 24h volume ($) for HIP-3 coins. */
+export const HIP3_MIN_24H_VOLUME = 500_000
+
 export const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'] as const
 
 export const MIN_CONFIDENCE = 0.4

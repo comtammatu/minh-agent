@@ -25,7 +25,7 @@ import type { AgentAction } from './types.js'
 
 function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
   return {
-    id: 'BTC:1h:order-block:long',
+    id: 'BTC|1h|order-block|long',
     coin: 'BTC',
     interval: '1h',
     type: 'order-block',
@@ -48,9 +48,9 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
 
 describe('parseCoinFromSetupId', () => {
   it('extracts coin from valid setupId', () => {
-    expect(parseCoinFromSetupId('BTC:1h:order-block:long')).toBe('BTC')
-    expect(parseCoinFromSetupId('ETH:15m:fvg:short')).toBe('ETH')
-    expect(parseCoinFromSetupId('SOL:4h:spring:long')).toBe('SOL')
+    expect(parseCoinFromSetupId('BTC|1h|order-block|long')).toBe('BTC')
+    expect(parseCoinFromSetupId('ETH|15m|fvg|short')).toBe('ETH')
+    expect(parseCoinFromSetupId('SOL|4h|spring|long')).toBe('SOL')
   })
 
   it('returns null for invalid setupId', () => {
@@ -79,35 +79,35 @@ describe('InvalidationBridge', () => {
       agent.dispatch('BTC', { type: 'setup_detected', setup })
       expect(agent.getCoinState('BTC')).toBe('WATCHING')
 
-      const record = bridge.onInvalidation('BTC:1h:order-block:long', 'zone-broken', agent)
+      const record = bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
       expect(record.matched).toBe(true)
       expect(record.actionTaken).toBe('drop_watch')
       expect(agent.getCoinState('BTC')).toBe('IDLE')
     })
 
     it('skips when invalidated setupId does NOT match active setup (cross-TF)', () => {
-      const setup = makeSetup() // BTC:1h:order-block:long
+      const setup = makeSetup() // BTC|1h|order-block|long
       agent.dispatch('BTC', { type: 'setup_detected', setup })
       expect(agent.getCoinState('BTC')).toBe('WATCHING')
 
       // Different timeframe — should NOT invalidate
-      const record = bridge.onInvalidation('BTC:15m:fvg:short', 'fvg-filled', agent)
+      const record = bridge.onInvalidation('BTC|15m|fvg|short', 'fvg-filled', agent)
       expect(record.matched).toBe(false)
       expect(record.actionTaken).toBe('none')
       expect(agent.getCoinState('BTC')).toBe('WATCHING') // still watching
     })
 
     it('skips when invalidated setupId is different type on same TF', () => {
-      const setup = makeSetup() // BTC:1h:order-block:long
+      const setup = makeSetup() // BTC|1h|order-block|long
       agent.dispatch('BTC', { type: 'setup_detected', setup })
 
-      const record = bridge.onInvalidation('BTC:1h:fvg:long', 'fvg-filled', agent)
+      const record = bridge.onInvalidation('BTC|1h|fvg|long', 'fvg-filled', agent)
       expect(record.matched).toBe(false)
       expect(agent.getCoinState('BTC')).toBe('WATCHING')
     })
 
     it('skips when coin has no active setup (IDLE)', () => {
-      const record = bridge.onInvalidation('BTC:1h:order-block:long', 'zone-broken', agent)
+      const record = bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
       expect(record.matched).toBe(false)
       expect(record.actionTaken).toBe('none')
     })
@@ -120,7 +120,7 @@ describe('InvalidationBridge', () => {
       agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup() })
       expect(agent.getCoinState('BTC')).toBe('WATCHING')
 
-      const record = bridge.onInvalidation('BTC:1h:order-block:long', 'zone-broken', agent)
+      const record = bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
       expect(record.coinState).toBe('WATCHING')
       expect(record.actionTaken).toBe('drop_watch')
       expect(agent.getCoinState('BTC')).toBe('IDLE')
@@ -143,7 +143,7 @@ describe('InvalidationBridge', () => {
       // Since we can't easily get to ENTERING without exchange stubs,
       // test the prediction for ENTERING state
       // The state machine handles this — we verify the bridge's setupId matching
-      const record = bridge.onInvalidation('BTC:1h:order-block:long', 'zone-broken', agent)
+      const record = bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
       expect(record.matched).toBe(true)
       // From WATCHING, action is drop_watch
       expect(record.actionTaken).toBe('drop_watch')
@@ -205,7 +205,7 @@ describe('InvalidationBridge', () => {
       expect(agent.getCoinState('BTC')).toBe('WATCHING')
 
       // Invalidate via pipeline
-      emitter.emit('invalidation', 'BTC:1h:order-block:long', 'zone-broken')
+      emitter.emit('invalidation', 'BTC|1h|order-block|long', 'zone-broken')
       expect(agent.getCoinState('BTC')).toBe('IDLE')
 
       // Verify history
@@ -224,7 +224,7 @@ describe('InvalidationBridge', () => {
       expect(agent.getCoinState('BTC')).toBe('WATCHING')
 
       // Different setup — should not invalidate
-      emitter.emit('invalidation', 'ETH:15m:fvg:short', 'fvg-filled')
+      emitter.emit('invalidation', 'ETH|15m|fvg|short', 'fvg-filled')
       expect(agent.getCoinState('BTC')).toBe('WATCHING') // unchanged
     })
   })
@@ -235,8 +235,8 @@ describe('InvalidationBridge', () => {
     it('tracks invalidation records', () => {
       agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup() })
 
-      bridge.onInvalidation('BTC:1h:order-block:long', 'zone-broken', agent)
-      bridge.onInvalidation('ETH:15m:fvg:short', 'fvg-filled', agent)
+      bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
+      bridge.onInvalidation('ETH|15m|fvg|short', 'fvg-filled', agent)
 
       const history = bridge.getHistory()
       expect(history.length).toBe(2)
@@ -247,9 +247,9 @@ describe('InvalidationBridge', () => {
     it('computes stats correctly', () => {
       agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup() })
 
-      bridge.onInvalidation('BTC:1h:order-block:long', 'zone-broken', agent)
-      bridge.onInvalidation('ETH:15m:fvg:short', 'fvg-filled', agent)
-      bridge.onInvalidation('SOL:4h:spring:long', 'spring-failed', agent)
+      bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
+      bridge.onInvalidation('ETH|15m|fvg|short', 'fvg-filled', agent)
+      bridge.onInvalidation('SOL|4h|spring|long', 'spring-failed', agent)
 
       const stats = bridge.getStats()
       expect(stats.total).toBe(3)
@@ -259,7 +259,7 @@ describe('InvalidationBridge', () => {
     })
 
     it('clearHistory resets', () => {
-      bridge.onInvalidation('BTC:1h:order-block:long', 'zone-broken', agent)
+      bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
       expect(bridge.getHistory().length).toBe(1)
 
       bridge.clearHistory()
@@ -269,7 +269,7 @@ describe('InvalidationBridge', () => {
     it('ring buffer caps at maxHistory', () => {
       // Generate 210 records
       for (let i = 0; i < 210; i++) {
-        bridge.onInvalidation(`BTC:1h:order-block:long`, `reason-${i}`, agent)
+        bridge.onInvalidation(`BTC|1h|order-block|long`, `reason-${i}`, agent)
       }
       expect(bridge.getHistory().length).toBe(200)
     })
@@ -285,7 +285,7 @@ describe('InvalidationBridge', () => {
     })
 
     it('handles unknown coin (never seen by agent)', () => {
-      const record = bridge.onInvalidation('DOGE:1h:fvg:long', 'fvg-filled', agent)
+      const record = bridge.onInvalidation('DOGE|1h|fvg|long', 'fvg-filled', agent)
       expect(record.matched).toBe(false)
       expect(record.coin).toBe('DOGE')
       expect(record.coinState).toBe('IDLE')
@@ -294,12 +294,12 @@ describe('InvalidationBridge', () => {
     it('second invalidation for same coin is a no-op (already IDLE)', () => {
       agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup() })
 
-      const r1 = bridge.onInvalidation('BTC:1h:order-block:long', 'zone-broken', agent)
+      const r1 = bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
       expect(r1.matched).toBe(true)
       expect(agent.getCoinState('BTC')).toBe('IDLE')
 
       // Second invalidation — no active setup anymore
-      const r2 = bridge.onInvalidation('BTC:1h:order-block:long', 'zone-broken', agent)
+      const r2 = bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
       expect(r2.matched).toBe(false)
       expect(r2.actionTaken).toBe('none')
     })

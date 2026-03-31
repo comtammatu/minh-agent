@@ -27,6 +27,14 @@ mock.module('../../src/feed/rest.js', () => ({
   backfillStartTime: () => 0,
 }))
 
+// Mock config to disable HIP-3 in tests (avoids real network calls)
+const realConfig = await import('../../src/config.js')
+mock.module('../../src/config.js', () => ({
+  ...realConfig,
+  HIP3_DEXES: [] as string[],
+  HIP3_TOP_COINS_LIMIT: 0,
+}))
+
 // Import after mock is set up
 const { fetchTopCoins, createCoinSelector } = await import('../../src/feed/coin-selector.js')
 

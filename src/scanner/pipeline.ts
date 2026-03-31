@@ -201,7 +201,7 @@ export function onCandleTick(
   appendCandle(coin, interval, candle)
 
   // ── Closed-candle gate ──────────────────────────────────────────────────
-  const sk = `${coin}:${interval}`
+  const sk = `${coin}|${interval}`
   const prevTs = lastCandleTs.get(sk)
 
   if (prevTs === candle.t) return  // same candle still forming
@@ -240,7 +240,7 @@ export function getActiveSetupCoins(): string[] {
 
 /** Clear state for a specific coin (all timeframes). */
 export function clearCoinState(coin: string): void {
-  const prefix = `${coin}:`
+  const prefix = `${coin}|`
   for (const k of activeSetups.keys()) { if (k.startsWith(prefix)) activeSetups.delete(k) }
   for (const k of statusState.keys()) { if (k.startsWith(prefix)) statusState.delete(k) }
   for (const k of lastCandleTs.keys()) { if (k.startsWith(prefix)) lastCandleTs.delete(k) }
@@ -262,7 +262,7 @@ function runPipeline(
   candles: Candle[],
   idx: number,
 ): void {
-  const sk = `${coin}:${interval}`
+  const sk = `${coin}|${interval}`
   const confirmedSlice = candles.slice(0, idx + 1)
 
   pipelineStats.totalTicks++

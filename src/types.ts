@@ -48,7 +48,7 @@ export interface Signal {
 }
 
 export interface ActiveSetup extends Signal {
-  id: string              // `${coin}:${tf}:${type}:${side}`
+  id: string              // `${coin}|${tf}|${type}|${side}`
   coin: string
   interval: CandleInterval
   detectedAt: number      // timestamp ms

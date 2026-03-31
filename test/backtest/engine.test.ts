@@ -28,7 +28,7 @@ function makeCandle(
 
 function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
   return {
-    id: 'BTC:1h:order-block:long',
+    id: 'BTC|1h|order-block|long',
     coin: 'BTC',
     interval: '1h' as CandleInterval,
     type: 'order-block',

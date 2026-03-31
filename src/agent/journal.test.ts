@@ -341,13 +341,13 @@ describe('integration: journalAction shape', () => {
       type: 'log_journal',
       eventType: 'signal',
       coin: 'BTC',
-      details: { setupId: 'BTC:1h:fvg:long', grade: 'A', confidence: 0.9 },
+      details: { setupId: 'BTC|1h|fvg|long', grade: 'A', confidence: 0.9 },
     }
 
     expect(action.type).toBe('log_journal')
     expect(action.eventType).toBe('signal')
     expect(action.coin).toBe('BTC')
-    expect(action.details.setupId).toBe('BTC:1h:fvg:long')
+    expect(action.details.setupId).toBe('BTC|1h|fvg|long')
   })
 
   it('all event types produce valid journal actions', async () => {

@@ -88,7 +88,7 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     price: 50000,
     size: 0.1,
     status: 'submitted',
-    setupId: 'BTC:1h:order-block:long',
+    setupId: 'BTC|1h|order-block|long',
     slPrice: 49000,
     tpPrice: 52000,
     cloid: generateCloid(),

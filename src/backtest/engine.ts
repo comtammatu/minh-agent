@@ -138,7 +138,7 @@ function buildReplaySequence(
 
   for (const coin of coins) {
     for (const tf of timeframes) {
-      const key = `${coin}:${tf}`
+      const key = `${coin}|${tf}`
       const data = candles.get(key)
       if (!data || data.length === 0) continue
 

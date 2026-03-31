@@ -145,7 +145,9 @@ async function main(): Promise<void> {
     throw new Error('fetchTopCoins returned empty at startup — cannot proceed without coin list')
   }
 
-  console.log(`[${ts()}] COINS | ${coins.length} coins selected (${initialResult.added.length} from HL)`)
+  const hip3Count = selector.getHip3Coins().length
+  const nativeCount = coins.length - hip3Count
+  console.log(`[${ts()}] COINS | ${coins.length} coins selected (${nativeCount} native + ${hip3Count} HIP-3)`)
 
   // 2. Load candles from PG → memory, then gap-fill missing candles via REST
   const pgTimestamps = await getAllLastTimestamps()
@@ -156,7 +158,7 @@ async function main(): Promise<void> {
   for (const coin of coins) {
     for (const tf of TIMEFRAMES) {
       const interval = tf as CandleInterval
-      const storeKey = `${coin}:${interval}`
+      const storeKey = `${coin}|${interval}`
       const lastPgTs = pgTimestamps.get(storeKey) ?? null
       const intervalMs = TIMEFRAME_MS[interval]
       const fullCount = BACKFILL_CANDLE_COUNTS[interval] ?? BACKFILL_CANDLE_COUNT
@@ -201,7 +203,7 @@ async function main(): Promise<void> {
     setCandles(coin, interval, candles)
     // Persist backfilled candles to PG
     bulkUpsertCandles(coin, interval, candles).catch(err => {
-      log.error('persist', `bulk upsert failed ${coin}:${interval}: ${err instanceof Error ? err.message : String(err)}`)
+      log.error('persist', `bulk upsert failed ${coin}|${interval}: ${err instanceof Error ? err.message : String(err)}`)
     })
   })
   const tfReady = new Map<string, number>()
@@ -238,7 +240,7 @@ async function main(): Promise<void> {
     const replResults = await backfillAllCoins(replacements, (coin, interval, candles) => {
       setCandles(coin, interval, candles)
       bulkUpsertCandles(coin, interval, candles).catch(err => {
-        log.error('persist', `bulk upsert failed ${coin}:${interval}: ${err instanceof Error ? err.message : String(err)}`)
+        log.error('persist', `bulk upsert failed ${coin}|${interval}: ${err instanceof Error ? err.message : String(err)}`)
       })
     })
     for (const r of replResults) tfReady.set(r.coin, r.readyTFs)
@@ -261,7 +263,7 @@ async function main(): Promise<void> {
       .then(() => health.recordSuccess('db'))
       .catch(err => {
         const msg = err instanceof Error ? err.message : String(err)
-        log.error('persist', `upsert failed ${coin}:${interval} t=${candle.t}: ${msg}`)
+        log.error('persist', `upsert failed ${coin}|${interval} t=${candle.t}: ${msg}`)
         health.recordError('db', msg)
       })
   })
