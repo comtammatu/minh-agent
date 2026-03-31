@@ -46,8 +46,8 @@ const GATE_COINS = [
 /** Timeframes to validate. */
 const GATE_TIMEFRAMES: CandleInterval[] = ['15m', '1h', '4h']
 
-/** How many months of history to use. */
-const HISTORY_MONTHS = 3
+/** How many months of history to use. 6 months for statistical significance (≥30 trades). */
+const HISTORY_MONTHS = 6
 
 /** Initial capital for backtest. */
 const INITIAL_CAPITAL = 10_000
