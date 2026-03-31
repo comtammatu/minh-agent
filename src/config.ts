@@ -291,6 +291,27 @@ export const MIN_POSITION_SIZE_PCT = 0.001
 /** Slippage buffer for stop market orders (Section 12.5). */
 export const STOP_SLIPPAGE_BUFFER = 0.002  // 0.2%
 
+// ─── Multi-TP Exit Strategy (Backtest) ─────────────────────────────────────
+
+/** Per-timeframe ATR multiplier for trailing stop distance. */
+export const ATR_TRAIL_MULTIPLIER: Record<CandleInterval, number> = {
+  '1m': 1.0,
+  '5m': 1.2,
+  '15m': 1.5,
+  '1h': 2.0,
+  '4h': 2.5,
+  '1d': 3.0,
+} as const
+
+/** Position split across 3 TP levels: TP1 (zone), TP2 (swing), TP3 (trail). */
+export const MULTI_TP_SPLIT = [0.4, 0.3, 0.3] as const
+
+/** Minimum R:R for TP1. TP1 must be at least this far from entry. */
+export const MIN_TP1_RR = 1.5
+
+/** Activate trailing stop after price moves this many R in profit. */
+export const TRAIL_ACTIVATION_R = 1.0
+
 // ─── Backtest (Sprint 3A) ──────────────────────────────────────────────────
 
 /** Default slippage for backtest fills (0.05% = 5 bps). */

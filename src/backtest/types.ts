@@ -23,6 +23,15 @@ export interface BacktestConfig {
   commissionPct: number
 }
 
+// ─── Partial Close Detail ──────────────────────────────────────────────────
+
+export interface PartialCloseDetail {
+  price: number
+  sizePct: number    // fraction of original size (e.g. 0.4, 0.3, 0.3)
+  bar: number        // bar index relative to entry
+  reason: 'tp1_zone' | 'tp2_swing' | 'tp3_trail' | 'sl_hit' | 'be_hit' | 'end_of_data'
+}
+
 // ─── Trade Record ───────────────────────────────────────────────────────────
 
 export interface BacktestTrade {
@@ -33,9 +42,10 @@ export interface BacktestTrade {
   confluenceGrade: ConfluenceGrade | null
 
   entryPrice: number
-  exitPrice: number
+  exitPrice: number       // weighted average across all partial closes
   slPrice: number
-  tpPrice: number
+  tpPrice: number         // TP1 (zone-based)
+  tp2Price?: number       // TP2 (swing-based)
   sizeUsd: number
 
   entryTime: number   // ms timestamp
@@ -45,6 +55,9 @@ export interface BacktestTrade {
   pnl: number         // realized PnL after slippage + commission
   pnlPct: number      // PnL as fraction of entry notional
   exitReason: 'sl_hit' | 'tp_hit' | 'trail_stop' | 'invalidated' | 'end_of_data'
+
+  /** Partial close breakdown (empty for single-exit trades). */
+  partialCloses?: PartialCloseDetail[]
 }
 
 // ─── Metrics ────────────────────────────────────────────────────────────────

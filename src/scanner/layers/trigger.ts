@@ -7,9 +7,12 @@
  * Pure function. Zero I/O.
  */
 
-import type { Candle, BiasResult, Signal, ZoneConfirmation } from '../../types.js'
+import type { Candle, BiasResult, Signal, ZoneConfirmation, KeyZone } from '../../types.js'
 import type { CandlePattern, PAPatternName } from '../../indicators/price-action.js'
 import { detectPriceAction } from '../../indicators/price-action.js'
+import { compileKeyZones } from '../../indicators/structure.js'
+import { findPivots } from '../../indicators/smc.js'
+import { MIN_TP1_RR } from '../../config.js'
 
 /** Bullish PA patterns for long bias. */
 const BULLISH_PATTERNS: Set<PAPatternName> = new Set([
@@ -66,20 +69,19 @@ export function findTrigger(
   const zone = bestZone.zone
   const side = bias.bias as 'long' | 'short'
 
-  // Compute entry/SL/TP
+  // Compute entry/SL
   const entry = candle.c
   let sl: number
-  let tp: number
 
   if (side === 'long') {
     sl = Math.min(candle.l, zone.bottom)
-    const risk = entry - sl
-    tp = entry + risk * 2  // default 2R
   } else {
     sl = Math.max(candle.h, zone.top)
-    const risk = sl - entry
-    tp = entry - risk * 2  // default 2R
   }
+
+  // Structure-based TP targets
+  const { tp1, tp2 } = computeStructureTargets(candles, idx, entry, sl, side)
+  const tp = tp1  // Primary TP for signal (TP1 = nearest zone)
 
   // Base confidence from trigger strength + zone boosts (including order flow)
   const triggerConf = best.strength
@@ -109,9 +111,82 @@ export function findTrigger(
       bookBoost,
       fundingBoost,
       throughZone: bestZone.throughZone,
+      tp2Price: tp2,  // swing-based TP2 for simulator multi-exit
     },
     zoneOrigin: zone.origin,
   }
+}
+
+// ── Structure-based TP ──────────────────────────────────────────────────────
+
+/**
+ * Compute TP1 (nearest opposing zone) and TP2 (swing target) from market structure.
+ * Pure function — no I/O. Calls compileKeyZones + findPivots internally.
+ *
+ * TP1: Nearest opposing zone edge. Fallback: 2R. Floor: MIN_TP1_RR.
+ * TP2: Nearest pivot beyond TP1. Fallback: 3R. Must be > TP1.
+ */
+export function computeStructureTargets(
+  candles: Candle[],
+  idx: number,
+  entry: number,
+  sl: number,
+  side: 'long' | 'short',
+): { tp1: number; tp2: number } {
+  const risk = Math.abs(entry - sl)
+  if (risk === 0) return { tp1: entry, tp2: entry }
+
+  const dir = side === 'long' ? 1 : -1
+  const minTp1 = entry + dir * risk * MIN_TP1_RR  // floor: 1.5R
+
+  // ── TP1: Nearest opposing zone ──────────────────────────────────────────
+  const { demandZones, supplyZones } = compileKeyZones(candles, idx)
+  const opposingZones = side === 'long' ? supplyZones : demandZones
+
+  let tp1: number | null = null
+  for (const z of opposingZones) {
+    const edge = side === 'long' ? z.bottom : z.top
+    const valid = side === 'long' ? edge > entry : edge < entry
+    if (valid) {
+      tp1 = edge
+      break  // zones sorted by proximity — first valid is nearest
+    }
+  }
+
+  // Apply floor + fallback
+  if (tp1 === null) {
+    tp1 = entry + dir * risk * 2  // fallback 2R
+  }
+  // Ensure TP1 >= MIN_TP1_RR
+  if (side === 'long' && tp1 < minTp1) tp1 = minTp1
+  if (side === 'short' && tp1 > minTp1) tp1 = minTp1
+
+  // ── TP2: Swing structure target ─────────────────────────────────────────
+  const pivots = findPivots(candles, idx, 5)
+
+  let tp2: number | null = null
+  if (side === 'long') {
+    // Nearest swing high beyond TP1
+    const candidates = pivots
+      .filter(p => p.kind === 'high' && p.price > tp1!)
+      .sort((a, b) => a.price - b.price)
+    tp2 = candidates[0]?.price ?? null
+  } else {
+    // Nearest swing low beyond TP1
+    const candidates = pivots
+      .filter(p => p.kind === 'low' && p.price < tp1!)
+      .sort((a, b) => b.price - a.price)
+    tp2 = candidates[0]?.price ?? null
+  }
+
+  // Fallback + ensure TP2 > TP1
+  if (tp2 === null) {
+    tp2 = entry + dir * risk * 3  // fallback 3R
+  }
+  if (side === 'long' && tp2 <= tp1) tp2 = tp1 + risk
+  if (side === 'short' && tp2 >= tp1) tp2 = tp1 - risk
+
+  return { tp1, tp2 }
 }
 
 // ── Private helpers ──────────────────────────────────────────────────────────

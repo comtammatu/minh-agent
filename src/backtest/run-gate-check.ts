@@ -136,6 +136,37 @@ async function main() {
   }
   log.info('gate-check', `Diagnostic: ${diagResult.trades.length} trades on full dataset`)
 
+  // Trade detail log — TP/SL distance analysis
+  if (diagResult.trades.length > 0) {
+    console.log(`\n=== TRADE DETAIL (${diagResult.trades.length} trades) ===`)
+    console.log('  Coin    TF    Side   Entry       SL          TP          SL%     TP%     R:R    PnL      Exit     Bars')
+    for (const t of diagResult.trades) {
+      const slPct = Math.abs(t.entryPrice - t.slPrice) / t.entryPrice * 100
+      const tpPct = Math.abs(t.tpPrice - t.entryPrice) / t.entryPrice * 100
+      const rr = slPct > 0 ? tpPct / slPct : 0
+      const fmt = (n: number) => n >= 100 ? n.toFixed(0) : n >= 1 ? n.toFixed(4) : n.toFixed(6)
+      console.log(`  ${t.coin.padEnd(7)} ${t.interval.padEnd(5)} ${t.side.padEnd(6)} ${fmt(t.entryPrice).padEnd(11)} ${fmt(t.slPrice).padEnd(11)} ${fmt(t.tpPrice).padEnd(11)} ${slPct.toFixed(2).padStart(5)}%  ${tpPct.toFixed(2).padStart(5)}%  ${rr.toFixed(2).padStart(4)}  ${t.pnl >= 0 ? '+' : ''}${t.pnl.toFixed(2).padStart(8)}  ${t.exitReason.padEnd(8)} ${t.holdingBars}`)
+    }
+    // Summary stats
+    const slPcts = diagResult.trades.map(t => Math.abs(t.entryPrice - t.slPrice) / t.entryPrice * 100)
+    const tpPcts = diagResult.trades.map(t => Math.abs(t.tpPrice - t.entryPrice) / t.entryPrice * 100)
+    const rrs = slPcts.map((sl, i) => sl > 0 ? tpPcts[i]! / sl : 0)
+    const avg = (arr: number[]) => arr.reduce((s, v) => s + v, 0) / arr.length
+    console.log(`  ───────────────────────────────────────────────────────────────────────────────────────`)
+    console.log(`  AVG SL%: ${avg(slPcts).toFixed(2)}%  |  AVG TP%: ${avg(tpPcts).toFixed(2)}%  |  AVG R:R: ${avg(rrs).toFixed(2)}  |  AVG PnL: $${avg(diagResult.trades.map(t => t.pnl)).toFixed(2)}`)
+
+    // Partial close breakdown
+    const withPartials = diagResult.trades.filter(t => t.partialCloses && t.partialCloses.length > 0)
+    if (withPartials.length > 0) {
+      const allPartials = withPartials.flatMap(t => t.partialCloses!)
+      const byReason = new Map<string, number>()
+      for (const p of allPartials) byReason.set(p.reason, (byReason.get(p.reason) ?? 0) + 1)
+      console.log(`  Partial closes: ${allPartials.length} across ${withPartials.length} trades`)
+      for (const [reason, count] of byReason) console.log(`    ${reason}: ${count}`)
+    }
+    console.log('==========================================')
+  }
+
   // Step 3: Run walk-forward
   log.info('gate-check', 'Running walk-forward validation...')
 

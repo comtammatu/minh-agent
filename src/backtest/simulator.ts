@@ -1,34 +1,55 @@
 /**
- * Backtest trade simulator — mock execution with slippage + commission.
+ * Backtest trade simulator — multi-level exit with partial close + trailing stop.
  *
- * Tracks open positions, checks SL/TP on each candle bar,
- * records completed trades. Pure logic, zero I/O.
+ * Exit strategy:
+ *   - TP1 (40%): Nearest opposing zone — secure partial profit
+ *   - TP2 (30%): Swing structure target — capture trend move
+ *   - TP3 (30%): ATR-based trailing stop — let winner run
+ *   - SL moves to breakeven after TP1 hit
  *
  * Design:
  *   - One position per coin (same as live agent rule)
  *   - Fill at signal.entryPrice ± slippage
- *   - SL/TP from signal (pipeline-computed)
  *   - Position size from exits.ts computePositionSize
- *   - Commission applied at entry + exit
+ *   - Commission applied at entry + exit (proportional to partial size)
+ *   - SL checked first on each bar (conservative)
  */
 
-import type { Candle, ActiveSetup, SignalSide } from '../types.js'
-import type { BacktestTrade } from './types.js'
+import type { Candle, ActiveSetup, SignalSide, CandleInterval } from '../types.js'
+import type { BacktestTrade, PartialCloseDetail } from './types.js'
 import { computePositionSize } from '../agent/exits.js'
-import { DEFAULT_RISK_PERCENT } from '../config.js'
+import { DEFAULT_RISK_PERCENT, MULTI_TP_SPLIT, TRAIL_ACTIVATION_R } from '../config.js'
 
 // ─── Open Position ──────────────────────────────────────────────────────────
 
 interface OpenPosition {
   coin: string
+  interval: CandleInterval
   setup: ActiveSetup
   side: SignalSide
   entryPrice: number
-  slPrice: number
-  tpPrice: number
-  sizeUsd: number
+  slPrice: number          // original SL
+  currentSlPrice: number   // may move to breakeven after TP1
+  tp1Price: number         // zone-based TP
+  tp2Price: number         // swing-based TP
+  sizeUsd: number          // original full size
   entryTime: number
   entryBarIndex: number
+
+  // Multi-exit tracking
+  remainingSizePct: number // 1.0 → decreases on each partial
+  tp1Hit: boolean
+  tp2Hit: boolean
+  partialCloses: PartialCloseDetail[]
+
+  // Trailing stop state
+  trailingActive: boolean
+  highWater: number        // highest price (long) / lowest (short) since entry
+  trailStopPrice: number   // current trailing stop level
+
+  // ATR for trailing distance
+  atrValue: number
+  trailMultiplier: number  // per-TF multiplier
 }
 
 // ─── Simulator ──────────────────────────────────────────────────────────────
@@ -46,38 +67,55 @@ export class TradeSimulator {
     this.commissionPct = commissionPct
   }
 
-  /** Try to open a position from a detected setup. Returns true if filled. */
-  tryFill(setup: ActiveSetup, barIndex: number): boolean {
-    // One position per coin
+  /**
+   * Try to open a position from a detected setup.
+   * @param atrValue  ATR(14) at entry time — used for trailing stop distance
+   * @param trailMult Per-timeframe ATR multiplier for trailing
+   */
+  tryFill(setup: ActiveSetup, barIndex: number, atrValue: number = 0, trailMult: number = 2.0): boolean {
     if (this.positions.has(setup.coin)) return false
 
     const { side, entryPrice, slPrice, tpPrice } = setup
 
-    // Apply slippage: long fills higher, short fills lower
+    // Apply slippage
     const slippage = entryPrice * this.slippagePct
     const fillPrice = side === 'long'
       ? entryPrice + slippage
       : entryPrice - slippage
 
-    // Position sizing using exits.ts (same code path as live)
+    // Position sizing
     const sizeCoins = computePositionSize(this.equity, DEFAULT_RISK_PERCENT, fillPrice, slPrice)
     const sizeUsd = sizeCoins * fillPrice
     if (sizeUsd <= 0) return false
 
     // Entry commission
-    const entryCost = sizeUsd * this.commissionPct
-    this.equity -= entryCost
+    this.equity -= sizeUsd * this.commissionPct
+
+    // TP2 from patternData (set by computeStructureTargets in trigger.ts)
+    const tp2 = (setup.patternData['tp2Price'] as number | undefined) ?? tpPrice
 
     this.positions.set(setup.coin, {
       coin: setup.coin,
+      interval: setup.interval,
       setup,
       side,
       entryPrice: fillPrice,
       slPrice,
-      tpPrice,
+      currentSlPrice: slPrice,
+      tp1Price: tpPrice,   // signal.tpPrice = TP1 (zone-based)
+      tp2Price: tp2,
       sizeUsd,
       entryTime: setup.detectedAt,
       entryBarIndex: barIndex,
+      remainingSizePct: 1.0,
+      tp1Hit: false,
+      tp2Hit: false,
+      partialCloses: [],
+      trailingActive: false,
+      highWater: fillPrice,
+      trailStopPrice: slPrice,
+      atrValue,
+      trailMultiplier: trailMult,
     })
 
     return true
@@ -85,33 +123,96 @@ export class TradeSimulator {
 
   /**
    * Check all open positions against a candle bar.
-   * If SL or TP is hit, close the position and record the trade.
-   *
-   * Order of checks per bar (conservative — SL checked first):
-   *   1. SL hit? → close at SL price (worst case)
-   *   2. TP hit? → close at TP price
+   * Multi-level exit: SL → TP1 (40%) → TP2 (30%) → Trailing (30%)
    */
   checkBar(coin: string, candle: Candle, barIndex: number): void {
     const pos = this.positions.get(coin)
     if (!pos) return
 
-    // Check SL
+    const holdBars = barIndex - pos.entryBarIndex
+
+    // ── 1. SL check (against current SL — may have moved to breakeven) ──
     if (this.isSLHit(pos, candle)) {
-      this.closePosition(pos, pos.slPrice, barIndex, candle.t, 'sl_hit')
+      // Close ALL remaining position at SL
+      pos.partialCloses.push({
+        price: pos.currentSlPrice,
+        sizePct: pos.remainingSizePct,
+        bar: holdBars,
+        reason: pos.tp1Hit ? 'be_hit' : 'sl_hit',
+      })
+      pos.remainingSizePct = 0
+      this.finalizePosition(pos, barIndex, candle.t, pos.tp1Hit ? 'trail_stop' : 'sl_hit')
       return
     }
 
-    // Check TP
-    if (this.isTPHit(pos, candle)) {
-      this.closePosition(pos, pos.tpPrice, barIndex, candle.t, 'tp_hit')
-      return
+    // ── 2. TP1 check (40% partial close at zone target) ──
+    if (!pos.tp1Hit && this.isTPHit(pos, candle, pos.tp1Price)) {
+      pos.tp1Hit = true
+      const closePct = MULTI_TP_SPLIT[0]
+      pos.partialCloses.push({
+        price: pos.tp1Price,
+        sizePct: closePct,
+        bar: holdBars,
+        reason: 'tp1_zone',
+      })
+      pos.remainingSizePct -= closePct
+
+      // Move SL to breakeven (+ tiny buffer for slippage)
+      const buffer = pos.entryPrice * 0.001
+      pos.currentSlPrice = pos.side === 'long'
+        ? pos.entryPrice + buffer
+        : pos.entryPrice - buffer
+    }
+
+    // ── 3. TP2 check (30% partial close at swing target) ──
+    if (pos.tp1Hit && !pos.tp2Hit && this.isTPHit(pos, candle, pos.tp2Price)) {
+      pos.tp2Hit = true
+      const closePct = MULTI_TP_SPLIT[1]
+      pos.partialCloses.push({
+        price: pos.tp2Price,
+        sizePct: closePct,
+        bar: holdBars,
+        reason: 'tp2_swing',
+      })
+      pos.remainingSizePct -= closePct
+    }
+
+    // ── 4. Trailing stop update + check (remaining portion) ──
+    if (pos.tp1Hit && pos.remainingSizePct > 0) {
+      this.updateTrailing(pos, candle)
+
+      if (pos.trailingActive && this.isTrailHit(pos, candle)) {
+        pos.partialCloses.push({
+          price: pos.trailStopPrice,
+          sizePct: pos.remainingSizePct,
+          bar: holdBars,
+          reason: 'tp3_trail',
+        })
+        pos.remainingSizePct = 0
+        this.finalizePosition(pos, barIndex, candle.t, 'trail_stop')
+        return
+      }
+    }
+
+    // ── 5. All portions closed? ──
+    if (pos.remainingSizePct <= 0.001) {
+      this.finalizePosition(pos, barIndex, candle.t, 'tp_hit')
     }
   }
 
   /** Force-close all remaining positions (end of data). */
   closeAll(closePrice: number, barIndex: number, closeTime: number): void {
     for (const [_coin, pos] of this.positions) {
-      this.closePosition(pos, closePrice, barIndex, closeTime, 'end_of_data')
+      if (pos.remainingSizePct > 0) {
+        pos.partialCloses.push({
+          price: closePrice,
+          sizePct: pos.remainingSizePct,
+          bar: barIndex - pos.entryBarIndex,
+          reason: 'end_of_data',
+        })
+        pos.remainingSizePct = 0
+      }
+      this.finalizePosition(pos, barIndex, closeTime, 'end_of_data')
     }
   }
 
@@ -119,89 +220,143 @@ export class TradeSimulator {
   closeByInvalidation(coin: string, closePrice: number, barIndex: number, closeTime: number): void {
     const pos = this.positions.get(coin)
     if (!pos) return
-    this.closePosition(pos, closePrice, barIndex, closeTime, 'invalidated')
+    if (pos.remainingSizePct > 0) {
+      pos.partialCloses.push({
+        price: closePrice,
+        sizePct: pos.remainingSizePct,
+        bar: barIndex - pos.entryBarIndex,
+        reason: 'sl_hit',
+      })
+      pos.remainingSizePct = 0
+    }
+    this.finalizePosition(pos, barIndex, closeTime, 'invalidated')
   }
 
-  /** Check if a coin has an open position. */
-  hasPosition(coin: string): boolean {
-    return this.positions.has(coin)
-  }
-
-  /** Get current equity. */
-  getEquity(): number {
-    return this.equity
-  }
-
-  /** Get all completed trades. */
-  getTrades(): BacktestTrade[] {
-    return this.trades
-  }
-
-  /** Get count of open positions. */
-  openPositionCount(): number {
-    return this.positions.size
-  }
+  hasPosition(coin: string): boolean { return this.positions.has(coin) }
+  getEquity(): number { return this.equity }
+  getTrades(): BacktestTrade[] { return this.trades }
+  openPositionCount(): number { return this.positions.size }
 
   // ─── Private ────────────────────────────────────────────────────────────
 
   private isSLHit(pos: OpenPosition, candle: Candle): boolean {
-    if (pos.side === 'long') {
-      return candle.l <= pos.slPrice
-    }
-    return candle.h >= pos.slPrice
+    return pos.side === 'long'
+      ? candle.l <= pos.currentSlPrice
+      : candle.h >= pos.currentSlPrice
   }
 
-  private isTPHit(pos: OpenPosition, candle: Candle): boolean {
-    if (pos.side === 'long') {
-      return candle.h >= pos.tpPrice
-    }
-    return candle.l <= pos.tpPrice
+  private isTPHit(pos: OpenPosition, candle: Candle, tpPrice: number): boolean {
+    return pos.side === 'long'
+      ? candle.h >= tpPrice
+      : candle.l <= tpPrice
   }
 
-  private closePosition(
+  private isTrailHit(pos: OpenPosition, candle: Candle): boolean {
+    return pos.side === 'long'
+      ? candle.l <= pos.trailStopPrice
+      : candle.h >= pos.trailStopPrice
+  }
+
+  private updateTrailing(pos: OpenPosition, candle: Candle): void {
+    const risk = Math.abs(pos.entryPrice - pos.slPrice)
+    const currentPnl = pos.side === 'long'
+      ? candle.c - pos.entryPrice
+      : pos.entryPrice - candle.c
+
+    // Activation gate: must be TRAIL_ACTIVATION_R × risk in profit
+    if (!pos.trailingActive && currentPnl >= risk * TRAIL_ACTIVATION_R) {
+      pos.trailingActive = true
+      pos.highWater = pos.side === 'long' ? candle.h : candle.l
+      // Initial trail stop: lock in small profit (entry + 0.5R)
+      const lockIn = risk * 0.5
+      pos.trailStopPrice = pos.side === 'long'
+        ? pos.entryPrice + lockIn
+        : pos.entryPrice - lockIn
+      return
+    }
+
+    if (!pos.trailingActive) return
+
+    // Update high water mark
+    if (pos.side === 'long' && candle.h > pos.highWater) {
+      pos.highWater = candle.h
+    }
+    if (pos.side === 'short' && candle.l < pos.highWater) {
+      pos.highWater = candle.l
+    }
+
+    // Compute new trailing stop: high water - ATR × multiplier
+    const trailDist = pos.atrValue * pos.trailMultiplier
+    const newStop = pos.side === 'long'
+      ? pos.highWater - trailDist
+      : pos.highWater + trailDist
+
+    // Ratchet only — never loosen the stop
+    if (pos.side === 'long' && newStop > pos.trailStopPrice) {
+      pos.trailStopPrice = newStop
+    }
+    if (pos.side === 'short' && newStop < pos.trailStopPrice) {
+      pos.trailStopPrice = newStop
+    }
+  }
+
+  /**
+   * Finalize a position: compute weighted average exit, PnL, record trade.
+   */
+  private finalizePosition(
     pos: OpenPosition,
-    exitPrice: number,
     barIndex: number,
     exitTime: number,
     exitReason: BacktestTrade['exitReason'],
   ): void {
-    // Apply slippage on exit: long exit fills lower, short exit fills higher
-    const slippage = exitPrice * this.slippagePct
-    const fillExitPrice = pos.side === 'long'
-      ? exitPrice - slippage
-      : exitPrice + slippage
+    if (!this.positions.has(pos.coin)) return  // already finalized
 
-    // Compute PnL
+    // Weighted average exit price from all partial closes
+    let weightedExit = 0
+    let totalWeight = 0
+    for (const pc of pos.partialCloses) {
+      weightedExit += pc.price * pc.sizePct
+      totalWeight += pc.sizePct
+    }
+    const avgExitPrice = totalWeight > 0 ? weightedExit / totalWeight : pos.entryPrice
+
+    // Apply slippage on weighted exit
+    const slippage = avgExitPrice * this.slippagePct
+    const fillExitPrice = pos.side === 'long'
+      ? avgExitPrice - slippage
+      : avgExitPrice + slippage
+
+    // PnL
     const priceChange = pos.side === 'long'
       ? fillExitPrice - pos.entryPrice
       : pos.entryPrice - fillExitPrice
     const rawPnl = (priceChange / pos.entryPrice) * pos.sizeUsd
 
-    // Exit commission
+    // Exit commission (on full size — conservative)
     const exitCost = pos.sizeUsd * this.commissionPct
     const pnl = rawPnl - exitCost
 
     this.equity += pnl
 
-    const holdingBars = barIndex - pos.entryBarIndex
-
     this.trades.push({
       coin: pos.coin,
-      interval: pos.setup.interval,
+      interval: pos.interval,
       side: pos.side,
       patternType: pos.setup.type,
       confluenceGrade: pos.setup.confluenceGrade ?? null,
       entryPrice: pos.entryPrice,
       exitPrice: fillExitPrice,
       slPrice: pos.slPrice,
-      tpPrice: pos.tpPrice,
+      tpPrice: pos.tp1Price,
+      tp2Price: pos.tp2Price,
       sizeUsd: pos.sizeUsd,
       entryTime: pos.entryTime,
       exitTime,
-      holdingBars,
+      holdingBars: barIndex - pos.entryBarIndex,
       pnl,
       pnlPct: pos.sizeUsd > 0 ? pnl / pos.sizeUsd : 0,
       exitReason,
+      partialCloses: pos.partialCloses.length > 0 ? [...pos.partialCloses] : undefined,
     })
 
     this.positions.delete(pos.coin)

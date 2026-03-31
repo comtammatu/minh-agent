@@ -12,10 +12,9 @@
  *   Store only contains candles up to current replay point because
  *   we feed them one by one via appendCandle (inside onCandleTick).
  *
- * Limitations (v1):
+ * Limitations:
  *   - Order flow data (delta, book, funding, OI) not available in backtest.
  *     Pipeline handles this gracefully — confirmZones returns zero boosts.
- *   - No trailing stop or partial close (added in S3/S4 with agent wiring).
  *   - Instant fill assumption (no queue/latency simulation).
  */
 
@@ -29,8 +28,9 @@ import {
   clearPipelineState,
   getPipelineStats,
 } from '../scanner/pipeline.js'
-import { clearStore, clearOnPersist } from '../feed/store.js'
-import { BACKTEST_SLIPPAGE_PCT, BACKTEST_COMMISSION_PCT } from '../config.js'
+import { clearStore, clearOnPersist, getCandles } from '../feed/store.js'
+import { atr } from '../indicators/core.js'
+import { BACKTEST_SLIPPAGE_PCT, BACKTEST_COMMISSION_PCT, ATR_TRAIL_MULTIPLIER, INDICATOR_WINDOW } from '../config.js'
 
 /**
  * Run a backtest on historical candle data.
@@ -55,9 +55,17 @@ export function runBacktest(
   // ── Wire pipeline → simulator ───────────────────────────────────────────
   const emitter = getPipelineEmitter()
   let currentBarIndex = 0
+  let currentInterval: CandleInterval = '1h'
+  let currentCoin: string = ''
 
   const onSetup = (setup: ActiveSetup) => {
-    simulator.tryFill(setup, currentBarIndex)
+    // Compute ATR at fill time from store (candles already appended)
+    const storeCandles = getCandles(setup.coin, setup.interval, INDICATOR_WINDOW)
+    const idx = storeCandles.length - 2  // closed candle (same as pipeline)
+    const atrVal = idx >= 14 ? atr(storeCandles, idx, 14) : 0
+    const trailMult = ATR_TRAIL_MULTIPLIER[setup.interval] ?? 2.0
+
+    simulator.tryFill(setup, currentBarIndex, atrVal, trailMult)
   }
   emitter.on('setup', onSetup)
 

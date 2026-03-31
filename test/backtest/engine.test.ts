@@ -204,19 +204,16 @@ describe('TradeSimulator', () => {
     expect(trades[0]!.pnl).toBeLessThan(0)
   })
 
-  test('detects TP hit for long position', () => {
-    const setup = makeSetup({ entryPrice: 100, slPrice: 95, tpPrice: 110 })
+  test('TP1 hit triggers partial close (position stays open for TP2/trail)', () => {
+    const setup = makeSetup({ entryPrice: 100, slPrice: 95, tpPrice: 110, patternData: { tp2Price: 120 } })
     sim.tryFill(setup, 0)
 
-    // Bar that hits TP (high reaches 110)
+    // Bar that hits TP1 (high reaches 110)
     const candle = makeCandle(2000000, 105, 112, 104, 108)
     sim.checkBar('BTC', candle, 1)
 
-    expect(sim.hasPosition('BTC')).toBe(false)
-    const trades = sim.getTrades()
-    expect(trades.length).toBe(1)
-    expect(trades[0]!.exitReason).toBe('tp_hit')
-    expect(trades[0]!.pnl).toBeGreaterThan(0)
+    // Position still open (TP2 + trailing remaining)
+    expect(sim.hasPosition('BTC')).toBe(true)
   })
 
   test('SL checked before TP on same bar (conservative)', () => {
@@ -249,22 +246,23 @@ describe('TradeSimulator', () => {
     expect(trades[0]!.pnl).toBeLessThan(0)
   })
 
-  test('detects TP hit for short position', () => {
+  test('full exit when TP1 + TP2 both hit on wide bar', () => {
+    // TP1=110, TP2=120. Bar high reaches 125 → both hit
     const setup = makeSetup({
-      side: 'short',
+      side: 'long',
       entryPrice: 100,
-      slPrice: 105,
-      tpPrice: 90,
+      slPrice: 95,
+      tpPrice: 110,
+      patternData: { tp2Price: 120 },
     })
     sim.tryFill(setup, 0)
 
-    // Bar that hits short TP (low reaches 90)
-    const candle = makeCandle(2000000, 95, 96, 89, 92)
+    // Wide bar that hits both TP1 and TP2
+    const candle = makeCandle(2000000, 105, 125, 104, 122)
     sim.checkBar('BTC', candle, 1)
 
-    const trades = sim.getTrades()
-    expect(trades[0]!.exitReason).toBe('tp_hit')
-    expect(trades[0]!.pnl).toBeGreaterThan(0)
+    // Remaining 30% still open for trailing
+    expect(sim.hasPosition('BTC')).toBe(true)
   })
 
   test('closeAll closes remaining positions at given price', () => {
@@ -295,31 +293,62 @@ describe('TradeSimulator', () => {
     expect(trades[0]!.exitReason).toBe('invalidated')
   })
 
-  test('slippage and commission affect PnL', () => {
+  test('slippage and commission affect PnL on SL exit', () => {
     // With zero slippage/commission
     const simClean = new TradeSimulator(10000, 0, 0)
     const setup = makeSetup({ entryPrice: 100, slPrice: 95, tpPrice: 110 })
     simClean.tryFill(setup, 0)
-    const tpCandle = makeCandle(2000000, 105, 112, 104, 108)
-    simClean.checkBar('BTC', tpCandle, 1)
+    const slCandle = makeCandle(2000000, 98, 99, 94, 96) // hits SL
+    simClean.checkBar('BTC', slCandle, 1)
     const cleanPnl = simClean.getTrades()[0]!.pnl
 
     // With slippage + commission
     const simReal = new TradeSimulator(10000, 0.001, 0.001)
     simReal.tryFill(makeSetup({ entryPrice: 100, slPrice: 95, tpPrice: 110 }), 0)
-    simReal.checkBar('BTC', tpCandle, 1)
+    simReal.checkBar('BTC', slCandle, 1)
     const realPnl = simReal.getTrades()[0]!.pnl
 
-    // Real PnL should be less due to costs
+    // Real PnL should be more negative due to costs
     expect(realPnl).toBeLessThan(cleanPnl)
   })
 
-  test('holding bars computed correctly', () => {
+  test('holding bars computed correctly on SL exit', () => {
     sim.tryFill(makeSetup(), 10)
-    const candle = makeCandle(2000000, 105, 112, 104, 108) // hits TP
+    const candle = makeCandle(2000000, 98, 99, 94, 96) // hits SL
     sim.checkBar('BTC', candle, 15)
 
     const trade = sim.getTrades()[0]!
     expect(trade.holdingBars).toBe(5)
+  })
+
+  test('trailing stop activates and closes remaining after TP1', () => {
+    const sim2 = new TradeSimulator(10000, 0, 0)
+    // atrValue=5 means trail distance = 5 * 2.0 = 10
+    const setup = makeSetup({ entryPrice: 100, slPrice: 95, tpPrice: 110, patternData: { tp2Price: 150 } })
+    sim2.tryFill(setup, 0, 5, 2.0)
+
+    // Bar 1: TP1 hit at 110 (40% closed, SL to breakeven ~100.1)
+    sim2.checkBar('BTC', makeCandle(1, 105, 112, 104, 108), 1)
+    expect(sim2.hasPosition('BTC')).toBe(true)
+
+    // Bar 2: price rises to 120, low stays above trail (120-10=110, low=115 > 110)
+    sim2.checkBar('BTC', makeCandle(2, 110, 120, 115, 118), 2)
+    expect(sim2.hasPosition('BTC')).toBe(true)
+
+    // Bar 3: price rises to 125, trail stop = 125-10 = 115
+    sim2.checkBar('BTC', makeCandle(3, 118, 125, 116, 124), 3)
+    expect(sim2.hasPosition('BTC')).toBe(true)
+
+    // Bar 4: pulls back through trail stop (125-10=115), low=112 < 115
+    sim2.checkBar('BTC', makeCandle(4, 124, 124, 112, 114), 4)
+
+    const trades = sim2.getTrades()
+    expect(trades.length).toBe(1)
+    expect(trades[0]!.partialCloses).toBeDefined()
+    expect(trades[0]!.partialCloses!.length).toBeGreaterThanOrEqual(2)
+    // Should have TP1 partial + trail partial
+    const reasons = trades[0]!.partialCloses!.map(p => p.reason)
+    expect(reasons).toContain('tp1_zone')
+    expect(reasons).toContain('tp3_trail')
   })
 })
