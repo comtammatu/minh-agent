@@ -11,7 +11,7 @@ function makeBias(confidence = 0.7): BiasResult {
 }
 
 function makeZone(vsaBoost = 0, vpBoost = 0, deltaBoost = 0, bookBoost = 0): ZoneConfirmation {
-  const zone: KeyZone = { type: 'demand', top: 102, bottom: 98, strength: 0.7, origin: 'order-block' }
+  const zone: KeyZone = { type: 'demand', top: 102, bottom: 98, strength: 0.7, origin: 'order-block', createdAtIdx: 0 }
   return { zone, vsaBoost, vpBoost, deltaBoost, bookBoost, throughZone: false, confirmed: true }
 }
 

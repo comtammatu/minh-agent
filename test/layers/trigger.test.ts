@@ -17,7 +17,7 @@ function makeBias(bias: 'long' | 'short'): BiasResult {
 }
 
 function makeZoneConfirmation(overrides: Partial<ZoneConfirmation> = {}): ZoneConfirmation {
-  const zone: KeyZone = { type: 'demand', top: 102, bottom: 98, strength: 0.7, origin: 'order-block' }
+  const zone: KeyZone = { type: 'demand', top: 102, bottom: 98, strength: 0.7, origin: 'order-block', createdAtIdx: 0 }
   return {
     zone,
     vsaBoost: 0.10,
@@ -93,7 +93,7 @@ describe('findTrigger', () => {
     candles[27] = { t: 1000 + 27 * 60000, o: 102, h: 107, l: 101, c: 106, v: 1500 }
     candles.push({ t: 1000 + 28 * 60000, o: 107, h: 108, l: 100, c: 101, v: 2000 })
 
-    const supplyZone: KeyZone = { type: 'supply', top: 108, bottom: 105, strength: 0.7, origin: 'order-block' }
+    const supplyZone: KeyZone = { type: 'supply', top: 108, bottom: 105, strength: 0.7, origin: 'order-block', createdAtIdx: 0 }
     const zones = [makeZoneConfirmation({ zone: supplyZone })]
     const result = findTrigger(candles, 29, zones, makeBias('long'))
 

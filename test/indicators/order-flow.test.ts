@@ -18,8 +18,8 @@ import type { KeyZone, DeltaState } from '../../src/types.js'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-const demandZone: KeyZone = { type: 'demand', top: 100, bottom: 95, strength: 0.7, origin: 'order-block' }
-const supplyZone: KeyZone = { type: 'supply', top: 110, bottom: 105, strength: 0.7, origin: 'order-block' }
+const demandZone: KeyZone = { type: 'demand', top: 100, bottom: 95, strength: 0.7, origin: 'order-block', createdAtIdx: 0 }
+const supplyZone: KeyZone = { type: 'supply', top: 110, bottom: 105, strength: 0.7, origin: 'order-block', createdAtIdx: 0 }
 
 function makeDelta(overrides: Partial<DeltaState> = {}): DeltaState {
   return { delta: 0, cumDelta: 0, buyVol: 0, sellVol: 0, barTs: 1000, ...overrides }

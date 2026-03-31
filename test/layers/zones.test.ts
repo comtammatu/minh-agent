@@ -39,46 +39,61 @@ function buildSwingCandles(count = 80): Candle[] {
 }
 
 describe('findEntryZones', () => {
-  it('returns array (possibly empty) for long bias', () => {
+  it('returns zones array for long bias', () => {
     const candles = buildSwingCandles(80)
-    const zones = findEntryZones(candles, 70, makeBias('long'))
-    expect(Array.isArray(zones)).toBe(true)
+    const result = findEntryZones(candles, 70, makeBias('long'))
+    expect(Array.isArray(result.zones)).toBe(true)
     // All returned zones should be demand type
-    for (const z of zones) {
+    for (const z of result.zones) {
       expect(z.type).toBe('demand')
     }
   })
 
-  it('returns array (possibly empty) for short bias', () => {
+  it('returns zones array for short bias', () => {
     const candles = buildSwingCandles(80)
-    const zones = findEntryZones(candles, 70, makeBias('short'))
-    expect(Array.isArray(zones)).toBe(true)
+    const result = findEntryZones(candles, 70, makeBias('short'))
+    expect(Array.isArray(result.zones)).toBe(true)
     // All returned zones should be supply type
-    for (const z of zones) {
+    for (const z of result.zones) {
       expect(z.type).toBe('supply')
     }
   })
 
-  it('neutral bias → empty array', () => {
+  it('neutral bias → empty zones', () => {
     const candles = buildSwingCandles(80)
-    const zones = findEntryZones(candles, 70, makeBias('neutral'))
-    expect(zones).toEqual([])
+    const result = findEntryZones(candles, 70, makeBias('neutral'))
+    expect(result.zones).toEqual([])
   })
 
-  it('insufficient candles (< 30) → empty array', () => {
+  it('insufficient candles (< 30) → empty zones', () => {
     const candles = Array(20).fill(null).map(() => makeCandle())
-    const zones = findEntryZones(candles, 15, makeBias('long'))
-    expect(zones).toEqual([])
+    const result = findEntryZones(candles, 15, makeBias('long'))
+    expect(result.zones).toEqual([])
   })
 
   it('zones are sorted by proximity to current price', () => {
     const candles = buildSwingCandles(80)
-    const zones = findEntryZones(candles, 70, makeBias('long'))
+    const { zones } = findEntryZones(candles, 70, makeBias('long'))
     if (zones.length >= 2) {
       const price = candles[70]!.c
       const dist0 = Math.abs(price - (zones[0]!.top + zones[0]!.bottom) / 2)
       const dist1 = Math.abs(price - (zones[1]!.top + zones[1]!.bottom) / 2)
       expect(dist0).toBeLessThanOrEqual(dist1)
+    }
+  })
+
+  it('returns totalBeforeFilter count', () => {
+    const candles = buildSwingCandles(80)
+    const result = findEntryZones(candles, 70, makeBias('long'))
+    expect(result.totalBeforeFilter).toBeGreaterThanOrEqual(result.zones.length)
+  })
+
+  it('freshness filter drops old zones', () => {
+    // With idx=70 and ZONE_MAX_AGE=50, zones created before idx 20 are stale
+    const candles = buildSwingCandles(80)
+    const result = findEntryZones(candles, 70, makeBias('long'))
+    for (const z of result.zones) {
+      expect(z.createdAtIdx).toBeGreaterThanOrEqual(70 - 50)
     }
   })
 })

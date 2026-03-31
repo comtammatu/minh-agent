@@ -73,6 +73,7 @@ interface RawZone {
   bottom: number
   kind: 'demand' | 'supply'
   origin: string
+  sourceIdx: number  // candle index where source pattern was detected
 }
 
 function mergeAndRank(
@@ -87,8 +88,8 @@ function mergeAndRank(
   raw.sort((a, b) => (a.top + a.bottom) / 2 - (b.top + b.bottom) / 2)
 
   // Merge overlapping / near zones
-  const merged: Array<{ top: number; bottom: number; origins: string[]; touches: number; lastTouch: number; broken: boolean }> = []
-  let cur = { top: raw[0]!.top, bottom: raw[0]!.bottom, origins: [raw[0]!.origin], touches: 0, lastTouch: -1, broken: false }
+  const merged: Array<{ top: number; bottom: number; origins: string[]; touches: number; lastTouch: number; broken: boolean; latestSourceIdx: number }> = []
+  let cur = { top: raw[0]!.top, bottom: raw[0]!.bottom, origins: [raw[0]!.origin], touches: 0, lastTouch: -1, broken: false, latestSourceIdx: raw[0]!.sourceIdx }
 
   for (let i = 1; i < raw.length; i++) {
     const z = raw[i]!
@@ -99,9 +100,10 @@ function mergeAndRank(
       cur.top = Math.max(cur.top, z.top)
       cur.bottom = Math.min(cur.bottom, z.bottom)
       cur.origins.push(z.origin)
+      cur.latestSourceIdx = Math.max(cur.latestSourceIdx, z.sourceIdx)
     } else {
       merged.push(cur)
-      cur = { top: z.top, bottom: z.bottom, origins: [z.origin], touches: 0, lastTouch: -1, broken: false }
+      cur = { top: z.top, bottom: z.bottom, origins: [z.origin], touches: 0, lastTouch: -1, broken: false, latestSourceIdx: z.sourceIdx }
     }
   }
   merged.push(cur)
@@ -134,6 +136,7 @@ function mergeAndRank(
         bottom: z.bottom,
         strength,
         origin: z.origins[0]!,
+        createdAtIdx: z.latestSourceIdx,
       }
     })
 
@@ -158,21 +161,21 @@ export function compileKeyZones(
 
   // Order blocks
   for (const ob of detectOrderBlocks(candles, upToIdx, { lookback: 50 })) {
-    raw.push({ top: ob.top, bottom: ob.bottom, kind: ob.bullish ? 'demand' : 'supply', origin: 'order-block' })
+    raw.push({ top: ob.top, bottom: ob.bottom, kind: ob.bullish ? 'demand' : 'supply', origin: 'order-block', sourceIdx: ob.index })
   }
 
   // Swing levels from classified swings (raw pivots → thin zones)
   for (const p of findPivots(candles, upToIdx, 3)) {
     if (p.kind === 'low') {
-      raw.push({ top: p.price + thick, bottom: p.price, kind: 'demand', origin: 'swing' })
+      raw.push({ top: p.price + thick, bottom: p.price, kind: 'demand', origin: 'swing', sourceIdx: p.index })
     } else {
-      raw.push({ top: p.price, bottom: p.price - thick, kind: 'supply', origin: 'swing' })
+      raw.push({ top: p.price, bottom: p.price - thick, kind: 'supply', origin: 'swing', sourceIdx: p.index })
     }
   }
 
   // Active FVGs
   for (const fvg of scanFVGs(candles, upToIdx)) {
-    raw.push({ top: fvg.top, bottom: fvg.bottom, kind: fvg.bullish ? 'demand' : 'supply', origin: 'fvg' })
+    raw.push({ top: fvg.top, bottom: fvg.bottom, kind: fvg.bullish ? 'demand' : 'supply', origin: 'fvg', sourceIdx: fvg.index })
   }
 
   const demand = raw.filter(z => z.kind === 'demand')

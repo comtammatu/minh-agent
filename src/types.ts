@@ -72,6 +72,7 @@ export interface KeyZone {
   bottom: number
   strength: number  // 0–1
   origin: string    // e.g. 'order-block', 'fvg', 'swing'
+  createdAtIdx: number  // candle index when zone was first detected
 }
 
 export interface MarketStructure {

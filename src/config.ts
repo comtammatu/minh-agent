@@ -95,6 +95,13 @@ export const HTF_MAP: Record<CandleInterval, CandleInterval> = {
 export const CONFLUENCE_MIN = 3
 
 /**
+ * Max zone age in candles. Zones older than this are filtered out in L3.
+ * Prevents stale zones (price moved far away) from inflating L3 pass rate.
+ * 50 candles ≈ 12.5h on 15m, 50h on 1h, 200h (~8d) on 4h.
+ */
+export const ZONE_MAX_AGE = 50
+
+/**
  * @deprecated Use real account balance from ExchangeService (R17).
  * Kept as fallback if ExchangeService is not initialized (tests, offline mode).
  */

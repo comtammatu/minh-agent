@@ -16,8 +16,8 @@ function makeCandle(overrides: Partial<Candle> = {}): Candle {
 // ── isAtZone tests ───────────────────────────────────────────────────────────
 
 describe('isAtZone', () => {
-  const demandZone: KeyZone = { type: 'demand', top: 98, bottom: 95, strength: 0.7, origin: 'order-block' }
-  const supplyZone: KeyZone = { type: 'supply', top: 108, bottom: 105, strength: 0.7, origin: 'order-block' }
+  const demandZone: KeyZone = { type: 'demand', top: 98, bottom: 95, strength: 0.7, origin: 'order-block', createdAtIdx: 0 }
+  const supplyZone: KeyZone = { type: 'supply', top: 108, bottom: 105, strength: 0.7, origin: 'order-block', createdAtIdx: 0 }
   const atrVal = 5
 
   describe('demand zone', () => {
@@ -86,14 +86,14 @@ describe('isAtZone', () => {
 describe('confirmZones', () => {
   it('returns empty when idx < 20', () => {
     const candles = Array(15).fill(null).map(() => makeCandle())
-    const zone: KeyZone = { type: 'demand', top: 102, bottom: 98, strength: 0.7, origin: 'swing' }
+    const zone: KeyZone = { type: 'demand', top: 102, bottom: 98, strength: 0.7, origin: 'swing', createdAtIdx: 0 }
     expect(confirmZones(candles, 10, [zone])).toEqual([])
   })
 
   it('returns empty when no zone is at price', () => {
     // Build candles around 100, zone at 50-55 (far away)
     const candles = Array(30).fill(null).map((_, i) => makeCandle({ t: 1000 + i * 60000 }))
-    const zone: KeyZone = { type: 'demand', top: 55, bottom: 50, strength: 0.7, origin: 'swing' }
+    const zone: KeyZone = { type: 'demand', top: 55, bottom: 50, strength: 0.7, origin: 'swing', createdAtIdx: 0 }
     const result = confirmZones(candles, 28, [zone])
     expect(result).toEqual([])
   })
@@ -113,7 +113,7 @@ describe('confirmZones', () => {
       })
     }
     // Zone at 95-98, last candle should be near there
-    const zone: KeyZone = { type: 'demand', top: 98, bottom: 95, strength: 0.7, origin: 'order-block' }
+    const zone: KeyZone = { type: 'demand', top: 98, bottom: 95, strength: 0.7, origin: 'order-block', createdAtIdx: 0 }
     const result = confirmZones(candles, 28, [zone])
     // May or may not be at zone depending on exact candle position
     expect(Array.isArray(result)).toBe(true)
@@ -139,7 +139,7 @@ describe('confirmZones', () => {
         v: 1000,
       })
     }
-    const zone: KeyZone = { type: 'demand', top: 98, bottom: 95, strength: 0.7, origin: 'swing' }
+    const zone: KeyZone = { type: 'demand', top: 98, bottom: 95, strength: 0.7, origin: 'swing', createdAtIdx: 0 }
     const result = confirmZones(candles, 28, [zone])
     if (result.length > 0) {
       const zc = result[0]!
@@ -154,7 +154,7 @@ describe('confirmZones', () => {
 // ── confirmZones with OrderFlowContext ───────────────────────────────────────
 
 describe('confirmZones with order flow', () => {
-  const zone: KeyZone = { type: 'demand', top: 98, bottom: 95, strength: 0.7, origin: 'order-block' }
+  const zone: KeyZone = { type: 'demand', top: 98, bottom: 95, strength: 0.7, origin: 'order-block', createdAtIdx: 0 }
 
   function buildCandlesAtZone(): Candle[] {
     // Force price exactly at zone (wick touches)

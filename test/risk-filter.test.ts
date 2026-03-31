@@ -19,7 +19,7 @@ function makeSignal(entry: number, sl: number, tp: number, side: 'long' | 'short
 }
 
 function makeZone(top: number, bottom: number, type: 'demand' | 'supply' = 'demand'): KeyZone {
-  return { type, top, bottom, strength: 0.7, origin: 'order-block' }
+  return { type, top, bottom, strength: 0.7, origin: 'order-block', createdAtIdx: 0 }
 }
 
 describe('assessRisk', () => {

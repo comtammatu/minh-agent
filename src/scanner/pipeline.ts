@@ -81,6 +81,10 @@ export interface PipelineStats {
   setupsTracked: number
   /** Setups invalidated. */
   setupsInvalidated: number
+  /** Layer 3 detail: total zones before freshness filter. */
+  l3ZonesTotal: number
+  /** Layer 3 detail: zones after freshness filter. */
+  l3ZonesFresh: number
   /** Layer 4 detail: zones at zone (isAtZone true). */
   l4ZonesAtZone: number
   /** Layer 4 detail: zones confirmed (boost threshold met). */
@@ -99,6 +103,8 @@ function zeroPipelineStats(): PipelineStats {
     passRegime: 0,
     setupsTracked: 0,
     setupsInvalidated: 0,
+    l3ZonesTotal: 0,
+    l3ZonesFresh: 0,
     l4ZonesAtZone: 0,
     l4ZonesConfirmed: 0,
   }
@@ -126,6 +132,8 @@ export function formatPipelineStats(stats: PipelineStats): string {
     `L1 Bias pass:        ${stats.passL1Bias} (${pct(stats.passL1Bias)})`,
     `L2 Structure pass:   ${stats.passL2Structure} (${pct(stats.passL2Structure)})`,
     `L3 Zones pass:       ${stats.passL3Zones} (${pct(stats.passL3Zones)})`,
+    `  L3 total zones:    ${stats.l3ZonesTotal}`,
+    `  L3 fresh zones:    ${stats.l3ZonesFresh} (${stats.l3ZonesTotal > 0 ? (stats.l3ZonesFresh / stats.l3ZonesTotal * 100).toFixed(1) + '%' : '0%'} fresh)`,
     `  L4 zones at zone:  ${stats.l4ZonesAtZone}`,
     `  L4 zones confirmed:${stats.l4ZonesConfirmed}`,
     `L5 Trigger pass:     ${stats.passL5Trigger} (${pct(stats.passL5Trigger)})`,
@@ -289,7 +297,11 @@ function runPipeline(
   pipelineStats.passL2Structure++
 
   // ── Layer 3: Zones ─────────────────────────────────────────────────────
-  const zones = findEntryZones(confirmedSlice, idx, bias)
+  const zonesResult = findEntryZones(confirmedSlice, idx, bias)
+  const zones = zonesResult.zones
+  // Diagnostic: total vs fresh zone counts
+  pipelineStats.l3ZonesTotal += zonesResult.totalBeforeFilter
+  pipelineStats.l3ZonesFresh += zones.length
   if (zones.length === 0) {
     invalidateSetups(coin, interval, confirmedSlice, idx)
     return
