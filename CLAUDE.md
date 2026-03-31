@@ -51,6 +51,8 @@ Runtime: Bun | SDK: @nktkas/hyperliquid | Store: In-memory Map<string, Candle[]>
 - **HL OI cap**: Some assets at OI cap → can't open positions. Check `perpsAtOpenInterestCap()` before placing
 - **HL dead man's switch**: `scheduleCancel` auto-cancels all orders after timestamp. Max 10/day. Critical for bot safety
 - **HL WS limits**: 1000 subs, 10 connections, 2000 msg/min. Currently ~121 subs (12%). Guard in `registerSubscription()` blocks at 1000, warns at 80%
+- **HL agent wallet**: Bot uses agent wallet PK (`PRIVATE_KEY`) for signing, main account address (`ACCOUNT_ADDRESS`) for info queries. Agent wallet can trade but **cannot withdraw**. Nonces tracked per agent address. Agent expires (check HL UI) — renew before expiry. Never reuse deregistered agent addresses (replay attack risk)
+- **HL unified account**: Balance lives in spot (`spotClearinghouseState`), not perp (`clearinghouseState`). `getAccountState()` queries both and returns `effectiveBalance = perp + spot USDC`
 - **Candle dedup**: WS may resend same timestamp as REST → store upserts by timestamp
 - **Staleness**: Track `lastCandleTime` per coin/tf, WARNING after 60s silence
 - **Regime filter**: Soft — does NOT block counter-trend, reduces confidence (×1.0/×0.8/×0.3)

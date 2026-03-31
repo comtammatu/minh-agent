@@ -309,8 +309,8 @@ async function main(): Promise<void> {
     await svc.init()
     const account = await svc.getAccountState()
     const positions = await svc.getPositions()
-    const addr = svc.getWalletAddress()
-    const addrShort = `${addr.slice(0, 6)}…${addr.slice(-4)}`
+    const acctAddr = svc.getAccountAddress()
+    const addrShort = `${acctAddr.slice(0, 6)}…${acctAddr.slice(-4)}`
 
     if (PAPER_TRADE) {
       console.log(
@@ -322,7 +322,7 @@ async function main(): Promise<void> {
       )
     }
     console.log(
-      `[${ts()}] ${ANSI.dim}ACCT${ANSI.reset}  | ${addrShort} | balance: $${account.accountValue.toFixed(2)} | margin: $${account.totalMarginUsed.toFixed(2)} | free: $${account.withdrawable.toFixed(2)}`,
+      `[${ts()}] ${ANSI.dim}ACCT${ANSI.reset}  | ${addrShort} | balance: $${account.effectiveBalance.toFixed(2)} (perp: $${account.accountValue.toFixed(2)} + spot: $${account.spotUsdcBalance.toFixed(2)}) | margin: $${account.totalMarginUsed.toFixed(2)} | free: $${account.withdrawable.toFixed(2)}`,
     )
 
     if (positions.length > 0) {

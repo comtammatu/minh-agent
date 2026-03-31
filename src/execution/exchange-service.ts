@@ -83,6 +83,10 @@ export interface AccountState {
   totalNtlPos: number
   totalMarginUsed: number
   withdrawable: number
+  /** Spot USDC balance (unified account keeps funds here). */
+  spotUsdcBalance: number
+  /** Effective total = perp accountValue + spot USDC (true available capital). */
+  effectiveBalance: number
 }
 
 // ─── Exchange Service ───────────────────────────────────────────────────────
@@ -92,6 +96,8 @@ export class ExchangeService {
   private converter: SymbolConverter | null = null
   private transport: HttpTransport
   private walletAddress: string = ''
+  /** Main account address for info queries (differs from walletAddress in agent mode). */
+  private accountAddress: string = ''
 
   /** Cached account value — refreshed on each getAccountState() call. */
   private cachedAccountValue: number = 0
@@ -123,7 +129,22 @@ export class ExchangeService {
 
     const wallet = privateKeyToAccount(privateKey as `0x${string}`)
     this.walletAddress = wallet.address
-    log.info('exchange-service', `Wallet initialized: ${this.walletAddress.slice(0, 6)}...${this.walletAddress.slice(-4)}`)
+
+    // Agent wallet mode: ACCOUNT_ADDRESS is the main account (has funds).
+    // Agent PK signs orders on behalf of main account, but info queries need main address.
+    // If ACCOUNT_ADDRESS not set, assume PRIVATE_KEY is the main wallet (backward compat).
+    const accountAddr = process.env.ACCOUNT_ADDRESS
+    if (accountAddr) {
+      if (!accountAddr.startsWith('0x') || accountAddr.length !== 42) {
+        throw new Error('ACCOUNT_ADDRESS must be a valid 0x-prefixed Ethereum address (42 chars)')
+      }
+      this.accountAddress = accountAddr
+      log.info('exchange-service', `Agent wallet mode: signing=${this.walletAddress.slice(0, 6)}...${this.walletAddress.slice(-4)}, account=${this.accountAddress.slice(0, 6)}...${this.accountAddress.slice(-4)}`)
+    } else {
+      this.accountAddress = wallet.address
+      log.warn('exchange-service', `Main wallet mode (no ACCOUNT_ADDRESS) — consider using an agent wallet for safety`)
+      log.info('exchange-service', `Wallet: ${this.walletAddress.slice(0, 6)}...${this.walletAddress.slice(-4)}`)
+    }
 
     this.exchange = new ExchangeClient({ transport: this.transport, wallet })
     this.converter = await SymbolConverter.create({ transport: this.transport })
@@ -139,9 +160,14 @@ export class ExchangeService {
     }
   }
 
-  /** Get wallet address (for clearinghouseState queries). */
+  /** Get signing wallet address (agent wallet in agent mode, main wallet otherwise). */
   getWalletAddress(): string {
     return this.walletAddress
+  }
+
+  /** Get main account address (for info queries: balance, positions). */
+  getAccountAddress(): string {
+    return this.accountAddress
   }
 
   /** Reload SymbolConverter mappings (call after coin-selector refresh). */
@@ -427,12 +453,22 @@ export class ExchangeService {
     const health = getHealthMonitor()
     const retryResult = await withRetry(async () => {
       await acquire()
-      const state = await info.clearinghouseState({ user: this.walletAddress as `0x${string}` })
+      // Query both perp and spot state (unified account keeps USDC in spot)
+      const [state, spotState] = await Promise.all([
+        info.clearinghouseState({ user: this.accountAddress as `0x${string}` }),
+        info.spotClearinghouseState({ user: this.accountAddress as `0x${string}` }),
+      ])
+      const accountValue = parseFloat(state.marginSummary.accountValue)
+      const spotUsdc = spotState.balances
+        .filter((b: { coin: string; total: string }) => b.coin === 'USDC')
+        .reduce((sum: number, b: { total: string }) => sum + parseFloat(b.total), 0)
       return {
-        accountValue: parseFloat(state.marginSummary.accountValue),
+        accountValue,
         totalNtlPos: parseFloat(state.marginSummary.totalNtlPos),
         totalMarginUsed: parseFloat(state.marginSummary.totalMarginUsed),
         withdrawable: parseFloat(state.withdrawable),
+        spotUsdcBalance: spotUsdc,
+        effectiveBalance: accountValue + spotUsdc,
       } satisfies AccountState
     }, {
       maxAttempts: RETRY.exchangeMaxAttempts,
@@ -446,7 +482,7 @@ export class ExchangeService {
     })
 
     if (retryResult.success && retryResult.value) {
-      this.cachedAccountValue = retryResult.value.accountValue
+      this.cachedAccountValue = retryResult.value.effectiveBalance
       health.recordSuccess('exchange')
       return retryResult.value
     }
@@ -471,7 +507,7 @@ export class ExchangeService {
     const health = getHealthMonitor()
     const retryResult = await withRetry(async () => {
       await acquire()
-      const state = await info.clearinghouseState({ user: this.walletAddress as `0x${string}` })
+      const state = await info.clearinghouseState({ user: this.accountAddress as `0x${string}` })
       return state.assetPositions.map(ap => {
         const pos = ap.position
         const szi = parseFloat(pos.szi)

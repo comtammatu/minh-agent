@@ -95,8 +95,9 @@ mock.module('@nktkas/hyperliquid/utils', () => ({
   formatSize: (size: string | number, _szDecimals: number) => String(size),
 }))
 
-// Mock InfoClient from feed/rest.js (for clearinghouseState)
+// Mock InfoClient from feed/rest.js (for clearinghouseState + spotClearinghouseState)
 let clearinghouseResponse: unknown = null
+let spotClearinghouseResponse: unknown = null
 mock.module('../feed/rest.js', () => ({
   info: {
     clearinghouseState: (_params: unknown) => {
@@ -138,6 +139,16 @@ mock.module('../feed/rest.js', () => ({
         })
       }
       return Promise.resolve(clearinghouseResponse)
+    },
+    spotClearinghouseState: (_params: unknown) => {
+      if (!spotClearinghouseResponse) {
+        return Promise.resolve({
+          balances: [
+            { coin: 'USDC', token: 0, total: '300.0', hold: '0.0', entryNtl: '0.0' },
+          ],
+        })
+      }
+      return Promise.resolve(spotClearinghouseResponse)
     },
     candleSnapshot: () => Promise.resolve([]),
   },
@@ -490,18 +501,20 @@ describe('ExchangeService', () => {
   // ── Account State ─────────────────────────────────────────────────────
 
   describe('getAccountState', () => {
-    it('should parse clearinghouseState response', async () => {
+    it('should parse clearinghouseState + spotClearinghouseState response', async () => {
       const state = await svc.getAccountState()
 
       expect(state.accountValue).toBe(25000.50)
       expect(state.totalNtlPos).toBe(10000)
       expect(state.totalMarginUsed).toBe(5000)
       expect(state.withdrawable).toBe(15000.50)
+      expect(state.spotUsdcBalance).toBe(300)
+      expect(state.effectiveBalance).toBe(25300.50) // perp 25000.50 + spot 300
     })
 
-    it('should cache accountValue', async () => {
+    it('should cache effectiveBalance (perp + spot)', async () => {
       await svc.getAccountState()
-      expect(svc.getCachedAccountValue()).toBe(25000.50)
+      expect(svc.getCachedAccountValue()).toBe(25300.50)
     })
   })
 
