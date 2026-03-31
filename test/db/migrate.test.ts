@@ -20,9 +20,14 @@ beforeAll(async () => {
     await sql`SELECT 1`
     dbAvailable = true
 
-    // Clean slate: drop all tables so migration runs fresh
+    // Clean slate: drop all tables + matviews so migration runs fresh
     await sql.unsafe(`
       DROP MATERIALIZED VIEW IF EXISTS pnl_hourly CASCADE;
+      DROP MATERIALIZED VIEW IF EXISTS daily_performance CASCADE;
+      DROP MATERIALIZED VIEW IF EXISTS pattern_performance CASCADE;
+      DROP TABLE IF EXISTS backtest_equity CASCADE;
+      DROP TABLE IF EXISTS backtest_trades CASCADE;
+      DROP TABLE IF EXISTS backtest_runs CASCADE;
       DROP TABLE IF EXISTS candles CASCADE;
       DROP TABLE IF EXISTS orders CASCADE;
       DROP TABLE IF EXISTS positions CASCADE;
@@ -122,5 +127,36 @@ describe('runMigrations', () => {
       WHERE matviewname = 'pnl_hourly'
     `
     expect(result.length).toBe(1)
+  })
+
+  it('daily_performance materialized view exists (003)', async () => {
+    if (!dbAvailable) return
+
+    const result = await sql`
+      SELECT matviewname FROM pg_matviews
+      WHERE matviewname = 'daily_performance'
+    `
+    expect(result.length).toBe(1)
+  })
+
+  it('pattern_performance materialized view exists (003)', async () => {
+    if (!dbAvailable) return
+
+    const result = await sql`
+      SELECT matviewname FROM pg_matviews
+      WHERE matviewname = 'pattern_performance'
+    `
+    expect(result.length).toBe(1)
+  })
+
+  it('positions indexes exist (003)', async () => {
+    if (!dbAvailable) return
+
+    const result = await sql`
+      SELECT indexname FROM pg_indexes
+      WHERE tablename = 'positions'
+        AND indexname IN ('idx_positions_closed_at', 'idx_positions_coin_status')
+    `
+    expect(result.length).toBe(2)
   })
 })

@@ -38,6 +38,7 @@ function taggedSql(strings: TemplateStringsArray, ...values: unknown[]): Promise
 
 const sqlProxy = Object.assign(taggedSql, {
   end: () => Promise.resolve(),
+  json: (obj: unknown) => obj, // postgres sql.json() passthrough for JSONB
 })
 
 mock.module('../db/connection.js', () => ({
@@ -79,7 +80,8 @@ describe('logJournalEntry', () => {
     const values = allInterpolatedValues()
     expect(values).toContain('signal')
     expect(values).toContain('BTC')
-    expect(values).toContain(JSON.stringify({ grade: 'A', confidence: 0.85 }))
+    // sql.json() passes the object directly (no double-encoding)
+    expect(values).toContainEqual({ grade: 'A', confidence: 0.85 })
     expect(values).toContain('IDLE')
   })
 

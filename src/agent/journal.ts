@@ -32,7 +32,7 @@ export async function logJournalEntry(
   try {
     await sql`
       INSERT INTO trade_journal (event_type, coin, details, agent_state)
-      VALUES (${eventType}, ${coin}, ${JSON.stringify(details)}, ${agentState ?? null})
+      VALUES (${eventType}, ${coin}, ${sql.json(details)}, ${agentState ?? null})
     `
   } catch (err) {
     log.error('journal', `Failed to write entry: ${eventType} ${coin ?? ''} — ${(err as Error).message}`)
