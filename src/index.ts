@@ -63,11 +63,15 @@ import { getOrderManager } from './agent/order-manager.js'
 import { getPositionMonitor } from './agent/position-monitor.js'
 import { getInvalidationBridge } from './agent/invalidation-bridge.js'
 import { startServer } from './server/index.js'
+import { getExchangeService } from './execution/exchange-service.js'
 import type { CandleInterval } from './types.js'
 
 // ── Banner ───────────────────────────────────────────────────────────────────
 
-console.log(`[${ts()}] ${ANSI.bold}${ANSI.cyan}Minh (明) v2.0.0${ANSI.reset} — Autonomous Trading Agent`)
+const modeTag = PAPER_TRADE
+  ? `${ANSI.bold}${ANSI.yellow}PAPER${ANSI.reset}`
+  : `${ANSI.bold}${ANSI.red}LIVE${ANSI.reset}`
+console.log(`[${ts()}] ${ANSI.bold}${ANSI.cyan}Minh (明) v2.0.0${ANSI.reset} — Autonomous Trading Agent [${modeTag}]`)
 console.log(
   `[${ts()}] Config: dynamic top coins × ${TIMEFRAMES.join(',')} | ` +
   `min:${MIN_CONFIDENCE} | confluence:${CONFLUENCE_MIN}+ | ` +
@@ -282,10 +286,46 @@ async function main(): Promise<void> {
     `[${ts()}] ${ANSI.bold}${ANSI.green}ARMED${ANSI.reset} | ${coins.length} coins: ${fullyReady} fully ready, ${partialReady} partial | ${TIMEFRAMES.length} TFs`,
   )
 
-  if (PAPER_TRADE) {
+  // 7b. Init ExchangeService + show account info
+  try {
+    const svc = getExchangeService()
+    await svc.init()
+    const account = await svc.getAccountState()
+    const positions = await svc.getPositions()
+    const addr = svc.getWalletAddress()
+    const addrShort = `${addr.slice(0, 6)}…${addr.slice(-4)}`
+
+    if (PAPER_TRADE) {
+      console.log(
+        `[${ts()}] ${ANSI.bold}${ANSI.yellow}MODE${ANSI.reset}  | PAPER TRADE — orders are SIMULATED, no real exchange calls`,
+      )
+    } else {
+      console.log(
+        `[${ts()}] ${ANSI.bold}${ANSI.red}MODE${ANSI.reset}  | LIVE TRADING — real orders on Hyperliquid`,
+      )
+    }
     console.log(
-      `[${ts()}] ${ANSI.bold}${ANSI.yellow}⚠ PAPER TRADE MODE${ANSI.reset} | Orders are SIMULATED — no real exchange calls. Set PAPER_TRADE=false for live trading.`,
+      `[${ts()}] ${ANSI.dim}ACCT${ANSI.reset}  | ${addrShort} | balance: $${account.accountValue.toFixed(2)} | margin: $${account.totalMarginUsed.toFixed(2)} | free: $${account.withdrawable.toFixed(2)}`,
     )
+
+    if (positions.length > 0) {
+      console.log(`[${ts()}] ${ANSI.dim}POS${ANSI.reset}   | ${positions.length} open position(s):`)
+      for (const p of positions) {
+        const side = p.size > 0 ? `${ANSI.green}LONG${ANSI.reset}` : `${ANSI.red}SHORT${ANSI.reset}`
+        const pnlColor = p.unrealizedPnl >= 0 ? ANSI.green : ANSI.red
+        console.log(
+          `[${ts()}]        ${p.coin.padEnd(10)} ${side} ${Math.abs(p.size)} @ $${p.entryPrice.toFixed(2)} | uPnL: ${pnlColor}$${p.unrealizedPnl.toFixed(2)}${ANSI.reset}${p.liquidationPrice ? ` | liq: $${p.liquidationPrice.toFixed(2)}` : ''}`,
+        )
+      }
+    } else {
+      console.log(`[${ts()}] ${ANSI.dim}POS${ANSI.reset}   | no open positions`)
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.log(`[${ts()}] ${ANSI.yellow}ACCT${ANSI.reset}  | Could not fetch account info: ${msg}`)
+    if (PAPER_TRADE) {
+      console.log(`[${ts()}] ${ANSI.bold}${ANSI.yellow}MODE${ANSI.reset}  | PAPER TRADE — continuing without wallet`)
+    }
   }
 
   // 8. Start health monitor periodic check (S13: Self-Healing)

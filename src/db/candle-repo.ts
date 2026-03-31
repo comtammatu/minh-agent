@@ -12,6 +12,7 @@ import { sql } from './connection.js'
 /**
  * Upsert a single candle (used for WS write-through).
  * ON CONFLICT → update OHLCV (WS may send updated current bar).
+ * Retries once on deadlock (concurrent upserts for same coin across TFs).
  */
 export async function upsertCandle(
   coin: string,
@@ -19,12 +20,24 @@ export async function upsertCandle(
   candle: Candle,
 ): Promise<void> {
   const t = new Date(candle.t)
-  await sql`
-    INSERT INTO candles (coin, interval, t, o, h, l, c, v)
-    VALUES (${coin}, ${interval}, ${t}, ${candle.o}, ${candle.h}, ${candle.l}, ${candle.c}, ${candle.v})
-    ON CONFLICT (coin, interval, t)
-    DO UPDATE SET o = EXCLUDED.o, h = EXCLUDED.h, l = EXCLUDED.l, c = EXCLUDED.c, v = EXCLUDED.v
-  `
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await sql`
+        INSERT INTO candles (coin, interval, t, o, h, l, c, v)
+        VALUES (${coin}, ${interval}, ${t}, ${candle.o}, ${candle.h}, ${candle.l}, ${candle.c}, ${candle.v})
+        ON CONFLICT (coin, interval, t)
+        DO UPDATE SET o = EXCLUDED.o, h = EXCLUDED.h, l = EXCLUDED.l, c = EXCLUDED.c, v = EXCLUDED.v
+      `
+      return
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.includes('deadlock') && attempt === 0) {
+        await new Promise(r => setTimeout(r, 10 + Math.random() * 40))
+        continue
+      }
+      throw err
+    }
+  }
 }
 
 /**
