@@ -28,6 +28,21 @@ import type {
 } from './types.js'
 import { runAllChecks, prunePnlHistory } from './circuit-breakers.js'
 import { shouldBlockCorrelatedEntry } from './correlation-guard.js'
+import { ANSI } from '../ui/terminal.js'
+
+function ts(): string { return new Date().toISOString().slice(11, 19) }
+
+/** Color-coded state badge for terminal output. */
+function stateBadge(state: AgentState): string {
+  switch (state) {
+    case 'IDLE': return `${ANSI.dim}IDLE${ANSI.reset}`
+    case 'WATCHING': return `${ANSI.cyan}WATCHING${ANSI.reset}`
+    case 'ENTERING': return `${ANSI.yellow}ENTERING${ANSI.reset}`
+    case 'IN_POSITION': return `${ANSI.bold}${ANSI.green}IN_POS${ANSI.reset}`
+    case 'EXITING': return `${ANSI.magenta}EXITING${ANSI.reset}`
+    case 'PAUSED': return `${ANSI.red}PAUSED${ANSI.reset}`
+  }
+}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -372,6 +387,7 @@ export class TradingAgent {
       const openCoins = this.getOpenPositionCoins()
       const check = shouldBlockCorrelatedEntry(setup.coin, openCoins)
       if (check.blocked) {
+        console.log(`[${ts()}] ${ANSI.dim}AGENT${ANSI.reset} | ${setup.coin.padEnd(8)} ${ANSI.yellow}BLOCKED${ANSI.reset} correlation guard: ${check.reason}`)
         this.emitter.emit('action', journalAction('skip', setup.coin, {
           reason: check.reason,
           setupId: setup.id,
@@ -389,14 +405,28 @@ export class TradingAgent {
   /** Dispatch an event to a coin's state machine. */
   dispatch(coin: string, event: AgentEvent): TransitionResult {
     const ctx = this.getOrCreateCoinContext(coin)
+    const prevState = ctx.state
     const handler = handlers[ctx.state]
     const result = handler(ctx, event, this.global)
 
     // Apply transition
-    if (result.nextState !== ctx.state) {
+    if (result.nextState !== prevState) {
       ctx.stateEnteredAt = Date.now()
+
+      // Log state transitions (skip noisy IDLE→IDLE)
+      const setup = ctx.activeSetup ?? (event.type === 'setup_detected' ? event.setup : null)
+      const detail = setup ? ` | ${setup.type} ${setup.side}` : ''
+      const reason = event.type === 'setup_invalidated' ? ` | reason: ${event.reason}` : ''
+      console.log(`[${ts()}] ${ANSI.dim}AGENT${ANSI.reset} | ${coin.padEnd(8)} ${stateBadge(prevState)} → ${stateBadge(result.nextState)}${detail}${reason}`)
     }
     ctx.state = result.nextState
+
+    // Log skip/block actions
+    for (const action of result.actions) {
+      if (action.type === 'log_journal' && action.eventType === 'skip') {
+        console.log(`[${ts()}] ${ANSI.dim}AGENT${ANSI.reset} | ${coin.padEnd(8)} ${ANSI.yellow}SKIP${ANSI.reset} ${action.details?.reason ?? ''}`)
+      }
+    }
 
     // Apply side-effect context updates from actions
     for (const action of result.actions) {
@@ -505,6 +535,8 @@ export class TradingAgent {
     })
 
     if (result.tripped && !this.global.globalPaused) {
+      console.log(`[${ts()}] ${ANSI.bold}${ANSI.red}CIRCUIT BREAK${ANSI.reset} | ${result.reason} | dailyPnl=$${this.global.dailyPnl.toFixed(2)} | pause until ${result.pauseUntil ? new Date(result.pauseUntil).toISOString().slice(11, 19) : 'manual resume'}`)
+
       // Set global pause — prevents new entries
       this.global.globalPaused = true
       this.global.globalPauseReason = result.reason
