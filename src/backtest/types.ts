@@ -6,6 +6,7 @@
  */
 
 import type { CandleInterval, PatternType, ConfluenceGrade, SignalSide } from '../types.js'
+import type { PipelineStats } from '../scanner/pipeline.js'
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -90,6 +91,8 @@ export interface BacktestResult {
   metrics: BacktestMetrics
   trades: BacktestTrade[]
   equityCurve: EquityPoint[]
+  /** Pipeline diagnostic stats from this backtest run. */
+  pipelineStats?: PipelineStats
 }
 
 // ─── Walk-Forward ──────────────────────────────────────────────────────────

@@ -14,7 +14,7 @@
 import type { Candle, CandleInterval } from '../types.js'
 import { fetchCandles } from '../feed/rest.js'
 import { bulkUpsertCandles, loadCandles } from '../db/candle-repo.js'
-import { TIMEFRAME_MS } from '../config.js'
+import { TIMEFRAME_MS, HTF_MAP } from '../config.js'
 import { log } from '../lib/logger.js'
 
 /** Max candles per HL REST request. */
@@ -96,6 +96,41 @@ export function computeDownloadWindows(
   return windows
 }
 
+/**
+ * Compute HTF intervals required by Layer 1 bias for a set of LTF intervals.
+ * Returns only HTF intervals NOT already in the input set.
+ *
+ * Pure function — no I/O.
+ *
+ * Example: intervals = ['15m', '1h', '4h'] → HTFs = ['4h', '1d']
+ *          '4h' already in input, so returns ['1d']
+ */
+export function computeHTFIntervals(intervals: CandleInterval[]): CandleInterval[] {
+  const inputSet = new Set(intervals)
+  const htfSet = new Set<CandleInterval>()
+
+  for (const interval of intervals) {
+    const htf = HTF_MAP[interval]
+    if (htf !== interval && !inputSet.has(htf)) {
+      htfSet.add(htf)
+    }
+  }
+
+  return [...htfSet]
+}
+
+/**
+ * Compute the warmup buffer (ms) needed for HTF candles.
+ * Layer 1 bias needs 50 HTF candles for computeHTFBias().
+ *
+ * Pure function — no I/O.
+ */
+export const HTF_WARMUP_CANDLES = 50
+
+export function computeHTFWarmupMs(htfInterval: CandleInterval): number {
+  return HTF_WARMUP_CANDLES * TIMEFRAME_MS[htfInterval]
+}
+
 // ─── BacktestDataManager (I/O boundary) ────────────────────────────────────
 
 export class BacktestDataManager {
@@ -120,29 +155,29 @@ export class BacktestDataManager {
 
     let totalPersisted = 0
 
-    log('INFO', 'backtest-data', `Downloading ${coin} ${interval}: ${windows.length} pages, ${startDate.toISOString()} → ${endDate.toISOString()}`)
+    log.info('backtest-data', `Downloading ${coin} ${interval}: ${windows.length} pages, ${startDate.toISOString()} → ${endDate.toISOString()}`)
 
     for (let i = 0; i < windows.length; i++) {
       const w = windows[i]!
       const candles = await fetchCandles(coin, interval, w.startTime, w.endTime)
 
       if (candles === null) {
-        log('WARN', 'backtest-data', `${coin} ${interval} page ${i + 1}/${windows.length}: fetch failed — skipping`)
+        log.warn('backtest-data', `${coin} ${interval} page ${i + 1}/${windows.length}: fetch failed — skipping`)
         continue
       }
 
       if (candles.length === 0) {
-        log('DEBUG', 'backtest-data', `${coin} ${interval} page ${i + 1}/${windows.length}: empty`)
+        log.debug('backtest-data', `${coin} ${interval} page ${i + 1}/${windows.length}: empty`)
         continue
       }
 
       const persisted = await bulkUpsertCandles(coin, interval, candles)
       totalPersisted += persisted
 
-      log('DEBUG', 'backtest-data', `${coin} ${interval} page ${i + 1}/${windows.length}: ${persisted} candles`)
+      log.debug('backtest-data', `${coin} ${interval} page ${i + 1}/${windows.length}: ${persisted} candles`)
     }
 
-    log('INFO', 'backtest-data', `${coin} ${interval}: ${totalPersisted} candles persisted`)
+    log.info('backtest-data', `${coin} ${interval}: ${totalPersisted} candles persisted`)
     return totalPersisted
   }
 
@@ -175,11 +210,11 @@ export class BacktestDataManager {
     const gaps = await this.checkGaps(coin, interval)
 
     if (gaps.length === 0) {
-      log('DEBUG', 'backtest-data', `${coin} ${interval}: no gaps found`)
+      log.debug('backtest-data', `${coin} ${interval}: no gaps found`)
       return 0
     }
 
-    log('INFO', 'backtest-data', `${coin} ${interval}: ${gaps.length} gaps found, ${gaps.reduce((s, g) => s + g.count, 0)} missing candles`)
+    log.info('backtest-data', `${coin} ${interval}: ${gaps.length} gaps found, ${gaps.reduce((s, g) => s + g.count, 0)} missing candles`)
 
     let totalPersisted = 0
 
@@ -193,12 +228,18 @@ export class BacktestDataManager {
       totalPersisted += persisted
     }
 
-    log('INFO', 'backtest-data', `${coin} ${interval}: ${totalPersisted} gap candles filled`)
+    log.info('backtest-data', `${coin} ${interval}: ${totalPersisted} gap candles filled`)
     return totalPersisted
   }
 
   /**
    * Load candles from PG for backtest engine consumption.
+   * Automatically loads HTF data with warmup buffer for Layer 1 bias.
+   *
+   * HTF warmup: Layer 1 needs 50 HTF candles for computeHTFBias().
+   * Without buffer, first ~8 days of each walk-forward window lack HTF context.
+   * We load HTF data starting (50 × HTF_interval_ms) before startDate.
+   *
    * Returns Map<"COIN:INTERVAL", Candle[]> sorted ascending.
    */
   async loadForBacktest(
@@ -211,15 +252,30 @@ export class BacktestDataManager {
     const startMs = startDate.getTime()
     const endMs = endDate.getTime()
 
+    // Determine extra HTF intervals needed for Layer 1 bias
+    const extraHTFs = computeHTFIntervals(intervals)
+
+    // Load requested intervals with exact date range
     for (const coin of coins) {
       for (const interval of intervals) {
-        // Load all candles, then filter to date range
         const all = await loadCandles(coin, interval, 100_000)
         const filtered = all.filter(c => c.t >= startMs && c.t <= endMs)
         const key = `${coin}:${interval}`
         result.set(key, filtered)
 
-        log('DEBUG', 'backtest-data', `Loaded ${key}: ${filtered.length} candles`)
+        log.debug('backtest-data', `Loaded ${key}: ${filtered.length} candles`)
+      }
+
+      // Load extra HTF intervals with warmup buffer
+      for (const htf of extraHTFs) {
+        const warmupMs = computeHTFWarmupMs(htf)
+        const htfStartMs = startMs - warmupMs
+        const all = await loadCandles(coin, htf, 100_000)
+        const filtered = all.filter(c => c.t >= htfStartMs && c.t <= endMs)
+        const key = `${coin}:${htf}`
+        result.set(key, filtered)
+
+        log.debug('backtest-data', `Loaded HTF ${key}: ${filtered.length} candles (warmup: ${Math.round(warmupMs / 86_400_000)}d)`)
       }
     }
 

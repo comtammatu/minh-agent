@@ -39,6 +39,7 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
     tpPrice: 110,
     patternData: {},
     detectedAt: 1000000,
+    detectedAtBar: 0,
     expiresAtBar: 50,
     confluenceGrade: 'B',
     ...overrides,

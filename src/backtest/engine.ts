@@ -27,6 +27,7 @@ import {
   onCandleTick,
   getPipelineEmitter,
   clearPipelineState,
+  getPipelineStats,
 } from '../scanner/pipeline.js'
 import { clearStore, clearOnPersist } from '../feed/store.js'
 import { BACKTEST_SLIPPAGE_PCT, BACKTEST_COMMISSION_PCT } from '../config.js'
@@ -96,7 +97,10 @@ export function runBacktest(
     const metrics = computeMetrics(trades, config.initialCapital)
     const equityCurve = buildEquityCurve(trades, config.initialCapital)
 
-    return { config, metrics, trades, equityCurve }
+    // Capture pipeline diagnostic stats before cleanup
+    const pipelineStatsSnapshot = getPipelineStats()
+
+    return { config, metrics, trades, equityCurve, pipelineStats: pipelineStatsSnapshot }
   } finally {
     // ── Cleanup: remove listener + reset state ──────────────────────────
     emitter.off('setup', onSetup)

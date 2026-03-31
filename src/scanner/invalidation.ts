@@ -34,6 +34,14 @@ export function isInvalidated(
     return { invalidated: true, reason: 'ttl-expired' }
   }
 
+  // Skip invalidation on the bar where setup was created.
+  // The entry bar's wick may have triggered the signal (e.g., spring/sweep),
+  // so checking SL on that same bar causes false invalidation.
+  // Trade needs at least 1 bar to "work out."
+  if (setup.detectedAtBar !== undefined && currentBarIdx <= setup.detectedAtBar) {
+    return { invalidated: false }
+  }
+
   const c = candles[currentBarIdx]
   if (!c) return { invalidated: false }
 

@@ -52,6 +52,7 @@ export interface ActiveSetup extends Signal {
   coin: string
   interval: CandleInterval
   detectedAt: number      // timestamp ms
+  detectedAtBar: number   // bar index when setup was created (for 0-bar skip)
   expiresAtBar: number    // bar index when detected + TTL
 }
 

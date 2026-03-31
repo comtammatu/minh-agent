@@ -61,6 +61,7 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
     coin: 'BTC',
     interval: '15m',
     detectedAt: Date.now(),
+    detectedAtBar: 0,
     expiresAtBar: 100,
     type: 'order-block',
     side: 'long',

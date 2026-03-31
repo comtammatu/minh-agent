@@ -58,6 +58,87 @@ import { EventEmitter } from 'events'
 import { ANSI, formatSide, formatGrade } from '../ui/terminal.js'
 import { playSound } from '../ui/sound.js'
 
+// ── Pipeline Diagnostic Stats ────────────────────────────────────────────────
+
+export interface PipelineStats {
+  /** Total closed candles processed (entered runPipeline). */
+  totalTicks: number
+  /** Passed Layer 1 — bias is non-neutral. */
+  passL1Bias: number
+  /** Passed Layer 2 — structure not deny. */
+  passL2Structure: number
+  /** Passed Layer 3 — zones non-empty. */
+  passL3Zones: number
+  /** Passed Layer 4+5 — trigger found (confirm→trigger chain). */
+  passL5Trigger: number
+  /** Passed confluence gate (grade B+). */
+  passConfluence: number
+  /** Passed risk filter. */
+  passRisk: number
+  /** Passed regime modifier (final confidence ≥ MIN_CONFIDENCE). */
+  passRegime: number
+  /** Setups tracked (signal fully qualified). */
+  setupsTracked: number
+  /** Setups invalidated. */
+  setupsInvalidated: number
+  /** Layer 4 detail: zones at zone (isAtZone true). */
+  l4ZonesAtZone: number
+  /** Layer 4 detail: zones confirmed (boost threshold met). */
+  l4ZonesConfirmed: number
+}
+
+function zeroPipelineStats(): PipelineStats {
+  return {
+    totalTicks: 0,
+    passL1Bias: 0,
+    passL2Structure: 0,
+    passL3Zones: 0,
+    passL5Trigger: 0,
+    passConfluence: 0,
+    passRisk: 0,
+    passRegime: 0,
+    setupsTracked: 0,
+    setupsInvalidated: 0,
+    l4ZonesAtZone: 0,
+    l4ZonesConfirmed: 0,
+  }
+}
+
+let pipelineStats = zeroPipelineStats()
+
+/** Get current pipeline diagnostic stats. */
+export function getPipelineStats(): PipelineStats {
+  return { ...pipelineStats }
+}
+
+/** Reset pipeline diagnostic stats (call before backtest run). */
+export function resetPipelineStats(): void {
+  pipelineStats = zeroPipelineStats()
+}
+
+/** Format pipeline stats as a human-readable report. */
+export function formatPipelineStats(stats: PipelineStats): string {
+  const t = stats.totalTicks
+  const pct = (n: number) => t > 0 ? `${(n / t * 100).toFixed(2)}%` : '0%'
+  const lines = [
+    '=== PIPELINE DIAGNOSTIC STATS ===',
+    `Total ticks:         ${t}`,
+    `L1 Bias pass:        ${stats.passL1Bias} (${pct(stats.passL1Bias)})`,
+    `L2 Structure pass:   ${stats.passL2Structure} (${pct(stats.passL2Structure)})`,
+    `L3 Zones pass:       ${stats.passL3Zones} (${pct(stats.passL3Zones)})`,
+    `  L4 zones at zone:  ${stats.l4ZonesAtZone}`,
+    `  L4 zones confirmed:${stats.l4ZonesConfirmed}`,
+    `L5 Trigger pass:     ${stats.passL5Trigger} (${pct(stats.passL5Trigger)})`,
+    `Confluence pass:     ${stats.passConfluence} (${pct(stats.passConfluence)})`,
+    `Risk pass:           ${stats.passRisk} (${pct(stats.passRisk)})`,
+    `Regime pass:         ${stats.passRegime} (${pct(stats.passRegime)})`,
+    `Setups tracked:      ${stats.setupsTracked}`,
+    `Setups invalidated:  ${stats.setupsInvalidated}`,
+    '=================================',
+  ]
+  return lines.join('\n')
+}
+
 // ── Module-level state ──────────────────────────────────────────────────────
 
 const activeSetups = new Map<string, ActiveSetup>()
@@ -145,11 +226,12 @@ export function clearCoinState(coin: string): void {
   for (const k of lastCandleTs.keys()) { if (k.startsWith(prefix)) lastCandleTs.delete(k) }
 }
 
-/** Clear all state — used in tests. */
+/** Clear all state — used in tests and backtest engine. */
 export function clearPipelineState(): void {
   activeSetups.clear()
   statusState.clear()
   lastCandleTs.clear()
+  resetPipelineStats()
 }
 
 // ── Pipeline ─────────────────────────────────────────────────────────────────
@@ -162,6 +244,8 @@ function runPipeline(
 ): void {
   const sk = `${coin}:${interval}`
   const confirmedSlice = candles.slice(0, idx + 1)
+
+  pipelineStats.totalTicks++
 
   // ── Shared context (computed once per tick) ────────────────────────────
   const pivots = findPivots(confirmedSlice, idx, 3)
@@ -194,6 +278,7 @@ function runPipeline(
     invalidateSetups(coin, interval, confirmedSlice, idx)
     return
   }
+  pipelineStats.passL1Bias++
 
   // ── Layer 2: Structure ─────────────────────────────────────────────────
   const verdict = confirmStructure(confirmedSlice, idx, bias, swings)
@@ -201,6 +286,7 @@ function runPipeline(
     invalidateSetups(coin, interval, confirmedSlice, idx)
     return
   }
+  pipelineStats.passL2Structure++
 
   // ── Layer 3: Zones ─────────────────────────────────────────────────────
   const zones = findEntryZones(confirmedSlice, idx, bias)
@@ -208,6 +294,7 @@ function runPipeline(
     invalidateSetups(coin, interval, confirmedSlice, idx)
     return
   }
+  pipelineStats.passL3Zones++
 
   // ── Layer 4: Confirm ───────────────────────────────────────────────────
   const orderFlow: OrderFlowContext = {
@@ -220,12 +307,17 @@ function runPipeline(
   }
   const confirmed = confirmZones(confirmedSlice, idx, zones, orderFlow)
 
+  // L4 diagnostic detail
+  pipelineStats.l4ZonesAtZone += confirmed.length
+  pipelineStats.l4ZonesConfirmed += confirmed.filter(z => z.confirmed).length
+
   // ── Layer 5: Trigger ───────────────────────────────────────────────────
   const signal = findTrigger(confirmedSlice, idx, confirmed, bias)
   if (!signal) {
     invalidateSetups(coin, interval, confirmedSlice, idx)
     return
   }
+  pipelineStats.passL5Trigger++
 
   // ── Confluence + Risk + Regime ─────────────────────────────────────────
   const bestZone = confirmed.length > 0 ? confirmed[0]! : null
@@ -242,6 +334,7 @@ function runPipeline(
     invalidateSetups(coin, interval, confirmedSlice, idx)
     return
   }
+  pipelineStats.passConfluence++
 
   // Risk filter
   const currentPrice = confirmedSlice[idx]!.c
@@ -254,6 +347,7 @@ function runPipeline(
     invalidateSetups(coin, interval, confirmedSlice, idx)
     return
   }
+  pipelineStats.passRisk++
 
   // Regime modifier on final confidence
   const finalConf = applyRegimeModifier(confluence.confidence, signal.side, regime)
@@ -261,6 +355,7 @@ function runPipeline(
     invalidateSetups(coin, interval, confirmedSlice, idx)
     return
   }
+  pipelineStats.passRegime++
 
   // ── Track + Alert ──────────────────────────────────────────────────────
   const enrichedSignal: Signal = {
@@ -288,10 +383,12 @@ function runPipeline(
     coin,
     interval,
     detectedAt: Date.now(),
+    detectedAtBar: idx,
     expiresAtBar: computeExpiresAtBar(signal.type, idx),
   }
 
   activeSetups.set(id, setup)
+  pipelineStats.setupsTracked++
   if (existing) {
     console.log(
       `[${ts()}] ${ANSI.dim}↻ REPLACE${ANSI.reset} | ${coin} ${interval} | ${formatSide(existing.side)} ${existing.type} → ${formatSide(setup.side)} | conf ${existing.confidence.toFixed(2)} → ${setup.confidence.toFixed(2)}`,
@@ -324,6 +421,7 @@ function invalidateSetups(
         `[${ts()}] ${ANSI.yellow}⚠ INVALID${ANSI.reset} | ${coin} ${interval} | ${setup.type} ${formatSide(setup.side)} | reason: ${result.reason} | lived ${Math.max(age, 0)} bars`,
       )
       activeSetups.delete(id)
+      pipelineStats.setupsInvalidated++
       // R10: Emit invalidation event for agent subscription
       pipelineEmitter.emit('invalidation', id, result.reason ?? 'unknown')
     }
