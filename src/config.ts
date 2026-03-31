@@ -251,8 +251,8 @@ export const ZONE_RISK = {
 
 // ─── Exit Strategy (Section 12) ─────────────────────────────────────────────
 
-/** Default risk per trade as fraction of account (1%). */
-export const DEFAULT_RISK_PERCENT = 0.01
+/** Default risk per trade as fraction of account (5%). Pipeline is highly selective (~5 trades/month). */
+export const DEFAULT_RISK_PERCENT = 0.05
 
 /** ATR stop multipliers by trade style. */
 export const ATR_STOP_MULTIPLIER = {

@@ -54,8 +54,17 @@ interface OpenPosition {
 
 // ─── Simulator ──────────────────────────────────────────────────────────────
 
+/** Pending fill — queued on signal bar, executed at next bar's open. */
+interface PendingFill {
+  setup: ActiveSetup
+  signalBarIndex: number
+  atrValue: number
+  trailMult: number
+}
+
 export class TradeSimulator {
   private positions = new Map<string, OpenPosition>()
+  private pendingFills = new Map<string, PendingFill>()
   private trades: BacktestTrade[] = []
   private equity: number
   private slippagePct: number
@@ -68,25 +77,34 @@ export class TradeSimulator {
   }
 
   /**
-   * Try to open a position from a detected setup.
-   * @param atrValue  ATR(14) at entry time — used for trailing stop distance
-   * @param trailMult Per-timeframe ATR multiplier for trailing
+   * Queue a setup for fill on the next bar's open.
+   * Signal fires at bar N close → fill at bar N+1 open (no look-ahead bias).
    */
   tryFill(setup: ActiveSetup, barIndex: number, atrValue: number = 0, trailMult: number = 2.0): boolean {
     if (this.positions.has(setup.coin)) return false
+    if (this.pendingFills.has(setup.coin)) return false
 
-    const { side, entryPrice, slPrice, tpPrice } = setup
+    this.pendingFills.set(setup.coin, { setup, signalBarIndex: barIndex, atrValue, trailMult })
+    return true
+  }
 
-    // Apply slippage
-    const slippage = entryPrice * this.slippagePct
+  /**
+   * Execute a pending fill at the given candle's open price.
+   * Called from checkBar when a pending fill exists for this coin.
+   */
+  private executePendingFill(pending: PendingFill, candle: Candle, barIndex: number): void {
+    const { setup, atrValue, trailMult } = pending
+    const { side, slPrice, tpPrice } = setup
+
+    // Fill at THIS bar's open + slippage (realistic: next bar open after signal)
     const fillPrice = side === 'long'
-      ? entryPrice + slippage
-      : entryPrice - slippage
+      ? candle.o + candle.o * this.slippagePct
+      : candle.o - candle.o * this.slippagePct
 
-    // Position sizing
+    // Position sizing using fill price
     const sizeCoins = computePositionSize(this.equity, DEFAULT_RISK_PERCENT, fillPrice, slPrice)
     const sizeUsd = sizeCoins * fillPrice
-    if (sizeUsd <= 0) return false
+    if (sizeUsd <= 0) return
 
     // Entry commission
     this.equity -= sizeUsd * this.commissionPct
@@ -105,7 +123,7 @@ export class TradeSimulator {
       tp1Price: tpPrice,   // signal.tpPrice = TP1 (zone-based)
       tp2Price: tp2,
       sizeUsd,
-      entryTime: setup.detectedAt,
+      entryTime: candle.t,
       entryBarIndex: barIndex,
       remainingSizePct: 1.0,
       tp1Hit: false,
@@ -117,15 +135,23 @@ export class TradeSimulator {
       atrValue,
       trailMultiplier: trailMult,
     })
-
-    return true
   }
 
   /**
-   * Check all open positions against a candle bar.
-   * Multi-level exit: SL → TP1 (40%) → TP2 (30%) → Trailing (30%)
+   * Check a coin against a candle bar.
+   * 1. Execute pending fills at this bar's open (next-bar-open entry)
+   * 2. Multi-level exit: SL → TP1 (40%) → TP2 (30%) → Trailing (30%)
    */
   checkBar(coin: string, candle: Candle, barIndex: number): void {
+    // Execute pending fills at this bar's open
+    const pending = this.pendingFills.get(coin)
+    if (pending) {
+      this.pendingFills.delete(coin)
+      this.executePendingFill(pending, candle, barIndex)
+      // Don't check SL/TP on the fill bar — trade just opened
+      return
+    }
+
     const pos = this.positions.get(coin)
     if (!pos) return
 
