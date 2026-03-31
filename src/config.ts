@@ -292,6 +292,21 @@ export const BACKTEST_SLIPPAGE_PCT = 0.0005
 /** Default commission per trade for backtest (0.03% = 3 bps, HL taker fee). */
 export const BACKTEST_COMMISSION_PCT = 0.0003
 
+/** Walk-forward: default training window (30 days in ms). */
+export const WF_TRAIN_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
+
+/** Walk-forward: default test (OOS) window (7 days in ms). */
+export const WF_TEST_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+
+/** Walk-forward: default step size (7 days — non-overlapping OOS). */
+export const WF_STEP_MS = 7 * 24 * 60 * 60 * 1000
+
+/** Walk-forward: minimum number of OOS windows required for valid analysis. */
+export const WF_MIN_WINDOWS = 2
+
+/** Walk-forward: overfit ratio threshold. IS/OOS > this = flagged. */
+export const WF_OVERFIT_THRESHOLD = 2.0
+
 // ─── Order Lifecycle (S6) ────────────────────────────────────────────────────
 
 /** Order fill timeout (ms) — cancel entry if not filled. */

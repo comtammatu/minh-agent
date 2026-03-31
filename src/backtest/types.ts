@@ -91,3 +91,47 @@ export interface BacktestResult {
   trades: BacktestTrade[]
   equityCurve: EquityPoint[]
 }
+
+// ─── Walk-Forward ──────────────────────────────────────────────────────────
+
+export interface WalkForwardConfig {
+  /** Base backtest config (coins, timeframes, capital, etc.). */
+  backtestConfig: BacktestConfig
+  /** Training window size in milliseconds. */
+  trainWindowMs: number
+  /** Test (out-of-sample) window size in milliseconds. */
+  testWindowMs: number
+  /** Step size in milliseconds (how far to advance each window). */
+  stepMs: number
+}
+
+/** A single train+test window result. */
+export interface WalkForwardWindow {
+  /** 0-based window index. */
+  index: number
+  /** Training period start (ms timestamp). */
+  trainStart: number
+  /** Training period end (ms timestamp). */
+  trainEnd: number
+  /** Test period start (ms timestamp). */
+  testStart: number
+  /** Test period end (ms timestamp). */
+  testEnd: number
+  /** Metrics from training period. */
+  trainMetrics: BacktestMetrics
+  /** Metrics from test (out-of-sample) period. */
+  testMetrics: BacktestMetrics
+}
+
+export interface WalkForwardResult {
+  /** All window results. */
+  windows: WalkForwardWindow[]
+  /** Aggregated OOS (out-of-sample) metrics across all test windows. */
+  oosMetrics: BacktestMetrics
+  /** Aggregated in-sample metrics across all training windows. */
+  isMetrics: BacktestMetrics
+  /** Overfitting ratio: IS expectancy / OOS expectancy. >2 = flag. */
+  overfitRatio: number
+  /** Whether strategy passes minimum viability (OOS expectancy > 0). */
+  passesGate: boolean
+}
