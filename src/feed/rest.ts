@@ -92,6 +92,62 @@ export function backfillStartTime(interval: CandleInterval, count?: number): num
   return Date.now() - count * intervalMs[interval]
 }
 
+/**
+ * Probe coins with a single 1m candle fetch to detect 500/unavailable coins early.
+ * Returns list of coins that responded OK (non-null, non-error).
+ * Failed coins are logged and excluded — saves full backfill retry time.
+ */
+export async function probeCoins(
+  coins: string[],
+  concurrency = BACKFILL_CONCURRENCY,
+): Promise<{ valid: string[]; failed: string[] }> {
+  const valid: string[] = []
+  const failed: string[] = []
+
+  let running = 0
+  let idx = 0
+
+  await new Promise<void>((resolve) => {
+    if (coins.length === 0) { resolve(); return }
+    let settled = 0
+
+    function next(): void {
+      while (running < concurrency && idx < coins.length) {
+        const coin = coins[idx++]!
+        running++
+        probe(coin).then(() => {
+          running--
+          settled++
+          if (settled === coins.length) resolve()
+          else next()
+        })
+      }
+    }
+
+    async function probe(coin: string): Promise<void> {
+      try {
+        // Fetch just 1 candle from last 5 minutes — lightweight probe
+        const result = await fetchCandles(coin, '1m', Date.now() - 300_000, undefined, 1)
+        if (result === null) {
+          failed.push(coin)
+        } else {
+          valid.push(coin)
+        }
+      } catch {
+        failed.push(coin)
+      }
+    }
+
+    next()
+  })
+
+  if (failed.length > 0) {
+    console.log(`[PROBE] ${failed.length} coins unavailable: ${failed.join(', ')}`)
+  }
+
+  return { valid, failed }
+}
+
 /** TF priority order: small TFs first so scanner starts producing signals earlier. */
 const TF_PRIORITY: CandleInterval[] = ['1m', '5m', '15m', '1h', '4h', '1d']
 

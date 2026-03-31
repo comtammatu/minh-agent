@@ -34,7 +34,7 @@ import {
   BACKFILL_REPLACEMENT_ROUNDS,
   PAPER_TRADE,
 } from './config.js'
-import { backfillAllCoins, fetchCandles } from './feed/rest.js'
+import { backfillAllCoins, fetchCandles, probeCoins } from './feed/rest.js'
 import { setCandles, clearCoinData, setOnPersist, appendCandle } from './feed/store.js'
 import { subscribeCandles, unsubscribeCandles, closeAll, checkStaleness } from './feed/ws.js'
 import { startFundingPolling, stopFundingPolling, addFundingCoin, removeFundingCoin } from './feed/funding.js'
@@ -152,6 +152,23 @@ async function main(): Promise<void> {
   const hip3Count = selector.getHip3Coins().length
   const nativeCount = coins.length - hip3Count
   console.log(`[${ts()}] COINS | ${coins.length} coins selected (${nativeCount} native + ${hip3Count} HIP-3)`)
+
+  // 1b. Probe all coins with a quick 1m candle fetch — drop unavailable coins early
+  const { valid: validCoins, failed: probeFailed } = await probeCoins(coins)
+  if (probeFailed.length > 0) {
+    const replacements = selector.replaceFailed(probeFailed)
+    if (replacements.length > 0) {
+      // Probe replacements too
+      const { valid: replValid, failed: replFailed } = await probeCoins(replacements)
+      if (replFailed.length > 0) {
+        selector.replaceFailed(replFailed)
+      }
+      validCoins.push(...replValid)
+    }
+    coins = selector.getTrackedCoins()
+    const newHip3 = selector.getHip3Coins().length
+    console.log(`[${ts()}] COINS | after probe: ${coins.length} coins (${probeFailed.length} replaced)`)
+  }
 
   // 2. Load candles from PG → memory, then gap-fill missing candles via REST
   const pgTimestamps = await getAllLastTimestamps()
