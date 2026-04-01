@@ -401,6 +401,17 @@ export const API_DEFAULT_JOURNAL_LIMIT = 50
 /** Max journal entries per request. */
 export const API_MAX_JOURNAL_LIMIT = 500
 
+// ─── SSE (Sprint 3 S7) ───────────────────────────────────────────────────
+
+/** Status channel push interval (ms). */
+export const SSE_STATUS_INTERVAL_MS = 5_000
+
+/** SSE keepalive comment interval (ms) — prevents proxy/browser timeout. */
+export const SSE_KEEPALIVE_INTERVAL_MS = 30_000
+
+/** Maximum SSE connections allowed (across all channels). */
+export const SSE_MAX_CONNECTIONS = 50
+
 // ─── Self-Healing (S13) ────────────────────────────────────────────────────
 
 /** Retry configuration for exchange API calls. */

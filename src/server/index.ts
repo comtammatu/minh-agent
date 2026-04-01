@@ -13,6 +13,11 @@
  *   GET /api/agent/journal   — trade journal from PG
  *   GET /api/agent/positions — open positions from PositionMonitor
  *
+ * SSE endpoints (no auth, read-only):
+ *   GET /api/stream/status   — agent state + positions + PnL (every 5s)
+ *   GET /api/stream/signals  — new signals from pipeline (event-driven)
+ *   GET /api/stream/trades   — order fills + position changes (event-driven)
+ *
  * Execution endpoints (bearer auth required):
  *   POST /api/execution/override/pause     — pause agent
  *   POST /api/execution/override/resume    — resume agent
@@ -42,6 +47,10 @@ import { getOrderManager } from '../agent/order-manager.js'
 import { getPositionMonitor } from '../agent/position-monitor.js'
 import { getHealthMonitor } from '../agent/self-healing.js'
 import { getLiveMetrics } from '../analytics/metrics-service.js'
+import { sseRoutes, startSSEBroadcasts, stopSSEBroadcasts } from './sse.js'
+import { getConnectionCounts, getTotalConnections, closeAllConnections } from './sse-manager.js'
+import { staticPlugin } from '@elysiajs/static'
+import { join } from 'path'
 
 const startedAt = Date.now()
 
@@ -181,6 +190,10 @@ function createApp() {
       return { positions, totalExposure, count: positions.length }
     })
 
+    // ── SSE endpoints (no auth, read-only) ─────────────────────────────
+
+    .use(sseRoutes())
+
     // ── Analytics endpoints (no auth, read-only) ─────────────────────────
 
     .get('/api/metrics', async ({ set }) => {
@@ -270,6 +283,21 @@ function createApp() {
         })
     )
 
+    // ── Dashboard static files (serve built React app) ──────────────────
+    // Serves from dashboard/dist/ — Vite build output
+    // Falls back to index.html for client-side routing
+
+  try {
+    const dashboardPath = join(import.meta.dir, '../../dashboard/dist')
+    app.use(staticPlugin({
+      assets: dashboardPath,
+      prefix: '/',
+      alwaysStatic: false,
+    }))
+  } catch {
+    // Dashboard not built yet — skip static serving
+  }
+
   return app
 }
 
@@ -282,5 +310,12 @@ function createApp() {
 export async function startServer(): Promise<void> {
   const app = buildApp()
   app.listen({ port: SERVER_PORT, hostname: SERVER_HOSTNAME })
+  startSSEBroadcasts()
   console.log(`[SERVER] Elysia listening on http://${SERVER_HOSTNAME}:${SERVER_PORT}`)
+}
+
+/** Stop SSE broadcasts + close connections (for graceful shutdown). */
+export function stopServer(): void {
+  stopSSEBroadcasts()
+  closeAllConnections()
 }

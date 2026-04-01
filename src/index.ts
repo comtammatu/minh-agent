@@ -62,7 +62,8 @@ import { getAgent } from './agent/trading-agent.js'
 import { getOrderManager } from './agent/order-manager.js'
 import { getPositionMonitor } from './agent/position-monitor.js'
 import { getInvalidationBridge } from './agent/invalidation-bridge.js'
-import { startServer } from './server/index.js'
+import { startServer, stopServer } from './server/index.js'
+import { wireSSEEvents } from './server/sse.js'
 import { getExchangeService } from './execution/exchange-service.js'
 import type { CandleInterval } from './types.js'
 
@@ -373,10 +374,13 @@ async function main(): Promise<void> {
   // Start exchange sync heartbeat (R3: 10s interval)
   pm.startSync()
 
-  // Start Elysia HTTP server
+  // Start Elysia HTTP server + SSE broadcasts
   await startServer()
 
-  log.info('agent', `Agent wired: state machine + order manager + position monitor + invalidation bridge`)
+  // Wire SSE events: pipeline→signals, agent→trades
+  wireSSEEvents(getPipelineEmitter())
+
+  log.info('agent', `Agent wired: state machine + order manager + position monitor + invalidation bridge + SSE`)
 
   // 10. Start coin refresh loop
   selector.startRefreshLoop()
@@ -427,6 +431,7 @@ async function main(): Promise<void> {
 async function cleanup(): Promise<void> {
   selector.stopRefreshLoop()
   getPositionMonitor().stopSync()
+  stopServer()
   for (const id of activeIntervals) clearInterval(id)
   activeIntervals.length = 0
   stopFundingPolling()
