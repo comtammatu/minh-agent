@@ -174,14 +174,14 @@ export function ChartPage() {
           <h2 className="text-xl font-semibold">Chart</h2>
           <ChartControls coin={coin} tf={tf} coins={coins} />
         </div>
-        <div className="flex items-center gap-3 text-xs text-zinc-600">
+        <div className="flex items-center gap-3 text-xs text-[var(--text-muted)]">
           {loading && <span className="text-amber-400">Loading...</span>}
           {lastRefresh > 0 && (
             <span>Updated: {new Date(lastRefresh).toLocaleTimeString()}</span>
           )}
           <button
             onClick={loadData}
-            className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
+            className="rounded border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 py-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
           >
             Refresh
           </button>
@@ -190,14 +190,14 @@ export function ChartPage() {
 
       {/* Chart area */}
       {candles.length === 0 && !loading ? (
-        <div className="flex-1 flex items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900">
-          <div className="text-center text-zinc-500">
+        <div className="flex-1 flex items-center justify-center rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)]">
+          <div className="text-center text-[var(--text-tertiary)]">
             <p className="text-lg mb-1">No candle data</p>
             <p className="text-sm">Waiting for {coin} {tf} data from feed...</p>
           </div>
         </div>
       ) : (
-        <div className="flex-1 min-h-0 rounded-lg border border-zinc-800 bg-zinc-900 overflow-hidden">
+        <div className="flex-1 min-h-0 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] overflow-hidden">
           <CandleChart
             candles={candles}
             demandZones={structure.demandZones}

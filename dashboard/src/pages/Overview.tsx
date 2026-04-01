@@ -60,20 +60,20 @@ function StatCard({ label, value, sub, className }: {
   className?: string
 }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-      <div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">{label}</div>
-      <div className={`text-2xl font-bold font-mono ${className ?? 'text-zinc-100'}`}>
+    <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-4">
+      <div className="text-xs text-[var(--text-tertiary)] uppercase tracking-wider mb-1">{label}</div>
+      <div className={`text-2xl font-bold font-mono ${className ?? 'text-[var(--text-primary)]'}`}>
         {value}
       </div>
-      {sub && <div className="text-xs text-zinc-600 mt-1">{sub}</div>}
+      {sub && <div className="text-xs text-[var(--text-muted)] mt-1">{sub}</div>}
     </div>
   )
 }
 
 function CoinStateRow({ coin, state }: { coin: string; state: CoinState }) {
   return (
-    <div className="flex items-center justify-between px-3 py-1.5 border-b border-zinc-800/50 last:border-b-0">
-      <span className="font-mono text-sm text-zinc-300">{coin}</span>
+    <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border-subtle)] last:border-b-0">
+      <span className="font-mono text-sm text-[var(--text-primary)]">{coin}</span>
       <div className="flex items-center gap-2">
         {stateBadge(state.state)}
         {state.consecutiveLosses > 0 && (
@@ -94,7 +94,7 @@ export function OverviewPage() {
 
   if (!status) {
     return (
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-zinc-500">
+      <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-6 text-[var(--text-tertiary)]">
         Waiting for agent data...
       </div>
     )
@@ -110,7 +110,7 @@ export function OverviewPage() {
       <h2 className="text-xl font-semibold">Overview</h2>
 
       {/* ── Top stat cards ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard
           label="Health"
           value={health.overall}
@@ -145,12 +145,12 @@ export function OverviewPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* ── Coin States ─────────────────────────────────────────── */}
         <div>
-          <h3 className="text-sm font-semibold text-zinc-400 mb-2">
+          <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-2">
             Coin States ({coinEntries.length})
           </h3>
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900 max-h-72 overflow-auto">
+          <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] max-h-72 overflow-auto">
             {coinEntries.length === 0 ? (
-              <div className="p-4 text-zinc-600 text-sm">No coins tracked</div>
+              <div className="p-4 text-[var(--text-muted)] text-sm">No coins tracked</div>
             ) : (
               coinEntries.map(([coin, state]) => (
                 <CoinStateRow key={coin} coin={coin} state={state} />
@@ -165,19 +165,19 @@ export function OverviewPage() {
 
         {/* ── Open Positions Summary ──────────────────────────────── */}
         <div>
-          <h3 className="text-sm font-semibold text-zinc-400 mb-2">
+          <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-2">
             Open Positions ({positions.length})
           </h3>
           {positions.length === 0 ? (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-zinc-600 text-sm">
+            <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-4 text-[var(--text-muted)] text-sm">
               No open positions
             </div>
           ) : (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800/50">
+            <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] divide-y divide-[var(--border-subtle)]">
               {positions.map((p) => (
                 <div key={p.id} className="flex items-center justify-between px-3 py-2">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm text-zinc-300">{p.coin}</span>
+                    <span className="font-mono text-sm text-[var(--text-primary)]">{p.coin}</span>
                     <span className={`text-xs font-semibold ${p.side === 'long' ? 'text-emerald-400' : 'text-red-400'}`}>
                       {p.side.toUpperCase()}
                     </span>
@@ -208,17 +208,17 @@ export function OverviewPage() {
 
       {/* ── Recent Signals ──────────────────────────────────────────── */}
       <div>
-        <h3 className="text-sm font-semibold text-zinc-400 mb-2">
+        <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-2">
           Recent Signals ({signals.length})
         </h3>
         {signals.length === 0 ? (
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-zinc-600 text-sm">
+          <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-4 text-[var(--text-muted)] text-sm">
             No signals yet
           </div>
         ) : (
           <div className="space-y-1 max-h-48 overflow-auto">
             {signals.slice(-15).reverse().map((s, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs font-mono bg-zinc-900 border border-zinc-800 rounded px-3 py-1.5">
+              <div key={i} className="flex items-center gap-2 text-xs font-mono bg-[var(--bg-surface)] border border-[var(--border-default)] rounded px-3 py-1.5">
                 <span className="text-zinc-600 w-16 shrink-0">
                   {new Date(s.ts).toLocaleTimeString()}
                 </span>
@@ -237,12 +237,12 @@ export function OverviewPage() {
       {/* ── Recent Trades ───────────────────────────────────────────── */}
       {trades.length > 0 && (
         <div>
-          <h3 className="text-sm font-semibold text-zinc-400 mb-2">
+          <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-2">
             Recent Trades ({trades.length})
           </h3>
           <div className="space-y-1 max-h-32 overflow-auto">
             {trades.slice(-10).reverse().map((t, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs font-mono bg-zinc-900 border border-zinc-800 rounded px-3 py-1.5">
+              <div key={i} className="flex items-center gap-2 text-xs font-mono bg-[var(--bg-surface)] border border-[var(--border-default)] rounded px-3 py-1.5">
                 <span className="text-zinc-600 w-16 shrink-0">
                   {new Date(t.ts).toLocaleTimeString()}
                 </span>

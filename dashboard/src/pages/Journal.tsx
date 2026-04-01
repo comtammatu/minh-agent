@@ -149,8 +149,8 @@ function DetailPanel({ entry }: { entry: JournalEntry }) {
     <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1">
       {ordered.map((key) => (
         <div key={key} className="contents">
-          <span className="text-zinc-500 text-xs">{labelFromKey(key)}</span>
-          <span className="text-zinc-300 text-xs font-mono break-all">{formatValue(d[key])}</span>
+          <span className="text-[var(--text-tertiary)] text-xs">{labelFromKey(key)}</span>
+          <span className="text-[var(--text-primary)] text-xs font-mono break-all">{formatValue(d[key])}</span>
         </div>
       ))}
     </div>
@@ -218,7 +218,7 @@ export function JournalPage() {
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-zinc-500">
+      <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-6 text-[var(--text-tertiary)]">
         Loading journal...
       </div>
     )
@@ -239,11 +239,11 @@ export function JournalPage() {
       {/* ── Filters ──────────────────────────────────────────────── */}
       <div className="flex flex-wrap gap-3 items-end">
         <div>
-          <label className="block text-xs text-zinc-500 mb-1">Coin</label>
+          <label className="block text-xs text-[var(--text-tertiary)] mb-1">Coin</label>
           <select
             value={coinFilter}
             onChange={(e) => setCoinFilter(e.target.value)}
-            className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-200 w-28"
+            className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded px-2 py-1.5 text-sm text-[var(--text-primary)] w-28"
           >
             <option value="">All</option>
             {coins.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -251,11 +251,11 @@ export function JournalPage() {
         </div>
 
         <div>
-          <label className="block text-xs text-zinc-500 mb-1">Event</label>
+          <label className="block text-xs text-[var(--text-tertiary)] mb-1">Event</label>
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-200 w-32"
+            className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded px-2 py-1.5 text-sm text-[var(--text-primary)] w-32"
           >
             <option value="">All</option>
             {eventTypes.map((t) => <option key={t} value={t}>{t}</option>)}
@@ -263,22 +263,22 @@ export function JournalPage() {
         </div>
 
         <div>
-          <label className="block text-xs text-zinc-500 mb-1">From</label>
+          <label className="block text-xs text-[var(--text-tertiary)] mb-1">From</label>
           <input
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-200"
+            className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded px-2 py-1.5 text-sm text-[var(--text-primary)]"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-zinc-500 mb-1">To</label>
+          <label className="block text-xs text-[var(--text-tertiary)] mb-1">To</label>
           <input
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-200"
+            className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded px-2 py-1.5 text-sm text-[var(--text-primary)]"
           />
         </div>
 
@@ -289,14 +289,14 @@ export function JournalPage() {
 
       {/* ── Table ────────────────────────────────────────────────── */}
       {filtered.length === 0 ? (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-8 text-center text-zinc-500">
+        <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-8 text-center text-[var(--text-tertiary)]">
           No journal entries{entries.length > 0 ? ' matching filters' : ''}
         </div>
       ) : (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900 overflow-auto max-h-[70vh]">
+        <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] overflow-auto max-h-[70vh]">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-zinc-900 border-b border-zinc-800">
-              <tr className="text-left text-xs text-zinc-500 uppercase tracking-wider">
+            <thead className="sticky top-0 bg-zinc-900 border-b border-[var(--border-default)]">
+              <tr className="text-left text-xs text-[var(--text-tertiary)] uppercase tracking-wider">
                 <th className="px-1 py-2 w-8"></th>
                 <th className="px-3 py-2 w-44">Time</th>
                 <th className="px-3 py-2 w-20">Event</th>
@@ -310,13 +310,13 @@ export function JournalPage() {
                 return (
                   <Fragment key={e.id}>
                     <tr
-                      className="hover:bg-zinc-800/30 cursor-pointer"
+                      className="hover:bg-[var(--bg-surface-hover)] cursor-pointer"
                       onClick={() => toggleExpand(e.id)}
                     >
                       <td className="pl-2 pr-0 py-2">
                         <ChevronIcon expanded={isExpanded} />
                       </td>
-                      <td className="px-3 py-2 font-mono text-xs text-zinc-400 whitespace-nowrap">
+                      <td className="px-3 py-2 font-mono text-xs text-[var(--text-secondary)] whitespace-nowrap">
                         {formatTs(e.ts)}
                       </td>
                       <td className={`px-3 py-2 text-xs font-semibold ${EVENT_COLORS[e.event_type] ?? 'text-zinc-400'}`}>
@@ -325,12 +325,12 @@ export function JournalPage() {
                       <td className="px-3 py-2 font-mono text-xs text-zinc-300">
                         {e.coin ?? '—'}
                       </td>
-                      <td className="px-3 py-2 text-xs text-zinc-400 font-mono truncate max-w-md">
+                      <td className="px-3 py-2 text-xs text-[var(--text-secondary)] font-mono truncate max-w-md">
                         {detailSummary(e)}
                       </td>
                     </tr>
                     {isExpanded && (
-                      <tr className="bg-zinc-800/20">
+                      <tr className="bg-[var(--bg-surface-hover)]">
                         <td></td>
                         <td colSpan={4} className="px-4 py-3">
                           <DetailPanel entry={e} />

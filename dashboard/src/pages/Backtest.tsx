@@ -332,12 +332,12 @@ function ConfigEditor({ onRun, running, progress, error }: {
   }
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 space-y-4">
-      <h3 className="text-sm font-semibold text-zinc-300">Run Backtest</h3>
+    <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-4 space-y-4">
+      <h3 className="text-sm font-semibold text-[var(--text-primary)]">Run Backtest</h3>
 
       {/* Coins */}
       <div>
-        <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Coins</label>
+        <label className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider">Coins</label>
         <div className="flex flex-wrap gap-1.5 mt-1">
           {AVAILABLE_COINS.map(c => (
             <button
@@ -347,7 +347,7 @@ function ConfigEditor({ onRun, running, progress, error }: {
               className={`px-2 py-0.5 text-xs rounded border transition-colors ${
                 coins.includes(c)
                   ? 'bg-amber-900/50 border-amber-700 text-amber-300'
-                  : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-300'
+                  : 'bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
               } disabled:opacity-50`}
             >{c}</button>
           ))}
@@ -356,7 +356,7 @@ function ConfigEditor({ onRun, running, progress, error }: {
 
       {/* Timeframes */}
       <div>
-        <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Timeframes</label>
+        <label className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider">Timeframes</label>
         <div className="flex gap-1.5 mt-1">
           {AVAILABLE_TIMEFRAMES.map(tf => (
             <button
@@ -366,7 +366,7 @@ function ConfigEditor({ onRun, running, progress, error }: {
               className={`px-2 py-0.5 text-xs rounded border transition-colors ${
                 timeframes.includes(tf)
                   ? 'bg-amber-900/50 border-amber-700 text-amber-300'
-                  : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-300'
+                  : 'bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
               } disabled:opacity-50`}
             >{tf}</button>
           ))}
@@ -376,30 +376,30 @@ function ConfigEditor({ onRun, running, progress, error }: {
       {/* Params row */}
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Months</label>
+          <label className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider">Months</label>
           <input
             type="number" min={1} max={6} value={months}
             onChange={e => setMonths(Math.min(6, Math.max(1, +e.target.value)))}
             disabled={running}
-            className="w-full mt-1 px-2 py-1 text-sm bg-zinc-800 border border-zinc-700 rounded text-zinc-200 disabled:opacity-50"
+            className="w-full mt-1 px-2 py-1 text-sm bg-[var(--bg-surface)] border border-[var(--border-default)] rounded text-[var(--text-primary)] disabled:opacity-50"
           />
         </div>
         <div>
-          <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Capital ($)</label>
+          <label className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider">Capital ($)</label>
           <input
             type="number" min={100} step={1000} value={capital}
             onChange={e => setCapital(Math.max(100, +e.target.value))}
             disabled={running}
-            className="w-full mt-1 px-2 py-1 text-sm bg-zinc-800 border border-zinc-700 rounded text-zinc-200 disabled:opacity-50"
+            className="w-full mt-1 px-2 py-1 text-sm bg-[var(--bg-surface)] border border-[var(--border-default)] rounded text-[var(--text-primary)] disabled:opacity-50"
           />
         </div>
         <div>
-          <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Run Name</label>
+          <label className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider">Run Name</label>
           <input
             type="text" value={name} placeholder="optional"
             onChange={e => setName(e.target.value)}
             disabled={running}
-            className="w-full mt-1 px-2 py-1 text-sm bg-zinc-800 border border-zinc-700 rounded text-zinc-200 placeholder:text-zinc-600 disabled:opacity-50"
+            className="w-full mt-1 px-2 py-1 text-sm bg-[var(--bg-surface)] border border-[var(--border-default)] rounded text-[var(--text-primary)] placeholder:text-[var(--text-muted)] disabled:opacity-50"
           />
         </div>
       </div>
@@ -417,13 +417,13 @@ function ConfigEditor({ onRun, running, progress, error }: {
         {/* Progress bar */}
         {running && progress && (
           <div className="space-y-1">
-            <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+            <div className="h-2 rounded-full bg-[var(--bg-surface)] overflow-hidden">
               <div
                 className="h-full bg-amber-500 transition-all duration-300"
                 style={{ width: `${progress.pct}%` }}
               />
             </div>
-            <div className="flex justify-between text-[10px] text-zinc-500">
+            <div className="flex justify-between text-[10px] text-[var(--text-tertiary)]">
               <span>{progress.phase}</span>
               <span>{progress.pct}%{progress.total > 0 ? ` (${progress.bar}/${progress.total})` : ''}</span>
             </div>
@@ -461,7 +461,7 @@ function formatPct(v: number): string {
 function pnlColor(v: number): string {
   if (v > 0) return 'text-emerald-400'
   if (v < 0) return 'text-red-400'
-  return 'text-zinc-400'
+  return 'text-[var(--text-secondary)]'
 }
 
 function formatDate(d: string | number): string {
@@ -478,9 +478,9 @@ function formatTs(ms: number): string {
 
 function MetricCard({ label, value, className }: { label: string; value: string; className?: string }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2">
-      <div className="text-[10px] text-zinc-500 uppercase tracking-wider">{label}</div>
-      <div className={`text-lg font-bold font-mono ${className ?? 'text-zinc-100'}`}>{value}</div>
+    <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2">
+      <div className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider">{label}</div>
+      <div className={`text-lg font-bold font-mono ${className ?? 'text-[var(--text-primary)]'}`}>{value}</div>
     </div>
   )
 }
@@ -503,8 +503,8 @@ function EquityCurveChart({ curve }: { curve: EquityPoint[] }) {
   const isProfit = curve[curve.length - 1].equity >= curve[0].equity
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-      <h4 className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Equity Curve</h4>
+    <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-4">
+      <h4 className="text-xs text-[var(--text-tertiary)] uppercase tracking-wider mb-2">Equity Curve</h4>
       <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-48">
         <polyline
           points={points}
@@ -513,7 +513,7 @@ function EquityCurveChart({ curve }: { curve: EquityPoint[] }) {
           strokeWidth="2"
         />
       </svg>
-      <div className="flex justify-between text-[10px] text-zinc-600 mt-1">
+      <div className="flex justify-between text-[10px] text-[var(--text-muted)] mt-1">
         <span>{formatDate(curve[0].ts)}</span>
         <span>${minE.toFixed(0)} — ${maxE.toFixed(0)}</span>
         <span>{formatDate(curve[curve.length - 1].ts)}</span>
@@ -543,7 +543,7 @@ function RunDetail({ run }: { run: FullRun }) {
         <MetricCard label="Win Rate" value={formatPct(m.winRate)} className={m.winRate >= 0.5 ? 'text-emerald-400' : 'text-red-400'} />
         <MetricCard label="Net PnL" value={formatPnl(m.netPnl)} className={pnlColor(m.netPnl)} />
         <MetricCard label="Profit Factor" value={m.profitFactor.toFixed(2)} className={m.profitFactor >= 1 ? 'text-emerald-400' : 'text-red-400'} />
-        <MetricCard label="Sharpe" value={m.sharpeRatio.toFixed(2)} className={m.sharpeRatio >= 1 ? 'text-emerald-400' : 'text-zinc-300'} />
+        <MetricCard label="Sharpe" value={m.sharpeRatio.toFixed(2)} className={m.sharpeRatio >= 1 ? 'text-emerald-400' : 'text-[var(--text-primary)]'} />
         <MetricCard label="Sortino" value={m.sortinoRatio.toFixed(2)} />
         <MetricCard label="Max Drawdown" value={formatPct(m.maxDrawdown)} className="text-red-400" />
         <MetricCard label="DD Duration" value={`${m.maxDrawdownDuration} bars`} />
@@ -555,7 +555,7 @@ function RunDetail({ run }: { run: FullRun }) {
 
       {/* ── Win/Loss bar ──────────────────────────────────────── */}
       {m.totalTrades > 0 && (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+        <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3">
           <div className="flex gap-1 h-4 rounded overflow-hidden">
             <div
               className="bg-emerald-500 rounded-l"
@@ -563,7 +563,7 @@ function RunDetail({ run }: { run: FullRun }) {
               title={`${tradesByOutcome.wins} wins`}
             />
             <div
-              className="bg-zinc-600"
+              className="bg-[var(--text-muted)]"
               style={{ width: `${(tradesByOutcome.breakeven / m.totalTrades) * 100}%` }}
               title={`${tradesByOutcome.breakeven} breakeven`}
             />
@@ -573,7 +573,7 @@ function RunDetail({ run }: { run: FullRun }) {
               title={`${tradesByOutcome.losses} losses`}
             />
           </div>
-          <div className="flex justify-between text-[10px] text-zinc-500 mt-1">
+          <div className="flex justify-between text-[10px] text-[var(--text-tertiary)] mt-1">
             <span>{tradesByOutcome.wins}W</span>
             <span>{tradesByOutcome.breakeven}BE</span>
             <span>{tradesByOutcome.losses}L</span>
@@ -587,7 +587,7 @@ function RunDetail({ run }: { run: FullRun }) {
       {/* ── Trades table ──────────────────────────────────────── */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h4 className="text-sm font-semibold text-zinc-400">Trades ({run.trades.length})</h4>
+          <h4 className="text-sm font-semibold text-[var(--text-secondary)]">Trades ({run.trades.length})</h4>
           {run.trades.length > 50 && (
             <button
               onClick={() => setShowAllTrades(!showAllTrades)}
@@ -597,10 +597,10 @@ function RunDetail({ run }: { run: FullRun }) {
             </button>
           )}
         </div>
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900 overflow-auto max-h-96">
+        <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] overflow-auto max-h-96">
           <table className="w-full text-xs">
-            <thead className="sticky top-0 bg-zinc-900 border-b border-zinc-800">
-              <tr className="text-left text-[10px] text-zinc-500 uppercase tracking-wider">
+            <thead className="sticky top-0 bg-zinc-900 border-b border-[var(--border-default)]">
+              <tr className="text-left text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider">
                 <th className="px-2 py-1.5">Entry</th>
                 <th className="px-2 py-1.5">Coin</th>
                 <th className="px-2 py-1.5">Side</th>
@@ -613,15 +613,15 @@ function RunDetail({ run }: { run: FullRun }) {
             </thead>
             <tbody className="divide-y divide-zinc-800/50">
               {visibleTrades.map((t, i) => (
-                <tr key={i} className="hover:bg-zinc-800/30">
-                  <td className="px-2 py-1 font-mono text-zinc-400 whitespace-nowrap">{formatTs(t.entryTime)}</td>
-                  <td className="px-2 py-1 font-mono text-zinc-300">{t.coin}</td>
+                <tr key={i} className="hover:bg-[var(--bg-surface-hover)]">
+                  <td className="px-2 py-1 font-mono text-[var(--text-secondary)] whitespace-nowrap">{formatTs(t.entryTime)}</td>
+                  <td className="px-2 py-1 font-mono text-[var(--text-primary)]">{t.coin}</td>
                   <td className={`px-2 py-1 font-semibold ${t.side === 'long' ? 'text-emerald-400' : 'text-red-400'}`}>
                     {t.side.toUpperCase()}
                   </td>
-                  <td className="px-2 py-1 text-zinc-400">
+                  <td className="px-2 py-1 text-[var(--text-secondary)]">
                     {t.patternType}
-                    {t.confluenceGrade && <span className="ml-1 text-zinc-600">[{t.confluenceGrade}]</span>}
+                    {t.confluenceGrade && <span className="ml-1 text-[var(--text-muted)]">[{t.confluenceGrade}]</span>}
                   </td>
                   <td className={`px-2 py-1 text-right font-mono ${pnlColor(t.pnl)}`}>
                     {formatPnl(t.pnl)}
@@ -629,8 +629,8 @@ function RunDetail({ run }: { run: FullRun }) {
                   <td className={`px-2 py-1 text-right font-mono ${pnlColor(t.pnlPct)}`}>
                     {(t.pnlPct * 100).toFixed(1)}%
                   </td>
-                  <td className="px-2 py-1 text-zinc-500">{t.exitReason}</td>
-                  <td className="px-2 py-1 text-right text-zinc-500">{t.holdingBars}</td>
+                  <td className="px-2 py-1 text-[var(--text-tertiary)]">{t.exitReason}</td>
+                  <td className="px-2 py-1 text-right text-[var(--text-tertiary)]">{t.holdingBars}</td>
                 </tr>
               ))}
             </tbody>
@@ -645,7 +645,7 @@ function RunDetail({ run }: { run: FullRun }) {
 
 /** Color-code delta: green = better, red = worse. Inverted for maxDrawdown. */
 function deltaColor(key: string, value: number): string {
-  if (value === 0) return 'text-zinc-500'
+  if (value === 0) return 'text-[var(--text-tertiary)]'
   // For maxDrawdown, lower (more negative delta) is better
   const inverted = key === 'maxDrawdown'
   const positive = inverted ? value < 0 : value > 0
@@ -668,8 +668,8 @@ function ComparisonMetricRow({ label, valA, valB, delta, format, deltaKey }: {
 }) {
   const isPct = format === 'pct'
   return (
-    <tr className="border-b border-zinc-800/50 last:border-b-0">
-      <td className="px-3 py-2 text-xs text-zinc-400">{label}</td>
+    <tr className="border-b border-[var(--border-subtle)] last:border-b-0">
+      <td className="px-3 py-2 text-xs text-[var(--text-secondary)]">{label}</td>
       <td className="px-3 py-2 text-xs font-mono text-zinc-200 text-right">{valA}</td>
       <td className="px-3 py-2 text-xs font-mono text-zinc-200 text-right">{valB}</td>
       <td className={`px-3 py-2 text-xs font-mono text-right ${deltaColor(deltaKey, delta)}`}>
@@ -702,8 +702,8 @@ function OverlaidEquityCurve({ curveA, curveB, nameA, nameB }: {
     }).join(' ')
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-      <h4 className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Equity Curves (Overlaid)</h4>
+    <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-4">
+      <h4 className="text-xs text-[var(--text-tertiary)] uppercase tracking-wider mb-2">Equity Curves (Overlaid)</h4>
       <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-48">
         {curveA.length >= 2 && (
           <polyline points={toPoints(curveA)} fill="none" stroke="#60a5fa" strokeWidth="2" opacity="0.8" />
@@ -715,14 +715,14 @@ function OverlaidEquityCurve({ curveA, curveB, nameA, nameB }: {
       <div className="flex gap-4 mt-2 text-[10px]">
         <span className="flex items-center gap-1">
           <span className="inline-block w-3 h-0.5 bg-blue-400 rounded" />
-          <span className="text-zinc-400">A: {nameA}</span>
+          <span className="text-[var(--text-secondary)]">A: {nameA}</span>
         </span>
         <span className="flex items-center gap-1">
           <span className="inline-block w-3 h-0.5 bg-amber-500 rounded" />
-          <span className="text-zinc-400">B: {nameB}</span>
+          <span className="text-[var(--text-secondary)]">B: {nameB}</span>
         </span>
       </div>
-      <div className="flex justify-between text-[10px] text-zinc-600 mt-1">
+      <div className="flex justify-between text-[10px] text-[var(--text-muted)] mt-1">
         <span>${minE.toFixed(0)}</span>
         <span>${maxE.toFixed(0)}</span>
       </div>
@@ -743,16 +743,16 @@ function ComparisonView({ comparison, equityA, equityB }: {
     <div className="space-y-4">
       <div className="flex items-center gap-2 text-sm">
         <span className="text-blue-400 font-semibold">A: {nameA}</span>
-        <span className="text-zinc-600">vs</span>
+        <span className="text-[var(--text-muted)]">vs</span>
         <span className="text-amber-400 font-semibold">B: {nameB}</span>
-        <span className="text-[10px] text-zinc-600 ml-auto">Delta = B - A</span>
+        <span className="text-[10px] text-[var(--text-muted)] ml-auto">Delta = B - A</span>
       </div>
 
       {/* Side-by-side metrics table */}
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 overflow-auto">
+      <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] overflow-auto">
         <table className="w-full text-xs">
           <thead className="border-b border-zinc-700">
-            <tr className="text-left text-[10px] text-zinc-500 uppercase tracking-wider">
+            <tr className="text-left text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider">
               <th className="px-3 py-2">Metric</th>
               <th className="px-3 py-2 text-right text-blue-400">Run A</th>
               <th className="px-3 py-2 text-right text-amber-400">Run B</th>
@@ -842,7 +842,7 @@ export function BacktestPage() {
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-zinc-500">
+      <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-6 text-[var(--text-tertiary)]">
         Loading backtest runs...
       </div>
     )
@@ -867,13 +867,13 @@ export function BacktestPage() {
               className={`px-3 py-1 text-xs rounded border transition-colors ${
                 compareMode
                   ? 'bg-blue-900/50 border-blue-700 text-blue-300'
-                  : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                  : 'bg-zinc-800 border-zinc-700 text-[var(--text-secondary)] hover:text-zinc-200'
               }`}
             >
               {compareMode ? 'Exit Compare' : 'Compare'}
             </button>
           )}
-          <span className="text-xs text-zinc-600">{runs.length} runs</span>
+          <span className="text-xs text-[var(--text-muted)]">{runs.length} runs</span>
         </div>
       </div>
 
@@ -887,22 +887,22 @@ export function BacktestPage() {
       )}
 
       {runs.length === 0 ? (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-8 text-center text-zinc-500">
+        <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-8 text-center text-[var(--text-tertiary)]">
           <p className="text-lg mb-2">No backtest runs</p>
           <p className="text-sm">Run a backtest via CLI to see results here</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
           {/* ── Run list ─────────────────────────────────────────── */}
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900 overflow-auto max-h-[80vh]">
+          <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] overflow-auto max-h-[80vh]">
             {runs.map((r) => {
               const label = getRunLabel(r.id)
               return (
                 <button
                   key={r.id}
                   onClick={() => handleRunClick(r.id)}
-                  className={`w-full text-left px-3 py-2.5 border-b border-zinc-800/50 last:border-b-0 transition-colors ${
-                    isSelected(r.id) ? 'bg-zinc-800' : 'hover:bg-zinc-800/30'
+                  className={`w-full text-left px-3 py-2.5 border-b border-[var(--border-subtle)] last:border-b-0 transition-colors ${
+                    isSelected(r.id) ? 'bg-zinc-800' : 'hover:bg-[var(--bg-surface-hover)]'
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -918,12 +918,12 @@ export function BacktestPage() {
                       {formatPnl(r.netPnl)}
                     </span>
                   </div>
-                  <div className="flex gap-3 mt-1 text-[10px] text-zinc-500">
+                  <div className="flex gap-3 mt-1 text-[10px] text-[var(--text-tertiary)]">
                     <span>{r.totalTrades} trades</span>
                     <span>WR: {formatPct(r.winRate)}</span>
                     <span>Sharpe: {r.sharpeRatio.toFixed(2)}</span>
                   </div>
-                  <div className="text-[10px] text-zinc-600 mt-0.5">
+                  <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
                     {formatDate(r.createdAt)}
                   </div>
                 </button>
@@ -935,13 +935,13 @@ export function BacktestPage() {
           <div>
             {/* Detail mode */}
             {!compareMode && !selectedId && (
-              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-8 text-center text-zinc-500">
+              <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-8 text-center text-[var(--text-tertiary)]">
                 Select a run to view details
               </div>
             )}
 
             {!compareMode && selectedId && detailLoading && (
-              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-zinc-500">
+              <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-6 text-[var(--text-tertiary)]">
                 Loading run details...
               </div>
             )}
@@ -956,13 +956,13 @@ export function BacktestPage() {
 
             {/* Compare mode */}
             {compareMode && (!compareIds[0] || !compareIds[1]) && (
-              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-8 text-center text-zinc-500">
+              <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-8 text-center text-[var(--text-tertiary)]">
                 Select 2 runs from the list to compare
               </div>
             )}
 
             {compareMode && compareIds[0] && compareIds[1] && compLoading && (
-              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-zinc-500">
+              <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-6 text-[var(--text-tertiary)]">
                 Loading comparison...
               </div>
             )}

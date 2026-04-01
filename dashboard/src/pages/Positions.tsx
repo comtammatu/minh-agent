@@ -54,34 +54,34 @@ function PositionsSummary({ positions }: { positions: Position[] }) {
   const trailingCount = positions.filter(p => p.trailingActive).length
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2">
-        <div className="text-[10px] text-zinc-500 uppercase">Total uPnL</div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+      <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2">
+        <div className="text-[10px] text-[var(--text-tertiary)] uppercase">Total uPnL</div>
         <div className={`text-lg font-bold font-mono ${pnlColor(totalPnl)}`}>
           {formatPnl(totalPnl)}
         </div>
       </div>
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2">
-        <div className="text-[10px] text-zinc-500 uppercase">Exposure</div>
-        <div className="text-lg font-bold font-mono text-zinc-100">
+      <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2">
+        <div className="text-[10px] text-[var(--text-tertiary)] uppercase">Exposure</div>
+        <div className="text-lg font-bold font-mono text-[var(--text-primary)]">
           ${totalExposure.toFixed(0)}
         </div>
       </div>
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2">
-        <div className="text-[10px] text-zinc-500 uppercase">Bias</div>
+      <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2">
+        <div className="text-[10px] text-[var(--text-tertiary)] uppercase">Bias</div>
         <div className="text-lg font-bold">
           <span className="text-emerald-400">{longCount}L</span>
           {' / '}
           <span className="text-red-400">{shortCount}S</span>
         </div>
       </div>
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2">
-        <div className="text-[10px] text-zinc-500 uppercase">Trailing</div>
+      <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2">
+        <div className="text-[10px] text-[var(--text-tertiary)] uppercase">Trailing</div>
         <div className="text-lg font-bold text-amber-400">{trailingCount}/{positions.length}</div>
       </div>
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2">
-        <div className="text-[10px] text-zinc-500 uppercase">Positions</div>
-        <div className="text-lg font-bold text-zinc-100">{positions.length}</div>
+      <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2">
+        <div className="text-[10px] text-[var(--text-tertiary)] uppercase">Positions</div>
+        <div className="text-lg font-bold text-[var(--text-primary)]">{positions.length}</div>
       </div>
     </div>
   )
@@ -95,16 +95,16 @@ function PositionRow({ p }: { p: Position }) {
   const holdTime = p.openedAt ? formatHoldTime(p.openedAt) : '-'
 
   return (
-    <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+    <tr className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)] transition-colors">
       <td className="py-2.5 px-3">
-        <span className="font-mono text-sm text-zinc-200">{p.coin}</span>
+        <span className="font-mono text-sm text-[var(--text-primary)]">{p.coin}</span>
       </td>
       <td className="py-2.5 px-3">
         <span className={`text-xs font-bold ${p.side === 'long' ? 'text-emerald-400' : 'text-red-400'}`}>
           {p.side.toUpperCase()}
         </span>
       </td>
-      <td className="py-2.5 px-3 text-right font-mono text-sm text-zinc-300">
+      <td className="py-2.5 px-3 text-right font-mono text-sm text-[var(--text-primary)]">
         {p.size.toFixed(4)}
         {p.size < p.originalSize && (
           <span className="text-zinc-600 text-[10px] ml-1">
@@ -112,7 +112,7 @@ function PositionRow({ p }: { p: Position }) {
           </span>
         )}
       </td>
-      <td className="py-2.5 px-3 text-right font-mono text-sm text-zinc-300">
+      <td className="py-2.5 px-3 text-right font-mono text-sm text-[var(--text-primary)]">
         ${p.entryPrice.toFixed(2)}
       </td>
       <td className="py-2.5 px-3 text-right font-mono text-sm text-red-400/80">
@@ -127,10 +127,10 @@ function PositionRow({ p }: { p: Position }) {
       <td className={`py-2.5 px-3 text-right font-mono text-sm ${pnlColor(pctPnl)}`}>
         {(pctPnl * 100).toFixed(2)}%
       </td>
-      <td className="py-2.5 px-3 text-right text-xs text-zinc-500">
+      <td className="py-2.5 px-3 text-right text-xs text-[var(--text-tertiary)]">
         {rr}
       </td>
-      <td className="py-2.5 px-3 text-right text-xs text-zinc-500">
+      <td className="py-2.5 px-3 text-right text-xs text-[var(--text-tertiary)]">
         {holdTime}
       </td>
       <td className="py-2.5 px-3 text-center">
@@ -155,7 +155,7 @@ export function PositionsPage() {
       <h2 className="text-xl font-semibold mb-4">Positions</h2>
 
       {positions.length === 0 ? (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-zinc-500">
+        <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-6 text-[var(--text-tertiary)]">
           No open positions
         </div>
       ) : (

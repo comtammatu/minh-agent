@@ -22,7 +22,7 @@ export function ChartControls({ coin, tf, coins }: ChartControlsProps) {
       <select
         value={coin}
         onChange={(e) => navigate(`/chart/${e.target.value}/${tf}`)}
-        className="rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 focus:border-amber-500 focus:outline-none"
+        className="rounded border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-1.5 text-sm text-[var(--text-primary)] focus:border-amber-500 focus:outline-none"
       >
         {coins.map((c) => (
           <option key={c} value={c}>{c}</option>
@@ -30,7 +30,7 @@ export function ChartControls({ coin, tf, coins }: ChartControlsProps) {
       </select>
 
       {/* Timeframe buttons */}
-      <div className="flex rounded border border-zinc-700 overflow-hidden">
+      <div className="flex rounded border border-[var(--border-default)] overflow-hidden">
         {TIMEFRAMES.map((t) => (
           <button
             key={t}
@@ -38,7 +38,7 @@ export function ChartControls({ coin, tf, coins }: ChartControlsProps) {
             className={`px-3 py-1.5 text-xs font-mono transition-colors ${
               t === tf
                 ? 'bg-amber-600 text-white'
-                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+                : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]'
             }`}
           >
             {t}

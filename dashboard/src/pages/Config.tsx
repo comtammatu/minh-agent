@@ -89,8 +89,8 @@ function valueColor(value: unknown): string {
   if (typeof value === 'boolean') return value ? 'text-emerald-400' : 'text-red-400'
   if (typeof value === 'number') return 'text-blue-400'
   if (typeof value === 'string') return 'text-amber-400'
-  if (typeof value === 'object') return 'text-zinc-400'
-  return 'text-zinc-300'
+  if (typeof value === 'object') return 'text-[var(--text-secondary)]'
+  return 'text-[var(--text-primary)]'
 }
 
 function isObjectValue(value: unknown): boolean {
@@ -104,29 +104,29 @@ function ConfigGroup({ name, entries }: { name: string; entries: Record<string, 
   const keys = Object.keys(entries).sort()
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900">
+    <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)]">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full px-4 py-3 flex items-center justify-between hover:bg-zinc-800/30 transition-colors"
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-[var(--bg-surface-hover)] transition-colors"
       >
-        <h3 className="text-sm font-semibold text-zinc-200">
+        <h3 className="text-sm font-semibold text-[var(--text-primary)]">
           {GROUP_LABELS[name] ?? name}
         </h3>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-zinc-600">{keys.length} values</span>
+          <span className="text-xs text-[var(--text-muted)]">{keys.length} values</span>
           <span className="text-zinc-500 text-xs">{expanded ? '▾' : '▸'}</span>
         </div>
       </button>
 
       {expanded && (
-        <div className="border-t border-zinc-800 divide-y divide-zinc-800/50">
+        <div className="border-t border-[var(--border-default)] divide-y divide-zinc-800/50">
           {keys.map((key) => {
             const val = entries[key]
             if (isObjectValue(val)) {
               // Render nested object as sub-table
               return (
                 <div key={key} className="px-4 py-2">
-                  <div className="text-xs font-mono text-zinc-300 mb-1">{key}</div>
+                  <div className="text-xs font-mono text-[var(--text-primary)] mb-1">{key}</div>
                   <div className="pl-4 space-y-0.5">
                     {Object.entries(val as Record<string, unknown>).map(([k, v]) => (
                       <div key={k} className="flex items-baseline gap-2">
@@ -140,7 +140,7 @@ function ConfigGroup({ name, entries }: { name: string; entries: Record<string, 
             }
             return (
               <div key={key} className="flex items-baseline gap-2 px-4 py-2">
-                <span className="text-xs font-mono text-zinc-400 w-64 shrink-0">{key}</span>
+                <span className="text-xs font-mono text-[var(--text-secondary)] w-64 shrink-0">{key}</span>
                 <span className={`text-xs font-mono ${valueColor(val)}`}>{formatValue(val)}</span>
               </div>
             )
@@ -158,7 +158,7 @@ export function ConfigPage() {
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-zinc-500">
+      <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-6 text-[var(--text-tertiary)]">
         Loading config...
       </div>
     )
@@ -190,7 +190,7 @@ export function ConfigPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Agent Configuration</h2>
-        <span className="text-xs text-zinc-600">Read-only view of config.ts</span>
+        <span className="text-xs text-[var(--text-muted)]">Read-only view of config.ts</span>
       </div>
 
       <div className="space-y-3">
