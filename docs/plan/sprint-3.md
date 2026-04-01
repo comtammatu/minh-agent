@@ -577,6 +577,7 @@ Phase 3C: Web Dashboard MVP           ← visibility, debug tool
 | S3 | DONE | 2026-03-31 | Results store: migration 002, save/load/list/delete/compare + DI for test isolation + 15 tests. |
 | S4 | DONE | 2026-03-31 | Walk-forward validation: window generation, OOS aggregation, overfit detection, expectancy report + 20 tests. |
 | S5 | DONE | 2026-03-31 | Metrics engine (pure) + analytics matviews (003) + metrics-repo + journal JSONB bugfix (JSON.stringify→sql.json). 28 new tests, 795 total pass. |
+| S6 | DONE | 2026-04-01 | Metrics → agent integration: onTradeClose hook, MetricsService orchestration, GET /api/metrics endpoint. 8 new tests, 803 total pass. |
 
 ---
 
