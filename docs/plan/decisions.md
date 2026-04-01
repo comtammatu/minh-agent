@@ -333,3 +333,21 @@ Security: 9 threat vectors assessed, all mitigated by review decisions.
 - `pm.startSync()` called after all wiring — exchange heartbeat starts only when agent is fully connected.
 - Elysia `/override/close-all` pauses agent first (prevent new entries), then cancels pending orders, then closes positions via `handleAction`.
 - Key discovery: WATCHING→ENTERING gap confirmed real — logged as Sprint 3 P0 (auto-promote trigger when price hits entry zone).
+
+---
+
+## Sprint 3 Session Log
+
+### S7 — SSE Endpoints + Dashboard Scaffold (2026-04-01)
+
+**Design decisions:**
+- SSE connection manager (`sse-manager.ts`) is stateful but pure — tracks connections in `Map<id, SSEClient>`, broadcasts via `ReadableStreamDefaultController.enqueue()`.
+- 3 SSE channels: `status` (periodic 5s push of agent snapshot + positions + health), `signals` (pipeline setup/invalidation events), `trades` (agent actions). Matches sprint plan spec.
+- `wireSSEEvents()` accepts `EventEmitter` as parameter (same pattern as agent/bridge wiring) — no internal `require()`, testable.
+- Dashboard is a separate package at `dashboard/` with its own `package.json` — not a Bun workspace. Built output (`dashboard/dist/`) served by Elysia via `@elysiajs/static`.
+- Vite dev mode proxies `/api` to `127.0.0.1:3000` — dev and prod use same API paths.
+- SSE keepalive every 30s (`:` comment lines per SSE spec) prevents proxy/browser timeout.
+- Zustand store uses ring buffer (max 200 events) for signals/trades — prevents unbounded memory.
+- `useSSE` hook connects all 3 EventSources on mount, auto-cleanup on unmount.
+- Tailwind v4 with `@tailwindcss/vite` plugin — no separate config file needed, just `@import "tailwindcss"` in CSS.
+- bun test doesn't auto-discover `test/server/` directory (known bun issue) — SSE tests run via explicit path `bun test test/server/`.
