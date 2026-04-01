@@ -102,7 +102,6 @@ export function OverviewPage() {
 
   const { agent, positions, health } = status
   const coinEntries = Object.entries(agent.coins)
-  const inPositionCount = coinEntries.filter(([, s]) => s.state === 'IN_POSITION').length
   const watchingCount = coinEntries.filter(([, s]) => s.state === 'WATCHING').length
   const pausedCount = coinEntries.filter(([, s]) => s.state === 'PAUSED').length
 

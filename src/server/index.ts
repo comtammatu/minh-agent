@@ -41,6 +41,7 @@ import {
 } from '../config.js'
 import { getCandles } from '../feed/store.js'
 import { getStatus, getActiveSetups } from '../scanner/pipeline.js'
+import { analyzeStructure } from '../indicators/structure.js'
 import { sql } from '../db/connection.js'
 import { getAgent } from '../agent/trading-agent.js'
 import { getOrderManager } from '../agent/order-manager.js'
@@ -132,6 +133,32 @@ function createApp() {
       )
       const candles = getCandles(coin.toUpperCase(), tf, count)
       return { coin: coin.toUpperCase(), tf, count: candles.length, candles }
+    }, {
+      params: t.Object({
+        coin: t.String(),
+        tf: t.String(),
+      }),
+      query: t.Object({
+        count: t.Optional(t.Numeric()),
+      }),
+    })
+
+    .get('/api/structure/:coin/:tf', ({ params, query, set }) => {
+      const { coin, tf } = params
+      if (!validateTimeframe(tf)) {
+        set.status = 400
+        return { error: 'invalid_timeframe', message: `Invalid timeframe: ${tf}. Valid: ${TIMEFRAMES.join(', ')}` }
+      }
+      const count = Math.min(
+        Math.max(1, Number(query.count) || API_DEFAULT_CANDLE_COUNT),
+        API_MAX_CANDLES,
+      )
+      const candles = getCandles(coin.toUpperCase(), tf, count)
+      if (candles.length < 50) {
+        return { coin: coin.toUpperCase(), tf, structure: { bias: 'neutral', biasConfidence: 0, swings: [], demandZones: [], supplyZones: [] } }
+      }
+      const structure = analyzeStructure(candles)
+      return { coin: coin.toUpperCase(), tf, structure }
     }, {
       params: t.Object({
         coin: t.String(),
