@@ -166,6 +166,7 @@ Browser                    Elysia                     Backtest Engine
 | S4 | DONE | 2026-04-01 | Core commands: /status, /positions, /pnl, /pause, /resume. 9 new tests, 905 total pass. |
 | S5 | DONE | 2026-04-02 | Risk commands: /risk, /closeall+/confirm, /pause per-coin. closeAllPositions() extracted (E19). 16 new tests, 915 total pass. |
 | S6 | DONE | 2026-04-02 | /report command: daily report with PnL, win rate, top patterns, top coins, drawdown. 2 new tests, 917 total pass. |
+| S7 | DONE | 2026-04-02 | Run backtest from browser: POST /api/backtest/run + SSE progress + config editor UI. runBacktestAsync with chunked yields. 5 new tests, 922 total pass. |
 
 ---
 
