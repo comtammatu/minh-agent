@@ -5,36 +5,78 @@
  *   - status: agent state + positions + health (periodic)
  *   - signals: pipeline setups + invalidations (event-driven)
  *   - trades: order fills + position changes (event-driven)
+ *
+ * Types aligned with server-side payloads (src/server/sse.ts buildStatusPayload).
  */
 
 import { create } from 'zustand'
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// ─── Types (aligned with server) ────────────────────────────────────────────
 
-interface Position {
-  id: string
-  coin: string
-  side: string
-  size: number
-  entryPrice: number
-  unrealizedPnl: number
-  trailingActive: boolean
+/** Agent state per coin — matches AgentSnapshot.coins[coin] from server. */
+export interface CoinState {
+  state: 'IDLE' | 'WATCHING' | 'ENTERING' | 'IN_POSITION' | 'EXITING' | 'PAUSED'
+  activeSetup: Record<string, unknown> | null
+  pendingOrderId: string | null
+  positionId: string | null
+  consecutiveLosses: number
+  stateAge: number
 }
 
-interface StatusPayload {
-  agent: Record<string, unknown>
+/** Agent global state — matches AgentSnapshot.global from server. */
+export interface AgentGlobal {
+  dailyPnl: number
+  totalConsecutiveLosses: number
+  globalPaused: boolean
+  globalPauseReason: string | null
+  uptime: number
+}
+
+/** Agent snapshot — matches getAgent().getSnapshot(). */
+export interface AgentSnapshot {
+  coins: Record<string, CoinState>
+  global: AgentGlobal
+}
+
+/** Position from SSE — matches sse.ts buildStatusPayload positions array. */
+export interface Position {
+  id: string
+  coin: string
+  side: 'long' | 'short'
+  size: number
+  originalSize: number
+  entryPrice: number
+  slPrice: number
+  tpPrice: number
+  unrealizedPnl: number
+  trailingActive: boolean
+  openedAt: number
+  partialClosesFired: number
+}
+
+/** Health from SSE — matches sse.ts buildStatusPayload health. */
+export interface HealthStatus {
+  overall: string
+  rssBytes: number
+}
+
+/** Full status payload from SSE /api/stream/status. */
+export interface StatusPayload {
+  agent: AgentSnapshot
   positions: Position[]
-  health: { overall: string; rssBytes: number }
+  health: HealthStatus
   ts: number
 }
 
-interface SignalEvent {
+/** Signal event from SSE /api/stream/signals. */
+export interface SignalEvent {
   type: 'setup' | 'invalidation'
   data: Record<string, unknown>
   ts: number
 }
 
-interface TradeEvent {
+/** Trade event from SSE /api/stream/trades. */
+export interface TradeEvent {
   type: string
   data: Record<string, unknown>
   ts: number
@@ -42,7 +84,7 @@ interface TradeEvent {
 
 // ─── Store ──────────────────────────────────────────────────────────────────
 
-interface SSEState {
+export interface SSEState {
   connected: boolean
   status: StatusPayload | null
   signals: SignalEvent[]

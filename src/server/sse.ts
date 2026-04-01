@@ -16,6 +16,7 @@ import { getAgent } from '../agent/trading-agent.js'
 import { getPositionMonitor } from '../agent/position-monitor.js'
 import { getHealthMonitor } from '../agent/self-healing.js'
 import { SSE_STATUS_INTERVAL_MS, SSE_KEEPALIVE_INTERVAL_MS } from '../config.js'
+import { getCandles } from '../feed/store.js'
 import { log } from '../lib/logger.js'
 
 // ─── SSE Response Helper ────────────────────────────────────────────────────
@@ -48,15 +49,28 @@ function buildStatusPayload(): object {
 
   return {
     agent: snapshot,
-    positions: positions.map(p => ({
-      id: p.id,
-      coin: p.coin,
-      side: p.side,
-      size: p.size,
-      entryPrice: p.entryPrice,
-      unrealizedPnl: p.unrealizedPnl,
-      trailingActive: p.trailActive ?? false,
-    })),
+    positions: positions.map(p => {
+      // Compute unrealized PnL from latest candle price
+      const candles = getCandles(p.coin, '1m', 1)
+      const lastPrice = candles.length > 0 ? candles[candles.length - 1].c : p.entryPrice
+      const direction = p.side === 'long' ? 1 : -1
+      const unrealizedPnl = direction * (lastPrice - p.entryPrice) * p.currentSize
+
+      return {
+        id: p.positionId,
+        coin: p.coin,
+        side: p.side,
+        size: p.currentSize,
+        originalSize: p.originalSize,
+        entryPrice: p.entryPrice,
+        slPrice: p.slPrice,
+        tpPrice: p.tpPrice,
+        unrealizedPnl,
+        trailingActive: p.trailingState?.active ?? false,
+        openedAt: p.openedAt,
+        partialClosesFired: p.partialClosesFired.length,
+      }
+    }),
     health: {
       overall: health.overall,
       rssBytes: health.rssBytes,
