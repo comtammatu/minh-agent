@@ -153,7 +153,7 @@ Browser                    Elysia                     Backtest Engine
 | S6 | /report command + formatted analytics message | 30 min | S5 |
 | S7 | Backtest: run from browser + config editor | 35 min | — |
 | S8 | Backtest: comparison view (2-run diff) | 30 min | S7 |
-| S9 | Journal: expandable detail rows | 30 min | — |
+| S9 | Journal: expandable detail rows | 30 min | DONE |
 | S10 | Dashboard: responsive mobile + theme toggle | 30 min | — |
 
 ### Session Progress
@@ -168,6 +168,7 @@ Browser                    Elysia                     Backtest Engine
 | S6 | DONE | 2026-04-02 | /report command: daily report with PnL, win rate, top patterns, top coins, drawdown. 2 new tests, 917 total pass. |
 | S7 | DONE | 2026-04-02 | Run backtest from browser: POST /api/backtest/run + SSE progress + config editor UI. runBacktestAsync with chunked yields. 5 new tests, 922 total pass. |
 | S8 | DONE | 2026-04-02 | Backtest comparison view: GET /api/backtest/compare endpoint, side-by-side metrics with color-coded deltas, overlaid equity curves. Compare mode toggle in run list. 3 new tests, 925 total pass. |
+| S9 | DONE | 2026-04-02 | Journal expandable detail rows: click row → inline detail panel with all JSONB fields, chevron indicator, priority field ordering per event type. Pure UI change, no new endpoints. 925 pass. |
 
 ---
 
