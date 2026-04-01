@@ -14,16 +14,24 @@ export interface CloseAllResult {
   closed: number
 }
 
+/** Injectable deps for testing without mock.module (avoids global mock leaks). */
+export interface CloseAllDeps {
+  agent: { pauseAll(reason: string): void }
+  om: { getOrders(): Map<string, { id: string; status: string }>; cancelOrder(id: string, reason: string): Promise<void>; handleAction(action: { type: string; positionId: string; reason: string }): Promise<void> }
+  pm: { getPositions(): Map<string, { positionId: string; coin: string }> }
+}
+
 /**
  * Emergency close-all: pause agent, cancel pending orders, close open positions.
  *
  * @param reason - logged reason for the close-all action
+ * @param deps - optional dependency injection for testing
  * @returns counts of cancelled orders and closed positions
  */
-export async function closeAllPositions(reason: string): Promise<CloseAllResult> {
-  const agent = getAgent()
-  const om = getOrderManager()
-  const pm = getPositionMonitor()
+export async function closeAllPositions(reason: string, deps?: CloseAllDeps): Promise<CloseAllResult> {
+  const agent = deps?.agent ?? getAgent()
+  const om = deps?.om ?? getOrderManager()
+  const pm = deps?.pm ?? getPositionMonitor()
 
   // 1. Pause agent first to prevent new entries
   agent.pauseAll(reason)
