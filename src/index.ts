@@ -65,6 +65,7 @@ import { getInvalidationBridge } from './agent/invalidation-bridge.js'
 import { startServer, stopServer } from './server/index.js'
 import { startBot, stopBot } from './alert/telegram/index.js'
 import { wireSSEEvents } from './server/sse.js'
+import { connectToAgent as connectMetrics } from './analytics/metrics-service.js'
 import { getExchangeService } from './execution/exchange-service.js'
 import type { CandleInterval } from './types.js'
 
@@ -374,6 +375,9 @@ async function main(): Promise<void> {
 
   // Start exchange sync heartbeat (R3: 10s interval)
   pm.startSync()
+
+  // Wire metrics service: refresh matviews after each trade close
+  connectMetrics(agent)
 
   // Start Elysia HTTP server + SSE broadcasts
   await startServer()

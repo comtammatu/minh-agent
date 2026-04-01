@@ -20,20 +20,12 @@ beforeAll(async () => {
     await sql`SELECT 1`
     dbAvailable = true
 
-    // Clean slate: drop all tables + matviews so migration runs fresh
-    await sql.unsafe(`
-      DROP MATERIALIZED VIEW IF EXISTS pnl_hourly CASCADE;
-      DROP MATERIALIZED VIEW IF EXISTS daily_performance CASCADE;
-      DROP MATERIALIZED VIEW IF EXISTS pattern_performance CASCADE;
-      DROP TABLE IF EXISTS backtest_equity CASCADE;
-      DROP TABLE IF EXISTS backtest_trades CASCADE;
-      DROP TABLE IF EXISTS backtest_runs CASCADE;
-      DROP TABLE IF EXISTS candles CASCADE;
-      DROP TABLE IF EXISTS orders CASCADE;
-      DROP TABLE IF EXISTS positions CASCADE;
-      DROP TABLE IF EXISTS trade_journal CASCADE;
-      DROP TABLE IF EXISTS schema_migrations CASCADE;
-    `)
+    // Clear migration tracking so runMigrations() re-applies all files.
+    // Uses DELETE instead of DROP TABLE to avoid AccessExclusiveLock deadlocks
+    // when live app or parallel tests INSERT into candles concurrently.
+    // Migrations use CREATE TABLE IF NOT EXISTS + create_hypertable(if_not_exists)
+    // so re-running on existing tables is safe and idempotent.
+    await sql`DELETE FROM schema_migrations`
   } catch {
     // DB not available — tests will be skipped
   }
