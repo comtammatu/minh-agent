@@ -351,3 +351,44 @@ Security: 9 threat vectors assessed, all mitigated by review decisions.
 - `useSSE` hook connects all 3 EventSources on mount, auto-cleanup on unmount.
 - Tailwind v4 with `@tailwindcss/vite` plugin — no separate config file needed, just `@import "tailwindcss"` in CSS.
 - bun test doesn't auto-discover `test/server/` directory (known bun issue) — SSE tests run via explicit path `bun test test/server/`.
+
+---
+
+## Sprint 3 Close Summary (2026-04-01)
+
+**Sprint 3: VALIDATE** — Backtest + Analytics + Dashboard MVP. 10 sessions, 4 days, 71 commits, 36.8k net LOC, 857 tests passing.
+
+### What shipped
+
+| Phase | Sessions | Key deliverables |
+|-------|----------|------------------|
+| 3A: Backtest | S1–S4 | Historical replay engine, data manager, results store, walk-forward validation, overfit detection, expectancy report |
+| 3B: Analytics | S5–S6 | Metrics engine (pure), TimescaleDB matviews (daily_performance, pattern_performance), metrics-service with agent integration, GET /api/metrics |
+| 3C: Dashboard | S7–S10 | 6 pages (Overview, Positions, Chart, Journal, Config, Backtest), 3 SSE channels, React/Vite/Tailwind/Zustand, Lightweight Charts with zone/structure overlays |
+
+### Key architectural decisions in Sprint 3
+
+| # | Decision | Rationale |
+|---|----------|-----------|
+| D1 | Backtest reuses Sprint 1+2 pipeline — zero duplicate logic | Same code path for live and backtest. Only difference: mock fills + simulated execution |
+| D2 | Multi-TP exit strategy (40/30/30 split) with ATR trailing | Captures partial profits at zone targets, lets runners ride with trailing stop |
+| D3 | Next-bar-open entry (remove look-ahead bias) | Backtest enters at next bar's open after signal, not signal bar's close |
+| D4 | Zone freshness filter (ZONE_MAX_AGE=50 bars) | Stale zones far from current price inflated L3 pass rate, filtering improved signal quality |
+| D5 | Dashboard as separate package (not Bun workspace) | Clean boundary, independent build, served as static files by Elysia |
+| D6 | SSE for real-time + REST polling for metrics | SSE for sub-second updates (status, signals, trades); REST for expensive DB queries (30s poll) |
+| D7 | SVG equity curve (no charting lib for backtest page) | Lightweight Charts used for live chart; backtest equity is simple enough for raw SVG polyline |
+| D8 | Config endpoint exports grouped constants (read-only) | 15 categories auto-grouped from config.ts export names. No live editing in MVP |
+
+### Metrics snapshot
+
+- **857 tests pass** (4 pre-existing logger failures, 3 skipped)
+- **Test ratio: 40%** (up from 32% in Sprint 2)
+- **API endpoints: 16 REST + 3 SSE**
+- **DB migrations: 003** (analytics matviews added)
+- **Dashboard: 6 pages**, all wired to live data
+
+### Carried items
+
+- 4 pre-existing logger test failures — fix in Sprint 4
+- Backtest "run from browser" button — deferred to Sprint 4 (CLI-only for now)
+- Config editing from dashboard — deferred (safety concern without agent restart)

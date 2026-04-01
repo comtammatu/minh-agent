@@ -1,0 +1,38 @@
+{
+  "date": "2026-04-01",
+  "window": "7d",
+  "scope": "Sprint 3 Close retro — Backtest + Analytics + Dashboard MVP, all 10 sessions complete",
+  "metrics": {
+    "commits": 71,
+    "contributors": 1,
+    "prs_merged": 0,
+    "insertions": 38810,
+    "deletions": 2024,
+    "net_loc": 36786,
+    "test_loc": 15356,
+    "test_ratio": 0.395,
+    "active_days": 4,
+    "sessions": 12,
+    "deep_sessions": 4,
+    "avg_session_minutes": 105,
+    "loc_per_session_hour": 1850,
+    "feat_pct": 0.606,
+    "fix_pct": 0.042,
+    "chore_pct": 0.127,
+    "docs_pct": 0.085,
+    "peak_hour": 14,
+    "ai_assisted_commits": 68
+  },
+  "authors": {
+    "Luong The Binh": {
+      "commits": 71,
+      "insertions": 38810,
+      "deletions": 2024,
+      "test_ratio": 0.395,
+      "top_area": "src/backtest/"
+    }
+  },
+  "version_range": ["v2.0.0", "v3.0.0"],
+  "streak_days": 4,
+  "tweetable": "Sprint 3 Close: 71 commits (solo+AI), 38.8k LOC, 40% tests, 10/10 sessions — Backtest + Analytics + Dashboard MVP shipped | Streak: 4d"
+}

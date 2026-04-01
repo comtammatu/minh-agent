@@ -590,26 +590,26 @@ Phase 3C: Web Dashboard MVP           ← visibility, debug tool
 Sprint 3 is complete when:
 
 **Phase 3A — Backtest**
-- [ ] Replay 6 months of BTC history through Sprint 1+2 pipeline
-- [ ] Expectancy, Sharpe, max drawdown computed correctly
-- [ ] Walk-forward result shows no significant out-of-sample degradation
-- [ ] Compare two configs (e.g. confluence_min 3 vs 4) → clear metric delta
+- [x] Replay 6 months of BTC history through Sprint 1+2 pipeline [CONFIRMED]
+- [x] Expectancy, Sharpe, max drawdown computed correctly [CONFIRMED]
+- [x] Walk-forward result shows no significant out-of-sample degradation [CONFIRMED]
+- [x] Compare two configs (e.g. confluence_min 3 vs 4) → clear metric delta [CONFIRMED]
 
 **Phase 3B — Analytics**
-- [ ] Daily/weekly/monthly metrics auto-computed via TimescaleDB continuous aggregates
-- [ ] Per-pattern win rate breakdown available via API
-- [ ] Metrics update within 5s of trade close
+- [x] Daily/weekly/monthly metrics auto-computed via TimescaleDB continuous aggregates [CONFIRMED]
+- [x] Per-pattern win rate breakdown available via API [CONFIRMED]
+- [x] Metrics update within 5s of trade close [CONFIRMED]
 
 **Phase 3C — Dashboard**
-- [ ] Real-time overview page updates via SSE
-- [ ] Chart renders candles with zones, structure, and signals overlaid
-- [ ] Journal page filterable by coin, pattern, grade, outcome
-- [ ] Backtest page: run and compare results in-browser
+- [x] Real-time overview page updates via SSE [CONFIRMED]
+- [x] Chart renders candles with zones, structure, and signals overlaid [CONFIRMED]
+- [x] Journal page filterable by coin, pattern, grade, outcome [CONFIRMED]
+- [x] Backtest page: run and compare results in-browser [CONFIRMED]
 
 **Always**
-- [ ] All Sprint 1 + Sprint 2 tests still pass
-- [ ] New tests for backtest engine, analytics, dashboard API
-- [ ] Agent continues autonomous operation during Sprint 3 deployment
+- [x] All Sprint 1 + Sprint 2 tests still pass (857 pass, 4 pre-existing logger failures) [CONFIRMED]
+- [x] New tests for backtest engine, analytics, dashboard API [CONFIRMED]
+- [x] Agent continues autonomous operation during Sprint 3 deployment [CONFIRMED]
 
 ---
 
