@@ -1,14 +1,14 @@
 /**
- * Backtest page — list runs + detail view with metrics, equity curve, trades.
+ * Backtest page — list runs + detail view + "Run from browser" config editor.
  *
  * Data sources:
  *   - REST /api/backtest/runs → list all saved runs
  *   - REST /api/backtest/runs/:id → full run detail (metrics + trades + equity)
- *
- * No "run backtest" button in MVP — use CLI instead.
+ *   - POST /api/backtest/run → trigger new backtest
+ *   - SSE  /api/backtest/progress → live progress updates
  */
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -81,7 +81,7 @@ interface FullRun extends RunSummary {
 
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
-function useBacktestRuns() {
+function useBacktestRuns(refreshKey = 0) {
   const [runs, setRuns] = useState<RunSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -102,7 +102,7 @@ function useBacktestRuns() {
     }
     load()
     return () => { cancelled = true }
-  }, [])
+  }, [refreshKey])
 
   return { runs, loading, error }
 }
@@ -133,6 +133,247 @@ function useBacktestDetail(runId: string | null) {
   }, [runId])
 
   return { run, loading, error }
+}
+
+// ─── Backtest Runner Hook ──────────────────────────────────────────────────
+
+interface BacktestRunConfig {
+  coins: string[]
+  timeframes: string[]
+  months: number
+  initialCapital: number
+  name?: string
+}
+
+interface ProgressEvent {
+  runId: string
+  pct: number
+  bar: number
+  total: number
+  phase: string
+  savedRunId?: string
+  totalTrades?: number
+  netPnl?: number
+  winRate?: number
+  error?: string
+}
+
+function useBacktestRunner(onComplete: () => void) {
+  const [running, setRunning] = useState(false)
+  const [progress, setProgress] = useState<ProgressEvent | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const eventSourceRef = useRef<EventSource | null>(null)
+
+  const cleanup = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close()
+      eventSourceRef.current = null
+    }
+  }, [])
+
+  const run = useCallback(async (config: BacktestRunConfig) => {
+    setRunning(true)
+    setError(null)
+    setProgress(null)
+
+    // Connect SSE before POST to not miss early events
+    cleanup()
+    const es = new EventSource('/api/backtest/progress')
+    eventSourceRef.current = es
+
+    es.addEventListener('progress', (e) => {
+      const data = JSON.parse(e.data) as ProgressEvent
+      setProgress(data)
+
+      if (data.phase === 'done') {
+        setRunning(false)
+        cleanup()
+        onComplete()
+      } else if (data.phase === 'error') {
+        setRunning(false)
+        setError(data.error ?? 'Unknown error')
+        cleanup()
+      }
+    })
+
+    es.onerror = () => {
+      // SSE reconnects automatically, but if we're not running, clean up
+      if (!running) cleanup()
+    }
+
+    try {
+      const res = await fetch('/api/backtest/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ message: `HTTP ${res.status}` }))
+        throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`)
+      }
+    } catch (err) {
+      setRunning(false)
+      setError((err as Error).message)
+      cleanup()
+    }
+  }, [cleanup, onComplete, running])
+
+  // Cleanup on unmount
+  useEffect(() => cleanup, [cleanup])
+
+  return { run, running, progress, error }
+}
+
+// ─── Available Options ─────────────────────────────────────────────────────
+
+const AVAILABLE_COINS = [
+  'BTC', 'ETH', 'SOL', 'DOGE', 'AVAX', 'LINK', 'ARB', 'SUI',
+  'WLD', 'INJ', 'TIA', 'SEI', 'WIF', 'PEPE', 'ONDO', 'HYPE', 'TAO',
+]
+
+const AVAILABLE_TIMEFRAMES = ['5m', '15m', '1h', '4h']
+
+const DEFAULT_COINS = ['BTC', 'ETH', 'SOL']
+const DEFAULT_TIMEFRAMES = ['15m', '1h', '4h']
+
+// ─── Config Editor ─────────────────────────────────────────────────────────
+
+function ConfigEditor({ onRun, running, progress, error }: {
+  onRun: (config: BacktestRunConfig) => void
+  running: boolean
+  progress: ProgressEvent | null
+  error: string | null
+}) {
+  const [coins, setCoins] = useState<string[]>(DEFAULT_COINS)
+  const [timeframes, setTimeframes] = useState<string[]>(DEFAULT_TIMEFRAMES)
+  const [months, setMonths] = useState(3)
+  const [capital, setCapital] = useState(10000)
+  const [name, setName] = useState('')
+
+  const toggleItem = (list: string[], item: string, setter: (v: string[]) => void) => {
+    setter(list.includes(item) ? list.filter(x => x !== item) : [...list, item])
+  }
+
+  const handleRun = () => {
+    if (coins.length === 0 || timeframes.length === 0) return
+    onRun({ coins, timeframes, months, initialCapital: capital, name: name || undefined })
+  }
+
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 space-y-4">
+      <h3 className="text-sm font-semibold text-zinc-300">Run Backtest</h3>
+
+      {/* Coins */}
+      <div>
+        <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Coins</label>
+        <div className="flex flex-wrap gap-1.5 mt-1">
+          {AVAILABLE_COINS.map(c => (
+            <button
+              key={c}
+              onClick={() => toggleItem(coins, c, setCoins)}
+              disabled={running}
+              className={`px-2 py-0.5 text-xs rounded border transition-colors ${
+                coins.includes(c)
+                  ? 'bg-amber-900/50 border-amber-700 text-amber-300'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-300'
+              } disabled:opacity-50`}
+            >{c}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Timeframes */}
+      <div>
+        <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Timeframes</label>
+        <div className="flex gap-1.5 mt-1">
+          {AVAILABLE_TIMEFRAMES.map(tf => (
+            <button
+              key={tf}
+              onClick={() => toggleItem(timeframes, tf, setTimeframes)}
+              disabled={running}
+              className={`px-2 py-0.5 text-xs rounded border transition-colors ${
+                timeframes.includes(tf)
+                  ? 'bg-amber-900/50 border-amber-700 text-amber-300'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-300'
+              } disabled:opacity-50`}
+            >{tf}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Params row */}
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Months</label>
+          <input
+            type="number" min={1} max={6} value={months}
+            onChange={e => setMonths(Math.min(6, Math.max(1, +e.target.value)))}
+            disabled={running}
+            className="w-full mt-1 px-2 py-1 text-sm bg-zinc-800 border border-zinc-700 rounded text-zinc-200 disabled:opacity-50"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Capital ($)</label>
+          <input
+            type="number" min={100} step={1000} value={capital}
+            onChange={e => setCapital(Math.max(100, +e.target.value))}
+            disabled={running}
+            className="w-full mt-1 px-2 py-1 text-sm bg-zinc-800 border border-zinc-700 rounded text-zinc-200 disabled:opacity-50"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Run Name</label>
+          <input
+            type="text" value={name} placeholder="optional"
+            onChange={e => setName(e.target.value)}
+            disabled={running}
+            className="w-full mt-1 px-2 py-1 text-sm bg-zinc-800 border border-zinc-700 rounded text-zinc-200 placeholder:text-zinc-600 disabled:opacity-50"
+          />
+        </div>
+      </div>
+
+      {/* Run button + progress */}
+      <div className="space-y-2">
+        <button
+          onClick={handleRun}
+          disabled={running || coins.length === 0 || timeframes.length === 0}
+          className="w-full py-2 text-sm font-semibold rounded bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {running ? 'Running...' : 'Run Backtest'}
+        </button>
+
+        {/* Progress bar */}
+        {running && progress && (
+          <div className="space-y-1">
+            <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+              <div
+                className="h-full bg-amber-500 transition-all duration-300"
+                style={{ width: `${progress.pct}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[10px] text-zinc-500">
+              <span>{progress.phase}</span>
+              <span>{progress.pct}%{progress.total > 0 ? ` (${progress.bar}/${progress.total})` : ''}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Done summary */}
+        {!running && progress?.phase === 'done' && (
+          <div className="rounded border border-emerald-800 bg-emerald-950/30 px-3 py-2 text-xs text-emerald-400">
+            Done: {progress.totalTrades} trades, PnL {progress.netPnl !== undefined ? (progress.netPnl >= 0 ? '+' : '') + '$' + progress.netPnl.toFixed(2) : '—'}, WR {progress.winRate !== undefined ? (progress.winRate * 100).toFixed(1) + '%' : '—'}
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className="rounded border border-red-800 bg-red-950/30 px-3 py-2 text-xs text-red-400">
+            {error}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -331,9 +572,16 @@ function RunDetail({ run }: { run: FullRun }) {
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export function BacktestPage() {
-  const { runs, loading, error } = useBacktestRuns()
+  const [refreshKey, setRefreshKey] = useState(0)
+  const { runs, loading, error } = useBacktestRuns(refreshKey)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const { run: detail, loading: detailLoading, error: detailError } = useBacktestDetail(selectedId)
+
+  const handleBacktestComplete = useCallback(() => {
+    setRefreshKey(k => k + 1)
+  }, [])
+
+  const { run: startRun, running, progress, error: runError } = useBacktestRunner(handleBacktestComplete)
 
   if (loading) {
     return (
@@ -357,6 +605,9 @@ export function BacktestPage() {
         <h2 className="text-xl font-semibold">Backtest Results</h2>
         <span className="text-xs text-zinc-600">{runs.length} runs</span>
       </div>
+
+      {/* Config editor */}
+      <ConfigEditor onRun={startRun} running={running} progress={progress} error={runError} />
 
       {runs.length === 0 ? (
         <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-8 text-center text-zinc-500">

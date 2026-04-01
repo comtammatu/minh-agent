@@ -50,8 +50,16 @@ import { closeAllPositions } from '../agent/close-all.js'
 import { getHealthMonitor } from '../agent/self-healing.js'
 import { getLiveMetrics } from '../analytics/metrics-service.js'
 import { sseRoutes, startSSEBroadcasts, stopSSEBroadcasts } from './sse.js'
-import { getConnectionCounts, getTotalConnections, closeAllConnections } from './sse-manager.js'
-import { listRuns, loadRun } from '../backtest/results-store.js'
+import { getConnectionCounts, getTotalConnections, closeAllConnections, broadcast, addClient, removeClient } from './sse-manager.js'
+import { listRuns, loadRun, saveRun } from '../backtest/results-store.js'
+import { runBacktestAsync, type BacktestProgress } from '../backtest/engine.js'
+import { BacktestDataManager, computeHTFIntervals, computeHTFWarmupMs } from '../backtest/data-manager.js'
+import type { BacktestConfig } from '../backtest/types.js'
+import {
+  MAX_BACKTEST_MONTHS,
+  BACKTEST_SLIPPAGE_PCT,
+  BACKTEST_COMMISSION_PCT,
+} from '../config.js'
 import * as CONFIG from '../config.js'
 import { staticPlugin } from '@elysiajs/static'
 import { join } from 'path'
@@ -66,6 +74,112 @@ function validateTimeframe(tf: string): tf is CandleInterval {
 
 function getApiToken(): string | null {
   return process.env[API_TOKEN_ENV] ?? null
+}
+
+// ─── Backtest Runner (Browser-triggered) ────────────────────────────────────
+
+/** Concurrency guard: only 1 backtest at a time. */
+let activeBacktestRunId: string | null = null
+
+/** Expose for testing. */
+export function getActiveBacktestRunId(): string | null {
+  return activeBacktestRunId
+}
+
+/** Create SSE stream for backtest progress channel. */
+function createBacktestSSEStream(): ReadableStream {
+  let clientId: string | null = null
+  return new ReadableStream({
+    start(controller) {
+      clientId = addClient('backtest', controller)
+    },
+    cancel() {
+      if (clientId) removeClient(clientId)
+    },
+  })
+}
+
+/**
+ * Run a browser-triggered backtest asynchronously.
+ * Downloads data → runs engine → saves result → broadcasts progress via SSE.
+ */
+async function runBrowserBacktest(
+  runId: string,
+  coins: string[],
+  timeframes: string[],
+  months: number,
+  initialCapital: number,
+  name: string | null,
+): Promise<void> {
+  try {
+    // Phase 1: Download data
+    broadcast('backtest', 'progress', { runId, pct: 0, bar: 0, total: 0, phase: 'downloading' })
+
+    const dm = new BacktestDataManager()
+    const endDate = new Date()
+    const startDate = new Date()
+    startDate.setMonth(startDate.getMonth() - months)
+
+    const typedTFs = timeframes as import('../types.js').CandleInterval[]
+    const extraHTFs = computeHTFIntervals(typedTFs)
+
+    for (const coin of coins) {
+      for (const tf of typedTFs) {
+        await dm.downloadHistory(coin, tf, startDate, endDate)
+      }
+      for (const htf of extraHTFs) {
+        const warmupMs = computeHTFWarmupMs(htf)
+        const htfStart = new Date(startDate.getTime() - warmupMs)
+        await dm.downloadHistory(coin, htf, htfStart, endDate)
+      }
+    }
+
+    // Phase 2: Load candles
+    broadcast('backtest', 'progress', { runId, pct: 5, bar: 0, total: 0, phase: 'loading' })
+    const candles = await dm.loadForBacktest(coins, typedTFs, startDate, endDate)
+
+    // Phase 3: Run backtest with progress
+    const config: BacktestConfig = {
+      coins,
+      timeframes: typedTFs,
+      initialCapital,
+      slippagePct: BACKTEST_SLIPPAGE_PCT,
+      commissionPct: BACKTEST_COMMISSION_PCT,
+    }
+
+    const result = await runBacktestAsync(candles, config, (p: BacktestProgress) => {
+      // Scale progress: 5–95% for replay, 95–100 for compute/done
+      const scaledPct = 5 + Math.round(p.pct * 0.9)
+      broadcast('backtest', 'progress', { runId, pct: scaledPct, bar: p.bar, total: p.total, phase: p.phase })
+    })
+
+    // Phase 4: Save result
+    broadcast('backtest', 'progress', { runId, pct: 98, bar: 0, total: 0, phase: 'saving' })
+    const savedId = await saveRun(result, name ?? `Browser run ${new Date().toISOString().slice(0, 16)}`)
+
+    broadcast('backtest', 'progress', {
+      runId,
+      savedRunId: savedId,
+      pct: 100,
+      bar: 0,
+      total: 0,
+      phase: 'done',
+      totalTrades: result.trades.length,
+      netPnl: result.metrics.netPnl,
+      winRate: result.metrics.winRate,
+    })
+  } catch (err) {
+    broadcast('backtest', 'progress', {
+      runId,
+      pct: 0,
+      bar: 0,
+      total: 0,
+      phase: 'error',
+      error: err instanceof Error ? err.message : String(err),
+    })
+  } finally {
+    activeBacktestRunId = null
+  }
 }
 
 // ─── App Builder ─────────────────────────────────────────────────────────────
@@ -301,6 +415,58 @@ function createApp() {
       }
     }, {
       params: t.Object({ id: t.String() }),
+    })
+
+    // ── Backtest run endpoint (no auth — U4: read-only computation) ──────
+
+    .post('/api/backtest/run', async ({ body, set }) => {
+      // Concurrency guard
+      if (activeBacktestRunId) {
+        set.status = 409
+        return { error: 'backtest_running', message: `Backtest ${activeBacktestRunId} already in progress` }
+      }
+
+      const { coins, timeframes, months, initialCapital, name } = body
+
+      // Validate months cap
+      if (months > MAX_BACKTEST_MONTHS) {
+        set.status = 400
+        return { error: 'too_long', message: `Max ${MAX_BACKTEST_MONTHS} months allowed` }
+      }
+
+      if (coins.length === 0 || timeframes.length === 0) {
+        set.status = 400
+        return { error: 'invalid_config', message: 'coins and timeframes must not be empty' }
+      }
+
+      const runId = crypto.randomUUID()
+      activeBacktestRunId = runId
+
+      // Fire-and-forget — progress via SSE
+      runBrowserBacktest(runId, coins, timeframes, months, initialCapital, name ?? null)
+
+      return { runId }
+    }, {
+      body: t.Object({
+        coins: t.Array(t.String(), { minItems: 1 }),
+        timeframes: t.Array(t.String(), { minItems: 1 }),
+        months: t.Number({ minimum: 1, maximum: 12 }),
+        initialCapital: t.Number({ minimum: 100 }),
+        name: t.Optional(t.String()),
+      }),
+    })
+
+    // ── Backtest progress SSE stream ────────────────────────────────────
+
+    .get('/api/backtest/progress', () => {
+      return new Response(createBacktestSSEStream(), {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        },
+      })
     })
 
     // ── Execution endpoints (bearer auth required) ────────────────────────

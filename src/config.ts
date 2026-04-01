@@ -327,6 +327,12 @@ export const TRAIL_ACTIVATION_R = 1.0
 
 // ─── Backtest (Sprint 3A) ──────────────────────────────────────────────────
 
+/** Max months of history allowed for browser-triggered backtest (OOM guard). */
+export const MAX_BACKTEST_MONTHS = 6
+
+/** Bars between async yield points in browser backtest (keep event loop responsive). */
+export const BACKTEST_CHUNK_SIZE = 100
+
 /** Default slippage for backtest fills (0.05% = 5 bps). */
 export const BACKTEST_SLIPPAGE_PCT = 0.0005
 

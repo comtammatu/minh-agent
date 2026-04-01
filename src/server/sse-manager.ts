@@ -16,7 +16,7 @@ import { log } from '../lib/logger.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type SSEChannel = 'status' | 'signals' | 'trades'
+export type SSEChannel = 'status' | 'signals' | 'trades' | 'backtest'
 
 export interface SSEClient {
   id: string
@@ -52,7 +52,7 @@ export function removeClient(id: string): void {
 
 /** Get count of active connections per channel. */
 export function getConnectionCounts(): Record<SSEChannel, number> {
-  const counts: Record<SSEChannel, number> = { status: 0, signals: 0, trades: 0 }
+  const counts: Record<SSEChannel, number> = { status: 0, signals: 0, trades: 0, backtest: 0 }
   for (const client of clients.values()) {
     counts[client.channel]++
   }
