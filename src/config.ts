@@ -452,6 +452,8 @@ export const TELEGRAM_BOT = {
   pollingExtraTimeoutSec: 5,
   /** Max backoff between getUpdates retries (ms). */
   maxBackoffMs: 30_000,
+  /** /closeall confirmation timeout (seconds). User must /confirm within this window. */
+  closeallConfirmTimeoutSec: 30,
 } as const
 
 /** Health monitoring configuration. */

@@ -4,12 +4,15 @@
  * Each command returns a MarkdownV2-formatted reply string.
  * I/O (sending messages) happens in bot.ts.
  *
- * /help     — built-in, pure
- * /status   — reads agent snapshot + health report
+ * /help      — built-in, pure
+ * /status    — reads agent snapshot + health report
  * /positions — reads position monitor
- * /pnl      — reads live metrics (async, hits DB)
- * /pause    — mutates agent state (pauseAll)
- * /resume   — mutates agent state (resumeAll)
+ * /pnl       — reads live metrics (async, hits DB)
+ * /pause     — mutates agent state (pauseAll or per-coin with duration)
+ * /resume    — mutates agent state (resumeAll)
+ * /risk      — risk dashboard (PnL, CB, consecutive losses)
+ * /closeall  — emergency close all (requires /confirm)
+ * /confirm   — confirm pending /closeall
  */
 
 import { escapeMarkdownV2 } from './alerts.js'
@@ -17,6 +20,8 @@ import { getAgent } from '../../agent/trading-agent.js'
 import { getPositionMonitor } from '../../agent/position-monitor.js'
 import { getHealthMonitor } from '../../agent/self-healing.js'
 import { getLiveMetrics } from '../../analytics/metrics-service.js'
+import { closeAllPositions } from '../../agent/close-all.js'
+import { TELEGRAM_BOT } from '../../config.js'
 import type { CommandDef } from './types.js'
 
 // ─── Command Registry ──────────────────────────────────────────────────────
@@ -151,11 +156,52 @@ async function pnlHandler(): Promise<string> {
 
 // ─── /pause ───────────────────────────────────────────────────────────────
 
+/**
+ * Parse per-coin pause args: "/pause BTC 4h" → { coin: 'BTC', durationMs: 14400000, label: '4h' }
+ * Supported suffixes: m (minutes), h (hours), d (days).
+ * Returns null if args don't match per-coin format (falls back to global pause).
+ */
+export function parsePauseCoinArgs(args: string): { coin: string; durationMs: number; label: string } | null {
+  const parts = args.trim().split(/\s+/)
+  if (parts.length < 2) return null
+
+  const coin = parts[0].toUpperCase()
+  const durationStr = parts[1].toLowerCase()
+  const match = durationStr.match(/^(\d+)(m|h|d)$/)
+  if (!match) return null
+
+  const value = parseInt(match[1], 10)
+  if (value <= 0 || isNaN(value)) return null
+
+  const multipliers: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000 }
+  const durationMs = value * multipliers[match[2]]
+  return { coin, durationMs, label: durationStr }
+}
+
 function pauseHandler(args: string): string {
   const esc = escapeMarkdownV2
   try {
+    const agent = getAgent()
+    const coinPause = parsePauseCoinArgs(args)
+
+    if (coinPause) {
+      // Per-coin pause with auto-resume timer
+      const { coin, durationMs, label } = coinPause
+      const state = agent.getCoinState(coin)
+      if (state === 'IDLE' && !agent.getCoinContext(coin)) {
+        return `Unknown coin: ${esc(coin)}`
+      }
+      agent.dispatch(coin, { type: 'pause', reason: `manual via Telegram (${label})` })
+      // Schedule auto-resume
+      setTimeout(() => {
+        try { agent.dispatch(coin, { type: 'resume' }) } catch { /* agent may be gone */ }
+      }, durationMs)
+      return `${esc(coin)} paused for ${esc(label)}`
+    }
+
+    // Global pause (original behavior)
     const reason = args.trim() || 'manual via Telegram'
-    getAgent().pauseAll(reason)
+    agent.pauseAll(reason)
     return `Agent paused: ${esc(reason)}`
   } catch {
     return `Agent not initialized\\.`
@@ -173,6 +219,134 @@ function resumeHandler(): string {
   }
 }
 
+// ─── /risk ────────────────────────────────────────────────────────────────
+
+function riskHandler(): string {
+  const esc = escapeMarkdownV2
+  try {
+    const snap = getAgent().getSnapshot()
+    const posCount = getPositionMonitor().getPositions().size
+
+    const paused = snap.global.globalPaused ? 'YES' : 'NO'
+    const cbTripped = snap.global.totalConsecutiveLosses >= 3 ? 'TRIPPED' : 'OK'
+
+    // Per-coin consecutive losses (only show coins with losses > 0)
+    const coinLosses: string[] = []
+    for (const [coin, ctx] of Object.entries(snap.coins)) {
+      if (ctx.consecutiveLosses > 0) {
+        coinLosses.push(`  ${esc(coin)}: ${esc(String(ctx.consecutiveLosses))} consecutive`)
+      }
+    }
+
+    const lines = [
+      `*Risk Dashboard*`,
+      ``,
+      `Daily PnL: ${esc(snap.global.dailyPnl.toFixed(2))} USDC`,
+      `Open positions: ${esc(String(posCount))}`,
+      `Global paused: ${esc(paused)}`,
+      `Circuit breaker: ${esc(cbTripped)} \\(${esc(String(snap.global.totalConsecutiveLosses))} consecutive losses\\)`,
+    ]
+
+    if (coinLosses.length > 0) {
+      lines.push(``, `*Per\\-coin losses:*`)
+      lines.push(...coinLosses)
+    }
+
+    return lines.join('\n')
+  } catch {
+    return `Agent not initialized\\.`
+  }
+}
+
+// ─── /closeall state machine ─────────────────────────────────────────────
+
+interface CloseAllState {
+  chatId: number
+  requestedAt: number
+}
+
+/** Pending /closeall confirmation. null = IDLE state. */
+let pendingCloseAll: CloseAllState | null = null
+
+/** Expose for testing. */
+export function getPendingCloseAll(): CloseAllState | null {
+  return pendingCloseAll
+}
+
+/** Reset state (for testing). */
+export function resetCloseAllState(): void {
+  pendingCloseAll = null
+}
+
+function closeallHandler(_args: string, chatId: number): string {
+  const esc = escapeMarkdownV2
+  const timeoutSec = TELEGRAM_BOT.closeallConfirmTimeoutSec
+
+  if (pendingCloseAll) {
+    const elapsed = (Date.now() - pendingCloseAll.requestedAt) / 1000
+    if (elapsed < timeoutSec) {
+      return `A /closeall is already pending\\. Send /confirm within ${esc(String(Math.ceil(timeoutSec - elapsed)))}s\\.`
+    }
+    // Expired — allow new request
+    pendingCloseAll = null
+  }
+
+  pendingCloseAll = { chatId, requestedAt: Date.now() }
+
+  // Auto-cancel after timeout
+  setTimeout(() => {
+    if (pendingCloseAll && Date.now() - pendingCloseAll.requestedAt >= timeoutSec * 1000) {
+      pendingCloseAll = null
+    }
+  }, timeoutSec * 1000 + 500) // small buffer
+
+  return [
+    `*CLOSE ALL* — Confirmation required`,
+    ``,
+    `This will:`,
+    `1\\. Pause the agent`,
+    `2\\. Cancel all pending orders`,
+    `3\\. Close all open positions`,
+    ``,
+    `Send /confirm within ${esc(String(timeoutSec))}s to proceed\\.`,
+  ].join('\n')
+}
+
+async function confirmHandler(_args: string, chatId: number): Promise<string> {
+  const esc = escapeMarkdownV2
+  const timeoutSec = TELEGRAM_BOT.closeallConfirmTimeoutSec
+
+  if (!pendingCloseAll) {
+    return `No pending /closeall to confirm\\.`
+  }
+
+  // Check same chat ID
+  if (pendingCloseAll.chatId !== chatId) {
+    return `No pending /closeall to confirm\\.`
+  }
+
+  // Check timeout
+  const elapsed = (Date.now() - pendingCloseAll.requestedAt) / 1000
+  if (elapsed >= timeoutSec) {
+    pendingCloseAll = null
+    return `Confirmation expired\\. Send /closeall again\\.`
+  }
+
+  // Execute
+  pendingCloseAll = null
+  try {
+    const result = await closeAllPositions('emergency close-all via Telegram')
+    return [
+      `*Close\\-all executed*`,
+      `Cancelled orders: ${esc(String(result.cancelled))}`,
+      `Closed positions: ${esc(String(result.closed))}`,
+      `Agent is now paused\\.`,
+    ].join('\n')
+  } catch {
+    return `Close\\-all failed\\. Check logs\\.`
+  }
+}
+
 // ─── Register Built-in Commands ────────────────────────────────────────────
 
 /** Register all built-in commands. Safe to call multiple times (idempotent). */
@@ -182,6 +356,9 @@ export function registerBuiltinCommands(): void {
   registerCommand({ name: 'status', description: 'Agent state, health, uptime', handler: statusHandler })
   registerCommand({ name: 'positions', description: 'Open positions list', handler: positionsHandler })
   registerCommand({ name: 'pnl', description: 'PnL summary (daily/weekly/monthly)', handler: pnlHandler })
-  registerCommand({ name: 'pause', description: 'Pause agent (optional reason)', handler: pauseHandler })
+  registerCommand({ name: 'pause', description: 'Pause agent or coin (/pause BTC 4h)', handler: pauseHandler })
   registerCommand({ name: 'resume', description: 'Resume agent', handler: resumeHandler })
+  registerCommand({ name: 'risk', description: 'Risk dashboard (PnL, CB, losses)', handler: riskHandler })
+  registerCommand({ name: 'closeall', description: 'Emergency close all (requires /confirm)', handler: closeallHandler })
+  registerCommand({ name: 'confirm', description: 'Confirm pending /closeall', handler: confirmHandler })
 }

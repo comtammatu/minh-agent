@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, mock } from 'bun:test'
 const mockSnapshot = {
   coins: {
     BTC: { state: 'WATCHING', activeSetup: null, pendingOrderId: null, positionId: null, consecutiveLosses: 0, stateAge: 5000 },
-    ETH: { state: 'IN_POSITION', activeSetup: null, pendingOrderId: null, positionId: 'pos-1', consecutiveLosses: 0, stateAge: 10000 },
+    ETH: { state: 'IN_POSITION', activeSetup: null, pendingOrderId: null, positionId: 'pos-1', consecutiveLosses: 2, stateAge: 10000 },
     SOL: { state: 'IDLE', activeSetup: null, pendingOrderId: null, positionId: null, consecutiveLosses: 0, stateAge: 1000 },
   },
   global: {
@@ -19,13 +19,22 @@ const mockSnapshot = {
 
 let pausedWith: string | null = null
 let resumed = false
+const dispatchedEvents: Array<{ coin: string; event: { type: string; reason?: string } }> = []
 
 mock.module('../../agent/trading-agent.js', () => ({
   getAgent: () => ({
     getSnapshot: () => mockSnapshot,
     pauseAll: (reason: string) => { pausedWith = reason },
     resumeAll: () => { resumed = true },
+    getCoinState: (coin: string) => mockSnapshot.coins[coin as keyof typeof mockSnapshot.coins]?.state ?? 'IDLE',
+    getCoinContext: (coin: string) => mockSnapshot.coins[coin as keyof typeof mockSnapshot.coins] ?? null,
+    dispatch: (coin: string, event: { type: string; reason?: string }) => { dispatchedEvents.push({ coin, event }) },
   }),
+}))
+
+let closeAllResult = { cancelled: 0, closed: 0 }
+mock.module('../../agent/close-all.js', () => ({
+  closeAllPositions: async (_reason: string) => closeAllResult,
 }))
 
 const mockPositions = new Map([
@@ -86,6 +95,8 @@ import {
   findCommand,
   resetCommands,
   registerBuiltinCommands,
+  parsePauseCoinArgs,
+  resetCloseAllState,
 } from './commands.js'
 
 describe('command registry', () => {
@@ -147,11 +158,14 @@ describe('registerBuiltinCommands', () => {
     expect(reply).toContain('/pnl')
     expect(reply).toContain('/pause')
     expect(reply).toContain('/resume')
+    expect(reply).toContain('/risk')
+    expect(reply).toContain('/closeall')
+    expect(reply).toContain('/confirm')
   })
 
-  it('registers 6 built-in commands', () => {
+  it('registers 9 built-in commands', () => {
     registerBuiltinCommands()
-    expect(getCommands()).toHaveLength(6)
+    expect(getCommands()).toHaveLength(9)
   })
 })
 
@@ -265,6 +279,7 @@ describe('/pause command', () => {
     resetCommands()
     registerBuiltinCommands()
     pausedWith = null
+    dispatchedEvents.length = 0
   })
 
   it('pauses agent with default reason', () => {
@@ -282,6 +297,23 @@ describe('/pause command', () => {
     expect(reply).toContain('news event')
     expect(pausedWith).toBe('news event')
   })
+
+  it('pauses single coin with duration', () => {
+    const cmd = findCommand('pause')!
+    const reply = cmd.handler('BTC 4h', 0) as string
+    expect(reply).toContain('BTC')
+    expect(reply).toContain('4h')
+    expect(dispatchedEvents).toHaveLength(1)
+    expect(dispatchedEvents[0].coin).toBe('BTC')
+    expect(dispatchedEvents[0].event.type).toBe('pause')
+  })
+
+  it('falls back to global pause for invalid per-coin args', () => {
+    const cmd = findCommand('pause')!
+    const reply = cmd.handler('some reason without coin', 0) as string
+    expect(reply).toContain('Agent paused')
+    expect(pausedWith).toBe('some reason without coin')
+  })
 })
 
 // ─── /resume ──────────────────────────────────────────────────────────────────
@@ -298,5 +330,128 @@ describe('/resume command', () => {
     const reply = cmd.handler('', 0) as string
     expect(reply).toContain('Agent resumed')
     expect(resumed).toBe(true)
+  })
+})
+
+// ─── parsePauseCoinArgs ──────────────────────────────────────────────────────
+
+describe('parsePauseCoinArgs', () => {
+  it('parses "BTC 4h"', () => {
+    const result = parsePauseCoinArgs('BTC 4h')
+    expect(result).not.toBeNull()
+    expect(result!.coin).toBe('BTC')
+    expect(result!.durationMs).toBe(4 * 3_600_000)
+    expect(result!.label).toBe('4h')
+  })
+
+  it('parses "eth 30m" (case-insensitive coin)', () => {
+    const result = parsePauseCoinArgs('eth 30m')
+    expect(result).not.toBeNull()
+    expect(result!.coin).toBe('ETH')
+    expect(result!.durationMs).toBe(30 * 60_000)
+  })
+
+  it('parses "SOL 1d"', () => {
+    const result = parsePauseCoinArgs('SOL 1d')
+    expect(result).not.toBeNull()
+    expect(result!.durationMs).toBe(86_400_000)
+  })
+
+  it('returns null for empty args', () => {
+    expect(parsePauseCoinArgs('')).toBeNull()
+  })
+
+  it('returns null for single word', () => {
+    expect(parsePauseCoinArgs('BTC')).toBeNull()
+  })
+
+  it('returns null for invalid duration format', () => {
+    expect(parsePauseCoinArgs('BTC forever')).toBeNull()
+    expect(parsePauseCoinArgs('BTC 4x')).toBeNull()
+  })
+
+  it('returns null for zero duration', () => {
+    expect(parsePauseCoinArgs('BTC 0h')).toBeNull()
+  })
+})
+
+// ─── /risk ───────────────────────────────────────────────────────────────────
+
+describe('/risk command', () => {
+  beforeEach(() => {
+    resetCommands()
+    registerBuiltinCommands()
+  })
+
+  it('returns risk dashboard with PnL, positions, CB status', () => {
+    const cmd = findCommand('risk')!
+    const reply = cmd.handler('', 0) as string
+    expect(reply).toContain('Risk Dashboard')
+    expect(reply).toContain('42\\.50')  // daily PnL (escaped)
+    expect(reply).toContain('Circuit breaker')
+    expect(reply).toContain('OK')  // 1 consecutive loss < 3
+    expect(reply).toContain('Global paused: NO')
+  })
+
+  it('shows per-coin consecutive losses when > 0', () => {
+    const cmd = findCommand('risk')!
+    const reply = cmd.handler('', 0) as string
+    expect(reply).toContain('ETH')
+    expect(reply).toContain('2 consecutive')
+  })
+})
+
+// ─── /closeall + /confirm ────────────────────────────────────────────────────
+
+describe('/closeall + /confirm commands', () => {
+  const CHAT_ID = 12345
+
+  beforeEach(() => {
+    resetCommands()
+    registerBuiltinCommands()
+    resetCloseAllState()
+    closeAllResult = { cancelled: 2, closed: 1 }
+  })
+
+  it('/closeall requests confirmation', () => {
+    const cmd = findCommand('closeall')!
+    const reply = cmd.handler('', CHAT_ID) as string
+    expect(reply).toContain('CLOSE ALL')
+    expect(reply).toContain('Confirmation required')
+    expect(reply).toContain('/confirm')
+    expect(reply).toContain('30s')
+  })
+
+  it('/confirm with no pending returns no-op', async () => {
+    const cmd = findCommand('confirm')!
+    const reply = await cmd.handler('', CHAT_ID)
+    expect(reply).toContain('No pending')
+  })
+
+  it('/closeall → /confirm executes close-all', async () => {
+    const closeallCmd = findCommand('closeall')!
+    closeallCmd.handler('', CHAT_ID)
+
+    const confirmCmd = findCommand('confirm')!
+    const reply = await confirmCmd.handler('', CHAT_ID)
+    expect(reply).toContain('Close\\-all executed')
+    expect(reply).toContain('Cancelled orders: 2')
+    expect(reply).toContain('Closed positions: 1')
+  })
+
+  it('/confirm from different chatId is rejected', async () => {
+    const closeallCmd = findCommand('closeall')!
+    closeallCmd.handler('', CHAT_ID)
+
+    const confirmCmd = findCommand('confirm')!
+    const reply = await confirmCmd.handler('', 99999)
+    expect(reply).toContain('No pending')
+  })
+
+  it('/closeall while already pending shows already-pending message', () => {
+    const cmd = findCommand('closeall')!
+    cmd.handler('', CHAT_ID)
+    const reply = cmd.handler('', CHAT_ID) as string
+    expect(reply).toContain('already pending')
   })
 })

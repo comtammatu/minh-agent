@@ -46,6 +46,7 @@ import { sql } from '../db/connection.js'
 import { getAgent } from '../agent/trading-agent.js'
 import { getOrderManager } from '../agent/order-manager.js'
 import { getPositionMonitor } from '../agent/position-monitor.js'
+import { closeAllPositions } from '../agent/close-all.js'
 import { getHealthMonitor } from '../agent/self-healing.js'
 import { getLiveMetrics } from '../analytics/metrics-service.js'
 import { sseRoutes, startSSEBroadcasts, stopSSEBroadcasts } from './sse.js'
@@ -329,32 +330,8 @@ function createApp() {
         })
 
         .post('/override/close-all', async () => {
-          const agent = getAgent()
-          const om = getOrderManager()
-          const pm = getPositionMonitor()
-
-          // Pause agent first to prevent new entries
-          agent.pauseAll('emergency close-all via API')
-
-          // Cancel all pending orders
-          const orders = om.getOrders()
-          let cancelled = 0
-          for (const [id, order] of orders) {
-            if (order.status === 'pending' || order.status === 'submitted') {
-              await om.cancelOrder(id, 'emergency close-all')
-              cancelled++
-            }
-          }
-
-          // Close all open positions via OrderManager
-          const positions = pm.getPositions()
-          let closed = 0
-          for (const [posId] of positions) {
-            await om.handleAction({ type: 'close_position', positionId: posId, reason: 'emergency close-all' })
-            closed++
-          }
-
-          return { ok: true, action: 'close-all', cancelled, closed }
+          const result = await closeAllPositions('emergency close-all via API')
+          return { ok: true, action: 'close-all', ...result }
         })
 
         .delete('/order/:id', async ({ params, set }) => {
