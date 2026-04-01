@@ -5,7 +5,7 @@
  * Filters: coin, event type, date range (client-side filter on fetched data)
  */
 
-import { useEffect, useState, useMemo } from 'react'
+import { Fragment, useEffect, useState, useMemo, useCallback } from 'react'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -91,10 +91,93 @@ function detailSummary(entry: JournalEntry): string {
   return parts.join(' ') || JSON.stringify(d).slice(0, 120)
 }
 
+// ─── Detail Panel ──────────────────────────────────────────────────────────
+
+/** Format a single detail value for display */
+function formatValue(value: unknown): string {
+  if (value == null) return '—'
+  if (typeof value === 'number') {
+    // Prices / PnL: show decimals; timestamps: show date
+    if (value > 1e12) return new Date(value).toISOString().replace('T', ' ').slice(0, 19)
+    return Number.isInteger(value) ? String(value) : value.toFixed(4)
+  }
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+/** Human-readable label from camelCase or snake_case key */
+function labelFromKey(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+/** Ordered field groups by event type — fields listed first get priority placement */
+const FIELD_ORDER: Record<string, string[]> = {
+  signal: ['setupId', 'setup_id', 'grade', 'confluence_grade', 'confluenceGrade', 'signal_grade', 'confidence', 'side', 'replaced'],
+  enter: ['orderId', 'order_id', 'positionId', 'position_id', 'fillPrice', 'fill_price', 'entry_price', 'entryPrice', 'setupId', 'setup_id', 'side'],
+  exit: ['positionId', 'position_id', 'closePrice', 'close_price', 'exit_price', 'exitPrice', 'pnl', 'realized_pnl', 'reason', 'exit_reason', 'exitReason'],
+  skip: ['orderId', 'order_id', 'reason'],
+  invalidate: ['setupId', 'setup_id', 'reason', 'positionId', 'position_id'],
+  circuit_break: ['reason', 'dailyPnl', 'daily_pnl', 'accountValue', 'account_value', 'peakAccountValue', 'peak_account_value', 'pauseUntil', 'pause_until'],
+  pause: ['reason'],
+  resume: ['reason'],
+  error: ['reason', 'message', 'error'],
+}
+
+function DetailPanel({ entry }: { entry: JournalEntry }) {
+  const d = entry.details
+  const keys = Object.keys(d)
+  if (keys.length === 0) {
+    return <div className="text-zinc-600 text-xs italic">No details</div>
+  }
+
+  // Order: priority fields first, then remaining alphabetically
+  const priority = FIELD_ORDER[entry.event_type] ?? []
+  const seen = new Set<string>()
+  const ordered: string[] = []
+  for (const k of priority) {
+    if (k in d) { ordered.push(k); seen.add(k) }
+  }
+  for (const k of keys.sort()) {
+    if (!seen.has(k)) ordered.push(k)
+  }
+
+  return (
+    <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1">
+      {ordered.map((key) => (
+        <div key={key} className="contents">
+          <span className="text-zinc-500 text-xs">{labelFromKey(key)}</span>
+          <span className="text-zinc-300 text-xs font-mono break-all">{formatValue(d[key])}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ChevronIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      className={`w-3.5 h-3.5 text-zinc-500 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`}
+      fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+    </svg>
+  )
+}
+
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export function JournalPage() {
   const { entries, loading, error } = useJournal(500)
+
+  // Expand state
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+  const toggleExpand = useCallback((id: number) => {
+    setExpandedId((prev) => (prev === id ? null : id))
+  }, [])
 
   // Filters
   const [coinFilter, setCoinFilter] = useState('')
@@ -214,6 +297,7 @@ export function JournalPage() {
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-zinc-900 border-b border-zinc-800">
               <tr className="text-left text-xs text-zinc-500 uppercase tracking-wider">
+                <th className="px-1 py-2 w-8"></th>
                 <th className="px-3 py-2 w-44">Time</th>
                 <th className="px-3 py-2 w-20">Event</th>
                 <th className="px-3 py-2 w-16">Coin</th>
@@ -221,22 +305,41 @@ export function JournalPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/50">
-              {filtered.map((e) => (
-                <tr key={e.id} className="hover:bg-zinc-800/30">
-                  <td className="px-3 py-2 font-mono text-xs text-zinc-400 whitespace-nowrap">
-                    {formatTs(e.ts)}
-                  </td>
-                  <td className={`px-3 py-2 text-xs font-semibold ${EVENT_COLORS[e.event_type] ?? 'text-zinc-400'}`}>
-                    {e.event_type}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs text-zinc-300">
-                    {e.coin ?? '—'}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-zinc-400 font-mono truncate max-w-md">
-                    {detailSummary(e)}
-                  </td>
-                </tr>
-              ))}
+              {filtered.map((e) => {
+                const isExpanded = expandedId === e.id
+                return (
+                  <Fragment key={e.id}>
+                    <tr
+                      className="hover:bg-zinc-800/30 cursor-pointer"
+                      onClick={() => toggleExpand(e.id)}
+                    >
+                      <td className="pl-2 pr-0 py-2">
+                        <ChevronIcon expanded={isExpanded} />
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs text-zinc-400 whitespace-nowrap">
+                        {formatTs(e.ts)}
+                      </td>
+                      <td className={`px-3 py-2 text-xs font-semibold ${EVENT_COLORS[e.event_type] ?? 'text-zinc-400'}`}>
+                        {e.event_type}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs text-zinc-300">
+                        {e.coin ?? '—'}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-zinc-400 font-mono truncate max-w-md">
+                        {detailSummary(e)}
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr className="bg-zinc-800/20">
+                        <td></td>
+                        <td colSpan={4} className="px-4 py-3">
+                          <DetailPanel entry={e} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>
