@@ -63,6 +63,7 @@ import { getOrderManager } from './agent/order-manager.js'
 import { getPositionMonitor } from './agent/position-monitor.js'
 import { getInvalidationBridge } from './agent/invalidation-bridge.js'
 import { startServer, stopServer } from './server/index.js'
+import { startBot, stopBot } from './alert/telegram/index.js'
 import { wireSSEEvents } from './server/sse.js'
 import { getExchangeService } from './execution/exchange-service.js'
 import type { CandleInterval } from './types.js'
@@ -380,7 +381,10 @@ async function main(): Promise<void> {
   // Wire SSE events: pipeline→signals, agent→trades
   wireSSEEvents(getPipelineEmitter())
 
-  log.info('agent', `Agent wired: state machine + order manager + position monitor + invalidation bridge + SSE`)
+  // Start Telegram bot (long-polling command interface)
+  await startBot()
+
+  log.info('agent', `Agent wired: state machine + order manager + position monitor + invalidation bridge + SSE + Telegram bot`)
 
   // 10. Start coin refresh loop
   selector.startRefreshLoop()
@@ -431,6 +435,7 @@ async function main(): Promise<void> {
 async function cleanup(): Promise<void> {
   selector.stopRefreshLoop()
   getPositionMonitor().stopSync()
+  stopBot()
   stopServer()
   for (const id of activeIntervals) clearInterval(id)
   activeIntervals.length = 0

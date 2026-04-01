@@ -16,9 +16,9 @@
  *   })
  */
 
-import { TELEGRAM } from '../config.js'
-import { log } from '../lib/logger.js'
-import type { AgentAction } from '../agent/types.js'
+import { TELEGRAM } from '../../config.js'
+import { log } from '../../lib/logger.js'
+import type { AgentAction } from '../../agent/types.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

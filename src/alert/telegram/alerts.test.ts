@@ -5,8 +5,8 @@ import {
   formatAlert,
   formatDailySummary,
   checkTelegramConfig,
-} from './telegram.js'
-import type { AgentAction } from '../agent/types.js'
+} from './alerts.js'
+import type { AgentAction } from '../../agent/types.js'
 
 // ─── escapeMarkdownV2 ───────────────────────────────────────────────────────
 

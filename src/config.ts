@@ -444,6 +444,16 @@ export const TELEGRAM = {
   timeoutMs: 10_000,
 } as const
 
+/** Telegram Bot (command interface) configuration. */
+export const TELEGRAM_BOT = {
+  /** Long-polling timeout sent to Telegram API (seconds). */
+  pollingTimeoutSec: 30,
+  /** Extra seconds added to fetch timeout beyond pollingTimeoutSec. */
+  pollingExtraTimeoutSec: 5,
+  /** Max backoff between getUpdates retries (ms). */
+  maxBackoffMs: 30_000,
+} as const
+
 /** Health monitoring configuration. */
 export const HEALTH = {
   /** RSS warning threshold (bytes). ~512MB. */
