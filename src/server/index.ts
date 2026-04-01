@@ -50,6 +50,8 @@ import { getHealthMonitor } from '../agent/self-healing.js'
 import { getLiveMetrics } from '../analytics/metrics-service.js'
 import { sseRoutes, startSSEBroadcasts, stopSSEBroadcasts } from './sse.js'
 import { getConnectionCounts, getTotalConnections, closeAllConnections } from './sse-manager.js'
+import { listRuns, loadRun } from '../backtest/results-store.js'
+import * as CONFIG from '../config.js'
 import { staticPlugin } from '@elysiajs/static'
 import { join } from 'path'
 
@@ -230,6 +232,74 @@ function createApp() {
         set.status = 503
         return { error: 'metrics_unavailable', message: 'Failed to compute metrics' }
       }
+    })
+
+    // ── Config endpoint (read-only) ────────────────────────────────────────
+
+    .get('/api/config', () => {
+      // Export all non-function config values grouped by category
+      const groups: Record<string, Record<string, unknown>> = {}
+      const skip = new Set(['TIMEFRAMES', 'TIMEFRAME_MS', 'HTF_MAP', 'CORRELATION_GROUPS', 'PATTERN_TTL_BARS', 'BACKFILL_CANDLE_COUNTS'])
+      const arrayLike = new Set(['TIMEFRAMES'])
+
+      for (const [key, value] of Object.entries(CONFIG)) {
+        if (typeof value === 'function') continue
+
+        // Group by prefix
+        let group = 'general'
+        if (key.startsWith('RISK') || key === 'RISK') group = 'risk'
+        else if (key.startsWith('CIRCUIT_BREAKER') || key === 'CIRCUIT_BREAKER') group = 'circuit_breaker'
+        else if (key.startsWith('TRAILING') || key.startsWith('PARTIAL') || key.startsWith('ATR_') || key.startsWith('MULTI_TP') || key.startsWith('MIN_TP') || key.startsWith('TRAIL_') || key.startsWith('DEFAULT_RISK') || key.startsWith('STRUCTURE_STOP') || key.startsWith('MAX_STOP') || key.startsWith('MAX_LEVERAGE') || key.startsWith('STOP_SLIPPAGE') || key.startsWith('MIN_POSITION') || key.startsWith('ZONE_RISK')) group = 'exit_strategy'
+        else if (key.startsWith('BACKTEST') || key.startsWith('WF_') || key === 'PAPER_TRADE' || key === 'PAPER_SLIPPAGE_PCT') group = 'backtest'
+        else if (key.startsWith('DB_')) group = 'database'
+        else if (key.startsWith('WS_')) group = 'websocket'
+        else if (key.startsWith('SERVER_') || key.startsWith('API_') || key.startsWith('SSE_')) group = 'server'
+        else if (key.startsWith('FUNDING') || key.startsWith('DELTA') || key.startsWith('BOOK_') || key === 'OI_SPIKE_THRESHOLD' || key === 'MARK_ORACLE_DIVERGENCE_THRESHOLD') group = 'order_flow'
+        else if (key.startsWith('RETRY') || key === 'RETRY') group = 'retry'
+        else if (key.startsWith('HEALTH') || key === 'HEALTH') group = 'health'
+        else if (key.startsWith('TELEGRAM') || key === 'TELEGRAM') group = 'telegram'
+        else if (key.startsWith('CONFLUENCE') || key.startsWith('ZONE_MAX') || key.startsWith('HTF_') || key === 'MIN_CONFIDENCE' || key === 'REGIME_MULTIPLIERS') group = 'pipeline'
+        else if (key.startsWith('BACKFILL') || key.startsWith('REST_') || key.startsWith('STALENESS') || key.startsWith('STATUS_') || key.startsWith('COIN_') || key.startsWith('TOP_COINS') || key.startsWith('MIN_24H') || key.startsWith('HIP3') || key.startsWith('FALLBACK') || key === 'INDICATOR_WINDOW' || key === 'VP_BINS' || key === 'VP_VALUE_AREA_PCT' || key === 'MIN_CANDLES_FOR_SCAN') group = 'feed'
+        else if (key.startsWith('ORDER_') || key.startsWith('MAX_ORDERS') || key.startsWith('SL_IS') || key.startsWith('TP_IS') || key.startsWith('EXCHANGE_SYNC') || key.startsWith('TRAIL_UPDATE')) group = 'orders'
+
+        if (!groups[group]) groups[group] = {}
+        groups[group][key] = value
+      }
+
+      return { groups }
+    })
+
+    // ── Backtest endpoints (read-only) ──────────────────────────────────────
+
+    .get('/api/backtest/runs', async ({ query, set }) => {
+      const limit = Math.min(Math.max(1, Number(query.limit) || 50), 200)
+      try {
+        const runs = await listRuns(limit)
+        return { runs, count: runs.length }
+      } catch {
+        set.status = 503
+        return { error: 'db_error', message: 'Database unavailable' }
+      }
+    }, {
+      query: t.Object({
+        limit: t.Optional(t.Numeric()),
+      }),
+    })
+
+    .get('/api/backtest/runs/:id', async ({ params, set }) => {
+      try {
+        const run = await loadRun(params.id)
+        if (!run) {
+          set.status = 404
+          return { error: 'not_found', message: `Run ${params.id} not found` }
+        }
+        return { run }
+      } catch {
+        set.status = 503
+        return { error: 'db_error', message: 'Database unavailable' }
+      }
+    }, {
+      params: t.Object({ id: t.String() }),
     })
 
     // ── Execution endpoints (bearer auth required) ────────────────────────

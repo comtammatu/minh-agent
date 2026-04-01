@@ -254,6 +254,77 @@ describe('Elysia HTTP Server', () => {
     })
   })
 
+  // ── Config endpoint ──────────────────────────────────────────────────────
+
+  describe('GET /api/config', () => {
+    it('returns grouped config values', async () => {
+      const res = await get(app, '/api/config')
+      expect(res.status).toBe(200)
+      const body = await json(res)
+      expect(body.groups).toBeDefined()
+      const groups = body.groups as Record<string, Record<string, unknown>>
+      // Should have multiple groups
+      const groupNames = Object.keys(groups)
+      expect(groupNames.length).toBeGreaterThan(3)
+    })
+
+    it('includes risk group with expected keys', async () => {
+      const res = await get(app, '/api/config')
+      const body = await json(res)
+      const groups = body.groups as Record<string, Record<string, unknown>>
+      expect(groups.risk).toBeDefined()
+      expect(groups.risk.RISK).toBeDefined()
+    })
+
+    it('includes pipeline group with CONFLUENCE_MIN', async () => {
+      const res = await get(app, '/api/config')
+      const body = await json(res)
+      const groups = body.groups as Record<string, Record<string, unknown>>
+      expect(groups.pipeline).toBeDefined()
+      expect(groups.pipeline.CONFLUENCE_MIN).toBe(3)
+    })
+
+    it('does not include function values', async () => {
+      const res = await get(app, '/api/config')
+      const body = await json(res)
+      const groups = body.groups as Record<string, Record<string, unknown>>
+      // Flatten all values and check none are functions
+      for (const groupEntries of Object.values(groups)) {
+        for (const value of Object.values(groupEntries)) {
+          expect(typeof value).not.toBe('function')
+        }
+      }
+    })
+  })
+
+  // ── Backtest endpoints ──────────────────────────────────────────────────
+
+  describe('GET /api/backtest/runs', () => {
+    it('returns runs array (may be empty without DB)', async () => {
+      const res = await get(app, '/api/backtest/runs')
+      // Either 200 (with DB) or 503 (without DB) is acceptable in test env
+      expect([200, 503]).toContain(res.status)
+      if (res.status === 200) {
+        const body = await json(res)
+        expect(Array.isArray(body.runs)).toBe(true)
+        expect(typeof body.count).toBe('number')
+      }
+    })
+
+    it('accepts limit parameter', async () => {
+      const res = await get(app, '/api/backtest/runs?limit=5')
+      expect([200, 503]).toContain(res.status)
+    })
+  })
+
+  describe('GET /api/backtest/runs/:id', () => {
+    it('returns 404 or 503 for non-existent run', async () => {
+      const res = await get(app, '/api/backtest/runs/00000000-0000-0000-0000-000000000000')
+      // 404 (run not found with DB) or 503 (no DB)
+      expect([404, 503]).toContain(res.status)
+    })
+  })
+
   // ── 404 handling ─────────────────────────────────────────────────────────
 
   describe('404 handling', () => {
