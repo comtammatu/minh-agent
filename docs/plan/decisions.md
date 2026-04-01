@@ -392,3 +392,47 @@ Security: 9 threat vectors assessed, all mitigated by review decisions.
 - 4 pre-existing logger test failures — fix in Sprint 4
 - Backtest "run from browser" button — deferred to Sprint 4 (CLI-only for now)
 - Config editing from dashboard — deferred (safety concern without agent restart)
+
+---
+
+## Sprint 4 CEO Review (2026-04-01)
+
+Mode: **HOLD SCOPE** — plan scope is right. Review with max rigor.
+
+Sprint 3 DoD: ALL 14/14 CONFIRMED. 4 logger test failures carried → Sprint 4 S1.
+
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| U1 | Telegram bot mode | **Long-polling** (getUpdates, 30s timeout) | No public URL/TLS needed. Single-user bot. Server is 127.0.0.1-only |
+| U2 | Telegram auth | **Chat ID whitelist** via existing TELEGRAM_CHAT_ID | Reject all other senders silently. Zero new config needed |
+| U3 | Backtest execution model | **POST + SSE progress** | Reuse existing SSE infrastructure. Real-time progress feedback. Prevents duplicate submissions |
+| U4 | Backtest auth | **No auth** | Read-only computation, no money risk, localhost-only. Rate-limit to 1 concurrent run max |
+| U5 | Backtest event loop | **Async chunking** (yield every 100 bars) | Keeps Telegram/SSE responsive during 10-60s backtest runs |
+
+### Review Stats
+- Error paths mapped: 12 methods, 0 critical gaps
+- Failure modes: 13 mapped, 0 silent failures
+- Security: 6 threats assessed, all mitigated by decisions
+- Architecture: Telegram bot = command-line interface to existing API singletons, no new business logic
+
+---
+
+## Sprint 4 Eng Review (2026-04-01)
+
+Mode: **BIG CHANGE** — full interactive review (Architecture → Code Quality → Tests → Performance).
+
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| E19 | Close-all DRY | **Extract `closeAllPositions()` to agent helper** | Both Elysia endpoint and Telegram /closeall call identical logic. One implementation, one test |
+| E20 | Bot lifecycle | **Start from index.ts** alongside startServer() | Same pattern as existing Elysia lifecycle. I/O at edges per CLAUDE.md |
+| E21 | Logger test fix | **Inject console methods** | Logger accepts optional console override for testing. Fixes spy timing bug. Minimal diff |
+| E22 | Bot file structure | **Directory `src/alert/telegram/`** | Move existing telegram.ts → alerts.ts, add bot.ts + commands.ts + types.ts. Clean organization |
+| E23 | Error boundaries | **Layout + data-fetch** | ErrorBoundary in Layout for render crashes + Suspense boundaries for data fetching. Robust when backend is down |
+| E24 | FOUC prevention | **Inline script in index.html** | Read localStorage theme before React hydrates. Standard pattern, zero flash |
+
+### Key Findings
+- Architecture: 3 issues found, all resolved. Telegram bot reuses 9 existing components.
+- Code Quality: 3 issues found, all resolved. Concurrency guard (1 backtest max) is module-level flag.
+- Test Review: ~35 new/fixed tests planned, 0 gaps. /closeall state machine has 4 dedicated transition tests.
+- Performance: 0 blocking issues. FOUC fix noted.
+- Failure modes: 13 mapped, 0 critical gaps (no row with Test=N AND ErrorHandling=N AND Silent=Y).
