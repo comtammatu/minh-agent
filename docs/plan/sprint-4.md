@@ -161,6 +161,7 @@ Browser                    Elysia                     Backtest Engine
 | Session | Status | Date | Notes |
 |---------|--------|------|-------|
 | S1 | DONE | 2026-04-01 | Logger tests fixed (pure fn export), ErrorBoundary + FOUC prevention added. 863 pass, 0 fail. |
+| S2 | DONE | 2026-04-01 | Backtest E2E smoke test (7 tests, 200 candles, multi-coin). Dashboard build verified. 870 pass, 0 fail. |
 
 ---
 
