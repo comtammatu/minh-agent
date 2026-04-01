@@ -51,7 +51,7 @@ import { getHealthMonitor } from '../agent/self-healing.js'
 import { getLiveMetrics } from '../analytics/metrics-service.js'
 import { sseRoutes, startSSEBroadcasts, stopSSEBroadcasts } from './sse.js'
 import { getConnectionCounts, getTotalConnections, closeAllConnections, broadcast, addClient, removeClient } from './sse-manager.js'
-import { listRuns, loadRun, saveRun } from '../backtest/results-store.js'
+import { listRuns, loadRun, saveRun, compareRuns } from '../backtest/results-store.js'
 import { runBacktestAsync, type BacktestProgress } from '../backtest/engine.js'
 import { BacktestDataManager, computeHTFIntervals, computeHTFWarmupMs } from '../backtest/data-manager.js'
 import type { BacktestConfig } from '../backtest/types.js'
@@ -415,6 +415,34 @@ function createApp() {
       }
     }, {
       params: t.Object({ id: t.String() }),
+    })
+
+    .get('/api/backtest/compare', async ({ query, set }) => {
+      const { a, b } = query
+      if (!a || !b) {
+        set.status = 400
+        return { error: 'missing_params', message: 'Both a and b run IDs are required' }
+      }
+      if (a === b) {
+        set.status = 400
+        return { error: 'same_runs', message: 'Cannot compare a run with itself' }
+      }
+      try {
+        const result = await compareRuns(a, b)
+        if (!result) {
+          set.status = 404
+          return { error: 'not_found', message: 'One or both runs not found' }
+        }
+        return { comparison: result }
+      } catch {
+        set.status = 503
+        return { error: 'db_error', message: 'Database unavailable' }
+      }
+    }, {
+      query: t.Object({
+        a: t.String(),
+        b: t.String(),
+      }),
     })
 
     // ── Backtest run endpoint (no auth — U4: read-only computation) ──────

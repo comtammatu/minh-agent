@@ -79,6 +79,28 @@ interface FullRun extends RunSummary {
   equityCurve: EquityPoint[]
 }
 
+interface MetricsDelta {
+  totalTrades: number
+  winRate: number
+  netPnl: number
+  profitFactor: number
+  expectancy: number
+  maxDrawdown: number
+  sharpeRatio: number
+  sortinoRatio: number
+  calmarRatio: number
+  avgRR: number
+  avgHoldingBars: number
+}
+
+interface ComparisonResult {
+  runA: RunSummary
+  runB: RunSummary
+  metricsA: BacktestMetrics
+  metricsB: BacktestMetrics
+  delta: MetricsDelta
+}
+
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
 function useBacktestRuns(refreshKey = 0) {
@@ -222,6 +244,56 @@ function useBacktestRunner(onComplete: () => void) {
   useEffect(() => cleanup, [cleanup])
 
   return { run, running, progress, error }
+}
+
+// ─── Comparison Hook ──────────────────────────────────────────────────────
+
+function useBacktestComparison(idA: string | null, idB: string | null) {
+  const [comparison, setComparison] = useState<ComparisonResult | null>(null)
+  const [equityA, setEquityA] = useState<EquityPoint[]>([])
+  const [equityB, setEquityB] = useState<EquityPoint[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!idA || !idB) { setComparison(null); setEquityA([]); setEquityB([]); return }
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+
+    async function load() {
+      try {
+        // Fetch comparison + both equity curves in parallel
+        const [compRes, runARes, runBRes] = await Promise.all([
+          fetch(`/api/backtest/compare?a=${idA}&b=${idB}`),
+          fetch(`/api/backtest/runs/${idA}`),
+          fetch(`/api/backtest/runs/${idB}`),
+        ])
+        if (!compRes.ok) {
+          const data = await compRes.json().catch(() => ({}))
+          throw new Error(data.message ?? `HTTP ${compRes.status}`)
+        }
+        const compData = await compRes.json()
+        const aData = runARes.ok ? await runARes.json() : null
+        const bData = runBRes.ok ? await runBRes.json() : null
+
+        if (!cancelled) {
+          setComparison(compData.comparison)
+          setEquityA(aData?.run?.equityCurve ?? [])
+          setEquityB(bData?.run?.equityCurve ?? [])
+          setError(null)
+        }
+      } catch (err) {
+        if (!cancelled) setError((err as Error).message)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [idA, idB])
+
+  return { comparison, equityA, equityB, loading, error }
 }
 
 // ─── Available Options ─────────────────────────────────────────────────────
@@ -569,19 +641,204 @@ function RunDetail({ run }: { run: FullRun }) {
   )
 }
 
+// ─── Comparison Components ─────────────────────────────────────────────────
+
+/** Color-code delta: green = better, red = worse. Inverted for maxDrawdown. */
+function deltaColor(key: string, value: number): string {
+  if (value === 0) return 'text-zinc-500'
+  // For maxDrawdown, lower (more negative delta) is better
+  const inverted = key === 'maxDrawdown'
+  const positive = inverted ? value < 0 : value > 0
+  return positive ? 'text-emerald-400' : 'text-red-400'
+}
+
+function formatDelta(value: number, isPct = false): string {
+  const prefix = value > 0 ? '+' : ''
+  if (isPct) return `${prefix}${(value * 100).toFixed(1)}pp`
+  return `${prefix}${value.toFixed(2)}`
+}
+
+function ComparisonMetricRow({ label, valA, valB, delta, format, deltaKey }: {
+  label: string
+  valA: string
+  valB: string
+  delta: number
+  format?: 'pct' | 'pnl' | 'number'
+  deltaKey: string
+}) {
+  const isPct = format === 'pct'
+  return (
+    <tr className="border-b border-zinc-800/50 last:border-b-0">
+      <td className="px-3 py-2 text-xs text-zinc-400">{label}</td>
+      <td className="px-3 py-2 text-xs font-mono text-zinc-200 text-right">{valA}</td>
+      <td className="px-3 py-2 text-xs font-mono text-zinc-200 text-right">{valB}</td>
+      <td className={`px-3 py-2 text-xs font-mono text-right ${deltaColor(deltaKey, delta)}`}>
+        {formatDelta(delta, isPct)}
+      </td>
+    </tr>
+  )
+}
+
+function OverlaidEquityCurve({ curveA, curveB, nameA, nameB }: {
+  curveA: EquityPoint[]
+  curveB: EquityPoint[]
+  nameA: string
+  nameB: string
+}) {
+  if (curveA.length < 2 && curveB.length < 2) return null
+
+  const allEquities = [...curveA.map(p => p.equity), ...curveB.map(p => p.equity)]
+  const minE = Math.min(...allEquities)
+  const maxE = Math.max(...allEquities)
+  const range = maxE - minE || 1
+  const w = 800
+  const h = 200
+
+  const toPoints = (curve: EquityPoint[]) =>
+    curve.map((p, i) => {
+      const x = (i / (Math.max(curve.length - 1, 1))) * w
+      const y = h - ((p.equity - minE) / range) * h
+      return `${x},${y}`
+    }).join(' ')
+
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+      <h4 className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Equity Curves (Overlaid)</h4>
+      <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-48">
+        {curveA.length >= 2 && (
+          <polyline points={toPoints(curveA)} fill="none" stroke="#60a5fa" strokeWidth="2" opacity="0.8" />
+        )}
+        {curveB.length >= 2 && (
+          <polyline points={toPoints(curveB)} fill="none" stroke="#f59e0b" strokeWidth="2" opacity="0.8" />
+        )}
+      </svg>
+      <div className="flex gap-4 mt-2 text-[10px]">
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3 h-0.5 bg-blue-400 rounded" />
+          <span className="text-zinc-400">A: {nameA}</span>
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3 h-0.5 bg-amber-500 rounded" />
+          <span className="text-zinc-400">B: {nameB}</span>
+        </span>
+      </div>
+      <div className="flex justify-between text-[10px] text-zinc-600 mt-1">
+        <span>${minE.toFixed(0)}</span>
+        <span>${maxE.toFixed(0)}</span>
+      </div>
+    </div>
+  )
+}
+
+function ComparisonView({ comparison, equityA, equityB }: {
+  comparison: ComparisonResult
+  equityA: EquityPoint[]
+  equityB: EquityPoint[]
+}) {
+  const { metricsA: a, metricsB: b, delta: d, runA, runB } = comparison
+  const nameA = runA.name ?? runA.id.slice(0, 8)
+  const nameB = runB.name ?? runB.id.slice(0, 8)
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 text-sm">
+        <span className="text-blue-400 font-semibold">A: {nameA}</span>
+        <span className="text-zinc-600">vs</span>
+        <span className="text-amber-400 font-semibold">B: {nameB}</span>
+        <span className="text-[10px] text-zinc-600 ml-auto">Delta = B - A</span>
+      </div>
+
+      {/* Side-by-side metrics table */}
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 overflow-auto">
+        <table className="w-full text-xs">
+          <thead className="border-b border-zinc-700">
+            <tr className="text-left text-[10px] text-zinc-500 uppercase tracking-wider">
+              <th className="px-3 py-2">Metric</th>
+              <th className="px-3 py-2 text-right text-blue-400">Run A</th>
+              <th className="px-3 py-2 text-right text-amber-400">Run B</th>
+              <th className="px-3 py-2 text-right">Delta</th>
+            </tr>
+          </thead>
+          <tbody>
+            <ComparisonMetricRow label="Total Trades" valA={String(a.totalTrades)} valB={String(b.totalTrades)} delta={d.totalTrades} deltaKey="totalTrades" />
+            <ComparisonMetricRow label="Win Rate" valA={formatPct(a.winRate)} valB={formatPct(b.winRate)} delta={d.winRate} format="pct" deltaKey="winRate" />
+            <ComparisonMetricRow label="Net PnL" valA={formatPnl(a.netPnl)} valB={formatPnl(b.netPnl)} delta={d.netPnl} deltaKey="netPnl" />
+            <ComparisonMetricRow label="Profit Factor" valA={a.profitFactor.toFixed(2)} valB={b.profitFactor.toFixed(2)} delta={d.profitFactor} deltaKey="profitFactor" />
+            <ComparisonMetricRow label="Sharpe" valA={a.sharpeRatio.toFixed(2)} valB={b.sharpeRatio.toFixed(2)} delta={d.sharpeRatio} deltaKey="sharpeRatio" />
+            <ComparisonMetricRow label="Sortino" valA={a.sortinoRatio.toFixed(2)} valB={b.sortinoRatio.toFixed(2)} delta={d.sortinoRatio} deltaKey="sortinoRatio" />
+            <ComparisonMetricRow label="Calmar" valA={a.calmarRatio.toFixed(2)} valB={b.calmarRatio.toFixed(2)} delta={d.calmarRatio} deltaKey="calmarRatio" />
+            <ComparisonMetricRow label="Max Drawdown" valA={formatPct(a.maxDrawdown)} valB={formatPct(b.maxDrawdown)} delta={d.maxDrawdown} format="pct" deltaKey="maxDrawdown" />
+            <ComparisonMetricRow label="Avg R:R" valA={a.avgRR.toFixed(2)} valB={b.avgRR.toFixed(2)} delta={d.avgRR} deltaKey="avgRR" />
+            <ComparisonMetricRow label="Expectancy" valA={formatPnl(a.expectancy)} valB={formatPnl(b.expectancy)} delta={d.expectancy} deltaKey="expectancy" />
+            <ComparisonMetricRow label="Avg Win" valA={formatPnl(a.avgWin)} valB={formatPnl(b.avgWin)} delta={b.avgWin - a.avgWin} deltaKey="avgWin" />
+            <ComparisonMetricRow label="Avg Loss" valA={formatPnl(a.avgLoss)} valB={formatPnl(b.avgLoss)} delta={b.avgLoss - a.avgLoss} deltaKey="avgLoss" />
+          </tbody>
+        </table>
+      </div>
+
+      {/* Overlaid equity curves */}
+      <OverlaidEquityCurve curveA={equityA} curveB={equityB} nameA={nameA} nameB={nameB} />
+    </div>
+  )
+}
+
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export function BacktestPage() {
   const [refreshKey, setRefreshKey] = useState(0)
   const { runs, loading, error } = useBacktestRuns(refreshKey)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const { run: detail, loading: detailLoading, error: detailError } = useBacktestDetail(selectedId)
+  const [compareMode, setCompareMode] = useState(false)
+  const [compareIds, setCompareIds] = useState<[string | null, string | null]>([null, null])
+  const { run: detail, loading: detailLoading, error: detailError } = useBacktestDetail(
+    compareMode ? null : selectedId,
+  )
+  const {
+    comparison, equityA, equityB,
+    loading: compLoading, error: compError,
+  } = useBacktestComparison(compareIds[0], compareIds[1])
 
   const handleBacktestComplete = useCallback(() => {
     setRefreshKey(k => k + 1)
   }, [])
 
   const { run: startRun, running, progress, error: runError } = useBacktestRunner(handleBacktestComplete)
+
+  const toggleCompareMode = useCallback(() => {
+    setCompareMode(prev => {
+      if (!prev) { setSelectedId(null) }
+      else { setCompareIds([null, null]) }
+      return !prev
+    })
+  }, [])
+
+  const handleRunClick = useCallback((id: string) => {
+    if (compareMode) {
+      setCompareIds(prev => {
+        // Toggle: if already selected, deselect
+        if (prev[0] === id) return [prev[1], null]
+        if (prev[1] === id) return [prev[0], null]
+        // Fill first empty slot, or replace second
+        if (!prev[0]) return [id, prev[1]]
+        if (!prev[1]) return [prev[0], id]
+        return [prev[0], id]
+      })
+    } else {
+      setSelectedId(id === selectedId ? null : id)
+    }
+  }, [compareMode, selectedId])
+
+  const isSelected = useCallback((id: string) => {
+    if (compareMode) return compareIds[0] === id || compareIds[1] === id
+    return id === selectedId
+  }, [compareMode, compareIds, selectedId])
+
+  const getRunLabel = useCallback((id: string) => {
+    if (!compareMode) return null
+    if (compareIds[0] === id) return 'A'
+    if (compareIds[1] === id) return 'B'
+    return null
+  }, [compareMode, compareIds])
 
   if (loading) {
     return (
@@ -603,11 +860,31 @@ export function BacktestPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Backtest Results</h2>
-        <span className="text-xs text-zinc-600">{runs.length} runs</span>
+        <div className="flex items-center gap-3">
+          {runs.length >= 2 && (
+            <button
+              onClick={toggleCompareMode}
+              className={`px-3 py-1 text-xs rounded border transition-colors ${
+                compareMode
+                  ? 'bg-blue-900/50 border-blue-700 text-blue-300'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              {compareMode ? 'Exit Compare' : 'Compare'}
+            </button>
+          )}
+          <span className="text-xs text-zinc-600">{runs.length} runs</span>
+        </div>
       </div>
 
       {/* Config editor */}
       <ConfigEditor onRun={startRun} running={running} progress={progress} error={runError} />
+
+      {compareMode && (
+        <div className="rounded border border-blue-900/50 bg-blue-950/20 px-3 py-2 text-xs text-blue-300">
+          Select 2 runs to compare. {compareIds[0] && !compareIds[1] ? '1 selected — pick another.' : ''}
+        </div>
+      )}
 
       {runs.length === 0 ? (
         <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-8 text-center text-zinc-500">
@@ -618,55 +895,87 @@ export function BacktestPage() {
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
           {/* ── Run list ─────────────────────────────────────────── */}
           <div className="rounded-lg border border-zinc-800 bg-zinc-900 overflow-auto max-h-[80vh]">
-            {runs.map((r) => (
-              <button
-                key={r.id}
-                onClick={() => setSelectedId(r.id === selectedId ? null : r.id)}
-                className={`w-full text-left px-3 py-2.5 border-b border-zinc-800/50 last:border-b-0 transition-colors ${
-                  r.id === selectedId ? 'bg-zinc-800' : 'hover:bg-zinc-800/30'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-zinc-200 truncate">
-                    {r.name ?? r.id.slice(0, 8)}
-                  </span>
-                  <span className={`text-sm font-mono ${pnlColor(r.netPnl)}`}>
-                    {formatPnl(r.netPnl)}
-                  </span>
-                </div>
-                <div className="flex gap-3 mt-1 text-[10px] text-zinc-500">
-                  <span>{r.totalTrades} trades</span>
-                  <span>WR: {formatPct(r.winRate)}</span>
-                  <span>Sharpe: {r.sharpeRatio.toFixed(2)}</span>
-                </div>
-                <div className="text-[10px] text-zinc-600 mt-0.5">
-                  {formatDate(r.createdAt)}
-                </div>
-              </button>
-            ))}
+            {runs.map((r) => {
+              const label = getRunLabel(r.id)
+              return (
+                <button
+                  key={r.id}
+                  onClick={() => handleRunClick(r.id)}
+                  className={`w-full text-left px-3 py-2.5 border-b border-zinc-800/50 last:border-b-0 transition-colors ${
+                    isSelected(r.id) ? 'bg-zinc-800' : 'hover:bg-zinc-800/30'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-zinc-200 truncate flex items-center gap-1.5">
+                      {label && (
+                        <span className={`inline-flex items-center justify-center w-4 h-4 rounded text-[10px] font-bold ${
+                          label === 'A' ? 'bg-blue-900 text-blue-300' : 'bg-amber-900 text-amber-300'
+                        }`}>{label}</span>
+                      )}
+                      {r.name ?? r.id.slice(0, 8)}
+                    </span>
+                    <span className={`text-sm font-mono ${pnlColor(r.netPnl)}`}>
+                      {formatPnl(r.netPnl)}
+                    </span>
+                  </div>
+                  <div className="flex gap-3 mt-1 text-[10px] text-zinc-500">
+                    <span>{r.totalTrades} trades</span>
+                    <span>WR: {formatPct(r.winRate)}</span>
+                    <span>Sharpe: {r.sharpeRatio.toFixed(2)}</span>
+                  </div>
+                  <div className="text-[10px] text-zinc-600 mt-0.5">
+                    {formatDate(r.createdAt)}
+                  </div>
+                </button>
+              )
+            })}
           </div>
 
-          {/* ── Detail panel ──────────────────────────────────────── */}
+          {/* ── Detail / Comparison panel ─────────────────────────── */}
           <div>
-            {!selectedId && (
+            {/* Detail mode */}
+            {!compareMode && !selectedId && (
               <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-8 text-center text-zinc-500">
                 Select a run to view details
               </div>
             )}
 
-            {selectedId && detailLoading && (
+            {!compareMode && selectedId && detailLoading && (
               <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-zinc-500">
                 Loading run details...
               </div>
             )}
 
-            {selectedId && detailError && (
+            {!compareMode && selectedId && detailError && (
               <div className="rounded-lg border border-red-800 bg-red-950/50 p-6 text-red-400">
                 Error: {detailError}
               </div>
             )}
 
-            {detail && <RunDetail run={detail} />}
+            {!compareMode && detail && <RunDetail run={detail} />}
+
+            {/* Compare mode */}
+            {compareMode && (!compareIds[0] || !compareIds[1]) && (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-8 text-center text-zinc-500">
+                Select 2 runs from the list to compare
+              </div>
+            )}
+
+            {compareMode && compareIds[0] && compareIds[1] && compLoading && (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 text-zinc-500">
+                Loading comparison...
+              </div>
+            )}
+
+            {compareMode && compError && (
+              <div className="rounded-lg border border-red-800 bg-red-950/50 p-6 text-red-400">
+                Error: {compError}
+              </div>
+            )}
+
+            {compareMode && comparison && (
+              <ComparisonView comparison={comparison} equityA={equityA} equityB={equityB} />
+            )}
           </div>
         </div>
       )}

@@ -325,6 +325,29 @@ describe('Elysia HTTP Server', () => {
     })
   })
 
+  describe('GET /api/backtest/compare', () => {
+    it('returns 400 when a or b is missing', async () => {
+      const res = await get(app, '/api/backtest/compare?a=x')
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 400 when comparing a run with itself', async () => {
+      const id = '00000000-0000-0000-0000-000000000001'
+      const res = await get(app, `/api/backtest/compare?a=${id}&b=${id}`)
+      expect(res.status).toBe(400)
+      const body = await json(res)
+      expect(body.error).toBe('same_runs')
+    })
+
+    it('returns 404 or 503 for non-existent runs', async () => {
+      const a = '00000000-0000-0000-0000-000000000001'
+      const b = '00000000-0000-0000-0000-000000000002'
+      const res = await get(app, `/api/backtest/compare?a=${a}&b=${b}`)
+      // 404 (runs not found with DB) or 503 (no DB)
+      expect([404, 503]).toContain(res.status)
+    })
+  })
+
   // ── 404 handling ─────────────────────────────────────────────────────────
 
   describe('404 handling', () => {
