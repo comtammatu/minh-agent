@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react'
+import { Suspense, type ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
+import { ErrorBoundary } from './ErrorBoundary'
 import { useSSE } from '../hooks/useSSE'
 import { useSSEStore } from '../stores/sse-store'
 
@@ -64,7 +65,11 @@ export function Layout({ children }: { children: ReactNode }) {
 
       {/* Main content */}
       <main className="flex-1 overflow-auto p-6">
-        {children}
+        <ErrorBoundary>
+          <Suspense fallback={<div className="text-zinc-500 text-sm">Loading...</div>}>
+            {children}
+          </Suspense>
+        </ErrorBoundary>
       </main>
     </div>
   )

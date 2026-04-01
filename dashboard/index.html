@@ -6,6 +6,10 @@
     <title>Minh (明) Dashboard</title>
   </head>
   <body class="bg-zinc-950 text-zinc-100 antialiased">
+    <script>
+      // E24: Prevent FOUC — apply theme before React hydrates
+      (function(){var t=localStorage.getItem('theme');if(t==='light'){document.documentElement.classList.remove('dark');document.documentElement.classList.add('light')}})()
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -1,5 +1,5 @@
 /**
- * R6: Simple log helper — 20-line utility with levels + timestamps + component tags.
+ * R6: Simple log helper — levels + timestamps + component tags.
  * No external dependencies.
  */
 
@@ -9,17 +9,29 @@ const LEVEL_ORDER: Record<LogLevel, number> = { DEBUG: 0, INFO: 1, WARN: 2, ERRO
 
 const MIN_LEVEL: LogLevel = (process.env.LOG_LEVEL as LogLevel) ?? 'INFO'
 
-function fmt(level: LogLevel, component: string, msg: string): string {
+/** Exported for testing (E21) — pure function, no side effects */
+export function _fmt(level: LogLevel, component: string, msg: string): string {
   const ts = new Date().toISOString()
   return `${ts} [${level.padEnd(5)}] [${component}] ${msg}`
 }
 
+/** Exported for testing (E21) — returns which console method a level routes to */
+export function _route(level: LogLevel): 'error' | 'warn' | 'log' {
+  if (level === 'ERROR') return 'error'
+  if (level === 'WARN') return 'warn'
+  return 'log'
+}
+
+/** Exported for testing (E21) — returns true if level passes the minimum filter */
+export function _passes(level: LogLevel): boolean {
+  return LEVEL_ORDER[level] >= LEVEL_ORDER[MIN_LEVEL]
+}
+
 function write(level: LogLevel, component: string, msg: string): void {
-  if (LEVEL_ORDER[level] < LEVEL_ORDER[MIN_LEVEL]) return
-  const line = fmt(level, component, msg)
-  if (level === 'ERROR') console.error(line)
-  else if (level === 'WARN') console.warn(line)
-  else console.log(line)
+  if (!_passes(level)) return
+  const line = _fmt(level, component, msg)
+  const method = _route(level)
+  console[method](line)
 }
 
 export const log = {

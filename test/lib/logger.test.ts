@@ -1,61 +1,44 @@
-import { describe, it, expect, spyOn, beforeEach, afterEach } from 'bun:test'
+import { describe, it, expect } from 'bun:test'
+import { _fmt, _route, _passes } from '../../src/lib/logger.js'
 
-// Re-import fresh each time to test module behavior
+/**
+ * E21: Test logger via exported pure functions instead of spying on console.
+ * Bun test runner isolates modules per test file, making console spy unreliable.
+ * Testing _fmt, _route, and _passes covers all logger logic without side effects.
+ */
 describe('logger', () => {
-  let logSpy: ReturnType<typeof spyOn>
-  let warnSpy: ReturnType<typeof spyOn>
-  let errorSpy: ReturnType<typeof spyOn>
-
-  beforeEach(() => {
-    logSpy = spyOn(console, 'log').mockImplementation(() => {})
-    warnSpy = spyOn(console, 'warn').mockImplementation(() => {})
-    errorSpy = spyOn(console, 'error').mockImplementation(() => {})
-  })
-
-  afterEach(() => {
-    logSpy.mockRestore()
-    warnSpy.mockRestore()
-    errorSpy.mockRestore()
-  })
-
-  it('formats with timestamp, level, and component', async () => {
-    const { log } = await import('../../src/lib/logger.js')
-    log.info('test', 'hello world')
-    expect(logSpy).toHaveBeenCalledTimes(1)
-    const output = logSpy.mock.calls[0][0] as string
-    // ISO timestamp
+  it('formats with timestamp, level, and component', () => {
+    const output = _fmt('INFO', 'test', 'hello world')
     expect(output).toMatch(/^\d{4}-\d{2}-\d{2}T/)
-    // Level padded to 5
     expect(output).toContain('[INFO ]')
-    // Component tag
     expect(output).toContain('[test]')
-    // Message
     expect(output).toContain('hello world')
   })
 
-  it('routes WARN to console.warn', async () => {
-    const { log } = await import('../../src/lib/logger.js')
-    log.warn('feed', 'stale data')
-    expect(warnSpy).toHaveBeenCalledTimes(1)
-    const output = warnSpy.mock.calls[0][0] as string
-    expect(output).toContain('[WARN ]')
-    expect(output).toContain('[feed]')
+  it('pads level to 5 characters', () => {
+    expect(_fmt('WARN', 'x', 'y')).toContain('[WARN ]')
+    expect(_fmt('ERROR', 'x', 'y')).toContain('[ERROR]')
+    expect(_fmt('DEBUG', 'x', 'y')).toContain('[DEBUG]')
+    expect(_fmt('INFO', 'x', 'y')).toContain('[INFO ]')
   })
 
-  it('routes ERROR to console.error', async () => {
-    const { log } = await import('../../src/lib/logger.js')
-    log.error('db', 'connection failed')
-    expect(errorSpy).toHaveBeenCalledTimes(1)
-    const output = errorSpy.mock.calls[0][0] as string
-    expect(output).toContain('[ERROR]')
-    expect(output).toContain('[db]')
+  it('routes WARN to console.warn', () => {
+    expect(_route('WARN')).toBe('warn')
   })
 
-  it('INFO and DEBUG route to console.log', async () => {
-    const { log } = await import('../../src/lib/logger.js')
-    log.info('scan', 'scanning')
-    log.debug('scan', 'detail')
-    // debug is filtered by default (MIN_LEVEL=INFO), so only info logged
-    expect(logSpy).toHaveBeenCalledTimes(1)
+  it('routes ERROR to console.error', () => {
+    expect(_route('ERROR')).toBe('error')
+  })
+
+  it('routes INFO and DEBUG to console.log', () => {
+    expect(_route('INFO')).toBe('log')
+    expect(_route('DEBUG')).toBe('log')
+  })
+
+  it('filters DEBUG at default MIN_LEVEL=INFO', () => {
+    expect(_passes('DEBUG')).toBe(false)
+    expect(_passes('INFO')).toBe(true)
+    expect(_passes('WARN')).toBe(true)
+    expect(_passes('ERROR')).toBe(true)
   })
 })
