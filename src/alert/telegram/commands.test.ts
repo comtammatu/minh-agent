@@ -161,11 +161,12 @@ describe('registerBuiltinCommands', () => {
     expect(reply).toContain('/risk')
     expect(reply).toContain('/closeall')
     expect(reply).toContain('/confirm')
+    expect(reply).toContain('/report')
   })
 
-  it('registers 9 built-in commands', () => {
+  it('registers 10 built-in commands', () => {
     registerBuiltinCommands()
-    expect(getCommands()).toHaveLength(9)
+    expect(getCommands()).toHaveLength(10)
   })
 })
 
@@ -453,5 +454,37 @@ describe('/closeall + /confirm commands', () => {
     cmd.handler('', CHAT_ID)
     const reply = cmd.handler('', CHAT_ID) as string
     expect(reply).toContain('already pending')
+  })
+})
+
+// ─── /report ─────────────────────────────────────────────────────────────────
+
+describe('/report command', () => {
+  beforeEach(() => {
+    resetCommands()
+    registerBuiltinCommands()
+  })
+
+  it('returns daily report with PnL, win rate, drawdown', async () => {
+    const cmd = findCommand('report')!
+    const reply = await cmd.handler('', 0)
+    expect(reply).toContain('Daily Report')
+    expect(reply).toContain('120\\.50')    // daily pnl
+    expect(reply).toContain('450\\.30')    // weekly pnl
+    expect(reply).toContain('1200\\.00')   // monthly pnl
+    expect(reply).toContain('5000\\.00')   // all-time pnl
+    expect(reply).toContain('60\\.0%')     // daily WR
+    expect(reply).toContain('5 trades')   // daily trades
+    expect(reply).toContain('2\\.50')      // current drawdown
+    expect(reply).toContain('8\\.30')      // max drawdown
+    expect(reply).toContain('Open positions:* 1')
+  })
+
+  it('shows no pattern/coin sections when arrays are empty', async () => {
+    const cmd = findCommand('report')!
+    const reply = await cmd.handler('', 0)
+    // Default mock has empty arrays
+    expect(reply).not.toContain('Top Patterns')
+    expect(reply).not.toContain('Top Coins')
   })
 })

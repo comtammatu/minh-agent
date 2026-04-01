@@ -347,6 +347,64 @@ async function confirmHandler(_args: string, chatId: number): Promise<string> {
   }
 }
 
+// ─── /report ──────────────────────────────────────────────────────────────
+
+async function reportHandler(): Promise<string> {
+  const esc = escapeMarkdownV2
+  try {
+    const m = await getLiveMetrics()
+
+    const fmt = (n: number) => esc(n.toFixed(2))
+    const pct = (n: number) => esc((n * 100).toFixed(1))
+
+    const lines: string[] = [
+      `*Daily Report*`,
+      ``,
+      `*PnL:*`,
+      `  Daily: ${fmt(m.pnl.daily)} USDC \\| Weekly: ${fmt(m.pnl.weekly)}`,
+      `  Monthly: ${fmt(m.pnl.monthly)} \\| All\\-time: ${fmt(m.pnl.allTime)}`,
+      ``,
+      `*Win Rate:*`,
+      `  Daily: ${pct(m.winRate.daily)}% \\(${esc(String(m.trades.daily))} trades\\)`,
+      `  Weekly: ${pct(m.winRate.weekly)}% \\(${esc(String(m.trades.weekly))}\\)`,
+      `  Monthly: ${pct(m.winRate.monthly)}% \\(${esc(String(m.trades.monthly))}\\)`,
+      ``,
+      `*Drawdown:* ${fmt(m.currentDrawdown)} \\(max ${fmt(m.maxDrawdown)}\\)`,
+      `*Open positions:* ${esc(String(m.openPositionCount))}`,
+    ]
+
+    // Top patterns by trade count (max 5)
+    if (m.patternMetrics.length > 0) {
+      const topPatterns = [...m.patternMetrics]
+        .sort((a, b) => b.trades - a.trades)
+        .slice(0, 5)
+      lines.push(``, `*Top Patterns:*`)
+      for (const p of topPatterns) {
+        lines.push(
+          `  ${esc(p.patternType)} ${esc(p.signalGrade)}: ${esc(String(p.trades))}t WR ${pct(p.winRate)}% PnL ${fmt(p.totalPnl)}`,
+        )
+      }
+    }
+
+    // Top coins by PnL (max 5)
+    if (m.coinMetrics.length > 0) {
+      const topCoins = [...m.coinMetrics]
+        .sort((a, b) => b.totalPnl - a.totalPnl)
+        .slice(0, 5)
+      lines.push(``, `*Top Coins:*`)
+      for (const c of topCoins) {
+        lines.push(
+          `  ${esc(c.coin)}: ${esc(String(c.trades))}t WR ${pct(c.winRate)}% PnL ${fmt(c.totalPnl)}`,
+        )
+      }
+    }
+
+    return lines.join('\n')
+  } catch {
+    return `Failed to load report\\.`
+  }
+}
+
 // ─── Register Built-in Commands ────────────────────────────────────────────
 
 /** Register all built-in commands. Safe to call multiple times (idempotent). */
@@ -361,4 +419,5 @@ export function registerBuiltinCommands(): void {
   registerCommand({ name: 'risk', description: 'Risk dashboard (PnL, CB, losses)', handler: riskHandler })
   registerCommand({ name: 'closeall', description: 'Emergency close all (requires /confirm)', handler: closeallHandler })
   registerCommand({ name: 'confirm', description: 'Confirm pending /closeall', handler: confirmHandler })
+  registerCommand({ name: 'report', description: 'Daily report (PnL, patterns, coins)', handler: reportHandler })
 }
