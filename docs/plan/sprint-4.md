@@ -165,6 +165,7 @@ Browser                    Elysia                     Backtest Engine
 | S3 | DONE | 2026-04-01 | Telegram bot scaffold: getUpdates polling, command router, /help. Moved telegram.ts → telegram/ dir. 58 new tests, 896 total pass. |
 | S4 | DONE | 2026-04-01 | Core commands: /status, /positions, /pnl, /pause, /resume. 9 new tests, 905 total pass. |
 | S5 | DONE | 2026-04-02 | Risk commands: /risk, /closeall+/confirm, /pause per-coin. closeAllPositions() extracted (E19). 16 new tests, 915 total pass. |
+| S6 | DONE | 2026-04-02 | /report command: daily report with PnL, win rate, top patterns, top coins, drawdown. 2 new tests, 917 total pass. |
 
 ---
 
