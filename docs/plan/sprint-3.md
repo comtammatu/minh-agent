@@ -580,6 +580,7 @@ Phase 3C: Web Dashboard MVP           ← visibility, debug tool
 | S6 | DONE | 2026-04-01 | Metrics → agent integration: onTradeClose hook, MetricsService orchestration, GET /api/metrics endpoint. 8 new tests, 803 total pass. |
 | S7 | DONE | 2026-04-01 | SSE endpoints (status/signals/trades) + React/Vite/Tailwind/Zustand dashboard scaffold. 6 pages, SSE manager with connection tracking + broadcast. 11 new tests, 825 total pass. |
 | S8 | DONE | 2026-04-01 | Overview + Positions wired with real data: agent state grid, daily PnL, win rate, metrics polling, coin states, positions (SL/TP/R:R/hold time/trail). SSE payload expanded. 30 new tests, 844 total pass. |
+| S9 | DONE | 2026-04-01 | Chart page: Lightweight Charts v5 candlestick + volume, zone price lines (demand/supply), swing markers (HH/HL/LH/LL), signal markers, entry/SL/TP lines, bias info bar, coin/tf selector, 15s auto-refresh. New /api/structure endpoint. 6 new tests, 850 total pass. |
 
 ---
 
