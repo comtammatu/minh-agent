@@ -1,0 +1,38 @@
+{
+  "date": "2026-04-02",
+  "window": "7d",
+  "scope": "Sprint 4 Close retro — Telegram Bot + Dashboard Extensions, all 10 sessions complete",
+  "metrics": {
+    "commits": 93,
+    "contributors": 1,
+    "prs_merged": 0,
+    "insertions": 42494,
+    "deletions": 2544,
+    "net_loc": 39950,
+    "test_loc": 17896,
+    "test_ratio": 0.421,
+    "active_days": 5,
+    "sessions": 19,
+    "deep_sessions": 6,
+    "avg_session_minutes": 48,
+    "loc_per_session_hour": 2750,
+    "feat_pct": 0.548,
+    "fix_pct": 0.043,
+    "chore_pct": 0.237,
+    "docs_pct": 0.150,
+    "peak_hour": 14,
+    "ai_assisted_commits": 89
+  },
+  "authors": {
+    "Luong The Binh": {
+      "commits": 93,
+      "insertions": 42494,
+      "deletions": 2544,
+      "test_ratio": 0.421,
+      "top_area": "src/alert/telegram/ + dashboard/"
+    }
+  },
+  "version_range": ["v3.0.0", "v4.0.0"],
+  "streak_days": 5,
+  "tweetable": "Sprint 4 Close: 93 commits (solo+AI), 42.5k LOC, 42% tests, 10/10 sessions — Telegram Bot + Dashboard Extensions shipped | Streak: 5d"
+}
