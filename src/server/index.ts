@@ -41,6 +41,7 @@ import { getAgent } from '../agent/trading-agent.js'
 import { getOrderManager } from '../agent/order-manager.js'
 import { getPositionMonitor } from '../agent/position-monitor.js'
 import { getHealthMonitor } from '../agent/self-healing.js'
+import { getLiveMetrics } from '../analytics/metrics-service.js'
 
 const startedAt = Date.now()
 
@@ -178,6 +179,17 @@ function createApp() {
       const positions = Array.from(posMap.values())
       const totalExposure = positions.reduce((sum, p) => sum + (p.size * p.entryPrice), 0)
       return { positions, totalExposure, count: positions.length }
+    })
+
+    // ── Analytics endpoints (no auth, read-only) ─────────────────────────
+
+    .get('/api/metrics', async ({ set }) => {
+      try {
+        return await getLiveMetrics()
+      } catch (err) {
+        set.status = 503
+        return { error: 'metrics_unavailable', message: 'Failed to compute metrics' }
+      }
     })
 
     // ── Execution endpoints (bearer auth required) ────────────────────────

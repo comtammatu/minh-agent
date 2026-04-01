@@ -348,6 +348,7 @@ export class TradingAgent {
   private coins: Map<string, CoinContext> = new Map()
   private global: GlobalContext
   private emitter = new EventEmitter()
+  private tradeCloseListeners: Array<(coin: string, pnl: number) => void> = []
 
   constructor() {
     this.global = {
@@ -477,8 +478,9 @@ export class TradingAgent {
    *
    * @param pnl - Realized PnL from this trade
    * @param accountValue - Current account value from exchange (for CB % checks)
+   * @param coin - Coin that closed (for trade_closed event)
    */
-  recordPnl(pnl: number, accountValue?: number): void {
+  recordPnl(pnl: number, accountValue?: number, coin?: string): void {
     const now = Date.now()
     this.global.dailyPnl += pnl
     this.global.lastTradeTime = now
@@ -498,6 +500,13 @@ export class TradingAgent {
     // Run CB checks if we have account value
     if (accountValue !== undefined) {
       this.checkCircuitBreakers(accountValue, now)
+    }
+
+    // Notify trade close listeners (metrics refresh, etc.)
+    if (coin) {
+      for (const listener of this.tradeCloseListeners) {
+        try { listener(coin, pnl) } catch { /* listeners must not crash agent */ }
+      }
     }
   }
 
@@ -668,6 +677,11 @@ export class TradingAgent {
   /** Subscribe to agent actions (for orchestrator in S6/S7). */
   onAction(listener: (action: AgentAction) => void): void {
     this.emitter.on('action', listener)
+  }
+
+  /** Subscribe to trade close events (for metrics refresh). */
+  onTradeClose(listener: (coin: string, pnl: number) => void): void {
+    this.tradeCloseListeners.push(listener)
   }
 
   // ── Internal ─────────────────────────────────────────────────────────────
