@@ -1,6 +1,11 @@
 # Minh (明) — Architecture
 
-> **v2.0.0 (Sprint 2 complete, 2026-03-30)** — Autonomous trading agent. Sprint 1 analysis engine + Sprint 2 agent/execution/persistence layers.
+> **v4.0.0 (Sprint 4 complete, 2026-04-02)** — Autonomous trading agent with monitoring and analytics.
+>
+> - Sprint 1: Layered analysis engine (scanner pipeline, indicators, invalidation)
+> - Sprint 2: Agent execution (state machine, order manager, position monitor, circuit breakers, HL exchange, PostgreSQL/TimescaleDB)
+> - Sprint 3: Backtest engine, analytics metrics, SSE streaming, dashboard MVP (React + Vite)
+> - Sprint 4: Telegram bot (command interface), backtest-from-browser, comparison view, journal detail, mobile layout, dark/light theme
 
 ## System Overview — Layered Decision Framework (Sprint 1)
 
@@ -117,8 +122,23 @@
 │  └──────────────────────────┼────────────────────────────────┘       │
 │                             │                                        │
 │                             ▼                                        │
-│                      console.log()                                   │
-│                      SETUP | INVALID | STATUS | WARNING              │
+│  ┌──────────────────────────────────────────────────────────────┐    │
+│  │  AGENT (Sprint 2) — TradingAgent state machine               │    │
+│  │    IDLE → WATCHING → ENTERING → IN_POSITION → EXITING        │    │
+│  │    + OrderManager + PositionMonitor + CircuitBreakers         │    │
+│  │    + InvalidationBridge + ExchangeService (HL L1)             │    │
+│  │    + Journal (PostgreSQL trade_journal)                       │    │
+│  └──────────────────────────────────────────────────────────────┘    │
+│                             │                                        │
+│              ┌──────────────┼──────────────┐                         │
+│              ▼              ▼              ▼                         │
+│         Elysia API     Telegram Bot   SSE Stream                    │
+│         (Sprint 3)     (Sprint 4)     (Sprint 3)                    │
+│              │              │              │                         │
+│              └──────────────┼──────────────┘                         │
+│                             ▼                                        │
+│                      Dashboard (React+Vite)                          │
+│                      (Sprint 3–4)                                    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -146,7 +166,9 @@ For each coin in [BTC, ETH, SOL] (sequential):
     │  API     │     onCandle callback          │ .onTick  │
     └──────────┘                               └──────────┘
 
-Total: 18 sequential REST calls (~9s) → 18 WS subscriptions
+Total: ~90 sequential REST calls (15 coins × 6 TFs, ~45s)
+  → ~121 WS subscriptions (candles + trades + orderbook)
+  → PostgreSQL write-through for candle persistence
 Readiness Gate: [ARMED] BTC: 6/6 TFs ready — pipeline active
 ```
 
@@ -250,7 +272,7 @@ CONFLUENCE + REGIME + RISK
 └──────────────────────────────────────┘
 ```
 
-## Dependency Graph — Layered Pipeline (Sprint 1 target)
+## Dependency Graph — Full System (Sprint 1–4)
 
 ```
 types.ts (0 deps)
@@ -284,7 +306,38 @@ types.ts (0 deps)
     ├── feed/trades.ts ─── WS trades → delta per bar (Phase B)
     └── feed/orderbook.ts ── WS l2Book → imbalance (Phase B)
     │
-    └── index.ts ── wires feed + scanner/pipeline + config
+    │
+    ├── db/connection.ts ──── postgres (npm) client
+    ├── db/migrate.ts ─────── schema migrations
+    ├── db/candle-repo.ts ─── upsert, bulk, load, gap-fill
+    │
+    ├── agent/trading-agent.ts ── state machine (per-coin)
+    ├── agent/order-manager.ts ── order lifecycle (place/fill/cancel/timeout)
+    ├── agent/position-monitor.ts ── track open positions + exit reconciliation
+    ├── agent/circuit-breakers.ts ── daily loss, consecutive loss, drawdown limits
+    ├── agent/correlation-guard.ts ── block correlated entries
+    ├── agent/invalidation-bridge.ts ── pipeline invalidation → agent actions
+    ├── agent/self-healing.ts ── health monitor + auto-recovery
+    ├── agent/journal.ts ──── trade journal persistence (PostgreSQL)
+    ├── agent/close-all.ts ── emergency close-all (DI-enabled)
+    │
+    ├── execution/exchange-service.ts ── HL ExchangeClient (place/cancel/modify)
+    │
+    ├── backtest/engine.ts ── backtest orchestrator
+    ├── backtest/simulator.ts ── fill simulation (paper trade)
+    ├── backtest/metrics.ts ── equity curve, trade stats
+    │
+    ├── analytics/metrics.ts ── win rate, PF, Sharpe, drawdown
+    ├── analytics/metrics-service.ts ── PostgreSQL-backed analytics queries
+    │
+    ├── server/index.ts ── Elysia HTTP API (status, backtest, analytics, compare)
+    ├── server/sse.ts ───── SSE event streaming
+    │
+    ├── alert/telegram/ ── Telegram bot (polling + command router + 10 commands)
+    │
+    ├── dashboard/ ── React + Vite + Recharts (backtest, journal, compare, mobile)
+    │
+    └── index.ts ── wires feed + scanner + agent + server + telegram
 ```
 
 ## Regime Detection Decision Tree
@@ -394,18 +447,35 @@ Invalidation rules per pattern type:
 
 ```
 Store: Map<string, Candle[]>
-  "BTC:1m"  → [5000 candles] × 48 bytes = 240 KB
-  "BTC:5m"  → [5000 candles]             = 240 KB
+  "BTC:1m"  → [500 candles]  × 48 bytes = 24 KB
+  "BTC:5m"  → [500 candles]              = 24 KB
   "BTC:15m" → [5000 candles]             = 240 KB
   "BTC:1h"  → [5000 candles]             = 240 KB
   "BTC:4h"  → [5000 candles]             = 240 KB
   "BTC:1d"  → [5000 candles]             = 240 KB
-  × 3 coins
+  × 15 coins (dynamic top by OI, refreshed hourly)
   ─────────────────────────────────────────
-  Total: 18 × 240 KB = ~4.3 MB
+  Total: 15 × ~1 MB = ~15 MB in-memory
+  + PostgreSQL/TimescaleDB persistence (write-through)
 
 ActiveSetups: Map<string, ActiveSetup>
-  Typically < 20 setups at any time = negligible
+  Typically < 50 setups at any time = negligible
 
-Total memory: < 10 MB
+Total memory: < 20 MB
+```
+
+## Sprint 3–4 Additions
+
+```
+Sprint 3:
+  src/backtest/        ← Backtest engine (engine.ts, simulator.ts, metrics.ts)
+  src/analytics/       ← Metrics service (win rate, PF, drawdown, Sharpe)
+  src/server/          ← Elysia HTTP API + SSE streaming
+  dashboard/           ← React + Vite + Recharts dashboard MVP
+
+Sprint 4:
+  src/alert/telegram/  ← Telegram bot (polling, command router, 10 commands)
+  src/agent/close-all.ts ← Emergency close-all (shared by API + Telegram)
+  dashboard extensions ← Backtest runner, compare view, journal detail,
+                          mobile layout, dark/light theme
 ```

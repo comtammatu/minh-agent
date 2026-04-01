@@ -178,7 +178,7 @@ Browser                    Elysia                     Backtest Engine
 Sprint 4 is complete when:
 
 **Phase 4A — Tech Debt**
-- [x] All tests pass (925 pass, 11 pre-existing e2e integration fails — same as Sprint 3 baseline)
+- [x] All tests pass (936 pass, 0 fail, 3 skip — 11 pre-existing integration fails fixed post-Sprint via DI refactor in close-all.ts)
 - [x] React error boundaries show fallback UI when API is down
 - [x] Backtest e2e smoke test exists and passes
 
