@@ -1,0 +1,896 @@
+{
+  "structure": {
+    "bias": "neutral",
+    "biasConfidence": 0.5,
+    "swings": [
+      {
+        "type": "high",
+        "classification": "EH",
+        "price": 68173,
+        "idx": 7
+      },
+      {
+        "type": "low",
+        "classification": "EL",
+        "price": 65000,
+        "idx": 12
+      },
+      {
+        "type": "low",
+        "classification": "HL",
+        "price": 65250,
+        "idx": 16
+      },
+      {
+        "type": "high",
+        "classification": "HH",
+        "price": 70067,
+        "idx": 17
+      },
+      {
+        "type": "low",
+        "classification": "HL",
+        "price": 66104,
+        "idx": 22
+      },
+      {
+        "type": "high",
+        "classification": "HH",
+        "price": 73995,
+        "idx": 29
+      },
+      {
+        "type": "low",
+        "classification": "HL",
+        "price": 66514,
+        "idx": 50
+      },
+      {
+        "type": "high",
+        "classification": "LH",
+        "price": 68161,
+        "idx": 51
+      },
+      {
+        "type": "low",
+        "classification": "LL",
+        "price": 65573,
+        "idx": 54
+      },
+      {
+        "type": "high",
+        "classification": "HH",
+        "price": 71760,
+        "idx": 64
+      },
+      {
+        "type": "low",
+        "classification": "HL",
+        "price": 68947,
+        "idx": 70
+      },
+      {
+        "type": "high",
+        "classification": "LH",
+        "price": 71294,
+        "idx": 71
+      },
+      {
+        "type": "low",
+        "classification": "HL",
+        "price": 69163,
+        "idx": 74
+      },
+      {
+        "type": "high",
+        "classification": "HH",
+        "price": 73869,
+        "idx": 82
+      },
+      {
+        "type": "low",
+        "classification": "HL",
+        "price": 70276,
+        "idx": 86
+      },
+      {
+        "type": "high",
+        "classification": "HH",
+        "price": 75972,
+        "idx": 103
+      },
+      {
+        "type": "low",
+        "classification": "HL",
+        "price": 73318,
+        "idx": 106
+      },
+      {
+        "type": "low",
+        "classification": "LL",
+        "price": 68750,
+        "idx": 118
+      },
+      {
+        "type": "high",
+        "classification": "LH",
+        "price": 71360,
+        "idx": 123
+      },
+      {
+        "type": "low",
+        "classification": "HL",
+        "price": 69344,
+        "idx": 125
+      },
+      {
+        "type": "high",
+        "classification": "LH",
+        "price": 71076,
+        "idx": 130
+      },
+      {
+        "type": "low",
+        "classification": "LL",
+        "price": 67313,
+        "idx": 138
+      },
+      {
+        "type": "high",
+        "classification": "HH",
+        "price": 71785,
+        "idx": 142
+      },
+      {
+        "type": "high",
+        "classification": "LH",
+        "price": 71385,
+        "idx": 146
+      },
+      {
+        "type": "low",
+        "classification": "HL",
+        "price": 68904,
+        "idx": 149
+      },
+      {
+        "type": "high",
+        "classification": "HH",
+        "price": 72034,
+        "idx": 154
+      },
+      {
+        "type": "low",
+        "classification": "LL",
+        "price": 68123,
+        "idx": 161
+      },
+      {
+        "type": "low",
+        "classification": "LL",
+        "price": 65550,
+        "idx": 167
+      },
+      {
+        "type": "high",
+        "classification": "LH",
+        "price": 67280,
+        "idx": 172
+      },
+      {
+        "type": "low",
+        "classification": "LL",
+        "price": 64904,
+        "idx": 180
+      },
+      {
+        "type": "low",
+        "classification": "HL",
+        "price": 66184,
+        "idx": 185
+      },
+      {
+        "type": "high",
+        "classification": "HH",
+        "price": 68370,
+        "idx": 187
+      },
+      {
+        "type": "low",
+        "classification": "LL",
+        "price": 65951,
+        "idx": 189
+      },
+      {
+        "type": "high",
+        "classification": "HH",
+        "price": 69265,
+        "idx": 194
+      }
+    ],
+    "demandZones": [
+      {
+        "high": 68436.24731188666,
+        "low": 67313,
+        "type": "demand",
+        "sources": [
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "LL",
+              "price": 67313,
+              "idx": 138
+            }
+          },
+          {
+            "type": "order-block",
+            "data": {
+              "type": "bullish",
+              "high": 68243,
+              "low": 67553,
+              "idx": 193,
+              "fresh": false
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "LL",
+              "price": 68123,
+              "idx": 161
+            }
+          }
+        ],
+        "strength": 0.8487437185929649,
+        "touches": 37,
+        "lastTouch": 198,
+        "fresh": false
+      },
+      {
+        "high": 66827.24731188666,
+        "low": 65903,
+        "type": "demand",
+        "sources": [
+          {
+            "type": "order-block",
+            "data": {
+              "type": "bullish",
+              "high": 66397,
+              "low": 65903,
+              "idx": 169,
+              "fresh": false
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "HL",
+              "price": 66104,
+              "idx": 22
+            }
+          },
+          {
+            "type": "order-block",
+            "data": {
+              "type": "bullish",
+              "high": 66538,
+              "low": 66108,
+              "idx": 171,
+              "fresh": false
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "HL",
+              "price": 66184,
+              "idx": 185
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "HL",
+              "price": 66514,
+              "idx": 50
+            }
+          }
+        ],
+        "strength": 0.8399497487437186,
+        "touches": 29,
+        "lastTouch": 191,
+        "fresh": false
+      },
+      {
+        "high": 66318,
+        "low": 64904,
+        "type": "demand",
+        "sources": [
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "LL",
+              "price": 64904,
+              "idx": 180
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "EL",
+              "price": 65000,
+              "idx": 12
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "HL",
+              "price": 65250,
+              "idx": 16
+            }
+          },
+          {
+            "type": "order-block",
+            "data": {
+              "type": "bullish",
+              "high": 66318,
+              "low": 64904,
+              "idx": 180,
+              "fresh": false
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "LL",
+              "price": 65550,
+              "idx": 167
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "LL",
+              "price": 65573,
+              "idx": 54
+            }
+          },
+          {
+            "type": "order-block",
+            "data": {
+              "type": "bullish",
+              "high": 66097,
+              "low": 65550,
+              "idx": 167,
+              "fresh": false
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "LL",
+              "price": 65951,
+              "idx": 189
+            }
+          }
+        ],
+        "strength": 0.8374371859296483,
+        "touches": 30,
+        "lastTouch": 189,
+        "fresh": false
+      },
+      {
+        "high": 69836,
+        "low": 68750,
+        "type": "demand",
+        "sources": [
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "LL",
+              "price": 68750,
+              "idx": 118
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "HL",
+              "price": 68904,
+              "idx": 149
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "HL",
+              "price": 68947,
+              "idx": 70
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "HL",
+              "price": 69163,
+              "idx": 74
+            }
+          },
+          {
+            "type": "order-block",
+            "data": {
+              "type": "bullish",
+              "high": 69836,
+              "low": 68904,
+              "idx": 149,
+              "fresh": false
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "HL",
+              "price": 69344,
+              "idx": 125
+            }
+          }
+        ],
+        "strength": 0.7997487437185931,
+        "touches": 29,
+        "lastTouch": 159,
+        "fresh": false
+      },
+      {
+        "high": 64636,
+        "low": 64258,
+        "type": "demand",
+        "sources": [
+          {
+            "type": "fvg",
+            "data": {
+              "type": "bullish",
+              "top": 64636,
+              "bottom": 64258,
+              "startIdx": 3,
+              "filled": false
+            }
+          }
+        ],
+        "strength": 0.4646147403685092,
+        "touches": 1,
+        "lastTouch": 5,
+        "fresh": true
+      },
+      {
+        "high": 70589.24731188666,
+        "low": 70276,
+        "type": "demand",
+        "sources": [
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "HL",
+              "price": 70276,
+              "idx": 86
+            }
+          }
+        ],
+        "strength": 0.5268006700167505,
+        "touches": 18,
+        "lastTouch": 154,
+        "fresh": false
+      },
+      {
+        "high": 73631.24731188666,
+        "low": 73318,
+        "type": "demand",
+        "sources": [
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "low",
+              "classification": "HL",
+              "price": 73318,
+              "idx": 106
+            }
+          }
+        ],
+        "strength": 0.4702680067001675,
+        "touches": 4,
+        "lastTouch": 109,
+        "fresh": false
+      }
+    ],
+    "supplyZones": [
+      {
+        "high": 67280,
+        "low": 66648,
+        "type": "supply",
+        "sources": [
+          {
+            "type": "order-block",
+            "data": {
+              "type": "bearish",
+              "high": 66942,
+              "low": 66648,
+              "idx": 177,
+              "fresh": false
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "high",
+              "classification": "LH",
+              "price": 67280,
+              "idx": 172
+            }
+          }
+        ],
+        "strength": 0.7003350083752093,
+        "touches": 16,
+        "lastTouch": 186,
+        "fresh": false
+      },
+      {
+        "high": 68370,
+        "low": 67847.75268811334,
+        "type": "supply",
+        "sources": [
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "high",
+              "classification": "LH",
+              "price": 68161,
+              "idx": 51
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "high",
+              "classification": "EH",
+              "price": 68173,
+              "idx": 7
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "high",
+              "classification": "HH",
+              "price": 68370,
+              "idx": 187
+            }
+          }
+        ],
+        "strength": 0.842462311557789,
+        "touches": 13,
+        "lastTouch": 193,
+        "fresh": false
+      },
+      {
+        "high": 69265,
+        "low": 68676,
+        "type": "supply",
+        "sources": [
+          {
+            "type": "order-block",
+            "data": {
+              "type": "bearish",
+              "high": 68914,
+              "low": 68676,
+              "idx": 196,
+              "fresh": true
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "high",
+              "classification": "HH",
+              "price": 69265,
+              "idx": 194
+            }
+          }
+        ],
+        "strength": 0.7141541038525963,
+        "touches": 17,
+        "lastTouch": 197,
+        "fresh": false
+      },
+      {
+        "high": 70640,
+        "low": 69753.75268811334,
+        "type": "supply",
+        "sources": [
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "high",
+              "classification": "HH",
+              "price": 70067,
+              "idx": 17
+            }
+          },
+          {
+            "type": "fvg",
+            "data": {
+              "type": "bearish",
+              "top": 70640,
+              "bottom": 70106,
+              "startIdx": 157,
+              "filled": false
+            }
+          }
+        ],
+        "strength": 0.6676716917922949,
+        "touches": 20,
+        "lastTouch": 160,
+        "fresh": false
+      },
+      {
+        "high": 71385,
+        "low": 70762.75268811334,
+        "type": "supply",
+        "sources": [
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "high",
+              "classification": "LH",
+              "price": 71076,
+              "idx": 130
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "high",
+              "classification": "LH",
+              "price": 71294,
+              "idx": 71
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "high",
+              "classification": "LH",
+              "price": 71360,
+              "idx": 123
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "high",
+              "classification": "LH",
+              "price": 71385,
+              "idx": 146
+            }
+          }
+        ],
+        "strength": 0.7984924623115579,
+        "touches": 29,
+        "lastTouch": 158,
+        "fresh": false
+      },
+      {
+        "high": 72034,
+        "low": 71446.75268811334,
+        "type": "supply",
+        "sources": [
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "high",
+              "classification": "HH",
+              "price": 71760,
+              "idx": 64
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "high",
+              "classification": "HH",
+              "price": 71785,
+              "idx": 142
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "high",
+              "classification": "HH",
+              "price": 72034,
+              "idx": 154
+            }
+          }
+        ],
+        "strength": 0.7959798994974874,
+        "touches": 21,
+        "lastTouch": 156,
+        "fresh": false
+      },
+      {
+        "high": 72746,
+        "low": 71951,
+        "type": "supply",
+        "sources": [
+          {
+            "type": "fvg",
+            "data": {
+              "type": "bearish",
+              "top": 72746,
+              "bottom": 71951,
+              "startIdx": 111,
+              "filled": false
+            }
+          }
+        ],
+        "strength": 0.5268006700167505,
+        "touches": 6,
+        "lastTouch": 154,
+        "fresh": false
+      },
+      {
+        "high": 73995,
+        "low": 72935,
+        "type": "supply",
+        "sources": [
+          {
+            "type": "fvg",
+            "data": {
+              "type": "bearish",
+              "top": 73655,
+              "bottom": 72935,
+              "startIdx": 110,
+              "filled": false
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "high",
+              "classification": "HH",
+              "price": 73869,
+              "idx": 82
+            }
+          },
+          {
+            "type": "swing-level",
+            "data": {
+              "type": "high",
+              "classification": "HH",
+              "price": 73995,
+              "idx": 29
+            }
+          }
+        ],
+        "strength": 0.7407035175879397,
+        "touches": 11,
+        "lastTouch": 112,
+        "fresh": false
+      }
+    ],
+    "currentPrice": 67344,
+    "nearestDemand": {
+      "high": 66827.24731188666,
+      "low": 65903,
+      "type": "demand",
+      "sources": [
+        {
+          "type": "order-block",
+          "data": {
+            "type": "bullish",
+            "high": 66397,
+            "low": 65903,
+            "idx": 169,
+            "fresh": false
+          }
+        },
+        {
+          "type": "swing-level",
+          "data": {
+            "type": "low",
+            "classification": "HL",
+            "price": 66104,
+            "idx": 22
+          }
+        },
+        {
+          "type": "order-block",
+          "data": {
+            "type": "bullish",
+            "high": 66538,
+            "low": 66108,
+            "idx": 171,
+            "fresh": false
+          }
+        },
+        {
+          "type": "swing-level",
+          "data": {
+            "type": "low",
+            "classification": "HL",
+            "price": 66184,
+            "idx": 185
+          }
+        },
+        {
+          "type": "swing-level",
+          "data": {
+            "type": "low",
+            "classification": "HL",
+            "price": 66514,
+            "idx": 50
+          }
+        }
+      ],
+      "strength": 0.8399497487437186,
+      "touches": 29,
+      "lastTouch": 191,
+      "fresh": false
+    },
+    "nearestSupply": {
+      "high": 68370,
+      "low": 67847.75268811334,
+      "type": "supply",
+      "sources": [
+        {
+          "type": "swing-level",
+          "data": {
+            "type": "high",
+            "classification": "LH",
+            "price": 68161,
+            "idx": 51
+          }
+        },
+        {
+          "type": "swing-level",
+          "data": {
+            "type": "high",
+            "classification": "EH",
+            "price": 68173,
+            "idx": 7
+          }
+        },
+        {
+          "type": "swing-level",
+          "data": {
+            "type": "high",
+            "classification": "HH",
+            "price": 68370,
+            "idx": 187
+          }
+        }
+      ],
+      "strength": 0.842462311557789,
+      "touches": 13,
+      "lastTouch": 193,
+      "fresh": false
+    },
+    "regime": "SIDEWAYS"
+  }
+}

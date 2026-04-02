@@ -1,0 +1,99 @@
+{
+  "vsaAtIdx": [],
+  "vsaScan": [
+    {
+      "idx": 180,
+      "signals": []
+    },
+    {
+      "idx": 181,
+      "signals": []
+    },
+    {
+      "idx": 182,
+      "signals": []
+    },
+    {
+      "idx": 183,
+      "signals": []
+    },
+    {
+      "idx": 184,
+      "signals": [
+        {
+          "type": "upthrust",
+          "direction": "bearish",
+          "strength": 0.6400929480036821,
+          "idx": 184
+        }
+      ]
+    },
+    {
+      "idx": 185,
+      "signals": []
+    },
+    {
+      "idx": 186,
+      "signals": []
+    },
+    {
+      "idx": 187,
+      "signals": []
+    },
+    {
+      "idx": 188,
+      "signals": []
+    },
+    {
+      "idx": 189,
+      "signals": []
+    },
+    {
+      "idx": 190,
+      "signals": []
+    },
+    {
+      "idx": 191,
+      "signals": [
+        {
+          "type": "buying_climax",
+          "direction": "bearish",
+          "strength": 0.6679735525340421,
+          "idx": 191
+        }
+      ]
+    },
+    {
+      "idx": 192,
+      "signals": []
+    },
+    {
+      "idx": 193,
+      "signals": []
+    },
+    {
+      "idx": 194,
+      "signals": []
+    },
+    {
+      "idx": 195,
+      "signals": []
+    },
+    {
+      "idx": 196,
+      "signals": []
+    },
+    {
+      "idx": 197,
+      "signals": []
+    },
+    {
+      "idx": 198,
+      "signals": []
+    },
+    {
+      "idx": 199,
+      "signals": []
+    }
+  ]
+}

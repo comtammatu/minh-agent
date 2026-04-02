@@ -1,0 +1,89 @@
+{
+  "wyckoffAtIdx": {
+    "phase": "unknown",
+    "confidence": 0,
+    "events": []
+  },
+  "wyckoffScan": [
+    {
+      "idx": 190,
+      "result": {
+        "phase": "unknown",
+        "confidence": 0,
+        "events": []
+      }
+    },
+    {
+      "idx": 191,
+      "result": {
+        "phase": "unknown",
+        "confidence": 0,
+        "events": []
+      }
+    },
+    {
+      "idx": 192,
+      "result": {
+        "phase": "unknown",
+        "confidence": 0,
+        "events": []
+      }
+    },
+    {
+      "idx": 193,
+      "result": {
+        "phase": "unknown",
+        "confidence": 0,
+        "events": []
+      }
+    },
+    {
+      "idx": 194,
+      "result": {
+        "phase": "unknown",
+        "confidence": 0,
+        "events": []
+      }
+    },
+    {
+      "idx": 195,
+      "result": {
+        "phase": "unknown",
+        "confidence": 0,
+        "events": []
+      }
+    },
+    {
+      "idx": 196,
+      "result": {
+        "phase": "unknown",
+        "confidence": 0,
+        "events": []
+      }
+    },
+    {
+      "idx": 197,
+      "result": {
+        "phase": "unknown",
+        "confidence": 0,
+        "events": []
+      }
+    },
+    {
+      "idx": 198,
+      "result": {
+        "phase": "unknown",
+        "confidence": 0,
+        "events": []
+      }
+    },
+    {
+      "idx": 199,
+      "result": {
+        "phase": "unknown",
+        "confidence": 0,
+        "events": []
+      }
+    }
+  ]
+}

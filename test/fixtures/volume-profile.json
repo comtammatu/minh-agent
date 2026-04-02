@@ -1,0 +1,636 @@
+{
+  "profile": {
+    "bins": [
+      {
+        "priceLevel": 65014.68,
+        "volume": 948.431408888889,
+        "buyVolume": 0,
+        "sellVolume": 948.431408888889
+      },
+      {
+        "priceLevel": 65236.04,
+        "volume": 948.431408888889,
+        "buyVolume": 0,
+        "sellVolume": 948.431408888889
+      },
+      {
+        "priceLevel": 65457.4,
+        "volume": 2339.797952888889,
+        "buyVolume": 0,
+        "sellVolume": 2339.797952888889
+      },
+      {
+        "priceLevel": 65678.76,
+        "volume": 4762.097916777778,
+        "buyVolume": 718.7288922222222,
+        "sellVolume": 4043.369024555556
+      },
+      {
+        "priceLevel": 65900.12,
+        "volume": 7554.918445944444,
+        "buyVolume": 1845.649228888889,
+        "sellVolume": 5709.269217055555
+      },
+      {
+        "priceLevel": 66121.48,
+        "volume": 11584.156168027777,
+        "buyVolume": 3128.427740555556,
+        "sellVolume": 8455.728427472222
+      },
+      {
+        "priceLevel": 66342.84,
+        "volume": 16022.53703148016,
+        "buyVolume": 6091.50954234127,
+        "sellVolume": 9931.027489138889
+      },
+      {
+        "priceLevel": 66564.2,
+        "volume": 15428.909143035713,
+        "buyVolume": 5733.835997896826,
+        "sellVolume": 9695.073145138887
+      },
+      {
+        "priceLevel": 66785.56,
+        "volume": 14802.002413035712,
+        "buyVolume": 6634.581224563492,
+        "sellVolume": 8167.421188472223
+      },
+      {
+        "priceLevel": 67006.92,
+        "volume": 14727.856547646827,
+        "buyVolume": 6634.581224563492,
+        "sellVolume": 8093.275323083332
+      },
+      {
+        "priceLevel": 67228.28,
+        "volume": 14784.323693718254,
+        "buyVolume": 6957.409327063493,
+        "sellVolume": 7826.914366654762
+      },
+      {
+        "priceLevel": 67449.64,
+        "volume": 16234.261519003967,
+        "buyVolume": 7707.621356349207,
+        "sellVolume": 8526.640162654761
+      },
+      {
+        "priceLevel": 67671,
+        "volume": 14267.612424281748,
+        "buyVolume": 6988.892464126984,
+        "sellVolume": 7278.719960154762
+      },
+      {
+        "priceLevel": 67892.36,
+        "volume": 18938.96875511858,
+        "buyVolume": 10155.937330499533,
+        "sellVolume": 8783.031424619046
+      },
+      {
+        "priceLevel": 68113.72,
+        "volume": 21235.268891118583,
+        "buyVolume": 11054.476527499533,
+        "sellVolume": 10180.792363619044
+      },
+      {
+        "priceLevel": 68335.08,
+        "volume": 23637.868506951916,
+        "buyVolume": 13852.798094166199,
+        "sellVolume": 9785.070412785712
+      },
+      {
+        "priceLevel": 68556.44,
+        "volume": 22336.50148682493,
+        "buyVolume": 10892.548238610643,
+        "sellVolume": 11443.953248214284
+      },
+      {
+        "priceLevel": 68777.8,
+        "volume": 17520.62866492017,
+        "buyVolume": 8774.291155277311,
+        "sellVolume": 8746.337509642857
+      },
+      {
+        "priceLevel": 68999.16,
+        "volume": 17532.664909551124,
+        "buyVolume": 7664.5657039082635,
+        "sellVolume": 9868.099205642857
+      },
+      {
+        "priceLevel": 69220.52,
+        "volume": 15737.675847967785,
+        "buyVolume": 6437.3041098249305,
+        "sellVolume": 9300.371738142856
+      },
+      {
+        "priceLevel": 69441.88,
+        "volume": 17156.662896023343,
+        "buyVolume": 7053.817743039215,
+        "sellVolume": 10102.845152984126
+      },
+      {
+        "priceLevel": 69663.24,
+        "volume": 19811.555430763605,
+        "buyVolume": 8404.226589446142,
+        "sellVolume": 11407.32884131746
+      },
+      {
+        "priceLevel": 69884.6,
+        "volume": 20733.5711372636,
+        "buyVolume": 8155.557828446142,
+        "sellVolume": 12578.01330881746
+      },
+      {
+        "priceLevel": 70105.96,
+        "volume": 21447.581463073122,
+        "buyVolume": 10553.027773112808,
+        "sellVolume": 10894.553689960316
+      },
+      {
+        "priceLevel": 70327.32,
+        "volume": 21466.204163906456,
+        "buyVolume": 11620.980028946144,
+        "sellVolume": 9845.224134960317
+      },
+      {
+        "priceLevel": 70548.68,
+        "volume": 26783.772987823122,
+        "buyVolume": 14075.36642861281,
+        "sellVolume": 12708.406559210318
+      },
+      {
+        "priceLevel": 70770.04,
+        "volume": 27805.418330540655,
+        "buyVolume": 16122.301733315193,
+        "sellVolume": 11683.11659722547
+      },
+      {
+        "priceLevel": 70991.4,
+        "volume": 24142.709581623993,
+        "buyVolume": 13343.352119731859,
+        "sellVolume": 10799.357461892136
+      },
+      {
+        "priceLevel": 71212.76,
+        "volume": 18596.061244338278,
+        "buyVolume": 9205.645147446141,
+        "sellVolume": 9390.416096892137
+      },
+      {
+        "priceLevel": 71434.12,
+        "volume": 15282.210478782725,
+        "buyVolume": 8016.600710779475,
+        "sellVolume": 7265.609768003246
+      },
+      {
+        "priceLevel": 71655.48,
+        "volume": 9265.987379505412,
+        "buyVolume": 4076.627258073593,
+        "sellVolume": 5189.360121431819
+      },
+      {
+        "priceLevel": 71876.84,
+        "volume": 7826.378793838745,
+        "buyVolume": 3545.7189764069262,
+        "sellVolume": 4280.659817431819
+      },
+      {
+        "priceLevel": 72098.2,
+        "volume": 3600.7552537175325,
+        "buyVolume": 1050.6742042857143,
+        "sellVolume": 2550.0810494318184
+      },
+      {
+        "priceLevel": 72319.56,
+        "volume": 1267.378108181818,
+        "buyVolume": 0,
+        "sellVolume": 1267.378108181818
+      },
+      {
+        "priceLevel": 72540.92,
+        "volume": 1267.378108181818,
+        "buyVolume": 0,
+        "sellVolume": 1267.378108181818
+      },
+      {
+        "priceLevel": 72762.28,
+        "volume": 1838.035613181818,
+        "buyVolume": 0,
+        "sellVolume": 1838.035613181818
+      },
+      {
+        "priceLevel": 72983.64,
+        "volume": 3221.958355681818,
+        "buyVolume": 0,
+        "sellVolume": 3221.958355681818
+      },
+      {
+        "priceLevel": 73205,
+        "volume": 3249.871815833333,
+        "buyVolume": 1295.2915683333333,
+        "sellVolume": 1954.5802475
+      },
+      {
+        "priceLevel": 73426.36,
+        "volume": 6006.452184833333,
+        "buyVolume": 1992.9079783333332,
+        "sellVolume": 4013.5442065
+      },
+      {
+        "priceLevel": 73647.72,
+        "volume": 7713.7103788333325,
+        "buyVolume": 1992.9079783333332,
+        "sellVolume": 5720.8024005
+      },
+      {
+        "priceLevel": 73869.08,
+        "volume": 11278.500204833332,
+        "buyVolume": 4804.620686333333,
+        "sellVolume": 6473.8795185
+      },
+      {
+        "priceLevel": 74090.44,
+        "volume": 11278.500204833332,
+        "buyVolume": 4804.620686333333,
+        "sellVolume": 6473.8795185
+      },
+      {
+        "priceLevel": 74311.8,
+        "volume": 12996.171964833333,
+        "buyVolume": 4804.620686333333,
+        "sellVolume": 8191.5512785
+      },
+      {
+        "priceLevel": 74533.16,
+        "volume": 10260.131267499999,
+        "buyVolume": 3509.329118,
+        "sellVolume": 6750.8021495
+      },
+      {
+        "priceLevel": 74754.52,
+        "volume": 7593.200271000001,
+        "buyVolume": 2811.712708,
+        "sellVolume": 4781.487563
+      },
+      {
+        "priceLevel": 74975.88,
+        "volume": 4569.907175,
+        "buyVolume": 1663.36308,
+        "sellVolume": 2906.544095
+      },
+      {
+        "priceLevel": 75197.24,
+        "volume": 1717.67176,
+        "buyVolume": 0,
+        "sellVolume": 1717.67176
+      },
+      {
+        "priceLevel": 75418.6,
+        "volume": 1717.67176,
+        "buyVolume": 0,
+        "sellVolume": 1717.67176
+      },
+      {
+        "priceLevel": 75639.96,
+        "volume": 1717.67176,
+        "buyVolume": 0,
+        "sellVolume": 1717.67176
+      },
+      {
+        "priceLevel": 75861.32,
+        "volume": 1717.67176,
+        "buyVolume": 0,
+        "sellVolume": 1717.67176
+      }
+    ],
+    "poc": 70770.04,
+    "vah": 71544.79999999999,
+    "val": 66674.88,
+    "hvn": [
+      68335.08,
+      70770.04
+    ],
+    "lvn": [
+      65457.4,
+      72540.92,
+      75197.24
+    ]
+  },
+  "profileShort": {
+    "bins": [
+      {
+        "priceLevel": 64975.3,
+        "volume": 609.7059057142858,
+        "buyVolume": 0,
+        "sellVolume": 609.7059057142858
+      },
+      {
+        "priceLevel": 65117.9,
+        "volume": 609.7059057142858,
+        "buyVolume": 0,
+        "sellVolume": 609.7059057142858
+      },
+      {
+        "priceLevel": 65260.5,
+        "volume": 609.7059057142858,
+        "buyVolume": 0,
+        "sellVolume": 609.7059057142858
+      },
+      {
+        "priceLevel": 65403.1,
+        "volume": 609.7059057142858,
+        "buyVolume": 0,
+        "sellVolume": 609.7059057142858
+      },
+      {
+        "priceLevel": 65545.7,
+        "volume": 1769.178025714286,
+        "buyVolume": 0,
+        "sellVolume": 1769.178025714286
+      },
+      {
+        "priceLevel": 65688.3,
+        "volume": 3544.437870233517,
+        "buyVolume": 497.58154076923074,
+        "sellVolume": 3046.8563294642863
+      },
+      {
+        "priceLevel": 65830.9,
+        "volume": 4220.590072233517,
+        "buyVolume": 1173.7337427692307,
+        "sellVolume": 3046.8563294642863
+      },
+      {
+        "priceLevel": 65973.5,
+        "volume": 5462.552393324427,
+        "buyVolume": 1173.7337427692307,
+        "sellVolume": 4288.818650555196
+      },
+      {
+        "priceLevel": 66116.1,
+        "volume": 7671.129828188064,
+        "buyVolume": 1509.5561327692308,
+        "sellVolume": 6161.573695418832
+      },
+      {
+        "priceLevel": 66258.7,
+        "volume": 9477.794423366635,
+        "buyVolume": 2385.979677947802,
+        "sellVolume": 7091.814745418832
+      },
+      {
+        "priceLevel": 66401.3,
+        "volume": 10197.913792366635,
+        "buyVolume": 4265.571166947802,
+        "sellVolume": 5932.342625418832
+      },
+      {
+        "priceLevel": 66543.9,
+        "volume": 10367.308227866633,
+        "buyVolume": 4083.934759947802,
+        "sellVolume": 6283.373467918832
+      },
+      {
+        "priceLevel": 66686.5,
+        "volume": 10739.33902658092,
+        "buyVolume": 4615.010635662087,
+        "sellVolume": 6124.328390918831
+      },
+      {
+        "priceLevel": 66829.1,
+        "volume": 9068.00905683092,
+        "buyVolume": 4615.010635662087,
+        "sellVolume": 4452.9984211688325
+      },
+      {
+        "priceLevel": 66971.7,
+        "volume": 8593.281558808942,
+        "buyVolume": 4615.010635662087,
+        "sellVolume": 3978.2709231468534
+      },
+      {
+        "priceLevel": 67114.3,
+        "volume": 9281.33614822561,
+        "buyVolume": 4227.830619662088,
+        "sellVolume": 5053.505528563519
+      },
+      {
+        "priceLevel": 67256.9,
+        "volume": 9091.429309297038,
+        "buyVolume": 4553.452088233516,
+        "sellVolume": 4537.97722106352
+      },
+      {
+        "priceLevel": 67399.5,
+        "volume": 8465.167815547038,
+        "buyVolume": 3927.190594483516,
+        "sellVolume": 4537.97722106352
+      },
+      {
+        "priceLevel": 67542.1,
+        "volume": 7643.112775686897,
+        "buyVolume": 3429.6090537142863,
+        "sellVolume": 4213.503721972611
+      },
+      {
+        "priceLevel": 67684.7,
+        "volume": 7070.44288932326,
+        "buyVolume": 3429.6090537142863,
+        "sellVolume": 3640.833835608974
+      },
+      {
+        "priceLevel": 67827.3,
+        "volume": 8276.347396545481,
+        "buyVolume": 4635.513560936508,
+        "sellVolume": 3640.833835608974
+      },
+      {
+        "priceLevel": 67969.9,
+        "volume": 9448.249917434372,
+        "buyVolume": 4926.615853936508,
+        "sellVolume": 4521.634063497863
+      },
+      {
+        "priceLevel": 68112.5,
+        "volume": 9826.555486184372,
+        "buyVolume": 4350.832333936508,
+        "sellVolume": 5475.723152247863
+      },
+      {
+        "priceLevel": 68255.1,
+        "volume": 9457.538201601039,
+        "buyVolume": 4350.832333936508,
+        "sellVolume": 5106.70586766453
+      },
+      {
+        "priceLevel": 68397.7,
+        "volume": 10876.169014656592,
+        "buyVolume": 6352.567976992063,
+        "sellVolume": 4523.60103766453
+      },
+      {
+        "priceLevel": 68540.3,
+        "volume": 9547.802381656593,
+        "buyVolume": 4543.450343992064,
+        "sellVolume": 5004.35203766453
+      },
+      {
+        "priceLevel": 68682.9,
+        "volume": 8095.092738608973,
+        "buyVolume": 3676.5520782777776,
+        "sellVolume": 4418.540660331197
+      },
+      {
+        "priceLevel": 68825.5,
+        "volume": 7480.489410916665,
+        "buyVolume": 3676.5520782777776,
+        "sellVolume": 3803.9373326388886
+      },
+      {
+        "priceLevel": 68968.1,
+        "volume": 6254.798023416666,
+        "buyVolume": 2450.8606907777776,
+        "sellVolume": 3803.9373326388886
+      },
+      {
+        "priceLevel": 69110.7,
+        "volume": 5346.028494527778,
+        "buyVolume": 1575.0284585555555,
+        "sellVolume": 3771.000035972222
+      },
+      {
+        "priceLevel": 69253.3,
+        "volume": 3752.9275877222226,
+        "buyVolume": 2205.2510360555557,
+        "sellVolume": 1547.6765516666667
+      },
+      {
+        "priceLevel": 69395.9,
+        "volume": 2953.9433847222226,
+        "buyVolume": 1406.2668330555557,
+        "sellVolume": 1547.6765516666667
+      },
+      {
+        "priceLevel": 69538.5,
+        "volume": 2953.9433847222226,
+        "buyVolume": 1406.2668330555557,
+        "sellVolume": 1547.6765516666667
+      },
+      {
+        "priceLevel": 69681.1,
+        "volume": 2177.899129166667,
+        "buyVolume": 630.2225775,
+        "sellVolume": 1547.6765516666667
+      },
+      {
+        "priceLevel": 69823.7,
+        "volume": 2731.520545416667,
+        "buyVolume": 630.2225775,
+        "sellVolume": 2101.2979679166665
+      },
+      {
+        "priceLevel": 69966.3,
+        "volume": 1728.7132687500002,
+        "buyVolume": 630.2225775,
+        "sellVolume": 1098.49069125
+      },
+      {
+        "priceLevel": 70108.9,
+        "volume": 1728.7132687500002,
+        "buyVolume": 630.2225775,
+        "sellVolume": 1098.49069125
+      },
+      {
+        "priceLevel": 70251.5,
+        "volume": 1183.8439937500002,
+        "buyVolume": 630.2225775,
+        "sellVolume": 553.62141625
+      },
+      {
+        "priceLevel": 70394.1,
+        "volume": 1974.42109875,
+        "buyVolume": 1420.7996825,
+        "sellVolume": 553.62141625
+      },
+      {
+        "priceLevel": 70536.7,
+        "volume": 3305.4771763636368,
+        "buyVolume": 1818.98089375,
+        "sellVolume": 1486.4962826136366
+      },
+      {
+        "priceLevel": 70679.3,
+        "volume": 5427.631552474748,
+        "buyVolume": 3376.4939048611113,
+        "sellVolume": 2051.1376476136365
+      },
+      {
+        "priceLevel": 70821.9,
+        "volume": 6244.822600252526,
+        "buyVolume": 4193.684952638889,
+        "sellVolume": 2051.1376476136365
+      },
+      {
+        "priceLevel": 70964.5,
+        "volume": 5060.9786065025255,
+        "buyVolume": 3563.462375138889,
+        "sellVolume": 1497.5162313636365
+      },
+      {
+        "priceLevel": 71107.1,
+        "volume": 5060.9786065025255,
+        "buyVolume": 3563.462375138889,
+        "sellVolume": 1497.5162313636365
+      },
+      {
+        "priceLevel": 71249.7,
+        "volume": 4270.401501502526,
+        "buyVolume": 2772.885270138889,
+        "sellVolume": 1497.5162313636365
+      },
+      {
+        "priceLevel": 71392.3,
+        "volume": 4270.401501502526,
+        "buyVolume": 2772.885270138889,
+        "sellVolume": 1497.5162313636365
+      },
+      {
+        "priceLevel": 71534.9,
+        "volume": 2856.370169835859,
+        "buyVolume": 1923.4953034722223,
+        "sellVolume": 932.8748663636364
+      },
+      {
+        "priceLevel": 71677.5,
+        "volume": 2458.188958585859,
+        "buyVolume": 1525.3140922222224,
+        "sellVolume": 932.8748663636364
+      },
+      {
+        "priceLevel": 71820.1,
+        "volume": 2458.188958585859,
+        "buyVolume": 1525.3140922222224,
+        "sellVolume": 932.8748663636364
+      },
+      {
+        "priceLevel": 71962.7,
+        "volume": 1750.0659141414144,
+        "buyVolume": 817.1910477777778,
+        "sellVolume": 932.8748663636364
+      }
+    ],
+    "poc": 68397.7,
+    "vah": 69039.40000000001,
+    "val": 65902.2,
+    "hvn": [
+      66686.5,
+      67114.3,
+      68112.5,
+      68397.7
+    ],
+    "lvn": [
+      65260.5,
+      69966.3,
+      71677.5
+    ]
+  }
+}

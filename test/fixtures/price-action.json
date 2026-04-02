@@ -1,0 +1,194 @@
+{
+  "patternsAtIdx": [
+    {
+      "type": "outside_bar",
+      "direction": "bearish",
+      "strength": 0.7,
+      "idx": 199
+    }
+  ],
+  "patternScan": [
+    {
+      "idx": 180,
+      "patterns": [
+        {
+          "type": "outside_bar",
+          "direction": "bearish",
+          "strength": 0.7,
+          "idx": 180
+        }
+      ]
+    },
+    {
+      "idx": 181,
+      "patterns": [
+        {
+          "type": "bullish_engulfing",
+          "direction": "bullish",
+          "strength": 1,
+          "idx": 181
+        }
+      ]
+    },
+    {
+      "idx": 182,
+      "patterns": []
+    },
+    {
+      "idx": 183,
+      "patterns": [
+        {
+          "type": "doji",
+          "direction": "neutral",
+          "strength": 0.4,
+          "idx": 183
+        }
+      ]
+    },
+    {
+      "idx": 184,
+      "patterns": [
+        {
+          "type": "doji",
+          "direction": "neutral",
+          "strength": 0.4,
+          "idx": 184
+        },
+        {
+          "type": "outside_bar",
+          "direction": "bearish",
+          "strength": 0.7,
+          "idx": 184
+        }
+      ]
+    },
+    {
+      "idx": 185,
+      "patterns": []
+    },
+    {
+      "idx": 186,
+      "patterns": [
+        {
+          "type": "inside_bar",
+          "direction": "bullish",
+          "strength": 0.5,
+          "idx": 186
+        }
+      ]
+    },
+    {
+      "idx": 187,
+      "patterns": []
+    },
+    {
+      "idx": 188,
+      "patterns": [
+        {
+          "type": "inside_bar",
+          "direction": "bearish",
+          "strength": 0.5,
+          "idx": 188
+        }
+      ]
+    },
+    {
+      "idx": 189,
+      "patterns": []
+    },
+    {
+      "idx": 190,
+      "patterns": [
+        {
+          "type": "doji",
+          "direction": "neutral",
+          "strength": 0.4,
+          "idx": 190
+        }
+      ]
+    },
+    {
+      "idx": 191,
+      "patterns": []
+    },
+    {
+      "idx": 192,
+      "patterns": [
+        {
+          "type": "inside_bar",
+          "direction": "bullish",
+          "strength": 0.5,
+          "idx": 192
+        }
+      ]
+    },
+    {
+      "idx": 193,
+      "patterns": []
+    },
+    {
+      "idx": 194,
+      "patterns": []
+    },
+    {
+      "idx": 195,
+      "patterns": [
+        {
+          "type": "doji",
+          "direction": "neutral",
+          "strength": 0.4,
+          "idx": 195
+        },
+        {
+          "type": "inside_bar",
+          "direction": "bullish",
+          "strength": 0.5,
+          "idx": 195
+        }
+      ]
+    },
+    {
+      "idx": 196,
+      "patterns": [
+        {
+          "type": "outside_bar",
+          "direction": "bullish",
+          "strength": 0.7,
+          "idx": 196
+        }
+      ]
+    },
+    {
+      "idx": 197,
+      "patterns": []
+    },
+    {
+      "idx": 198,
+      "patterns": [
+        {
+          "type": "doji",
+          "direction": "neutral",
+          "strength": 0.4,
+          "idx": 198
+        },
+        {
+          "type": "inside_bar",
+          "direction": "bearish",
+          "strength": 0.5,
+          "idx": 198
+        }
+      ]
+    },
+    {
+      "idx": 199,
+      "patterns": [
+        {
+          "type": "outside_bar",
+          "direction": "bearish",
+          "strength": 0.7,
+          "idx": 199
+        }
+      ]
+    }
+  ]
+}
