@@ -436,3 +436,51 @@ Mode: **BIG CHANGE** — full interactive review (Architecture → Code Quality 
 - Test Review: ~35 new/fixed tests planned, 0 gaps. /closeall state machine has 4 dedicated transition tests.
 - Performance: 0 blocking issues. FOUC fix noted.
 - Failure modes: 13 mapped, 0 critical gaps (no row with Test=N AND ErrorHandling=N AND Silent=Y).
+
+---
+
+## Sprint 4.5 CEO Review (2026-04-02)
+
+Mode: **HOLD SCOPE** — multi-strategy is structural refactor, not greenfield.
+
+Sprint 4 DoD: ALL 16/16 CONFIRMED. 936 tests pass.
+
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| V1 | Strategy dispatch | **Fan-out registry** (replace global `activeStrategy` mutable) | All registered strategies run per tick. No switch/case, no global state |
+| V2 | Agent state key | **`coin:strategyId`** | Same coin can be traded by different strategies simultaneously (independent signals) |
+| V3 | Exchange isolation | **Agent wallet per strategy** (software-enforced capital allocation) | HL agent wallets share main account balance. ExchangePool keyed by strategyId |
+| V4 | DB migration | **`strategy_id TEXT DEFAULT 'layered'`** on existing tables | Zero data migration. Existing rows auto-tagged 'layered'. Additive columns |
+| V5 | Single-strategy compat | **Feature flag via `STRATEGY_WALLETS` env** | No env var = single wallet mode (Sprint 4 behavior unchanged) |
+| V6 | Risk isolation | **Per-strategy CB + portfolio cap** | Each strategy has own daily PnL limit + circuit breakers. Global exposure cap |
+| V7 | Correlation guard | **Cross-strategy allowed (independent)** | Different strategies CAN hold same coin. They're independent signals |
+| V8 | Capital allocation | **Fixed % per strategy in config** | PositionSizer uses allocated capital fraction, not total balance |
+
+### CEO Review Findings
+- Architecture: 0 issues — registry + pool patterns clean
+- Errors: 7 paths mapped, 1 GAP resolved (signal validation in registry.runAll)
+- Security: 1 item — don't log STRATEGY_WALLETS JSON (contains private keys)
+- Edge cases: 6 mapped, 1 GAP resolved (strategy removal blocked if open positions)
+- Failure modes: 8 mapped, 0 critical gaps
+
+---
+
+## Sprint 4.5 Eng Review (2026-04-02)
+
+Mode: **BIG CHANGE** — full interactive review.
+
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| E25 | ExchangeService parameterization | **Constructor injection** with optional WalletConfig | Minimal diff, explicit > clever. Fallback to env if no config provided |
+| E26 | Setup event routing | **Single emitter + strategyId in ActiveSetup** | DRY — one emitter, agent filters by setup.strategyId. No duplicate infrastructure |
+| E27 | PipelineStats isolation | **Per-strategy stats Map** `Map<strategyId, PipelineStats>` | Explicit, no stat inflation. Backtest + dashboard filter by strategy |
+| E28 | Agent file structure | **Extract orchestrator to separate file** | 776L file + new per-strategy logic warrants split. Pure handlers stay in trading-agent.ts |
+| E29 | Schema debt fix | **Fix cloid + fill_size in migration 005** alongside strategy_id | DRY — one migration. Clears 2 existing TODOs from order-manager.ts lines 241, 247 |
+| E30 | Strategy removal guard | **Block disable if open positions** | Safety first. Must close all positions before removing/disabling strategy |
+
+### Eng Review Findings
+- Architecture: 3 issues found, all resolved (exchange init, event routing, stats isolation)
+- Code Quality: 3 issues found, all resolved (setupId ripple, agent file split, schema debt)
+- Test Review: diagram produced, 0 gaps (4 new test files + 3 extended, ~60-80 new tests)
+- Performance: 0 issues (registry fan-out, exchange pool, per-strategy stats all O(1))
+- Failure modes: 8 mapped, 0 critical gaps
