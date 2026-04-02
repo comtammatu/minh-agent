@@ -10,6 +10,9 @@ import type { PipelineStats } from '../scanner/pipeline.js'
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
+export type StrategyType = 'layered' | 'quant'
+export type ExitMode = 'multi' | 'single'
+
 export interface BacktestConfig {
   /** Coins to replay. */
   coins: string[]
@@ -21,6 +24,10 @@ export interface BacktestConfig {
   slippagePct: number
   /** Commission as fraction per trade (0.0003 = 0.03%). Applied to entry + exit. */
   commissionPct: number
+  /** Strategy to use. Default 'layered' (5-layer Wyckoff/SMC pipeline). */
+  strategy?: StrategyType
+  /** Exit mode. 'multi' = TP1/TP2/trailing partials (default). 'single' = one SL + one TP, 100% close. */
+  exitMode?: ExitMode
 }
 
 // ─── Partial Close Detail ──────────────────────────────────────────────────
@@ -139,6 +146,37 @@ export interface WalkForwardWindow {
   testMetrics: BacktestMetrics
 }
 
+/** Bootstrap confidence interval for expectancy. */
+export interface ExpectancyCI {
+  lower: number
+  upper: number
+  mean: number
+}
+
+/** Per-window OOS consistency breakdown. */
+export interface WindowConsistency {
+  /** Number of OOS windows with positive expectancy. */
+  consistentWindows: number
+  /** Total OOS windows with at least 1 trade. */
+  totalWindows: number
+  /** Fraction of windows with positive expectancy (0–1). */
+  ratio: number
+}
+
+/** Detailed gate breakdown — which sub-gates passed/failed. */
+export interface GateDetail {
+  /** OOS totalTrades >= WF_MIN_OOS_TRADES. */
+  minTrades: boolean
+  /** OOS expectancy > 0. */
+  positiveExpectancy: boolean
+  /** Bootstrap CI lower bound > 0 (statistically significant). */
+  ciLowerPositive: boolean
+  /** >= WF_MIN_WINDOW_CONSISTENCY fraction of OOS windows profitable. */
+  windowConsistent: boolean
+  /** overfitRatio <= WF_OVERFIT_THRESHOLD. */
+  notOverfit: boolean
+}
+
 export interface WalkForwardResult {
   /** All window results. */
   windows: WalkForwardWindow[]
@@ -148,6 +186,12 @@ export interface WalkForwardResult {
   isMetrics: BacktestMetrics
   /** Overfitting ratio: IS expectancy / OOS expectancy. >2 = flag. */
   overfitRatio: number
-  /** Whether strategy passes minimum viability (OOS expectancy > 0). */
+  /** Whether strategy passes ALL statistical gates. */
   passesGate: boolean
+  /** Bootstrap 95% CI for OOS expectancy. */
+  oosExpectancyCI: ExpectancyCI
+  /** Per-window OOS consistency. */
+  windowConsistency: WindowConsistency
+  /** Detailed gate breakdown (which sub-gates passed/failed). */
+  gateDetail: GateDetail
 }

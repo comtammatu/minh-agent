@@ -17,8 +17,8 @@
  */
 
 import { describe, test, expect } from 'bun:test'
-import { walkForward } from '../../src/backtest/walk-forward.js'
-import type { BacktestConfig, WalkForwardConfig } from '../../src/backtest/types.js'
+import { walkForward, bootstrapExpectancyCI, perWindowConsistency, formatGateReport } from '../../src/backtest/walk-forward.js'
+import type { BacktestConfig, BacktestTrade, WalkForwardConfig, WalkForwardWindow, BacktestMetrics } from '../../src/backtest/types.js'
 import type { Candle, CandleInterval } from '../../src/types.js'
 
 // ─── Test Helpers ───────────────────────────────────────────────────────────
@@ -323,7 +323,242 @@ describe('walkForward — overfit detection', () => {
     if (result.isMetrics.expectancy > 0 && result.oosMetrics.expectancy <= 0) {
       expect(result.overfitRatio).toBe(Infinity)
     }
-    // Either way, the gate should reflect OOS
-    expect(result.passesGate).toBe(result.oosMetrics.expectancy > 0)
+    // Gate now requires all sub-gates, not just expectancy > 0
+    expect(result.gateDetail).toBeDefined()
+  })
+})
+
+// ─── Bootstrap CI ─────────────────────────────────────────────────────────
+
+function makeTrade(pnl: number): BacktestTrade {
+  return {
+    coin: 'BTC', interval: '1h' as CandleInterval, side: 'long' as const,
+    patternType: 'price-action' as const, confluenceGrade: 'B' as const,
+    entryPrice: 40000, exitPrice: pnl > 0 ? 40000 + pnl : 40000 + pnl,
+    slPrice: 39000, tpPrice: 41000, sizeUsd: 1000,
+    entryTime: Date.now(), exitTime: Date.now() + 3600000,
+    holdingBars: 10, pnl, pnlPct: pnl / 1000,
+    exitReason: pnl > 0 ? 'tp_hit' : 'sl_hit',
+  }
+}
+
+describe('bootstrapExpectancyCI', () => {
+  test('returns zero CI for empty trades', () => {
+    const ci = bootstrapExpectancyCI([], 100, 0.95)
+    expect(ci.lower).toBe(0)
+    expect(ci.upper).toBe(0)
+    expect(ci.mean).toBe(0)
+  })
+
+  test('CI contains true mean for consistent winners', () => {
+    // 50 trades all winning $100 each → expectancy ~$100, CI should be tight and positive
+    const trades = Array.from({ length: 50 }, () => makeTrade(100))
+    const ci = bootstrapExpectancyCI(trades, 1000, 0.95)
+
+    expect(ci.lower).toBeGreaterThan(0)
+    expect(ci.upper).toBeGreaterThan(0)
+    expect(ci.mean).toBeCloseTo(100, 0)
+  })
+
+  test('CI lower bound < 0 for all losers', () => {
+    const trades = Array.from({ length: 50 }, () => makeTrade(-100))
+    const ci = bootstrapExpectancyCI(trades, 1000, 0.95)
+
+    expect(ci.lower).toBeLessThan(0)
+    expect(ci.upper).toBeLessThan(0)
+    expect(ci.mean).toBeCloseTo(-100, 0)
+  })
+
+  test('CI spans zero for mixed results near breakeven', () => {
+    // 25 wins of $100, 25 losses of $100 → expectancy ~0
+    const trades = [
+      ...Array.from({ length: 25 }, () => makeTrade(100)),
+      ...Array.from({ length: 25 }, () => makeTrade(-100)),
+    ]
+    const ci = bootstrapExpectancyCI(trades, 1000, 0.95)
+
+    // With balanced wins/losses, CI should span zero or be very close
+    expect(ci.lower).toBeLessThan(ci.upper)
+    expect(Math.abs(ci.mean)).toBeLessThan(30) // roughly around 0
+  })
+
+  test('is deterministic (seeded PRNG)', () => {
+    const trades = Array.from({ length: 30 }, (_, i) => makeTrade(i % 2 === 0 ? 50 : -30))
+    const ci1 = bootstrapExpectancyCI(trades, 500, 0.95)
+    const ci2 = bootstrapExpectancyCI(trades, 500, 0.95)
+    expect(ci1.lower).toBe(ci2.lower)
+    expect(ci1.upper).toBe(ci2.upper)
+    expect(ci1.mean).toBe(ci2.mean)
+  })
+})
+
+// ─── Per-Window Consistency ────────────────────────────────────────────────
+
+function makeWindowMetrics(expectancy: number, totalTrades: number): BacktestMetrics {
+  return {
+    totalTrades, wins: 0, losses: 0, winRate: 0,
+    grossProfit: 0, grossLoss: 0, netPnl: 0, profitFactor: 0,
+    avgWin: 0, avgLoss: 0, avgPnl: 0, avgRR: 0, avgHoldingBars: 0,
+    expectancy, maxDrawdown: 0, maxDrawdownDuration: 0,
+    sharpeRatio: 0, sortinoRatio: 0, calmarRatio: 0,
+  }
+}
+
+function makeWindow(index: number, testExpectancy: number, testTrades: number): WalkForwardWindow {
+  return {
+    index,
+    trainStart: 0, trainEnd: 1, testStart: 1, testEnd: 2,
+    trainMetrics: makeWindowMetrics(0, 0),
+    testMetrics: makeWindowMetrics(testExpectancy, testTrades),
+  }
+}
+
+describe('perWindowConsistency', () => {
+  test('returns zero for empty windows', () => {
+    const c = perWindowConsistency([])
+    expect(c.ratio).toBe(0)
+    expect(c.totalWindows).toBe(0)
+  })
+
+  test('skips windows with 0 trades', () => {
+    const windows = [
+      makeWindow(0, 100, 5),   // has trades, positive
+      makeWindow(1, 0, 0),     // no trades — skip
+      makeWindow(2, -50, 3),   // has trades, negative
+    ]
+    const c = perWindowConsistency(windows)
+    expect(c.totalWindows).toBe(2)    // only 2 with trades
+    expect(c.consistentWindows).toBe(1) // only window 0 positive
+    expect(c.ratio).toBe(0.5)
+  })
+
+  test('all consistent → ratio 1.0', () => {
+    const windows = [
+      makeWindow(0, 50, 10),
+      makeWindow(1, 30, 8),
+      makeWindow(2, 100, 12),
+    ]
+    const c = perWindowConsistency(windows)
+    expect(c.ratio).toBe(1.0)
+  })
+
+  test('none consistent → ratio 0.0', () => {
+    const windows = [
+      makeWindow(0, -50, 5),
+      makeWindow(1, -30, 3),
+    ]
+    const c = perWindowConsistency(windows)
+    expect(c.ratio).toBe(0)
+  })
+})
+
+// ─── Gate Detail ──────────────────────────────────────────────────────────
+
+describe('walkForward — gate detail', () => {
+  test('result includes gateDetail with all sub-gates', () => {
+    const startMs = Date.UTC(2025, 0, 1)
+    const hourMs = 60 * 60 * 1000
+    const candles = generateCandleSeries(startMs, 90 * 24, hourMs, 40000)
+
+    const wfConfig: WalkForwardConfig = {
+      backtestConfig: baseConfig,
+      trainWindowMs: 14 * DAY_MS,
+      testWindowMs: 7 * DAY_MS,
+      stepMs: 7 * DAY_MS,
+    }
+
+    const candleMap = new Map([['BTC|1h', candles]])
+    const result = walkForward(candleMap, wfConfig)
+
+    // gateDetail should have all 5 boolean fields
+    expect(typeof result.gateDetail.minTrades).toBe('boolean')
+    expect(typeof result.gateDetail.positiveExpectancy).toBe('boolean')
+    expect(typeof result.gateDetail.ciLowerPositive).toBe('boolean')
+    expect(typeof result.gateDetail.windowConsistent).toBe('boolean')
+    expect(typeof result.gateDetail.notOverfit).toBe('boolean')
+
+    // passesGate = AND of all sub-gates
+    const expected = result.gateDetail.minTrades &&
+      result.gateDetail.positiveExpectancy &&
+      result.gateDetail.ciLowerPositive &&
+      result.gateDetail.windowConsistent &&
+      result.gateDetail.notOverfit
+    expect(result.passesGate).toBe(expected)
+  })
+
+  test('passesGate false when < 30 OOS trades even if expectancy > 0', () => {
+    // With the current pipeline producing near 0 trades on synthetic data,
+    // the min trades gate should fail
+    const startMs = Date.UTC(2025, 0, 1)
+    const hourMs = 60 * 60 * 1000
+    const candles = generateCandleSeries(startMs, 90 * 24, hourMs, 40000)
+
+    const wfConfig: WalkForwardConfig = {
+      backtestConfig: baseConfig,
+      trainWindowMs: 14 * DAY_MS,
+      testWindowMs: 7 * DAY_MS,
+      stepMs: 7 * DAY_MS,
+    }
+
+    const candleMap = new Map([['BTC|1h', candles]])
+    const result = walkForward(candleMap, wfConfig)
+
+    // Synthetic data produces ~0 trades → minTrades should fail
+    if (result.oosMetrics.totalTrades < 30) {
+      expect(result.gateDetail.minTrades).toBe(false)
+      expect(result.passesGate).toBe(false)
+    }
+  })
+
+  test('oosExpectancyCI and windowConsistency are populated', () => {
+    const startMs = Date.UTC(2025, 0, 1)
+    const hourMs = 60 * 60 * 1000
+    const candles = generateCandleSeries(startMs, 60 * 24, hourMs, 40000)
+
+    const wfConfig: WalkForwardConfig = {
+      backtestConfig: baseConfig,
+      trainWindowMs: 14 * DAY_MS,
+      testWindowMs: 7 * DAY_MS,
+      stepMs: 7 * DAY_MS,
+    }
+
+    const candleMap = new Map([['BTC|1h', candles]])
+    const result = walkForward(candleMap, wfConfig)
+
+    expect(result.oosExpectancyCI).toBeDefined()
+    expect(typeof result.oosExpectancyCI.lower).toBe('number')
+    expect(typeof result.oosExpectancyCI.upper).toBe('number')
+    expect(typeof result.oosExpectancyCI.mean).toBe('number')
+
+    expect(result.windowConsistency).toBeDefined()
+    expect(typeof result.windowConsistency.ratio).toBe('number')
+  })
+})
+
+// ─── Format Gate Report ──────────────────────────────────────────────────
+
+describe('formatGateReport', () => {
+  test('produces readable string with all gates', () => {
+    const startMs = Date.UTC(2025, 0, 1)
+    const hourMs = 60 * 60 * 1000
+    const candles = generateCandleSeries(startMs, 60 * 24, hourMs, 40000)
+
+    const wfConfig: WalkForwardConfig = {
+      backtestConfig: baseConfig,
+      trainWindowMs: 14 * DAY_MS,
+      testWindowMs: 7 * DAY_MS,
+      stepMs: 7 * DAY_MS,
+    }
+
+    const candleMap = new Map([['BTC|1h', candles]])
+    const result = walkForward(candleMap, wfConfig)
+    const report = formatGateReport(result)
+
+    expect(report).toContain('WFA STATISTICAL GATE REPORT')
+    expect(report).toContain('Min OOS trades')
+    expect(report).toContain('Bootstrap 95% CI')
+    expect(report).toContain('Window consistency')
+    expect(report).toContain('Overfit ratio')
+    expect(report).toMatch(/PASS|FAIL/)
   })
 })

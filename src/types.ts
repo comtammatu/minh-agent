@@ -30,6 +30,7 @@ export type PatternType =
   | 'vsa-signal'
   | 'price-action'
   | 'volume-profile'
+  | 'ema-rsi'
 
 export interface Signal {
   type: PatternType

@@ -16,9 +16,9 @@
  */
 
 import type { Candle, ActiveSetup, SignalSide, CandleInterval } from '../types.js'
-import type { BacktestTrade, PartialCloseDetail } from './types.js'
+import type { BacktestTrade, PartialCloseDetail, ExitMode } from './types.js'
 import { computePositionSize } from '../agent/exits.js'
-import { DEFAULT_RISK_PERCENT, MULTI_TP_SPLIT, TRAIL_ACTIVATION_R } from '../config.js'
+import { DEFAULT_RISK_PERCENT, MULTI_TP_SPLIT, TRAIL_ACTIVATION_R, QUANT_ATR_SL_MULT, QUANT_ATR_TP_MULT } from '../config.js'
 
 // ─── Open Position ──────────────────────────────────────────────────────────
 
@@ -69,11 +69,13 @@ export class TradeSimulator {
   private equity: number
   private slippagePct: number
   private commissionPct: number
+  private exitMode: ExitMode
 
-  constructor(initialCapital: number, slippagePct: number, commissionPct: number) {
+  constructor(initialCapital: number, slippagePct: number, commissionPct: number, exitMode: ExitMode = 'multi') {
     this.equity = initialCapital
     this.slippagePct = slippagePct
     this.commissionPct = commissionPct
+    this.exitMode = exitMode
   }
 
   /**
@@ -101,8 +103,18 @@ export class TradeSimulator {
       ? candle.o + candle.o * this.slippagePct
       : candle.o - candle.o * this.slippagePct
 
-    // Position sizing using fill price
-    const sizeCoins = computePositionSize(this.equity, DEFAULT_RISK_PERCENT, fillPrice, slPrice)
+    // Single-exit mode: recalculate SL/TP from actual fill price (not signal close)
+    let actualSl = slPrice
+    let actualTp = tpPrice
+    if (this.exitMode === 'single' && atrValue > 0) {
+      const slDist = atrValue * QUANT_ATR_SL_MULT
+      const tpDist = atrValue * QUANT_ATR_TP_MULT
+      actualSl = side === 'long' ? fillPrice - slDist : fillPrice + slDist
+      actualTp = side === 'long' ? fillPrice + tpDist : fillPrice - tpDist
+    }
+
+    // Position sizing using fill price and actual SL
+    const sizeCoins = computePositionSize(this.equity, DEFAULT_RISK_PERCENT, fillPrice, actualSl)
     const sizeUsd = sizeCoins * fillPrice
     if (sizeUsd <= 0) return
 
@@ -110,7 +122,9 @@ export class TradeSimulator {
     this.equity -= sizeUsd * this.commissionPct
 
     // TP2 from patternData (set by computeStructureTargets in trigger.ts)
-    const tp2 = (setup.patternData['tp2Price'] as number | undefined) ?? tpPrice
+    const tp2 = this.exitMode === 'single'
+      ? actualTp  // single-exit: TP2 = TP1 (only one target)
+      : (setup.patternData['tp2Price'] as number | undefined) ?? tpPrice
 
     this.positions.set(setup.coin, {
       coin: setup.coin,
@@ -118,9 +132,9 @@ export class TradeSimulator {
       setup,
       side,
       entryPrice: fillPrice,
-      slPrice,
-      currentSlPrice: slPrice,
-      tp1Price: tpPrice,   // signal.tpPrice = TP1 (zone-based)
+      slPrice: actualSl,
+      currentSlPrice: actualSl,
+      tp1Price: actualTp,
       tp2Price: tp2,
       sizeUsd,
       entryTime: candle.t,
@@ -156,6 +170,25 @@ export class TradeSimulator {
     if (!pos) return
 
     const holdBars = barIndex - pos.entryBarIndex
+
+    // ── Single-exit mode: one SL, one TP, 100% close ──
+    if (this.exitMode === 'single') {
+      if (this.isSLHit(pos, candle)) {
+        pos.partialCloses.push({ price: pos.currentSlPrice, sizePct: 1.0, bar: holdBars, reason: 'sl_hit' })
+        pos.remainingSizePct = 0
+        this.finalizePosition(pos, barIndex, candle.t, 'sl_hit')
+        return
+      }
+      if (this.isTPHit(pos, candle, pos.tp1Price)) {
+        pos.partialCloses.push({ price: pos.tp1Price, sizePct: 1.0, bar: holdBars, reason: 'tp1_zone' })
+        pos.remainingSizePct = 0
+        this.finalizePosition(pos, barIndex, candle.t, 'tp_hit')
+        return
+      }
+      return  // single-exit: no trailing, no partials
+    }
+
+    // ── Multi-exit mode (original) ──
 
     // ── 1. SL check (against current SL — may have moved to breakeven) ──
     if (this.isSLHit(pos, candle)) {

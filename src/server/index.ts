@@ -110,6 +110,7 @@ async function runBrowserBacktest(
   months: number,
   initialCapital: number,
   name: string | null,
+  strategy: 'layered' | 'quant' = 'layered',
 ): Promise<void> {
   try {
     // Phase 1: Download data
@@ -145,6 +146,7 @@ async function runBrowserBacktest(
       initialCapital,
       slippagePct: BACKTEST_SLIPPAGE_PCT,
       commissionPct: BACKTEST_COMMISSION_PCT,
+      strategy,
     }
 
     const result = await runBacktestAsync(candles, config, (p: BacktestProgress) => {
@@ -454,7 +456,7 @@ function createApp() {
         return { error: 'backtest_running', message: `Backtest ${activeBacktestRunId} already in progress` }
       }
 
-      const { coins, timeframes, months, initialCapital, name } = body
+      const { coins, timeframes, months, initialCapital, name, strategy } = body
 
       // Validate months cap
       if (months > MAX_BACKTEST_MONTHS) {
@@ -471,7 +473,7 @@ function createApp() {
       activeBacktestRunId = runId
 
       // Fire-and-forget — progress via SSE
-      runBrowserBacktest(runId, coins, timeframes, months, initialCapital, name ?? null)
+      runBrowserBacktest(runId, coins, timeframes, months, initialCapital, name ?? null, (strategy as 'layered' | 'quant') ?? 'layered')
 
       return { runId }
     }, {
@@ -481,6 +483,7 @@ function createApp() {
         months: t.Number({ minimum: 1, maximum: 12 }),
         initialCapital: t.Number({ minimum: 100 }),
         name: t.Optional(t.String()),
+        strategy: t.Optional(t.String()),
       }),
     })
 

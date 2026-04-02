@@ -27,6 +27,7 @@ import {
   getPipelineEmitter,
   clearPipelineState,
   getPipelineStats,
+  setStrategy,
 } from '../scanner/pipeline.js'
 import { clearStore, clearOnPersist, getCandles } from '../feed/store.js'
 import { atr } from '../indicators/core.js'
@@ -47,10 +48,12 @@ export function runBacktest(
   clearPipelineState()
   clearStore()
   clearOnPersist()  // prevent DB writes during backtest
+  setStrategy(config.strategy ?? 'layered')
 
   const slippage = config.slippagePct ?? BACKTEST_SLIPPAGE_PCT
   const commission = config.commissionPct ?? BACKTEST_COMMISSION_PCT
-  const simulator = new TradeSimulator(config.initialCapital, slippage, commission)
+  const exitMode = config.exitMode ?? 'multi'
+  const simulator = new TradeSimulator(config.initialCapital, slippage, commission, exitMode)
 
   // ── Wire pipeline → simulator ───────────────────────────────────────────
   const emitter = getPipelineEmitter()
@@ -112,6 +115,7 @@ export function runBacktest(
   } finally {
     // ── Cleanup: remove listener + reset state ──────────────────────────
     emitter.off('setup', onSetup)
+    setStrategy('layered')  // restore default
     clearPipelineState()
     clearStore()
   }
@@ -187,10 +191,12 @@ export async function runBacktestAsync(
   clearPipelineState()
   clearStore()
   clearOnPersist()
+  setStrategy(config.strategy ?? 'layered')
 
   const slippage = config.slippagePct ?? BACKTEST_SLIPPAGE_PCT
   const commission = config.commissionPct ?? BACKTEST_COMMISSION_PCT
-  const simulator = new TradeSimulator(config.initialCapital, slippage, commission)
+  const asyncExitMode = config.exitMode ?? 'multi'
+  const simulator = new TradeSimulator(config.initialCapital, slippage, commission, asyncExitMode)
 
   const emitter = getPipelineEmitter()
   let currentBarIndex = 0
@@ -248,6 +254,7 @@ export async function runBacktestAsync(
     return { config, metrics, trades, equityCurve, pipelineStats: pipelineStatsSnapshot }
   } finally {
     emitter.off('setup', onSetup)
+    setStrategy('layered')
     clearPipelineState()
     clearStore()
   }

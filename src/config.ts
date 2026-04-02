@@ -87,7 +87,7 @@ export const VP_BINS = 50
 export const VP_VALUE_AREA_PCT = 0.7
 
 // Pattern TTL in bars (how long a setup stays active before expiring)
-export const PATTERN_TTL_BARS = {
+export const PATTERN_TTL_BARS: Record<string, number> = {
   'order-block': 20,
   'fvg': 10,
   'spring': 15,
@@ -96,7 +96,8 @@ export const PATTERN_TTL_BARS = {
   'vsa-signal': 8,
   'price-action': 6,
   'volume-profile': 12,
-} as const
+  'ema-rsi': 1,
+}
 
 // ─── Layered Pipeline Config ─────────────────────────────────────────────────
 
@@ -359,6 +360,41 @@ export const WF_MIN_WINDOWS = 2
 
 /** Walk-forward: overfit ratio threshold. IS/OOS > this = flagged. */
 export const WF_OVERFIT_THRESHOLD = 2.0
+
+/** Walk-forward: minimum OOS trades across all windows for statistical validity. */
+export const WF_MIN_OOS_TRADES = 30
+
+/** Walk-forward: bootstrap resampling iterations for CI estimation. */
+export const WF_BOOTSTRAP_ITERATIONS = 1000
+
+/** Walk-forward: confidence level for bootstrap CI (0.95 = 95%). */
+export const WF_CONFIDENCE_LEVEL = 0.95
+
+/** Walk-forward: minimum fraction of OOS windows with positive expectancy. */
+export const WF_MIN_WINDOW_CONSISTENCY = 0.5
+
+// ─── Quant Baseline Strategy ────────────────────────────────────────────────
+
+/** EMA fast period for trend filter. */
+export const QUANT_EMA_FAST = 50
+
+/** EMA slow period for trend filter. */
+export const QUANT_EMA_SLOW = 200
+
+/** RSI period. */
+export const QUANT_RSI_PERIOD = 14
+
+/** RSI oversold threshold — buy signal in uptrend. Relaxed for crypto volatility on higher TFs. */
+export const QUANT_RSI_OVERSOLD = 35
+
+/** RSI overbought threshold — sell signal in downtrend. Relaxed for crypto volatility on higher TFs. */
+export const QUANT_RSI_OVERBOUGHT = 65
+
+/** ATR multiplier for stop loss distance. */
+export const QUANT_ATR_SL_MULT = 2.0
+
+/** ATR multiplier for take profit distance (1.5 R:R). */
+export const QUANT_ATR_TP_MULT = 3.0
 
 // ─── Paper Trade Mode ─────────────────────────────────────────────────────────
 

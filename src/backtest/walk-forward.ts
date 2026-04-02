@@ -15,13 +15,24 @@ import type { Candle, CandleInterval } from '../types.js'
 import type {
   BacktestConfig,
   BacktestMetrics,
+  BacktestTrade,
   WalkForwardConfig,
   WalkForwardResult,
   WalkForwardWindow,
+  ExpectancyCI,
+  WindowConsistency,
+  GateDetail,
 } from './types.js'
 import { runBacktest } from './engine.js'
 import { computeMetrics } from './metrics.js'
-import { WF_MIN_WINDOWS } from '../config.js'
+import {
+  WF_MIN_WINDOWS,
+  WF_MIN_OOS_TRADES,
+  WF_BOOTSTRAP_ITERATIONS,
+  WF_CONFIDENCE_LEVEL,
+  WF_MIN_WINDOW_CONSISTENCY,
+  WF_OVERFIT_THRESHOLD,
+} from '../config.js'
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
@@ -91,9 +102,28 @@ export function walkForward(
     ? isMetrics.expectancy / oosMetrics.expectancy
     : (isMetrics.expectancy > 0 ? Infinity : 0)
 
-  const passesGate = oosMetrics.expectancy > 0
+  // Collect all OOS trades for bootstrap CI
+  const oosTrades = collectOOSTrades(windows, candles, backtestConfig)
+  const oosExpectancyCI = bootstrapExpectancyCI(oosTrades, WF_BOOTSTRAP_ITERATIONS, WF_CONFIDENCE_LEVEL)
+  const windowConsistency = perWindowConsistency(windows)
 
-  return { windows, oosMetrics, isMetrics, overfitRatio, passesGate }
+  // Statistical gate: ALL sub-gates must pass
+  const gateDetail: GateDetail = {
+    minTrades: oosMetrics.totalTrades >= WF_MIN_OOS_TRADES,
+    positiveExpectancy: oosMetrics.expectancy > 0,
+    ciLowerPositive: oosExpectancyCI.lower > 0,
+    windowConsistent: windowConsistency.ratio >= WF_MIN_WINDOW_CONSISTENCY,
+    notOverfit: overfitRatio <= WF_OVERFIT_THRESHOLD,
+  }
+
+  const passesGate =
+    gateDetail.minTrades &&
+    gateDetail.positiveExpectancy &&
+    gateDetail.ciLowerPositive &&
+    gateDetail.windowConsistent &&
+    gateDetail.notOverfit
+
+  return { windows, oosMetrics, isMetrics, overfitRatio, passesGate, oosExpectancyCI, windowConsistency, gateDetail }
 }
 
 // ─── Internal ──────────────────────────────────────────────────────────────
@@ -283,5 +313,144 @@ function emptyResult(): WalkForwardResult {
     isMetrics: zeroMetrics(),
     overfitRatio: 0,
     passesGate: false,
+    oosExpectancyCI: { lower: 0, upper: 0, mean: 0 },
+    windowConsistency: { consistentWindows: 0, totalWindows: 0, ratio: 0 },
+    gateDetail: {
+      minTrades: false,
+      positiveExpectancy: false,
+      ciLowerPositive: false,
+      windowConsistent: false,
+      notOverfit: false,
+    },
   }
+}
+
+// ─── Statistical Validation ────────────────────────────────────────────────
+
+/**
+ * Bootstrap resampling to estimate confidence interval for expectancy.
+ *
+ * Method: sample N trades with replacement × iterations,
+ * compute expectancy per sample, sort, take percentile bounds.
+ *
+ * Uses seeded PRNG for deterministic results in tests.
+ */
+export function bootstrapExpectancyCI(
+  trades: BacktestTrade[],
+  iterations: number = WF_BOOTSTRAP_ITERATIONS,
+  confidenceLevel: number = WF_CONFIDENCE_LEVEL,
+): ExpectancyCI {
+  if (trades.length === 0) {
+    return { lower: 0, upper: 0, mean: 0 }
+  }
+
+  const n = trades.length
+  const expectancies: number[] = []
+
+  // Simple seeded LCG for reproducibility
+  let seed = 42
+  const nextRandom = () => {
+    seed = (seed * 1664525 + 1013904223) & 0x7fffffff
+    return seed / 0x7fffffff
+  }
+
+  for (let iter = 0; iter < iterations; iter++) {
+    // Resample with replacement
+    let totalPnl = 0
+    let wins = 0
+    let winPnl = 0
+    let lossPnl = 0
+
+    for (let i = 0; i < n; i++) {
+      const idx = Math.floor(nextRandom() * n)
+      const trade = trades[idx]!
+      totalPnl += trade.pnl
+      if (trade.pnl > 0) {
+        wins++
+        winPnl += trade.pnl
+      } else {
+        lossPnl += Math.abs(trade.pnl)
+      }
+    }
+
+    const winRate = wins / n
+    const lossRate = 1 - winRate
+    const avgWin = wins > 0 ? winPnl / wins : 0
+    const avgLoss = (n - wins) > 0 ? lossPnl / (n - wins) : 0
+    const expectancy = (winRate * avgWin) - (lossRate * avgLoss)
+    expectancies.push(expectancy)
+  }
+
+  expectancies.sort((a, b) => a - b)
+
+  const alpha = 1 - confidenceLevel
+  const lowerIdx = Math.floor((alpha / 2) * iterations)
+  const upperIdx = Math.floor((1 - alpha / 2) * iterations)
+  const mean = expectancies.reduce((s, e) => s + e, 0) / iterations
+
+  return {
+    lower: expectancies[lowerIdx] ?? 0,
+    upper: expectancies[Math.min(upperIdx, iterations - 1)] ?? 0,
+    mean,
+  }
+}
+
+/**
+ * Check per-window OOS consistency.
+ * Returns fraction of OOS windows (with at least 1 trade) that have positive expectancy.
+ */
+export function perWindowConsistency(windows: WalkForwardWindow[]): WindowConsistency {
+  const windowsWithTrades = windows.filter(w => w.testMetrics.totalTrades > 0)
+  if (windowsWithTrades.length === 0) {
+    return { consistentWindows: 0, totalWindows: 0, ratio: 0 }
+  }
+
+  const consistent = windowsWithTrades.filter(w => w.testMetrics.expectancy > 0).length
+
+  return {
+    consistentWindows: consistent,
+    totalWindows: windowsWithTrades.length,
+    ratio: consistent / windowsWithTrades.length,
+  }
+}
+
+/**
+ * Collect all OOS trades across windows by re-running backtest on each test period.
+ * Needed for bootstrap CI (which requires individual trade PnLs, not aggregated metrics).
+ */
+function collectOOSTrades(
+  windows: WalkForwardWindow[],
+  candles: Map<string, Candle[]>,
+  config: BacktestConfig,
+): BacktestTrade[] {
+  const allTrades: BacktestTrade[] = []
+
+  for (const w of windows) {
+    const testCandles = sliceCandles(candles, w.testStart, w.testEnd)
+    const result = runBacktest(testCandles, config)
+    allTrades.push(...result.trades)
+  }
+
+  return allTrades
+}
+
+/**
+ * Format a human-readable gate report for console or API output.
+ */
+export function formatGateReport(result: WalkForwardResult): string {
+  const { gateDetail, oosMetrics, oosExpectancyCI, windowConsistency, overfitRatio } = result
+  const pass = (b: boolean) => b ? 'PASS' : 'FAIL'
+
+  const lines = [
+    '=== WFA STATISTICAL GATE REPORT ===',
+    `Overall: ${result.passesGate ? 'PASS' : 'FAIL'}`,
+    '',
+    `[${pass(gateDetail.minTrades)}] Min OOS trades: ${oosMetrics.totalTrades} (need >= ${WF_MIN_OOS_TRADES})`,
+    `[${pass(gateDetail.positiveExpectancy)}] OOS expectancy: $${oosMetrics.expectancy.toFixed(2)} (need > 0)`,
+    `[${pass(gateDetail.ciLowerPositive)}] Bootstrap 95% CI: [$${oosExpectancyCI.lower.toFixed(2)}, $${oosExpectancyCI.upper.toFixed(2)}] mean=$${oosExpectancyCI.mean.toFixed(2)} (need lower > 0)`,
+    `[${pass(gateDetail.windowConsistent)}] Window consistency: ${windowConsistency.consistentWindows}/${windowConsistency.totalWindows} (${(windowConsistency.ratio * 100).toFixed(0)}%, need >= ${WF_MIN_WINDOW_CONSISTENCY * 100}%)`,
+    `[${pass(gateDetail.notOverfit)}] Overfit ratio: ${isFinite(overfitRatio) ? overfitRatio.toFixed(2) : '∞'} (need <= ${WF_OVERFIT_THRESHOLD})`,
+    '===================================',
+  ]
+  return lines.join('\n')
 }

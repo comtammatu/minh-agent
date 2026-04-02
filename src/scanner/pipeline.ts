@@ -122,9 +122,14 @@ function zeroPipelineStats(): PipelineStats {
 
 let pipelineStats = zeroPipelineStats()
 
-/** Get current pipeline diagnostic stats. */
+/** Get current pipeline diagnostic stats (snapshot copy). */
 export function getPipelineStats(): PipelineStats {
   return { ...pipelineStats }
+}
+
+/** Get mutable reference to pipeline stats (for sub-pipelines like quant). */
+export function getMutablePipelineStats(): PipelineStats {
+  return pipelineStats
 }
 
 /** Reset pipeline diagnostic stats (call before backtest run). */
@@ -160,6 +165,20 @@ export function formatPipelineStats(stats: PipelineStats): string {
 }
 
 // ── Module-level state ──────────────────────────────────────────────────────
+
+import type { StrategyType } from '../backtest/types.js'
+import { runQuantPipeline, clearQuantState } from './quant-pipeline.js'
+import { QUANT_EMA_SLOW } from '../config.js'
+
+// ── Strategy Selector ────────────────────────────────────────────────────────
+
+let activeStrategy: StrategyType = 'layered'
+
+/** Set active strategy for pipeline dispatch. */
+export function setStrategy(s: StrategyType): void { activeStrategy = s }
+
+/** Get current active strategy. */
+export function getStrategy(): StrategyType { return activeStrategy }
 
 const activeSetups = new Map<string, ActiveSetup>()
 
@@ -216,7 +235,14 @@ export function onCandleTick(
   // Scan on the CLOSED candle (second-to-last)
   const idx = candles.length - 2
 
-  runPipeline(coin, interval, candles, idx)
+  if (activeStrategy === 'quant') {
+    // Quant needs EMA(200) → requires idx >= 199 → need 202+ candles
+    const quantCandles = getCandles(coin, interval, QUANT_EMA_SLOW + 2)
+    const quantIdx = quantCandles.length - 2
+    runQuantPipeline(coin, interval, quantCandles, quantIdx)
+  } else {
+    runPipeline(coin, interval, candles, idx)
+  }
 }
 
 /** Get current status snapshots for all coin/tf combinations. */
@@ -252,6 +278,7 @@ export function clearPipelineState(): void {
   statusState.clear()
   lastCandleTs.clear()
   resetPipelineStats()
+  clearQuantState()
 }
 
 // ── Pipeline ─────────────────────────────────────────────────────────────────
