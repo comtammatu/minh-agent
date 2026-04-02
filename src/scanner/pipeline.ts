@@ -281,9 +281,23 @@ export function clearPipelineState(): void {
   clearQuantState()
 }
 
+// ── Aliases for StrategyRegistry adapter (Sprint 4.5) ────────────────────────
+
+/** Alias for strategy adapter import. Calls the layered 5-layer pipeline. */
+export { runPipeline as runLayeredPipeline }
+
+/** Clear layered pipeline state only (not quant). Used by LayeredStrategyAdapter. */
+export function clearLayeredState(): void {
+  activeSetups.clear()
+  statusState.clear()
+  lastCandleTs.clear()
+  resetPipelineStats()
+}
+
 // ── Pipeline ─────────────────────────────────────────────────────────────────
 
-function runPipeline(
+/** Layered 5-layer Wyckoff/SMC pipeline. Pure computation, emits via pipelineEmitter. */
+export function runPipeline(
   coin: string,
   interval: CandleInterval,
   candles: Candle[],

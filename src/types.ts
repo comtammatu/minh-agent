@@ -55,6 +55,8 @@ export interface ActiveSetup extends Signal {
   detectedAt: number      // timestamp ms
   detectedAtBar: number   // bar index when setup was created (for 0-bar skip)
   expiresAtBar: number    // bar index when detected + TTL
+  /** Strategy that generated this setup (Sprint 4.5). Omitted = 'layered' for backward compat. */
+  strategyId?: string
 }
 
 // ─── Market structure ─────────────────────────────────────────────────────────

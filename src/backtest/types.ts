@@ -10,7 +10,7 @@ import type { PipelineStats } from '../scanner/pipeline.js'
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
-export type StrategyType = 'layered' | 'quant'
+export type StrategyType = 'layered' | 'quant' | 'smc-sd'
 export type ExitMode = 'multi' | 'single'
 
 export interface BacktestConfig {
