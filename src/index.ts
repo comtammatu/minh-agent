@@ -33,9 +33,10 @@ import {
   BACKFILL_CANDLE_COUNT,
   BACKFILL_REPLACEMENT_ROUNDS,
   PAPER_TRADE,
+  MIN_CANDLES_FOR_SCAN,
 } from './config.js'
 import { backfillAllCoins, fetchCandles, probeCoins } from './feed/rest.js'
-import { setCandles, clearCoinData, setOnPersist, appendCandle } from './feed/store.js'
+import { setCandles, clearCoinData, setOnPersist, appendCandle, candleCount } from './feed/store.js'
 import { subscribeCandles, unsubscribeCandles, closeAll, checkStaleness } from './feed/ws.js'
 import { startFundingPolling, stopFundingPolling, addFundingCoin, removeFundingCoin } from './feed/funding.js'
 import { startOiFeed, stopOiFeed, addOiCoin, removeOiCoin } from './feed/asset-ctx.js'
@@ -221,15 +222,20 @@ async function main(): Promise<void> {
     await subscribeCoin(coin)
   }
 
-  // 4. REST backfill all coins — skips coin/TFs already loaded from PG
-  //    (setCandles replaces, so only coins with 0 candles will get full backfill)
-  const backfillResults = await backfillAllCoins(coins, (coin, interval, candles) => {
-    setCandles(coin, interval, candles)
-    // Persist backfilled candles to PG
-    bulkUpsertCandles(coin, interval, candles).catch(err => {
-      log.error('persist', `bulk upsert failed ${coin}|${interval}: ${err instanceof Error ? err.message : String(err)}`)
-    })
-  })
+  // 4. REST backfill all coins — skips coin/TFs already loaded from PG gap-fill
+  const backfillResults = await backfillAllCoins(
+    coins,
+    (coin, interval, candles) => {
+      setCandles(coin, interval, candles)
+      // Persist backfilled candles to PG
+      bulkUpsertCandles(coin, interval, candles).catch(err => {
+        log.error('persist', `bulk upsert failed ${coin}|${interval}: ${err instanceof Error ? err.message : String(err)}`)
+      })
+    },
+    undefined, // concurrency — use default
+    // Skip coin/TFs that already have enough candles from PG gap-fill (step 2)
+    (coin, interval) => candleCount(coin, interval) >= MIN_CANDLES_FOR_SCAN,
+  )
   const tfReady = new Map<string, number>()
   for (const r of backfillResults) tfReady.set(r.coin, r.readyTFs)
 
@@ -292,9 +298,8 @@ async function main(): Promise<void> {
       })
   })
 
-  // 6. Start funding + OI polling for all coins
-  await startFundingPolling(coins)
-  await startOiFeed(coins)
+  // 6. Start funding + OI polling for all coins (independent — run in parallel)
+  await Promise.all([startFundingPolling(coins), startOiFeed(coins)])
 
   // 7. ARMED readiness gate
   const fullyReady = coins.filter(c => (tfReady.get(c) ?? 0) === TIMEFRAMES.length).length

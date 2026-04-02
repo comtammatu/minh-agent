@@ -161,18 +161,37 @@ export async function backfillAllCoins(
   coins: string[],
   onCandles: (coin: string, interval: CandleInterval, candles: Candle[]) => void,
   concurrency = BACKFILL_CONCURRENCY,
+  /** Optional: skip coin/TF pairs already loaded (e.g. from PG gap-fill). */
+  isLoaded?: (coin: string, interval: CandleInterval) => boolean,
 ): Promise<BackfillResult[]> {
   // Build task list: coins × TFs, TF-priority order within each coin
+  // Skip coin/TFs already loaded from PG gap-fill (avoids redundant REST calls)
   const tasks: { coin: string; interval: CandleInterval }[] = []
+  let skipped = 0
   for (const interval of TF_PRIORITY) {
     for (const coin of coins) {
-      tasks.push({ coin, interval })
+      if (isLoaded?.(coin, interval)) {
+        skipped++
+      } else {
+        tasks.push({ coin, interval })
+      }
     }
   }
+  if (skipped > 0) {
+    console.log(`[BACKFILL] Skipping ${skipped} coin/TF pairs already loaded from PG`)
+  }
 
-  // Track per-coin ready count
+  // Track per-coin ready count (pre-count skipped as ready)
   const readyMap = new Map<string, number>()
   for (const coin of coins) readyMap.set(coin, 0)
+  // Count skipped (already loaded) coin/TFs as ready
+  for (const interval of TF_PRIORITY) {
+    for (const coin of coins) {
+      if (isLoaded?.(coin, interval)) {
+        readyMap.set(coin, (readyMap.get(coin) ?? 0) + 1)
+      }
+    }
+  }
 
   // Semaphore: run at most `concurrency` tasks at once
   let running = 0

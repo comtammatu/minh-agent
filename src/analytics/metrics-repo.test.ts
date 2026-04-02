@@ -26,13 +26,14 @@ beforeAll(async () => {
     await testSql`DELETE FROM positions`
     await testSql`DELETE FROM trade_journal`
 
-    // Seed closed positions
+    // Seed closed positions — use same-day timestamps to avoid UTC day boundary issues
+    // date_trunc('day', closed_at) must be the same for both BTC trades
     await testSql`
       INSERT INTO positions (coin, side, entry_price, size, status, closed_at, close_price, realized_pnl)
       VALUES
-        ('BTC', 'long', 50000, 0.1, 'closed', NOW() - INTERVAL '2 hours', 51000, 100),
-        ('BTC', 'short', 52000, 0.1, 'closed', NOW() - INTERVAL '1 hour', 51500, 50),
-        ('ETH', 'long', 3000, 1.0, 'closed', NOW() - INTERVAL '30 minutes', 2900, -100),
+        ('BTC', 'long', 50000, 0.1, 'closed', date_trunc('day', NOW()) + INTERVAL '1 hour', 51000, 100),
+        ('BTC', 'short', 52000, 0.1, 'closed', date_trunc('day', NOW()) + INTERVAL '2 hours', 51500, 50),
+        ('ETH', 'long', 3000, 1.0, 'closed', date_trunc('day', NOW()) + INTERVAL '3 hours', 2900, -100),
         ('SOL', 'long', 100, 10, 'open', NULL, NULL, NULL)
     `
 

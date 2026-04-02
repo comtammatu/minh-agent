@@ -72,6 +72,7 @@ async function main() {
 
   // ── smc ───────────────────────────────────────────────────────────────────
   const smcFixture = {
+    candles,
     fvgAtIdx: detectFVG(candles, idx),
     activeFVGs: scanFVGs(candles, idx),
     orderBlocks: detectOrderBlocks(candles, idx, { lookback: 50 }),

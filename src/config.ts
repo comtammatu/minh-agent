@@ -74,6 +74,12 @@ export const STALENESS_CHECK_INTERVAL_MS = 30_000
 // Status line printed every N ms
 export const STATUS_INTERVAL_MS = 60_000
 
+// ATR multiplier for zone proximity buffer (confirm layer)
+export const ZONE_BUFFER_ATR_MULT = 0.3
+
+// Volume profile lookback window for confirm layer
+export const VP_LOOKBACK = 100
+
 // Volume profile bins — computed as priceRange / numBins
 export const VP_BINS = 50
 

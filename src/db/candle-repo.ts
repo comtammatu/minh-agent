@@ -32,7 +32,7 @@ export async function upsertCandle(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (msg.includes('deadlock') && attempt === 0) {
-        await new Promise(r => setTimeout(r, 10 + Math.random() * 40))
+        await new Promise(r => setTimeout(r, 50 + Math.random() * 100))
         continue
       }
       throw err

@@ -8,6 +8,7 @@
  */
 
 import type { Candle, KeyZone, ZoneConfirmation, VolumeProfile, DeltaState, OrderBookSnapshot, FundingSnapshot, SignalSide } from '../../types.js'
+import { ZONE_BUFFER_ATR_MULT, VP_LOOKBACK } from '../../config.js'
 import type { VSASignal } from '../../indicators/vsa.js'
 import { detectVSA } from '../../indicators/vsa.js'
 import { buildVolumeProfile } from '../../indicators/volume-profile.js'
@@ -24,11 +25,6 @@ export interface OrderFlowContext {
   signalSide?: SignalSide
 }
 
-/** ATR multiplier for zone proximity buffer. */
-const ZONE_BUFFER_ATR_MULT = 0.3
-
-/** VP lookback window for building volume profile. */
-const VP_LOOKBACK = 100
 
 // ── isAtZone ─────────────────────────────────────────────────────────────────
 
