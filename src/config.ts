@@ -396,6 +396,26 @@ export const QUANT_ATR_SL_MULT = 2.0
 /** ATR multiplier for take profit distance (1.5 R:R). */
 export const QUANT_ATR_TP_MULT = 3.0
 
+// ─── Portfolio Risk (Sprint 4.5 S6) ─────────────────────────────────────────
+
+/** Portfolio-level risk limits across all strategies. */
+export const PORTFOLIO_RISK = {
+  /** Max total notional exposure as multiple of total account equity. */
+  maxTotalExposure: 3.0,
+  /** Max total concurrent positions across all strategies. */
+  maxTotalConcurrent: 6,
+  /** Per-strategy capital allocation as fraction of total account (must sum ≤ 1.0). */
+  strategyAllocations: {
+    layered: 0.5,
+    quant: 0.5,
+  } as Record<string, number>,
+  /** Per-strategy max concurrent positions. */
+  strategyMaxConcurrent: {
+    layered: 3,
+    quant: 3,
+  } as Record<string, number>,
+} as const
+
 // ─── Strategy Wallets (Sprint 4.5 S4) ────────────────────────────────────────
 
 /**

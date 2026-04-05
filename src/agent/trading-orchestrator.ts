@@ -23,6 +23,7 @@ import type {
 import { handlers } from './trading-agent.js'
 import { runAllChecks, prunePnlHistory } from './circuit-breakers.js'
 import { shouldBlockCorrelatedEntry } from './correlation-guard.js'
+import { checkPortfolioEntry, type PortfolioPosition } from './portfolio-risk.js'
 import { ANSI } from '../ui/terminal.js'
 
 function ts(): string { return new Date().toISOString().slice(11, 19) }
@@ -66,11 +67,23 @@ export class TradingAgent {
   private emitter = new EventEmitter()
   private tradeCloseListeners: Array<(coin: string, pnl: number) => void> = []
   private startedAt: number
+  /** Shared account equity for portfolio risk checks (updated by position monitor). */
+  private accountEquity = 0
 
   constructor() {
     this.startedAt = Date.now()
     // Initialize default strategy global
     this.getOrCreateGlobal(DEFAULT_STRATEGY)
+  }
+
+  /** Set account equity (called by position monitor / exchange sync). */
+  setAccountEquity(equity: number): void {
+    this.accountEquity = equity
+  }
+
+  /** Get current account equity. */
+  getAccountEquity(): number {
+    return this.accountEquity
   }
 
   // ── Per-Strategy Global Context ─────────────────────────────────────────
@@ -161,13 +174,21 @@ export class TradingAgent {
       }
     }
 
+    // Portfolio risk check: block place_order if over-exposed (S6)
+    const filteredActions = this.filterByPortfolioRisk(result.actions, coin, strategyId, ctx)
+    if (filteredActions !== result.actions) {
+      // place_order was blocked — revert to WATCHING
+      ctx.state = prevState === 'IDLE' ? 'WATCHING' : prevState
+      result.nextState = ctx.state
+    }
+
     // Apply side-effect context updates
-    for (const action of result.actions) {
+    for (const action of filteredActions) {
       this.applyContextUpdate(ctx, action, event)
     }
 
     // Emit actions for orchestrator (S6/S7)
-    for (const action of result.actions) {
+    for (const action of filteredActions) {
       this.emitter.emit('action', action)
     }
 
@@ -521,6 +542,70 @@ export class TradingAgent {
       ctx.pauseUntil = null
       ctx.activeSetup = null
     }
+  }
+
+  /**
+   * Filter place_order actions through portfolio risk check (S6).
+   * Returns original array if no place_order, or filtered array if blocked.
+   */
+  private filterByPortfolioRisk(
+    actions: AgentAction[],
+    coin: string,
+    strategyId: string,
+    ctx: CoinContext,
+  ): AgentAction[] {
+    const hasPlaceOrder = actions.some(a => a.type === 'place_order')
+    if (!hasPlaceOrder || this.accountEquity <= 0) return actions
+
+    // Build current portfolio positions from IN_POSITION/ENTERING coins
+    const portfolioPositions = this.getPortfolioPositions()
+
+    // Estimate proposed notional from setup (use risk per trade × account as fallback)
+    const placeAction = actions.find(a => a.type === 'place_order')
+    // Use a conservative estimate: account equity × risk per trade as proposed notional
+    // Real notional will be computed by PositionSizer in S7, but we need an estimate here
+    const proposedNotional = this.accountEquity * 0.05  // DEFAULT_RISK_PERCENT from config
+
+    const check = checkPortfolioEntry({
+      positions: portfolioPositions,
+      accountEquity: this.accountEquity,
+      strategyId,
+      proposedNotional,
+    })
+
+    if (!check.allowed) {
+      const strategyTag = strategyId !== DEFAULT_STRATEGY ? ` [${strategyId}]` : ''
+      console.log(`[${ts()}] ${ANSI.dim}AGENT${ANSI.reset} | ${coin.padEnd(8)} ${ANSI.yellow}PORTFOLIO BLOCKED${ANSI.reset} ${check.reason}${strategyTag}`)
+
+      // Replace place_order with skip journal entry, keep other actions
+      return [
+        ...actions.filter(a => a.type !== 'place_order'),
+        journalAction('skip', coin, {
+          reason: `portfolio risk: ${check.reason}`,
+          strategyId,
+          setupId: ctx.activeSetup?.id,
+        }),
+      ]
+    }
+
+    return actions
+  }
+
+  /** Build portfolio positions from current IN_POSITION/ENTERING coins. */
+  private getPortfolioPositions(): PortfolioPosition[] {
+    const positions: PortfolioPosition[] = []
+    for (const [, ctx] of this.coins) {
+      if (ctx.state === 'IN_POSITION' || ctx.state === 'ENTERING') {
+        // Estimate notional as accountEquity × DEFAULT_RISK_PERCENT per position
+        // Real notional tracked by PositionMonitor in S7
+        positions.push({
+          coin: ctx.coin,
+          strategyId: ctx.strategyId,
+          notionalValue: this.accountEquity * 0.05,
+        })
+      }
+    }
+    return positions
   }
 
   /** Get state by full key (internal). */
