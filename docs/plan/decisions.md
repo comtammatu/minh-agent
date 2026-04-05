@@ -585,3 +585,25 @@ Mode: **BIG CHANGE** — full interactive review.
 **Phase B (Isolation) COMPLETE:** S4-S6 all DONE. All 6 DoD items checked.
 
 **Tests:** 1094 pass, 0 fail.
+
+### S7: Integration Wiring (2026-04-06)
+
+**Phase C start.** Wire all Phase A+B components into the real startup flow.
+
+**Scope completed (6 items):**
+1. `src/index.ts`: Register LayeredAdapter + QuantAdapter via StrategyRegistry, init ExchangePool (replaces singleton getExchangeService), wire dispatch callbacks with strategyId, wire equity callback from PositionMonitor → TradingAgent.setAccountEquity().
+2. `src/agent/order-manager.ts`: Added `setExchangePool()` + `getExchangeForStrategy()`. All 4 exchange call sites (submitToExchange, cancelOnExchange, placeTriggerOnExchange, modifySLPrice) now route through pool by strategyId. Order.strategyId populated from ActiveSetup, persisted to DB via strategy_id column. Dispatch callbacks include strategyId for correct agent state routing.
+3. `src/agent/position-monitor.ts`: Added `setEquityCallback()` invoked during syncWithExchange() to keep portfolio risk manager up-to-date. PositionState.strategyId added. All dispatch calls include strategyId.
+4. `src/agent/journal.ts`: `logJournalEntry()` accepts optional strategyId, writes to strategy_id column. `handleJournalAction()` extracts strategyId from action details.
+5. `src/server/index.ts`: New `GET /api/strategies` endpoint (lists registered strategies with enabled status). Journal + positions endpoints accept `?strategy=` query param for filtering.
+6. `src/agent/types.ts`: Added `strategyId: string` to Order + PositionState interfaces.
+
+**Design decisions:**
+- Exchange functions (submitToExchange, cancelOnExchange, placeTriggerOnExchange) accept optional ExchangeService param, defaulting to getExchangeService() singleton for backward compat. OrderManager uses pool internally.
+- Dispatch callback signature: `(coin, event, strategyId?) => void` — optional third param preserves backward compat for any code that wires 2-arg callbacks.
+- PositionMonitor equity sync: best-effort try/catch in syncWithExchange() — non-fatal if getAccountState() fails (e.g., paper mode without wallet).
+- API strategy filter uses SQL `IS NULL OR =` pattern — null means "all strategies" (no filter).
+
+**Backward compat verified:** Single-wallet mode (no STRATEGY_WALLETS env) uses ExchangePool.getShared() fallback. Order.strategyId defaults to 'layered'. All 1094 existing tests pass unchanged.
+
+**Tests:** 1105 pass (11 new), 0 fail.
