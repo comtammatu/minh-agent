@@ -184,17 +184,27 @@ export function reconcilePositions(
 
 // ─── PositionMonitor Class ──────────────────────────────────────────────────
 
+/** Default strategy ID for backward compatibility. */
+const DEFAULT_STRATEGY = 'layered'
+
 export class PositionMonitor {
   /** Tracked open positions — keyed by positionId. */
   private positions: Map<string, PositionState> = new Map()
   /** Exchange sync interval handle. */
   private syncInterval: ReturnType<typeof setInterval> | null = null
-  /** Callback to dispatch events to TradingAgent. */
-  private dispatchToAgent: ((coin: string, event: AgentEvent) => void) | null = null
+  /** Callback to dispatch events to TradingAgent (with strategyId). */
+  private dispatchToAgent: ((coin: string, event: AgentEvent, strategyId?: string) => void) | null = null
+  /** Callback to update account equity on TradingAgent. */
+  private onEquityUpdate: ((equity: number) => void) | null = null
 
   /** Set the callback for dispatching events to the agent state machine. */
-  setAgentDispatch(fn: (coin: string, event: AgentEvent) => void): void {
+  setAgentDispatch(fn: (coin: string, event: AgentEvent, strategyId?: string) => void): void {
     this.dispatchToAgent = fn
+  }
+
+  /** Set the callback for updating account equity (Sprint 4.5: portfolio risk). */
+  setEquityCallback(fn: (equity: number) => void): void {
+    this.onEquityUpdate = fn
   }
 
   // ── Position Lifecycle ────────────────────────────────────────────────
@@ -209,6 +219,7 @@ export class PositionMonitor {
     slPrice: number
     tpPrice: number
     entryOrderId: string
+    strategyId?: string
   }): PositionState {
     const state: PositionState = {
       positionId: params.positionId,
@@ -220,6 +231,7 @@ export class PositionMonitor {
       slPrice: params.slPrice,
       tpPrice: params.tpPrice,
       entryOrderId: params.entryOrderId,
+      strategyId: params.strategyId ?? DEFAULT_STRATEGY,
       trailingState: null,
       partialClosesFired: [],
       lastSyncAt: Date.now(),
@@ -278,10 +290,10 @@ export class PositionMonitor {
       case 'trail_update':
         pos.slPrice = action.newSlPrice
         log.info('position-monitor', `Trail SL update: ${pos.coin} new SL @ ${action.newSlPrice.toFixed(2)}`)
-        // Dispatch update_stop action to OrderManager via agent
+        // Dispatch update_stop action to OrderManager via agent (with strategyId)
         this.dispatchToAgent?.(pos.coin, {
           type: 'tick',  // agent processes update_stop via handleInPosition
-        })
+        }, pos.strategyId)
         break
 
       case 'partial_close': {
@@ -307,7 +319,7 @@ export class PositionMonitor {
             positionId: pos.positionId,
             closePrice: 0,  // filled by execution layer (S10)
             pnl: 0,         // computed by execution layer (S10)
-          })
+          }, pos.strategyId)
         } else {
           this.dispatchToAgent?.(pos.coin, {
             type: 'position_closed',
@@ -315,7 +327,7 @@ export class PositionMonitor {
             closePrice: 0,
             pnl: 0,
             reason: action.reason,
-          })
+          }, pos.strategyId)
         }
         break
 
@@ -362,6 +374,14 @@ export class PositionMonitor {
    * Detects: liquidation, external close, missed fills.
    */
   async syncWithExchange(): Promise<MonitorAction[]> {
+    // Update account equity for portfolio risk checks (even with 0 positions)
+    try {
+      const accountState = await getExchangeService().getAccountState()
+      this.onEquityUpdate?.(accountState.effectiveBalance)
+    } catch {
+      // Non-fatal — equity update is best-effort
+    }
+
     if (this.positions.size === 0) return []
 
     const snapshots = await queryExchangePositions()

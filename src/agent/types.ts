@@ -131,6 +131,7 @@ export interface Order {
   filledAt: number | null
   fillPrice: number | null
   fillSize: number       // filled so far (for partials)
+  strategyId: string     // strategy that placed this order (Sprint 4.5)
 }
 
 /** SL/TP trigger order placed on exchange after entry fill (R9). */
@@ -166,6 +167,8 @@ export interface PositionState {
   slPrice: number
   tpPrice: number
   entryOrderId: string        // links to Order.id
+  /** Strategy that owns this position (Sprint 4.5). */
+  strategyId: string
   /** Trailing stop state — null until first monitor() call. */
   trailingState: import('./exits.js').TrailingStopState | null
   /** Which partial close levels have been triggered (by index). */

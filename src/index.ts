@@ -67,7 +67,10 @@ import { startServer, stopServer } from './server/index.js'
 import { startBot, stopBot } from './alert/telegram/index.js'
 import { wireSSEEvents } from './server/sse.js'
 import { connectToAgent as connectMetrics } from './analytics/metrics-service.js'
-import { getExchangeService } from './execution/exchange-service.js'
+import { getExchangePool } from './execution/exchange-pool.js'
+import { getStrategyRegistry } from './scanner/strategy.js'
+import { LayeredStrategyAdapter } from './scanner/strategies/layered-adapter.js'
+import { QuantStrategyAdapter } from './scanner/strategies/quant-adapter.js'
 import type { CandleInterval } from './types.js'
 
 // ── Banner ───────────────────────────────────────────────────────────────────
@@ -311,10 +314,18 @@ async function main(): Promise<void> {
     `[${ts()}] ${ANSI.bold}${ANSI.green}ARMED${ANSI.reset} | ${coins.length} coins: ${fullyReady} fully ready, ${partialReady} partial | ${TIMEFRAMES.length} TFs`,
   )
 
-  // 7b. Init ExchangeService + show account info
+  // 7b. Register strategies (Sprint 4.5: multi-strategy fan-out)
+  const registry = getStrategyRegistry()
+  registry.register(new LayeredStrategyAdapter())
+  registry.register(new QuantStrategyAdapter())
+  const strategyIds = registry.getAll().map(s => s.id)
+  console.log(`[${ts()}] ${ANSI.dim}STRAT${ANSI.reset} | ${strategyIds.length} strategies registered: ${strategyIds.join(', ')}`)
+
+  // 7c. Init ExchangePool (Sprint 4.5: per-strategy wallets or shared fallback)
+  const pool = getExchangePool()
   try {
-    const svc = getExchangeService()
-    await svc.init()
+    await pool.init()
+    const svc = pool.getShared()
     const account = await svc.getAccountState()
     const positions = await svc.getPositions()
     const acctAddr = svc.getAccountAddress()
@@ -345,6 +356,10 @@ async function main(): Promise<void> {
     } else {
       console.log(`[${ts()}] ${ANSI.dim}POS${ANSI.reset}   | no open positions`)
     }
+
+    if (pool.isMultiWallet()) {
+      console.log(`[${ts()}] ${ANSI.dim}POOL${ANSI.reset}  | Multi-wallet mode: ${pool.getStrategyIds().join(', ')}`)
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.log(`[${ts()}] ${ANSI.yellow}ACCT${ANSI.reset}  | Could not fetch account info: ${msg}`)
@@ -356,11 +371,14 @@ async function main(): Promise<void> {
   // 8. Start health monitor periodic check (S13: Self-Healing)
   health.startPeriodicCheck()
 
-  // 9. Wire agent components (S16: end-to-end integration)
+  // 9. Wire agent components (S16: end-to-end integration + S7: multi-strategy wiring)
   const agent = getAgent()
   const om = getOrderManager()
   const pm = getPositionMonitor()
   const bridge = getInvalidationBridge()
+
+  // Sprint 4.5: Wire ExchangePool to OrderManager for per-strategy exchange routing
+  om.setExchangePool(pool)
 
   // Load active orders from DB (crash recovery R1)
   await om.loadActiveOrders()
@@ -371,12 +389,15 @@ async function main(): Promise<void> {
   // InvalidationBridge ← Pipeline (invalidation events) → Agent
   bridge.connect(getPipelineEmitter(), agent)
 
-  // Agent → OrderManager (bidirectional)
+  // Agent → OrderManager (bidirectional) — dispatch includes strategyId (Sprint 4.5)
   agent.onAction(action => om.handleAction(action))
-  om.setAgentDispatch((coin, event) => agent.dispatch(coin, event))
+  om.setAgentDispatch((coin, event, strategyId) => agent.dispatch(coin, event, strategyId))
 
-  // Agent → PositionMonitor (dispatch back)
-  pm.setAgentDispatch((coin, event) => agent.dispatch(coin, event))
+  // Agent → PositionMonitor (dispatch back with strategyId)
+  pm.setAgentDispatch((coin, event, strategyId) => agent.dispatch(coin, event, strategyId))
+
+  // Sprint 4.5: Wire equity update from position monitor → agent (for portfolio risk)
+  pm.setEquityCallback(equity => agent.setAccountEquity(equity))
 
   // Start exchange sync heartbeat (R3: 10s interval)
   pm.startSync()
@@ -393,7 +414,7 @@ async function main(): Promise<void> {
   // Start Telegram bot (long-polling command interface)
   await startBot()
 
-  log.info('agent', `Agent wired: state machine + order manager + position monitor + invalidation bridge + SSE + Telegram bot`)
+  log.info('agent', `Agent wired: ${strategyIds.length} strategies + exchange pool + order manager + position monitor + invalidation bridge + SSE + Telegram bot`)
 
   // 10. Start coin refresh loop
   selector.startRefreshLoop()

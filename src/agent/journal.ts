@@ -28,11 +28,12 @@ export async function logJournalEntry(
   coin: string | null,
   details: Record<string, unknown>,
   agentState?: string | null,
+  strategyId?: string | null,
 ): Promise<void> {
   try {
     await sql`
-      INSERT INTO trade_journal (event_type, coin, details, agent_state)
-      VALUES (${eventType}, ${coin}, ${sql.json(details)}, ${agentState ?? null})
+      INSERT INTO trade_journal (event_type, coin, details, agent_state, strategy_id)
+      VALUES (${eventType}, ${coin}, ${sql.json(details)}, ${agentState ?? null}, ${strategyId ?? 'layered'})
     `
   } catch (err) {
     log.error('journal', `Failed to write entry: ${eventType} ${coin ?? ''} — ${(err as Error).message}`)
@@ -45,8 +46,10 @@ export async function logJournalEntry(
  */
 export function handleJournalAction(action: AgentAction, agentState?: string): void {
   if (action.type !== 'log_journal') return
+  // Extract strategyId from details if present (Sprint 4.5)
+  const strategyId = (action.details.strategyId as string) ?? null
   // Fire-and-forget — no await needed at call site
-  logJournalEntry(action.eventType, action.coin, action.details, agentState ?? null)
+  logJournalEntry(action.eventType, action.coin, action.details, agentState ?? null, strategyId)
 }
 
 // ─── Read ───────────────────────────────────────────────────────────────────

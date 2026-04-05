@@ -38,9 +38,13 @@ import {
   PAPER_TRADE,
   PAPER_SLIPPAGE_PCT,
 } from '../config.js'
-import { getExchangeService } from '../execution/exchange-service.js'
+import { getExchangeService, type ExchangeService } from '../execution/exchange-service.js'
+import type { ExchangePool } from '../execution/exchange-pool.js'
 import { log } from '../lib/logger.js'
 import { withRetry, isRetryableExchangeError } from '../lib/retry.js'
+
+/** Default strategy ID for backward compatibility (single-strategy mode). */
+const DEFAULT_STRATEGY = 'layered'
 
 // ─── Cloid Generation ───────────────────────────────────────────────────────
 
@@ -63,10 +67,11 @@ export async function submitToExchange(
   price: number,
   size: number,
   cloid: string,
+  svc?: ExchangeService,
 ): Promise<ExchangeOrderResult> {
   try {
-    const svc = getExchangeService()
-    const result = await svc.placeOrder({
+    const exchange = svc ?? getExchangeService()
+    const result = await exchange.placeOrder({
       coin,
       side,
       type,
@@ -94,20 +99,21 @@ export async function submitToExchange(
 export async function cancelOnExchange(
   exchangeOrderId: string,
   coin?: string,
+  svc?: ExchangeService,
 ): Promise<ExchangeOrderResult> {
   try {
-    const svc = getExchangeService()
+    const exchange = svc ?? getExchangeService()
     const oid = parseInt(exchangeOrderId, 10)
 
     // If we have a valid oid and coin, cancel by oid (preferred)
     if (!isNaN(oid) && coin) {
-      const result = await svc.cancelByOid(coin, oid)
+      const result = await exchange.cancelByOid(coin, oid)
       return { success: result.success, exchangeOrderId: null, error: result.error }
     }
 
     // Fallback: if exchangeOrderId looks like a cloid (0x...) and coin is available
     if (exchangeOrderId.startsWith('0x') && coin) {
-      const result = await svc.cancelByCloid(coin, exchangeOrderId)
+      const result = await exchange.cancelByCloid(coin, exchangeOrderId)
       return { success: result.success, exchangeOrderId: null, error: result.error }
     }
 
@@ -125,10 +131,11 @@ export async function cancelOnExchange(
  */
 export async function placeTriggerOnExchange(
   trigger: TriggerOrder,
+  svc?: ExchangeService,
 ): Promise<ExchangeOrderResult> {
   try {
-    const svc = getExchangeService()
-    const result = await svc.placeTrigger({
+    const exchange = svc ?? getExchangeService()
+    const result = await exchange.placeTrigger({
       coin: trigger.coin,
       side: trigger.side,
       triggerPrice: trigger.triggerPrice,
@@ -185,12 +192,13 @@ export function paperSimulateTrigger(trigger: TriggerOrder): ExchangeOrderResult
 /** Insert a new order into the database. */
 async function insertOrder(order: Order): Promise<void> {
   await sql`
-    INSERT INTO orders (id, coin, side, type, price, size, status, setup_id, sl_price, tp_price, exchange_order_id, created_at, updated_at, fill_price, filled_at)
+    INSERT INTO orders (id, coin, side, type, price, size, status, setup_id, sl_price, tp_price, exchange_order_id, created_at, updated_at, fill_price, filled_at, strategy_id)
     VALUES (
       ${order.id}, ${order.coin}, ${order.side}, ${order.type}, ${order.price},
       ${order.size}, ${order.status}, ${order.setupId}, ${order.slPrice}, ${order.tpPrice},
       ${order.exchangeOrderId}, ${new Date(order.createdAt)}, ${new Date(order.updatedAt)},
-      ${order.fillPrice}, ${order.filledAt ? new Date(order.filledAt) : null}
+      ${order.fillPrice}, ${order.filledAt ? new Date(order.filledAt) : null},
+      ${order.strategyId}
     )
   `
 }
@@ -245,6 +253,7 @@ function rowToOrder(row: Record<string, unknown>): Order {
     filledAt: row.filled_at ? new Date(row.filled_at as string).getTime() : null,
     fillPrice: (row.fill_price as number) ?? null,
     fillSize: 0,  // TODO: add fill_size column in S10 migration
+    strategyId: (row.strategy_id as string) ?? DEFAULT_STRATEGY,
   }
 }
 
@@ -255,12 +264,27 @@ export class OrderManager {
   private orders: Map<string, Order> = new Map()
   /** In-memory trigger orders — keyed by parent order ID. */
   private triggerOrders: Map<string, TriggerOrder[]> = new Map()
-  /** Callback to dispatch events back to TradingAgent. */
-  private dispatchToAgent: ((coin: string, event: AgentEvent) => void) | null = null
+  /** Callback to dispatch events back to TradingAgent (with strategyId). */
+  private dispatchToAgent: ((coin: string, event: AgentEvent, strategyId?: string) => void) | null = null
+  /** ExchangePool for per-strategy exchange routing (Sprint 4.5). */
+  private exchangePool: ExchangePool | null = null
 
   /** Set the callback for dispatching events to the agent state machine. */
-  setAgentDispatch(fn: (coin: string, event: AgentEvent) => void): void {
+  setAgentDispatch(fn: (coin: string, event: AgentEvent, strategyId?: string) => void): void {
     this.dispatchToAgent = fn
+  }
+
+  /** Set the ExchangePool for per-strategy exchange routing (Sprint 4.5). */
+  setExchangePool(pool: ExchangePool): void {
+    this.exchangePool = pool
+  }
+
+  /** Get ExchangeService for a strategy. Falls back to singleton if no pool. */
+  private getExchangeForStrategy(strategyId: string): ExchangeService {
+    if (this.exchangePool) {
+      return this.exchangePool.get(strategyId)
+    }
+    return getExchangeService()
   }
 
   // ── Place Order ─────────────────────────────────────────────────────────
@@ -275,6 +299,7 @@ export class OrderManager {
    */
   async placeOrder(setup: ActiveSetup): Promise<Order | null> {
     const { coin, side, entryPrice, slPrice, tpPrice } = setup
+    const strategyId = setup.strategyId ?? DEFAULT_STRATEGY
 
     // Idempotency: 1 order per coin (MAX_ORDERS_PER_COIN = 1)
     const active = await getActiveOrdersForCoin(coin)
@@ -304,17 +329,19 @@ export class OrderManager {
       filledAt: null,
       fillPrice: null,
       fillSize: 0,
+      strategyId,
     }
 
     // Persist pending
     await insertOrder(order)
     this.orders.set(order.id, order)
-    log.info('order-manager', `Order created: ${order.id} ${coin} ${side} @ ${entryPrice} [cloid=${cloid.slice(0, 10)}...]`)
+    log.info('order-manager', `Order created: ${order.id} ${coin} ${side} @ ${entryPrice} strategy=${strategyId} [cloid=${cloid.slice(0, 10)}...]`)
 
-    // Submit to exchange (or simulate in paper mode)
+    // Submit to exchange (or simulate in paper mode) — route to strategy-specific wallet
+    const svc = this.getExchangeForStrategy(strategyId)
     const result = PAPER_TRADE
       ? paperSimulateFill(coin, side, entryPrice, order.size, cloid)
-      : await submitToExchange(coin, side, order.type, entryPrice, order.size, cloid)
+      : await submitToExchange(coin, side, order.type, entryPrice, order.size, cloid, svc)
 
     if (result.success) {
       order.status = 'submitted'
@@ -336,7 +363,7 @@ export class OrderManager {
       await updateOrderInDb(order)
       this.orders.set(order.id, order)
       log.error('order-manager', `Order rejected by exchange: ${result.error}`)
-      this.dispatchToAgent?.(coin, { type: 'order_rejected', orderId: order.id, reason: result.error ?? 'exchange_rejection' })
+      this.dispatchToAgent?.(coin, { type: 'order_rejected', orderId: order.id, reason: result.error ?? 'exchange_rejection' }, strategyId)
     }
 
     return order
@@ -369,14 +396,14 @@ export class OrderManager {
     // R9: Place SL + TP trigger orders on exchange
     await this.placeSLTP(order)
 
-    // Create position ID and dispatch to agent
+    // Create position ID and dispatch to agent (with strategyId for correct routing)
     const positionId = randomUUID()
     this.dispatchToAgent?.(order.coin, {
       type: 'order_filled',
       orderId: order.id,
       fillPrice,
       positionId,
-    })
+    }, order.strategyId)
   }
 
   /**
@@ -418,6 +445,8 @@ export class OrderManager {
 
     const closeSide: 'long' | 'short' = entryOrder.side === 'long' ? 'short' : 'long'
     const triggers: TriggerOrder[] = []
+    // Route SL/TP to strategy-specific exchange wallet
+    const svc = this.getExchangeForStrategy(entryOrder.strategyId)
 
     // SL: trigger-market (guaranteed fill on stop hit)
     const slTrigger: TriggerOrder = {
@@ -433,7 +462,7 @@ export class OrderManager {
     }
     const slResult = PAPER_TRADE
       ? paperSimulateTrigger(slTrigger)
-      : await this.placeTriggerWithRetry(slTrigger, 'SL', entryOrder.coin)
+      : await this.placeTriggerWithRetry(slTrigger, 'SL', entryOrder.coin, svc)
     if (slResult.success) {
       slTrigger.exchangeOrderId = slResult.exchangeOrderId
       log.info('order-manager', `SL trigger placed: ${entryOrder.coin} @ ${entryOrder.slPrice} [${slResult.exchangeOrderId}]`)
@@ -456,7 +485,7 @@ export class OrderManager {
     }
     const tpResult = PAPER_TRADE
       ? paperSimulateTrigger(tpTrigger)
-      : await this.placeTriggerWithRetry(tpTrigger, 'TP', entryOrder.coin)
+      : await this.placeTriggerWithRetry(tpTrigger, 'TP', entryOrder.coin, svc)
     if (tpResult.success) {
       tpTrigger.exchangeOrderId = tpResult.exchangeOrderId
       log.info('order-manager', `TP trigger placed: ${entryOrder.coin} @ ${entryOrder.tpPrice} [${tpResult.exchangeOrderId}]`)
@@ -476,10 +505,11 @@ export class OrderManager {
     trigger: TriggerOrder,
     label: string,
     coin: string,
+    exchangeSvc?: ExchangeService,
   ): Promise<ExchangeOrderResult> {
     const retryResult = await withRetry(
       async () => {
-        const result = await placeTriggerOnExchange(trigger)
+        const result = await placeTriggerOnExchange(trigger, exchangeSvc)
         if (!result.success) {
           // Check if the error is retryable — if not, throw non-retryable to break out
           const errMsg = result.error ?? 'unknown error'
@@ -529,11 +559,12 @@ export class OrderManager {
       return
     }
 
-    // Cancel on exchange if submitted (or simulate in paper mode)
+    // Cancel on exchange if submitted (or simulate in paper mode) — route to strategy wallet
     if (order.exchangeOrderId) {
+      const svc = this.getExchangeForStrategy(order.strategyId)
       const result = PAPER_TRADE
         ? paperSimulateCancel(order.exchangeOrderId, order.coin)
-        : await cancelOnExchange(order.exchangeOrderId, order.coin)
+        : await cancelOnExchange(order.exchangeOrderId, order.coin, svc)
       if (!result.success) {
         log.error('order-manager', `Exchange cancel failed for ${orderId}: ${result.error}`)
         // Still mark cancelled in DB — reconciliation will catch discrepancies
@@ -576,12 +607,15 @@ export class OrderManager {
       return
     }
 
+    // Get strategy-specific exchange service from parent order
+    const parentOrder = this.orders.get(parentOrderId)
+    const svc = this.getExchangeForStrategy(parentOrder?.strategyId ?? DEFAULT_STRATEGY)
+
     // Try to modify on exchange if we have an oid
     if (slTrigger.exchangeOrderId) {
       const oid = parseInt(slTrigger.exchangeOrderId, 10)
       if (!isNaN(oid)) {
         try {
-          const svc = getExchangeService()
           const result = await svc.modifyTrigger(
             slTrigger.coin,
             oid,
@@ -601,9 +635,9 @@ export class OrderManager {
         }
       }
 
-      // Fallback: cancel old + place new
-      await cancelOnExchange(slTrigger.exchangeOrderId, slTrigger.coin)
-      const newResult = await placeTriggerOnExchange(slTrigger)
+      // Fallback: cancel old + place new — route to strategy wallet
+      await cancelOnExchange(slTrigger.exchangeOrderId, slTrigger.coin, svc)
+      const newResult = await placeTriggerOnExchange(slTrigger, svc)
       if (newResult.success) {
         slTrigger.exchangeOrderId = newResult.exchangeOrderId
         log.info('order-manager', `SL replaced on exchange: ${slTrigger.coin} ${oldPrice} → ${newSlPrice}`)
@@ -629,7 +663,7 @@ export class OrderManager {
       if (age > ORDER_FILL_TIMEOUT_MS) {
         log.info('order-manager', `Order timeout: ${order.id} ${order.coin} age=${Math.round(age / 1000)}s`)
         await this.cancelOrder(order.id, 'timeout')
-        this.dispatchToAgent?.(order.coin, { type: 'order_timeout', orderId: order.id })
+        this.dispatchToAgent?.(order.coin, { type: 'order_timeout', orderId: order.id }, order.strategyId)
       }
     }
   }
@@ -676,6 +710,9 @@ export class OrderManager {
       return
     }
 
+    // Route to strategy-specific exchange wallet
+    const svc = this.getExchangeForStrategy(entryOrder.strategyId)
+
     // Cancel SL/TP triggers
     const triggers = this.triggerOrders.get(entryOrder.id)
     if (triggers) {
@@ -684,7 +721,7 @@ export class OrderManager {
           if (PAPER_TRADE) {
             paperSimulateCancel(trigger.exchangeOrderId, trigger.coin)
           } else {
-            await cancelOnExchange(trigger.exchangeOrderId, trigger.coin)
+            await cancelOnExchange(trigger.exchangeOrderId, trigger.coin, svc)
           }
         }
       }
@@ -698,7 +735,7 @@ export class OrderManager {
     if (PAPER_TRADE) {
       paperSimulateFill(entryOrder.coin, closeSide, 0, closeSize, cloid)
     } else {
-      await submitToExchange(entryOrder.coin, closeSide, 'market', 0, closeSize, cloid)
+      await submitToExchange(entryOrder.coin, closeSide, 'market', 0, closeSize, cloid, svc)
     }
 
     log.info('order-manager', `Position close submitted: ${entryOrder.coin} reason=${reason}`)

@@ -49,6 +49,7 @@ import { getPositionMonitor } from '../agent/position-monitor.js'
 import { closeAllPositions } from '../agent/close-all.js'
 import { getHealthMonitor } from '../agent/self-healing.js'
 import { getLiveMetrics } from '../analytics/metrics-service.js'
+import { getStrategyRegistry } from '../scanner/strategy.js'
 import { sseRoutes, startSSEBroadcasts, stopSSEBroadcasts } from './sse.js'
 import { getConnectionCounts, getTotalConnections, closeAllConnections, broadcast, addClient, removeClient } from './sse-manager.js'
 import { listRuns, loadRun, saveRun, compareRuns } from '../backtest/results-store.js'
@@ -232,6 +233,17 @@ function createApp() {
       }
     })
 
+    .get('/api/strategies', () => {
+      const registry = getStrategyRegistry()
+      const strategies = registry.getAll().map(s => ({
+        id: s.id,
+        name: s.name,
+        enabled: registry.isEnabled(s.id),
+        patternTypes: s.patternTypes,
+      }))
+      return { strategies, count: strategies.length }
+    })
+
     .get('/api/status', () => {
       return { statuses: getStatus() }
     })
@@ -300,22 +312,17 @@ function createApp() {
         API_MAX_JOURNAL_LIMIT,
       )
       const eventType = query.type ?? null
+      const strategy = query.strategy ?? null
 
       try {
-        const entries = eventType
-          ? await sql`
-              SELECT id, ts, event_type, coin, details, agent_state
-              FROM trade_journal
-              WHERE event_type = ${eventType}
-              ORDER BY ts DESC
-              LIMIT ${limit}
-            `
-          : await sql`
-              SELECT id, ts, event_type, coin, details, agent_state
-              FROM trade_journal
-              ORDER BY ts DESC
-              LIMIT ${limit}
-            `
+        const entries = await sql`
+          SELECT id, ts, event_type, coin, details, agent_state, strategy_id
+          FROM trade_journal
+          WHERE (${eventType}::text IS NULL OR event_type = ${eventType})
+            AND (${strategy}::text IS NULL OR strategy_id = ${strategy})
+          ORDER BY ts DESC
+          LIMIT ${limit}
+        `
         return { entries, count: entries.length }
       } catch (err) {
         set.status = 503
@@ -325,15 +332,24 @@ function createApp() {
       query: t.Object({
         limit: t.Optional(t.Numeric()),
         type: t.Optional(t.String()),
+        strategy: t.Optional(t.String()),
       }),
     })
 
-    .get('/api/agent/positions', () => {
+    .get('/api/agent/positions', ({ query }) => {
       const pm = getPositionMonitor()
       const posMap = pm.getPositions()
-      const positions = Array.from(posMap.values())
-      const totalExposure = positions.reduce((sum, p) => sum + (p.size * p.entryPrice), 0)
+      let positions = Array.from(posMap.values())
+      const strategy = query.strategy ?? null
+      if (strategy) {
+        positions = positions.filter(p => p.strategyId === strategy)
+      }
+      const totalExposure = positions.reduce((sum, p) => sum + (p.currentSize * p.entryPrice), 0)
       return { positions, totalExposure, count: positions.length }
+    }, {
+      query: t.Object({
+        strategy: t.Optional(t.String()),
+      }),
     })
 
     // ── SSE endpoints (no auth, read-only) ─────────────────────────────
