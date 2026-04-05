@@ -82,9 +82,9 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
   }
 }
 
-/** Get coin state from snapshot (coins is a Record<string, ...>, not an array). */
-function getCoinState(agent: TradingAgent, coin: string) {
-  return agent.getSnapshot().coins[coin]
+/** Get coin state from snapshot. Key is `coin:strategyId` (Sprint 4.5). */
+function getCoinState(agent: TradingAgent, coin: string, strategyId: string = 'layered') {
+  return agent.getSnapshot().coins[`${coin}:${strategyId}`]
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -166,7 +166,7 @@ describe('End-to-end integration', () => {
 
     // Simulate orchestrator promoting to ENTERING (in real flow, place_order triggers this)
     const coinsMap = (agent as unknown as { coins: Map<string, unknown> }).coins
-    const ctx = coinsMap.get('BTC') as { state: string; pendingOrderId: string | null; stateEnteredAt: number }
+    const ctx = coinsMap.get('BTC:layered') as { state: string; pendingOrderId: string | null; stateEnteredAt: number }
     ctx.state = 'ENTERING'
     ctx.pendingOrderId = 'ord-1'
     ctx.stateEnteredAt = Date.now()

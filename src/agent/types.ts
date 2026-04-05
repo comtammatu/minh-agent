@@ -25,6 +25,8 @@ export type AgentState =
 export interface CoinContext {
   state: AgentState
   coin: string
+  /** Strategy that owns this context (Sprint 4.5). Default 'layered' for backward compat. */
+  strategyId: string
   /** The setup being watched/entered (null when IDLE/PAUSED). */
   activeSetup: ActiveSetup | null
   /** Pending order ID (set in ENTERING, cleared on fill/reject). */
@@ -268,20 +270,29 @@ export interface HealthReport {
 
 // ─── Snapshot (for API) ──────────────────────────────────────────────────────
 
+export interface CoinSnapshotEntry {
+  state: AgentState
+  activeSetup: ActiveSetup | null
+  pendingOrderId: string | null
+  positionId: string | null
+  consecutiveLosses: number
+  stateAge: number  // ms since state entered
+  strategyId: string
+}
+
+export interface GlobalSnapshotEntry {
+  dailyPnl: number
+  totalConsecutiveLosses: number
+  globalPaused: boolean
+  globalPauseReason: string | null
+  uptime: number
+}
+
 export interface AgentSnapshot {
-  coins: Record<string, {
-    state: AgentState
-    activeSetup: ActiveSetup | null
-    pendingOrderId: string | null
-    positionId: string | null
-    consecutiveLosses: number
-    stateAge: number  // ms since state entered
-  }>
-  global: {
-    dailyPnl: number
-    totalConsecutiveLosses: number
-    globalPaused: boolean
-    globalPauseReason: string | null
-    uptime: number
-  }
+  /** Keyed by `coin:strategyId` (or just `coin` for backward-compat single-strategy). */
+  coins: Record<string, CoinSnapshotEntry>
+  /** Default strategy global (backward compat). */
+  global: GlobalSnapshotEntry
+  /** Per-strategy globals (Sprint 4.5). */
+  strategyGlobals?: Record<string, GlobalSnapshotEntry>
 }

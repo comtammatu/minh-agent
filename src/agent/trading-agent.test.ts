@@ -45,6 +45,7 @@ function makeCoinCtx(overrides: Partial<CoinContext> = {}): CoinContext {
   return {
     state: 'IDLE',
     coin: 'BTC',
+    strategyId: 'layered',
     activeSetup: null,
     pendingOrderId: null,
     positionId: null,
@@ -383,7 +384,7 @@ describe('TradingAgent', () => {
     // Simulate entry trigger: directly push to ENTERING
     // (In real flow, WATCHING would emit place_order action on entry trigger)
     // For testing, we simulate the order placement side-effect
-    const btxCtx = (agent as unknown as { coins: Map<string, CoinContext> }).coins.get('BTC')!
+    const btxCtx = (agent as unknown as { coins: Map<string, CoinContext> }).coins.get('BTC:layered')!
     btxCtx.state = 'ENTERING'
     btxCtx.pendingOrderId = 'ord-1'
     btxCtx.stateEnteredAt = Date.now()
@@ -433,8 +434,8 @@ describe('TradingAgent', () => {
     agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup({ confluenceGrade: 'A' }) })
 
     const snap = agent.getSnapshot()
-    expect(snap.coins['BTC']).toBeDefined()
-    expect(snap.coins['BTC']!.state).toBe('WATCHING')
+    expect(snap.coins['BTC:layered']).toBeDefined()
+    expect(snap.coins['BTC:layered']!.state).toBe('WATCHING')
     expect(snap.global.dailyPnl).toBe(0)
     expect(snap.global.globalPaused).toBe(false)
     expect(typeof snap.global.uptime).toBe('number')
@@ -515,7 +516,7 @@ describe('TradingAgent', () => {
     )
     expect(agent.getCoinState('SOL')).toBe('IN_POSITION')
     const snap = agent.getSnapshot()
-    expect(snap.coins['SOL']!.positionId).toContain('orphan')
+    expect(snap.coins['SOL:layered']!.positionId).toContain('orphan')
   })
 
   // ── Circuit Breaker Integration (S11) ───────────────────────────────────
@@ -535,7 +536,7 @@ describe('TradingAgent', () => {
   it('checkCircuitBreakers does NOT pause IN_POSITION coins (R5)', () => {
     // Put BTC in IN_POSITION
     const btcCtx = (agent as unknown as { coins: Map<string, CoinContext> }).coins
-    btcCtx.set('BTC', makeCoinCtx({ state: 'IN_POSITION', positionId: 'pos-1', coin: 'BTC' }))
+    btcCtx.set('BTC:layered', makeCoinCtx({ state: 'IN_POSITION', positionId: 'pos-1', coin: 'BTC' }))
 
     // Put ETH in WATCHING
     agent.dispatch('ETH', { type: 'setup_detected', setup: makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', confluenceGrade: 'A' }) })
@@ -674,7 +675,7 @@ describe('TradingAgent — correlation guard', () => {
 
     // Put STX in ENTERING via internal state (same pattern as CB tests)
     const coinsMap = (agent as unknown as { coins: Map<string, CoinContext> }).coins
-    coinsMap.set('STX', makeCoinCtx({ state: 'ENTERING', coin: 'STX', pendingOrderId: 'o2' }))
+    coinsMap.set('STX:layered', makeCoinCtx({ state: 'ENTERING', coin: 'STX', pendingOrderId: 'o2' }))
 
     // ORDI blocked — BTC (IN_POSITION) + STX (ENTERING) = 2 in btc-ecosystem
     agent.onSetup(makeSetup({ coin: 'ORDI', id: 'ORDI|1h|ob|long', confluenceGrade: 'A' }))
