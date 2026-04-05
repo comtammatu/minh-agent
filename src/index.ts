@@ -11,7 +11,7 @@
  *   6. Start funding + OI polling
  *   7. Print ARMED + coin counts
  *   8. Start health monitor
- *   9. Wire agent: TradingAgent ↔ OrderManager ↔ PositionMonitor + InvalidationBridge + Elysia
+ *   9. Wire agent: TradingAgent ↔ OrderManager ↔ PositionMonitor + InvalidationBridge
  *  10. Start coin refresh loop (1h interval)
  *  11. setInterval: STATUS line every 60s
  *  12. setInterval: staleness check every 30s
@@ -64,9 +64,7 @@ import { getAgent } from './agent/trading-agent.js'
 import { getOrderManager } from './agent/order-manager.js'
 import { getPositionMonitor } from './agent/position-monitor.js'
 import { getInvalidationBridge } from './agent/invalidation-bridge.js'
-import { startServer, stopServer } from './server/index.js'
 import { startBot, stopBot } from './alert/telegram/index.js'
-import { wireSSEEvents } from './server/sse.js'
 import { connectToAgent as connectMetrics } from './analytics/metrics-service.js'
 import { getExchangePool } from './execution/exchange-pool.js'
 import { getStrategyRegistry } from './scanner/strategy.js'
@@ -411,16 +409,10 @@ async function main(): Promise<void> {
   // Wire metrics service: refresh matviews after each trade close
   connectMetrics(agent)
 
-  // Start Elysia HTTP server + SSE broadcasts
-  await startServer()
-
-  // Wire SSE events: pipeline→signals, agent→trades
-  wireSSEEvents(getPipelineEmitter())
-
   // Start Telegram bot (long-polling command interface)
   await startBot()
 
-  log.info('agent', `Agent wired: ${strategyIds.length} strategies + exchange pool + order manager + position monitor + invalidation bridge + SSE + Telegram bot`)
+  log.info('agent', `Agent wired: ${strategyIds.length} strategies + exchange pool + order manager + position monitor + invalidation bridge + Telegram bot`)
 
   // Wire agent actions → TUI signals log
   agent.onAction(action => appendSignal(action))
@@ -463,7 +455,6 @@ async function cleanup(): Promise<void> {
   selector.stopRefreshLoop()
   getPositionMonitor().stopSync()
   stopBot()
-  stopServer()
   for (const id of activeIntervals) clearInterval(id)
   activeIntervals.length = 0
   stopFundingPolling()

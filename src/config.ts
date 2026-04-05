@@ -103,7 +103,7 @@ export const PATTERN_TTL_BARS: Record<string, number> = {
 // ─── SMC+S&D Zone Bounce Strategy ────────────────────────────────────────────
 
 /** How many bars back to look for a BOS/CHoCH to establish direction. */
-export const SMC_BREAK_LOOKBACK = 10
+export const SMC_BREAK_LOOKBACK = 20
 
 /** Minimum bars between signals on same coin/interval (dedup). */
 export const SMC_DEDUP_BARS = 5
@@ -297,7 +297,7 @@ export const ATR_STOP_MULTIPLIER = {
 } as const
 
 /** ATR buffer added below structure stop (Section 12.2 Method 1). */
-export const STRUCTURE_STOP_ATR_BUFFER = 0.5
+export const STRUCTURE_STOP_ATR_BUFFER = 1.0
 
 /** Maximum stop distance as fraction of entry price. Beyond this → skip. */
 export const MAX_STOP_DISTANCE_PCT = 0.10
@@ -521,40 +521,6 @@ export const EXCHANGE_SYNC_INTERVAL_MS = 10_000  // 10 seconds
 
 /** Minimum SL price change (fraction) to send update to exchange. Avoids rate limit burn. */
 export const TRAIL_UPDATE_THRESHOLD = 0.001  // 0.1% minimum change before modifying SL on exchange
-
-// ─── Elysia HTTP Server (R4: localhost-only) ────────────────────────────────
-
-/** Server port. */
-export const SERVER_PORT = 3000
-
-/** Server bind address — localhost only (R4). */
-export const SERVER_HOSTNAME = '127.0.0.1'
-
-/** Environment variable name for bearer auth token. */
-export const API_TOKEN_ENV = 'MINH_API_TOKEN'
-
-/** Default max candles returned by /api/candles endpoint. */
-export const API_MAX_CANDLES = 5000
-
-/** Default candle count for /api/candles endpoint. */
-export const API_DEFAULT_CANDLE_COUNT = 200
-
-/** Default journal entries limit. */
-export const API_DEFAULT_JOURNAL_LIMIT = 50
-
-/** Max journal entries per request. */
-export const API_MAX_JOURNAL_LIMIT = 500
-
-// ─── SSE (Sprint 3 S7) ───────────────────────────────────────────────────
-
-/** Status channel push interval (ms). */
-export const SSE_STATUS_INTERVAL_MS = 5_000
-
-/** SSE keepalive comment interval (ms) — prevents proxy/browser timeout. */
-export const SSE_KEEPALIVE_INTERVAL_MS = 30_000
-
-/** Maximum SSE connections allowed (across all channels). */
-export const SSE_MAX_CONNECTIONS = 50
 
 // ─── Self-Healing (S13) ────────────────────────────────────────────────────
 
