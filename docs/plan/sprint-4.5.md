@@ -246,7 +246,7 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 | S2 | Pipeline Refactor | DONE | 2026-04-06 | Remove global state, fan-out via StrategyRegistry, per-strategy stats |
 | S3 | DB Migration 005 | DONE | 2026-04-06 | strategies table + strategy_id on 3 tables + cloid/fill_size E29 fix, 1023 tests pass |
 | S4 | Exchange Pool + Wallets | DONE | 2026-04-06 | WalletConfig + ExchangePool + single-wallet fallback, 1050 tests pass |
-| S5 | Agent State Per-Strategy | | | |
+| S5 | Agent State Per-Strategy | DONE | 2026-04-06 | E28 orchestrator extraction, coin:strategyId key, per-strategy GlobalContext+CB, 25 new tests, 1075 total pass |
 | S6 | Portfolio Risk Manager | | | |
 | S7 | Integration Wiring | | | |
 | S8 | Backtest Multi-Strategy | | | |
@@ -270,10 +270,10 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 ### Phase 4.5B: Isolation
 - [x] `ExchangePool` creates per-strategy ExchangeService instances (S4)
 - [x] Single-wallet mode (no `STRATEGY_WALLETS` env) backward compatible (S4)
-- [ ] Agent state keyed by `coin:strategyId`
-- [ ] Per-strategy `GlobalContext` (dailyPnl, circuit breakers independent)
+- [x] Agent state keyed by `coin:strategyId` (S5)
+- [x] Per-strategy `GlobalContext` (dailyPnl, circuit breakers independent) (S5)
 - [ ] `PortfolioRiskManager` enforces global exposure cap
-- [ ] Tests: same coin, different strategies → fully independent states
+- [x] Tests: same coin, different strategies → fully independent states (S5)
 
 ### Phase 4.5C: Integration
 - [ ] `index.ts` startup registers strategies, creates exchange pool, starts per-strategy agents

@@ -546,3 +546,22 @@ Mode: **BIG CHANGE** — full interactive review.
 - parseStrategyWallets() called in ExchangePool constructor — invalid JSON throws at construction time
 
 **Tests:** 1050 pass, 0 fail.
+
+### S5 — Agent State Machine Per-Strategy (2026-04-06)
+
+**Completed:**
+- `src/agent/types.ts`: Added `strategyId: string` to CoinContext. Expanded AgentSnapshot with CoinSnapshotEntry.strategyId + strategyGlobals map.
+- `src/agent/trading-orchestrator.ts` (NEW): Extracted TradingAgent class (E28). State map keyed by `coin:strategyId` (V2). Per-strategy GlobalContext via `Map<string, GlobalContext>` (V6). Per-strategy circuit breaker checks. New `pauseStrategy()`/`resumeStrategy()` for per-strategy control.
+- `src/agent/trading-agent.ts`: Reduced to pure handlers + handler dispatch table + re-exports from trading-orchestrator.ts. All existing imports backward compatible.
+- `test/agent/multi-strategy.test.ts` (NEW): 25 tests — stateKey/parseStateKey utilities (5), multi-strategy state independence (5), per-strategy GlobalContext isolation (6), per-strategy circuit breakers (4), multi-strategy snapshot (3), full lifecycle two strategies same coin (1), cross-strategy open positions (1).
+
+**Design decisions:**
+- State key format: `coin:strategyId` with `parseStateKey()` using `lastIndexOf(':')` for robustness with numeric coin names (e.g., 1000PEPE)
+- Default strategy = 'layered' everywhere for backward compat — `getCoinState('BTC')` still works
+- `getGlobal()` returns default strategy's GlobalContext for backward compat
+- `getOpenPositionCoins()` deduplicates across all strategies (for correlation guard)
+- `checkCircuitBreakers()` scoped to single strategy — CB on strategy A never pauses strategy B's coins
+- Pure handlers untouched — no strategyId logic in handlers, all routing in orchestrator
+- `getSnapshot().coins` keyed by `coin:strategyId`, not just `coin` — breaking change for API consumers (S7 will update server endpoints)
+
+**Tests:** 1075 pass, 0 fail.
