@@ -249,7 +249,7 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 | S5 | Agent State Per-Strategy | DONE | 2026-04-06 | E28 orchestrator extraction, coin:strategyId key, per-strategy GlobalContext+CB, 25 new tests, 1075 total pass |
 | S6 | Portfolio Risk Manager | DONE | 2026-04-06 | PortfolioRiskManager pure functions + config + orchestrator hook, 19 new tests, 1094 total pass |
 | S7 | Integration Wiring | DONE | 2026-04-06 | StrategyRegistry + ExchangePool in index.ts, OrderManager exchange routing by strategyId, DB writes + journal + API strategy filter, 11 new tests, 1105 total pass |
-| S8 | Backtest Multi-Strategy | | | |
+| S8 | Backtest Multi-Strategy | DONE | 2026-04-06 | strategyId on BacktestTrade + simulator propagation, 8 new tests, 1113 total pass |
 | S9 | Dashboard + Telegram | | | |
 | S10 | Docs + Sprint 5 Update | | | |
 
@@ -279,7 +279,7 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 - [x] `index.ts` startup registers strategies, creates exchange pool, starts per-strategy agents (S7)
 - [x] OrderManager routes to correct ExchangeService by strategy_id (S7)
 - [x] strategy_id written to orders/positions/trade_journal on all DB writes (S7)
-- [ ] Backtest works per-strategy (isolated, same results as before)
+- [x] Backtest works per-strategy (isolated, same results as before) (S8)
 - [x] API endpoints accept `?strategy=` filter (S7)
 
 ### Phase 4.5D: UI + Docs
