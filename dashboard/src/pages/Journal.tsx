@@ -6,6 +6,7 @@
  */
 
 import { Fragment, useEffect, useState, useMemo, useCallback } from 'react'
+import { useStrategyStore } from '../components/StrategySelector'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -20,7 +21,7 @@ interface JournalEntry {
 
 // ─── Hook ───────────────────────────────────────────────────────────────────
 
-function useJournal(limit: number) {
+function useJournal(limit: number, strategy: string) {
   const [entries, setEntries] = useState<JournalEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -29,7 +30,9 @@ function useJournal(limit: number) {
     let cancelled = false
     async function load() {
       try {
-        const res = await fetch(`/api/agent/journal?limit=${limit}`)
+        const params = new URLSearchParams({ limit: String(limit) })
+        if (strategy) params.set('strategy', strategy)
+        const res = await fetch(`/api/agent/journal?${params}`)
         if (!res.ok) {
           setError(`HTTP ${res.status}`)
           return
@@ -47,7 +50,7 @@ function useJournal(limit: number) {
     }
     load()
     return () => { cancelled = true }
-  }, [limit])
+  }, [limit, strategy])
 
   return { entries, loading, error }
 }
@@ -171,7 +174,8 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export function JournalPage() {
-  const { entries, loading, error } = useJournal(500)
+  const selectedStrategy = useStrategyStore((s) => s.selected)
+  const { entries, loading, error } = useJournal(500, selectedStrategy)
 
   // Expand state
   const [expandedId, setExpandedId] = useState<number | null>(null)

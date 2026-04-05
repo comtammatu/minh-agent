@@ -6,6 +6,7 @@
  */
 
 import { useSSEStore, type Position } from '../stores/sse-store'
+import { useStrategyStore } from '../components/StrategySelector'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -148,7 +149,11 @@ function PositionRow({ p }: { p: Position }) {
 
 export function PositionsPage() {
   const status = useSSEStore((s) => s.status)
-  const positions = status?.positions ?? []
+  const selectedStrategy = useStrategyStore((s) => s.selected)
+  const allPositions = status?.positions ?? []
+  const positions = selectedStrategy
+    ? allPositions.filter(p => p.strategyId === selectedStrategy)
+    : allPositions
 
   return (
     <div>

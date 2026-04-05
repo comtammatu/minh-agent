@@ -69,6 +69,7 @@ function buildStatusPayload(): object {
         trailingActive: p.trailingState?.active ?? false,
         openedAt: p.openedAt,
         partialClosesFired: p.partialClosesFired.length,
+        strategyId: p.strategyId ?? 'layered',
       }
     }),
     health: {

@@ -2,6 +2,7 @@ import { Suspense, useState, type ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ThemeToggle } from './ThemeToggle'
+import { StrategySelector } from './StrategySelector'
 import { useSSE } from '../hooks/useSSE'
 import { useSSEStore } from '../stores/sse-store'
 
@@ -57,6 +58,8 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
           <ThemeToggle />
         </div>
+
+        <StrategySelector />
 
         <div className="flex-1 py-2">
           {NAV_ITEMS.map(({ to, label }) => (

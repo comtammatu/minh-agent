@@ -52,6 +52,7 @@ export interface Position {
   trailingActive: boolean
   openedAt: number
   partialClosesFired: number
+  strategyId: string
 }
 
 /** Health from SSE — matches sse.ts buildStatusPayload health. */

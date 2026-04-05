@@ -21,6 +21,7 @@ import { getPositionMonitor } from '../../agent/position-monitor.js'
 import { getHealthMonitor } from '../../agent/self-healing.js'
 import { getLiveMetrics } from '../../analytics/metrics-service.js'
 import { closeAllPositions } from '../../agent/close-all.js'
+import { getStrategyRegistry } from '../../scanner/strategy.js'
 import { TELEGRAM_BOT } from '../../config.js'
 import type { CommandDef } from './types.js'
 
@@ -405,6 +406,66 @@ async function reportHandler(): Promise<string> {
   }
 }
 
+// ─── /strategy ───────────────────────────────────────────────────────────
+
+/**
+ * /strategy — list all strategies with enabled/disabled status.
+ * /strategy pause <id> — disable a strategy (E30: blocks if open positions).
+ * /strategy resume <id> — re-enable a strategy.
+ */
+function strategyHandler(args: string): string {
+  const esc = escapeMarkdownV2
+  try {
+    const registry = getStrategyRegistry()
+    const all = registry.getAll()
+    const parts = args.trim().split(/\s+/)
+    const subCommand = parts[0]?.toLowerCase()
+    const strategyId = parts[1]
+
+    // /strategy pause <id>
+    if (subCommand === 'pause' && strategyId) {
+      const strategy = all.find(s => s.id === strategyId)
+      if (!strategy) return `Unknown strategy: ${esc(strategyId)}`
+      if (!registry.isEnabled(strategyId)) return `${esc(strategy.name)} is already disabled\\.`
+
+      // E30: block disable if open positions exist for this strategy
+      const pm = getPositionMonitor()
+      const openForStrategy = Array.from(pm.getPositions().values())
+        .filter(p => p.strategyId === strategyId)
+      if (openForStrategy.length > 0) {
+        return `Cannot disable ${esc(strategy.name)} — ${esc(String(openForStrategy.length))} open position\\(s\\)\\. Close them first\\.`
+      }
+
+      registry.disable(strategyId)
+      return `Strategy ${esc(strategy.name)} disabled\\.`
+    }
+
+    // /strategy resume <id>
+    if (subCommand === 'resume' && strategyId) {
+      const strategy = all.find(s => s.id === strategyId)
+      if (!strategy) return `Unknown strategy: ${esc(strategyId)}`
+      if (registry.isEnabled(strategyId)) return `${esc(strategy.name)} is already enabled\\.`
+      registry.enable(strategyId)
+      return `Strategy ${esc(strategy.name)} enabled\\.`
+    }
+
+    // /strategy — list all
+    if (all.length === 0) return `No strategies registered\\.`
+
+    const lines: string[] = [`*Strategies \\(${esc(String(all.length))}\\)*`, ``]
+    for (const s of all) {
+      const status = registry.isEnabled(s.id) ? '🟢' : '🔴'
+      const types = s.patternTypes.slice(0, 3).join(', ')
+      lines.push(`${status} *${esc(s.name)}* \\(${esc(s.id)}\\)`)
+      lines.push(`  Patterns: ${esc(types)}`)
+    }
+    lines.push(``, `Use /strategy pause <id> or /strategy resume <id>`)
+    return lines.join('\n')
+  } catch {
+    return `Strategy registry not initialized\\.`
+  }
+}
+
 // ─── Register Built-in Commands ────────────────────────────────────────────
 
 /** Register all built-in commands. Safe to call multiple times (idempotent). */
@@ -420,4 +481,5 @@ export function registerBuiltinCommands(): void {
   registerCommand({ name: 'closeall', description: 'Emergency close all (requires /confirm)', handler: closeallHandler })
   registerCommand({ name: 'confirm', description: 'Confirm pending /closeall', handler: confirmHandler })
   registerCommand({ name: 'report', description: 'Daily report (PnL, patterns, coins)', handler: reportHandler })
+  registerCommand({ name: 'strategy', description: 'List/pause/resume strategies', handler: strategyHandler })
 }
