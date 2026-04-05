@@ -530,3 +530,19 @@ Mode: **BIG CHANGE** — full interactive review.
 **Tests:** 1023 pass, 0 fail. [CONFIRMED] against live TimescaleDB — 35 DB integration tests pass.
 
 **Phase 4.5A: Foundation — COMPLETE.** All 8 DoD items checked.
+
+### S4 — Exchange Pool + Per-Strategy Wallets (2026-04-06)
+
+**Completed:**
+- `src/config.ts`: WalletConfig type + parseStrategyWallets() — parses STRATEGY_WALLETS JSON env with strict validation (0x prefix, address length, object shape)
+- `src/execution/exchange-service.ts`: Constructor injection with optional WalletConfig (E25). Falls back to PRIVATE_KEY/ACCOUNT_ADDRESS env when no config provided. Backward compatible.
+- `src/execution/exchange-pool.ts` (NEW): ExchangePool factory — Map<strategyId, ExchangeService>. Single-wallet fallback (V5). Unknown strategyId returns shared instance. Eager init (fail-fast).
+- `test/exchange-pool.test.ts` (NEW): 27 tests — parseStrategyWallets validation (8), ExchangeService with WalletConfig (3), ExchangePool single-wallet mode (4), multi-wallet mode (7), lifecycle (3), singleton (2)
+
+**Design decisions:**
+- ExchangePool.get() returns shared fallback for unknown strategyId (defensive, don't crash on new strategy without wallet)
+- Each ExchangeService creates own ExchangeClient (different signing key) but separate SymbolConverter (acceptable cost for 2-3 strategies)
+- Eager init all instances on pool.init() — fail-fast if any wallet key is invalid
+- parseStrategyWallets() called in ExchangePool constructor — invalid JSON throws at construction time
+
+**Tests:** 1050 pass, 0 fail.
