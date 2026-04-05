@@ -157,6 +157,42 @@ Preliminary decisions for Sprint 3 — Intelligence + Scale. Final review after 
 
 ---
 
+## Sprint 4.5 Architecture Review — Multi-Strategy Isolation (2026-04-02)
+
+Decisions made during Sprint 4.5 planning — refactoring from single-strategy to multi-strategy architecture.
+
+### CEO Review
+
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| V1 | Strategy dispatch | **Fan-out registry** | Replace global `activeStrategy` mutable. All registered strategies run per tick. No switch/case |
+| V2 | Agent state key | **`coin:strategyId`** | Same coin can be traded by different strategies simultaneously (independent signals) |
+| V3 | Exchange isolation | **Agent wallet per strategy** | Each strategy signs with own HL agent wallet. Software-enforced capital allocation (HL agent wallets share main account balance) |
+| V4 | DB migration | **`strategy_id TEXT DEFAULT 'layered'`** | Additive columns on existing tables. Zero data migration. Backward compatible |
+| V5 | Single-strategy compat | **Feature flag via `STRATEGY_WALLETS` env** | No env var = single wallet mode (Sprint 4 behavior unchanged) |
+| V6 | Risk isolation | **Per-strategy CB + portfolio cap** | Each strategy has own daily PnL limit + circuit breakers. Global exposure cap prevents over-leverage |
+| V7 | Correlation guard | **Cross-strategy allowed (independent)** | Different strategies CAN hold same coin same direction. They're independent signals |
+| V8 | Capital allocation | **Fixed % per strategy in config** | e.g., quant=40%, smc-sd=60%. PositionSizer uses allocated capital, not total balance |
+
+### Eng Review
+
+| # | Issue | Choice | Rationale |
+|---|-------|--------|-----------|
+| E25 | ExchangeService parameterization | **Constructor injection** with optional WalletConfig | Minimal diff, explicit > clever. Fallback to env if no config |
+| E26 | Setup event routing | **Single emitter + strategyId in ActiveSetup** | DRY — one emitter, agent filters by setup.strategyId |
+| E27 | PipelineStats isolation | **Per-strategy stats Map** | Explicit, no stat inflation. Backtest + dashboard filter by strategy |
+| E28 | Agent file structure | **Extract orchestrator to separate file** | 776L + new per-strategy logic warrants split |
+| E29 | Schema debt fix | **Fix cloid + fill_size in migration 005** | One migration clears 2 existing TODOs |
+| E30 | Strategy removal guard | **Block disable if open positions** | Must close positions before removing strategy |
+
+### Review Stats
+- CEO: 0 critical gaps, 8 failure modes mapped, 1 edge case resolved (strategy removal)
+- Eng: 6 issues resolved across 4 sections, 0 critical gaps
+- Test plan: 4 new test files + 3 extended, ~60-80 new tests
+- Failure modes: 8 mapped, 0 silent failures
+
+---
+
 ## Session Log
 
 ### Session #1 — Step 0 (partial) + Step 1 (2026-03-29)

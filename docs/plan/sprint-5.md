@@ -13,6 +13,7 @@ Sprint 1: SEE        ✅ → Analysis engine
 Sprint 2: ACT        ✅ → Agent execution
 Sprint 3: VALIDATE   ✅ → Backtest + Analytics + Dashboard MVP
 Sprint 4: EXPAND     ✅ → Telegram + Dashboard extensions
+Sprint 4.5: ISOLATE  ✅ → Multi-Strategy + Agent Wallets
 Sprint 5: ADVISE     🔲 → Basic LLM Advisor (gate: ≥ 100 trades)
 Sprint 6: REMEMBER I 🔲 → Memory foundation (Layered + RAG)
 Sprint 7: REMEMBER II🔲 → Memory intelligence (Graph + HyDE + Learning)
@@ -40,7 +41,7 @@ What to do while waiting:
 Sprint 5 is intentionally **stateless** — each analysis starts from zero context. No memory, no embeddings, no graph. This is the foundation that Sprint 6–7 upgrades.
 
 ```
-Sprint 5 (Naive):   Journal JSON → Claude prompt → Analysis output
+Sprint 5 (Naive):   Journal JSON (per-strategy filtered) → Claude prompt → Analysis output
 Sprint 6–7 (Smart): Journal chunks → Context + Embeddings → RAG retrieval → Graph → Claude
 ```
 
@@ -81,6 +82,8 @@ Build the simple version first. Validate it provides useful signal. Then upgrade
 ┌─────────────────────────────────────────────────────┐
 │  Rule-Based Agent (Sprint 2) — unchanged, no regression │
 │  LLM NEVER touches execution path                   │
+│  Multi-strategy (Sprint 4.5): queries filter by      │
+│  strategy_id — analyze strategies independently      │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -152,12 +155,13 @@ System (cached — cost reduction):
 
 User input:
   Period: [date range]
+  Strategy: [strategy_id — 'layered' | 'quant' | 'all'] (Sprint 4.5)
   Trades: [JSON array — coin, side, pnl, signal_grade, pattern_type,
-           regime_at_entry, exit_reason, hold_bars, rr_achieved]
+           regime_at_entry, exit_reason, hold_bars, rr_achieved, strategy_id]
   Current config: [relevant thresholds from config.ts]
 
 Expected output structure:
-  - Win rate breakdown: by pattern_type, coin, timeframe, regime
+  - Win rate breakdown: by pattern_type, coin, timeframe, regime, strategy_id
   - Which setups consistently underperform (< 40% win rate)?
   - Specific config suggestions: field + value + reason + confidence
   - Risk observations: position sizing patterns, correlated losses
@@ -331,7 +335,7 @@ Phase 5E: Dashboard Advisor Page      (2 sessions)
 - [ ] LLM NEVER places orders, modifies agent state, or auto-applies config changes
 - [ ] Dashboard /advisor: shows review history, active suggestions, anomaly log
 - [ ] Approve/reject flow: owner can approve → triggers manual config update reminder
-- [ ] All Sprint 1–4 tests still pass
+- [ ] All Sprint 1–4.5 tests still pass
 - [ ] New tests: JournalAnalyzer schema, ConfigAutoTuner diff logic, rate limiter enforcement
 - [ ] Cost estimate validated: actual API spend ≤ $20/month at current trade volume
 

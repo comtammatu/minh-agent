@@ -1,11 +1,12 @@
 # Minh (明) — Architecture
 
-> **v4.0.0 (Sprint 4 complete, 2026-04-02)** — Autonomous trading agent with monitoring and analytics.
+> **v4.5.0 (Sprint 4.5 complete, 2026-04-06)** — Autonomous trading agent with multi-strategy isolation.
 >
 > - Sprint 1: Layered analysis engine (scanner pipeline, indicators, invalidation)
 > - Sprint 2: Agent execution (state machine, order manager, position monitor, circuit breakers, HL exchange, PostgreSQL/TimescaleDB)
 > - Sprint 3: Backtest engine, analytics metrics, SSE streaming, dashboard MVP (React + Vite)
 > - Sprint 4: Telegram bot (command interface), backtest-from-browser, comparison view, journal detail, mobile layout, dark/light theme
+> - Sprint 4.5: Multi-strategy architecture (IStrategy interface, StrategyRegistry fan-out, per-strategy agent wallets, ExchangePool, PortfolioRiskManager, dashboard strategy selector, Telegram /strategy commands)
 
 ## System Overview — Layered Decision Framework (Sprint 1)
 
@@ -299,6 +300,11 @@ types.ts (0 deps)
     ├── scanner/invalidation.ts ── uses types only (unchanged)
     └── scanner/pipeline.ts ────── orchestrates all layers + confluence + regime + risk
     │
+    ├── scanner/strategy.ts ──────── IStrategy interface (Sprint 4.5)
+    ├── scanner/strategy-registry.ts ── register/fan-out/activate (Sprint 4.5)
+    ├── scanner/layered-adapter.ts ─── wraps runPipeline() (Sprint 4.5)
+    └── scanner/quant-adapter.ts ──── wraps runQuantPipeline() (Sprint 4.5)
+    │
     ├── feed/rest.ts ──── @nktkas/hyperliquid InfoClient
     ├── feed/ws.ts ─────── @nktkas/hyperliquid SubscriptionClient
     ├── feed/store.ts ──── types only
@@ -320,8 +326,11 @@ types.ts (0 deps)
     ├── agent/self-healing.ts ── health monitor + auto-recovery
     ├── agent/journal.ts ──── trade journal persistence (PostgreSQL)
     ├── agent/close-all.ts ── emergency close-all (DI-enabled)
+    ├── agent/portfolio-risk.ts ── global exposure + per-strategy allocation (Sprint 4.5)
+    ├── agent/trading-orchestrator.ts ── per-strategy state dispatch (Sprint 4.5)
     │
     ├── execution/exchange-service.ts ── HL ExchangeClient (place/cancel/modify)
+    ├── execution/exchange-pool.ts ──── per-strategy wallet routing (Sprint 4.5)
     │
     ├── backtest/engine.ts ── backtest orchestrator
     ├── backtest/simulator.ts ── fill simulation (paper trade)
@@ -479,3 +488,46 @@ Sprint 4:
   dashboard extensions ← Backtest runner, compare view, journal detail,
                           mobile layout, dark/light theme
 ```
+
+## Multi-Strategy Architecture (Sprint 4.5)
+
+```
+Feed Layer (shared — candles, L2, trades, funding)
+    ↓
+StrategyRegistry.runAll() — fan-out to ALL registered strategies
+    ↓
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│ Layered Strategy │  │ Quant Strategy  │  │ Future Strategy │
+│ (5-layer Wyckoff)│  │ (EMA+RSI)       │  │ (e.g. SMC+S&D)  │
+│ Agent Wallet A   │  │ Agent Wallet B  │  │ Agent Wallet C  │
+│ % allocation     │  │ % allocation    │  │ % allocation    │
+│ Own GlobalContext │  │ Own GlobalContext│  │ Own GlobalContext│
+│ Own CircuitBreaker│  │ Own CircuitBreaker│ │ Own CircuitBreaker│
+└────────┬─────────┘  └────────┬─────────┘  └────────┬────────┘
+         └────────────────┬────┘                      │
+                    PortfolioRiskManager ──────────────┘
+                    (global exposure cap)
+```
+
+### Key Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| `IStrategy` | `src/scanner/strategy.ts` | Interface: `scan()`, `minCandles`, `clearState()` |
+| `StrategyRegistry` | `src/scanner/strategy-registry.ts` | Register/fan-out/activate strategies |
+| `LayeredStrategyAdapter` | `src/scanner/layered-adapter.ts` | Wraps existing 5-layer pipeline |
+| `QuantStrategyAdapter` | `src/scanner/quant-adapter.ts` | Wraps EMA+RSI quant pipeline |
+| `ExchangePool` | `src/execution/exchange-pool.ts` | Per-strategy HL agent wallet routing |
+| `PortfolioRiskManager` | `src/agent/portfolio-risk.ts` | Global exposure cap, per-strategy allocation |
+| `TradingOrchestrator` | `src/agent/trading-orchestrator.ts` | Per-strategy state, coin:strategyId keying |
+
+### Isolation Model
+
+- **State**: Agent state keyed by `coin:strategyId` — same coin can be traded by different strategies independently
+- **Execution**: Each strategy signs with own HL agent wallet via `ExchangePool`
+- **Risk**: Per-strategy circuit breakers + daily PnL limits. `PortfolioRiskManager` enforces global exposure cap
+- **DB**: `strategy_id TEXT DEFAULT 'layered'` on orders, positions, trade_journal tables
+- **API**: All endpoints accept `?strategy=` filter. `GET /api/strategies` lists registered strategies
+- **Dashboard**: Global strategy selector dropdown filters all pages
+- **Telegram**: `/strategy list|pause|resume` commands (E30: block disable if open positions)
+- **Backward compat**: No `STRATEGY_WALLETS` env = single-wallet mode (Sprint 4 behavior unchanged)

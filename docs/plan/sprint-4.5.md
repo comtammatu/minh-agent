@@ -13,7 +13,7 @@ Sprint 1: SEE        ✅ → Analysis engine (pipeline, indicators, structure)
 Sprint 2: ACT        ✅ → Agent execution (state machine, orders, risk, safety)
 Sprint 3: VALIDATE   ✅ → Backtest + Analytics + Dashboard MVP
 Sprint 4: EXPAND     ✅ → Telegram + Dashboard extensions + tech debt
-Sprint 4.5: ISOLATE  🔲 → Multi-Strategy + Agent Wallets
+Sprint 4.5: ISOLATE  ✅ → Multi-Strategy + Agent Wallets
 Sprint 5: ADVISE     🔲 → Basic LLM Advisor (gate: >= 100 trades)
 Sprint 6: REMEMBER I 🔲 → Memory foundation (Layered + RAG)
 Sprint 7: REMEMBER II🔲 → Memory intelligence (Graph + HyDE + Learning)
@@ -251,7 +251,7 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 | S7 | Integration Wiring | DONE | 2026-04-06 | StrategyRegistry + ExchangePool in index.ts, OrderManager exchange routing by strategyId, DB writes + journal + API strategy filter, 11 new tests, 1105 total pass |
 | S8 | Backtest Multi-Strategy | DONE | 2026-04-06 | strategyId on BacktestTrade + simulator propagation, 8 new tests, 1113 total pass |
 | S9 | Dashboard + Telegram | DONE | 2026-04-06 | StrategySelector component + Zustand store, Journal/Positions filter, SSE strategyId, Telegram /strategy (list/pause/resume + E30 guard), 8 new tests, 1121 total pass |
-| S10 | Docs + Sprint 5 Update | | | |
+| S10 | Docs + Sprint 5 Update | DONE | 2026-04-06 | architecture.md multi-strategy diagram, sprint-5.md strategy_id refs, decisions.md V1-V8 + E25-E30 |
 
 ---
 
@@ -285,9 +285,9 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 ### Phase 4.5D: UI + Docs
 - [x] Dashboard strategy selector dropdown on all pages (S9)
 - [x] Telegram `/strategy` commands functional (S9)
-- [ ] `docs/spec/architecture.md` updated with multi-strategy diagram
-- [ ] `docs/plan/sprint-5.md` references strategy_id in analysis queries
-- [ ] `decisions.md` logged with V1-V8
+- [x] `docs/spec/architecture.md` updated with multi-strategy diagram (S10)
+- [x] `docs/plan/sprint-5.md` references strategy_id in analysis queries (S10)
+- [x] `decisions.md` logged with V1-V8 + E25-E30 (S10)
 
 ### Always
 - [ ] `bun test --run` — ALL tests pass (Sprint 1-4 + new)
