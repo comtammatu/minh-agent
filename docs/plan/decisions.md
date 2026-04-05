@@ -565,3 +565,23 @@ Mode: **BIG CHANGE** — full interactive review.
 - `getSnapshot().coins` keyed by `coin:strategyId`, not just `coin` — breaking change for API consumers (S7 will update server endpoints)
 
 **Tests:** 1075 pass, 0 fail.
+
+### S6 — Portfolio Risk Manager (2026-04-06)
+
+**Completed:**
+- `src/agent/portfolio-risk.ts` (NEW): Pure-function `checkPortfolioEntry()` — 4 sequential checks: (1) total concurrent positions, (2) total notional exposure vs account equity, (3) per-strategy concurrent cap, (4) per-strategy allocation cap. Plus `getPortfolioRiskSnapshot()` for API/logging.
+- `src/config.ts`: Added `PORTFOLIO_RISK` const — `maxTotalExposure: 3.0`, `maxTotalConcurrent: 6`, `strategyAllocations` (layered: 50%, quant: 50%), `strategyMaxConcurrent` (3 each).
+- `src/agent/trading-orchestrator.ts`: Added `accountEquity` field + setter. `filterByPortfolioRisk()` intercepts `place_order` actions — if blocked, replaces with skip journal entry and reverts state. `getPortfolioPositions()` builds position list from IN_POSITION/ENTERING coins.
+- `test/agent/portfolio-risk.test.ts` (NEW): 19 tests — total concurrent (2), total exposure (4), per-strategy concurrent (3), per-strategy allocation (3), edge cases (4), snapshot helper (3).
+
+**Design decisions:**
+- Portfolio check is pure: takes snapshot data, returns allow/block. No I/O, no state.
+- Integration via action filtering in `dispatch()` rather than a separate middleware layer — keeps existing flow intact.
+- Position notional estimated as `accountEquity × 0.05` (DEFAULT_RISK_PERCENT) since real notional tracking comes in S7 (PositionMonitor). Conservative estimate.
+- `accountEquity` set via `setAccountEquity()` — called by position monitor / exchange sync. If equity is 0 (not yet synced), portfolio check is skipped (no-op).
+- Per-strategy allocation cap = `allocation% × equity × maxTotalExposure`. E.g., layered with 50% alloc on 10k equity at 3x → 15k max notional.
+- Unknown strategies (no config entry) only checked against global limits, not per-strategy caps.
+
+**Phase B (Isolation) COMPLETE:** S4-S6 all DONE. All 6 DoD items checked.
+
+**Tests:** 1094 pass, 0 fail.

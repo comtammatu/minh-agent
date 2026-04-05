@@ -247,7 +247,7 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 | S3 | DB Migration 005 | DONE | 2026-04-06 | strategies table + strategy_id on 3 tables + cloid/fill_size E29 fix, 1023 tests pass |
 | S4 | Exchange Pool + Wallets | DONE | 2026-04-06 | WalletConfig + ExchangePool + single-wallet fallback, 1050 tests pass |
 | S5 | Agent State Per-Strategy | DONE | 2026-04-06 | E28 orchestrator extraction, coin:strategyId key, per-strategy GlobalContext+CB, 25 new tests, 1075 total pass |
-| S6 | Portfolio Risk Manager | | | |
+| S6 | Portfolio Risk Manager | DONE | 2026-04-06 | PortfolioRiskManager pure functions + config + orchestrator hook, 19 new tests, 1094 total pass |
 | S7 | Integration Wiring | | | |
 | S8 | Backtest Multi-Strategy | | | |
 | S9 | Dashboard + Telegram | | | |
@@ -272,7 +272,7 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 - [x] Single-wallet mode (no `STRATEGY_WALLETS` env) backward compatible (S4)
 - [x] Agent state keyed by `coin:strategyId` (S5)
 - [x] Per-strategy `GlobalContext` (dailyPnl, circuit breakers independent) (S5)
-- [ ] `PortfolioRiskManager` enforces global exposure cap
+- [x] `PortfolioRiskManager` enforces global exposure cap (S6)
 - [x] Tests: same coin, different strategies → fully independent states (S5)
 
 ### Phase 4.5C: Integration
