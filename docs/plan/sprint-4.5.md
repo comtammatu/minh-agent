@@ -250,7 +250,7 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 | S6 | Portfolio Risk Manager | DONE | 2026-04-06 | PortfolioRiskManager pure functions + config + orchestrator hook, 19 new tests, 1094 total pass |
 | S7 | Integration Wiring | DONE | 2026-04-06 | StrategyRegistry + ExchangePool in index.ts, OrderManager exchange routing by strategyId, DB writes + journal + API strategy filter, 11 new tests, 1105 total pass |
 | S8 | Backtest Multi-Strategy | DONE | 2026-04-06 | strategyId on BacktestTrade + simulator propagation, 8 new tests, 1113 total pass |
-| S9 | Dashboard + Telegram | | | |
+| S9 | Dashboard + Telegram | DONE | 2026-04-06 | StrategySelector component + Zustand store, Journal/Positions filter, SSE strategyId, Telegram /strategy (list/pause/resume + E30 guard), 8 new tests, 1121 total pass |
 | S10 | Docs + Sprint 5 Update | | | |
 
 ---
@@ -283,8 +283,8 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 - [x] API endpoints accept `?strategy=` filter (S7)
 
 ### Phase 4.5D: UI + Docs
-- [ ] Dashboard strategy selector dropdown on all pages
-- [ ] Telegram `/strategy` commands functional
+- [x] Dashboard strategy selector dropdown on all pages (S9)
+- [x] Telegram `/strategy` commands functional (S9)
 - [ ] `docs/spec/architecture.md` updated with multi-strategy diagram
 - [ ] `docs/plan/sprint-5.md` references strategy_id in analysis queries
 - [ ] `decisions.md` logged with V1-V8
