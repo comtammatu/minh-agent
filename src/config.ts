@@ -396,6 +396,66 @@ export const QUANT_ATR_SL_MULT = 2.0
 /** ATR multiplier for take profit distance (1.5 R:R). */
 export const QUANT_ATR_TP_MULT = 3.0
 
+// ─── Strategy Wallets (Sprint 4.5 S4) ────────────────────────────────────────
+
+/**
+ * Per-strategy wallet configuration.
+ * Each strategy can have its own agent wallet for signing orders.
+ */
+export interface WalletConfig {
+  /** Agent wallet private key (0x-prefixed hex). */
+  privateKey: string
+  /** Main account address that the agent wallet trades on behalf of. */
+  accountAddress: string
+}
+
+/**
+ * Parse STRATEGY_WALLETS JSON env var into a Map<strategyId, WalletConfig>.
+ *
+ * Expected format:
+ * ```json
+ * {
+ *   "layered": { "privateKey": "0x...", "accountAddress": "0x..." },
+ *   "quant":   { "privateKey": "0x...", "accountAddress": "0x..." }
+ * }
+ * ```
+ *
+ * Returns empty Map if env var is not set (single-wallet fallback mode).
+ * Throws on malformed JSON or invalid wallet config entries.
+ */
+export function parseStrategyWallets(): Map<string, WalletConfig> {
+  const raw = process.env.STRATEGY_WALLETS
+  if (!raw) return new Map()
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    throw new Error('STRATEGY_WALLETS env var is not valid JSON')
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('STRATEGY_WALLETS must be a JSON object { strategyId: { privateKey, accountAddress } }')
+  }
+
+  const result = new Map<string, WalletConfig>()
+  for (const [strategyId, config] of Object.entries(parsed as Record<string, unknown>)) {
+    if (typeof config !== 'object' || config === null || Array.isArray(config)) {
+      throw new Error(`STRATEGY_WALLETS["${strategyId}"] must be an object with privateKey and accountAddress`)
+    }
+    const { privateKey, accountAddress } = config as Record<string, unknown>
+    if (typeof privateKey !== 'string' || !privateKey.startsWith('0x')) {
+      throw new Error(`STRATEGY_WALLETS["${strategyId}"].privateKey must be a 0x-prefixed hex string`)
+    }
+    if (typeof accountAddress !== 'string' || !accountAddress.startsWith('0x') || accountAddress.length !== 42) {
+      throw new Error(`STRATEGY_WALLETS["${strategyId}"].accountAddress must be a valid 0x-prefixed Ethereum address (42 chars)`)
+    }
+    result.set(strategyId, { privateKey, accountAddress })
+  }
+
+  return result
+}
+
 // ─── Paper Trade Mode ─────────────────────────────────────────────────────────
 
 /** Paper trade mode: simulate fills instead of calling HL exchange. */

@@ -42,7 +42,7 @@ import { acquire } from '../feed/rate-limiter.js'
 import { log } from '../lib/logger.js'
 import { withRetry, isRetryableExchangeError, is503 } from '../lib/retry.js'
 import { getHealthMonitor } from '../agent/self-healing.js'
-import { RETRY } from '../config.js'
+import { RETRY, type WalletConfig } from '../config.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -105,19 +105,30 @@ export class ExchangeService {
   /** Whether the service has been initialized. */
   private initialized = false
 
-  constructor() {
+  /** Optional wallet config injected via constructor (per-strategy wallet mode). */
+  private walletConfig: WalletConfig | undefined
+
+  /**
+   * @param walletConfig Optional per-strategy wallet config (E25: constructor injection).
+   *   If provided, init() uses these credentials instead of env vars.
+   *   If omitted, falls back to PRIVATE_KEY / ACCOUNT_ADDRESS env vars (backward compat).
+   */
+  constructor(walletConfig?: WalletConfig) {
     this.transport = new HttpTransport()
+    this.walletConfig = walletConfig
   }
 
   /**
    * Initialize wallet + ExchangeClient + SymbolConverter.
    * Must be called before any exchange operation.
    * Safe to call multiple times (idempotent).
+   *
+   * Uses injected WalletConfig if provided, otherwise falls back to env vars.
    */
   async init(): Promise<void> {
     if (this.initialized) return
 
-    const privateKey = process.env.PRIVATE_KEY
+    const privateKey = this.walletConfig?.privateKey ?? process.env.PRIVATE_KEY
     if (!privateKey) {
       throw new Error('PRIVATE_KEY env var is required for exchange operations')
     }
@@ -130,10 +141,8 @@ export class ExchangeService {
     const wallet = privateKeyToAccount(privateKey as `0x${string}`)
     this.walletAddress = wallet.address
 
-    // Agent wallet mode: ACCOUNT_ADDRESS is the main account (has funds).
-    // Agent PK signs orders on behalf of main account, but info queries need main address.
-    // If ACCOUNT_ADDRESS not set, assume PRIVATE_KEY is the main wallet (backward compat).
-    const accountAddr = process.env.ACCOUNT_ADDRESS
+    // Resolve account address: injected config > env var > derived from PK
+    const accountAddr = this.walletConfig?.accountAddress ?? process.env.ACCOUNT_ADDRESS
     if (accountAddr) {
       if (!accountAddr.startsWith('0x') || accountAddr.length !== 42) {
         throw new Error('ACCOUNT_ADDRESS must be a valid 0x-prefixed Ethereum address (42 chars)')
