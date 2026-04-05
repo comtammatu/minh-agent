@@ -334,7 +334,7 @@ export class ExchangeService {
 
   // ── Cancel ────────────────────────────────────────────────────────────────
 
-  /** Cancel order by exchange oid. */
+  /** Cancel order by exchange oid (with retry for transient errors). */
   async cancelByOid(coin: string, oid: number): Promise<OrderResult> {
     this.ensureInit()
 
@@ -345,26 +345,40 @@ export class ExchangeService {
 
     log.info('exchange-service', `Cancelling order: ${coin} oid=${oid}`)
 
-    try {
-      await acquire()
-      const response = await this.exchange!.cancel({
-        cancels: [{ a: assetId, o: oid }],
-      })
+    const retryResult = await withRetry(
+      async () => {
+        await acquire()
+        const response = await this.exchange!.cancel({
+          cancels: [{ a: assetId, o: oid }],
+        })
+        const status = response.response.data.statuses[0]
+        if (status === 'success') {
+          return { success: true as const, oid, avgPx: null, totalSz: null, status: 'cancelled' as const, error: null }
+        }
+        const errorMsg = typeof status === 'object' && 'error' in status ? status.error : 'Unknown cancel error'
+        throw new Error(errorMsg)
+      },
+      {
+        maxAttempts: RETRY.exchangeMaxAttempts,
+        initialDelayMs: RETRY.initialDelayMs,
+        jitterFraction: RETRY.jitterFraction,
+        shouldRetry: (err) => isRetryableExchangeError(err),
+        onRetry: (err, attempt, delayMs) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          log.warn('exchange-service', `Cancel retry ${attempt} for ${coin} oid=${oid}: ${msg} (backoff ${delayMs}ms)`)
+        },
+      },
+    )
 
-      const status = response.response.data.statuses[0]
-      if (status === 'success') {
-        return { success: true, oid, avgPx: null, totalSz: null, status: 'cancelled', error: null }
-      }
-      const errorMsg = typeof status === 'object' && 'error' in status ? status.error : 'Unknown cancel error'
-      return { success: false, oid, avgPx: null, totalSz: null, status: null, error: errorMsg }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      log.error('exchange-service', `Cancel failed: ${msg}`)
-      return { success: false, oid, avgPx: null, totalSz: null, status: null, error: msg }
+    if (retryResult.success && retryResult.value) {
+      return retryResult.value
     }
+    const msg = retryResult.lastError instanceof Error ? retryResult.lastError.message : String(retryResult.lastError)
+    log.error('exchange-service', `Cancel failed after ${retryResult.attempts} attempts: ${msg}`)
+    return { success: false, oid, avgPx: null, totalSz: null, status: null, error: msg }
   }
 
-  /** Cancel order by cloid. */
+  /** Cancel order by cloid (with retry for transient errors). */
   async cancelByCloid(coin: string, cloid: string): Promise<OrderResult> {
     this.ensureInit()
 
@@ -375,23 +389,37 @@ export class ExchangeService {
 
     log.info('exchange-service', `Cancelling by cloid: ${coin} cloid=${cloid.slice(0, 10)}...`)
 
-    try {
-      await acquire()
-      const response = await this.exchange!.cancelByCloid({
-        cancels: [{ asset: assetId, cloid: cloid as `0x${string}` }],
-      })
+    const retryResult = await withRetry(
+      async () => {
+        await acquire()
+        const response = await this.exchange!.cancelByCloid({
+          cancels: [{ asset: assetId, cloid: cloid as `0x${string}` }],
+        })
+        const status = response.response.data.statuses[0]
+        if (status === 'success') {
+          return { success: true as const, oid: null, avgPx: null, totalSz: null, status: 'cancelled' as const, error: null }
+        }
+        const errorMsg = typeof status === 'object' && 'error' in status ? status.error : 'Unknown cancel error'
+        throw new Error(errorMsg)
+      },
+      {
+        maxAttempts: RETRY.exchangeMaxAttempts,
+        initialDelayMs: RETRY.initialDelayMs,
+        jitterFraction: RETRY.jitterFraction,
+        shouldRetry: (err) => isRetryableExchangeError(err),
+        onRetry: (err, attempt, delayMs) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          log.warn('exchange-service', `CancelByCloid retry ${attempt} for ${coin}: ${msg} (backoff ${delayMs}ms)`)
+        },
+      },
+    )
 
-      const status = response.response.data.statuses[0]
-      if (status === 'success') {
-        return { success: true, oid: null, avgPx: null, totalSz: null, status: 'cancelled', error: null }
-      }
-      const errorMsg = typeof status === 'object' && 'error' in status ? status.error : 'Unknown cancel error'
-      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: errorMsg }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      log.error('exchange-service', `CancelByCloid failed: ${msg}`)
-      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: msg }
+    if (retryResult.success && retryResult.value) {
+      return retryResult.value
     }
+    const msg = retryResult.lastError instanceof Error ? retryResult.lastError.message : String(retryResult.lastError)
+    log.error('exchange-service', `CancelByCloid failed after ${retryResult.attempts} attempts: ${msg}`)
+    return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: msg }
   }
 
   // ── Modify (trail stop SL updates) ────────────────────────────────────────
@@ -423,31 +451,46 @@ export class ExchangeService {
 
     log.info('exchange-service', `Modifying ${tpsl.toUpperCase()} trigger: ${coin} oid=${oid} newPx=${triggerPxStr}`)
 
-    try {
-      await acquire()
-      await this.exchange!.modify({
-        oid,
-        order: {
-          a: assetId,
-          b: isBuy,
-          p: triggerPxStr,
-          s: sizeStr,
-          r: true,
-          t: {
-            trigger: {
-              isMarket,
-              triggerPx: triggerPxStr,
-              tpsl,
+    const retryResult = await withRetry(
+      async () => {
+        await acquire()
+        await this.exchange!.modify({
+          oid,
+          order: {
+            a: assetId,
+            b: isBuy,
+            p: triggerPxStr,
+            s: sizeStr,
+            r: true,
+            t: {
+              trigger: {
+                isMarket,
+                triggerPx: triggerPxStr,
+                tpsl,
+              },
             },
           },
+        })
+        return { success: true as const, oid, avgPx: null, totalSz: null, status: 'modified' as const, error: null }
+      },
+      {
+        maxAttempts: RETRY.slTpMaxAttempts,
+        initialDelayMs: RETRY.initialDelayMs,
+        jitterFraction: RETRY.jitterFraction,
+        shouldRetry: (err) => isRetryableExchangeError(err),
+        onRetry: (err, attempt, delayMs) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          log.warn('exchange-service', `Modify trigger retry ${attempt} for ${coin} oid=${oid}: ${msg} (backoff ${delayMs}ms)`)
         },
-      })
-      return { success: true, oid, avgPx: null, totalSz: null, status: 'modified', error: null }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      log.error('exchange-service', `Modify trigger failed: ${msg}`)
-      return { success: false, oid, avgPx: null, totalSz: null, status: null, error: msg }
+      },
+    )
+
+    if (retryResult.success && retryResult.value) {
+      return retryResult.value
     }
+    const msg = retryResult.lastError instanceof Error ? retryResult.lastError.message : String(retryResult.lastError)
+    log.error('exchange-service', `Modify trigger failed after ${retryResult.attempts} attempts: ${msg}`)
+    return { success: false, oid, avgPx: null, totalSz: null, status: null, error: msg }
   }
 
   // ── Account State ─────────────────────────────────────────────────────────

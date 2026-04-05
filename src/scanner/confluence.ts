@@ -12,7 +12,11 @@
  *   +1 if trigger exists           (Layer 5 PA)
  *   +1 if regime aligned           (Regime context)
  *
- * Grade: C(< 3), B(3-4), A(5-6), A+(7+)
+ * Grade: C(< 3), B(3-5), A(6-7), A+(8+)
+ *
+ * Max possible count: ~11.5 (bias 1 + structure 1 + zone 1 + VSA 1 + VP 1
+ *   + delta 1 + book 1 + funding 0.5 + OI 0.5 + trigger 1 + regime 1
+ *   + structure-neutral partial 0.5)
  *
  * Pure function. Zero I/O.
  */

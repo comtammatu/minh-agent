@@ -145,8 +145,10 @@ export function bookConfirm(imbalance: number, zone: KeyZone): number {
 export function fundingConfirm(rate: number | null, side: SignalSide): number {
   if (rate === null || rate === 0) return 0
 
-  if (side === 'long' && rate < FUNDING_CONTRARIAN_THRESHOLD) return 0.10
-  if (side === 'short' && rate > -FUNDING_CONTRARIAN_THRESHOLD) return 0.10
+  // Long: negative funding (shorts pay longs) → contrarian bullish
+  if (side === 'long' && rate < -FUNDING_CONTRARIAN_THRESHOLD) return 0.10
+  // Short: positive funding (longs pay shorts) → contrarian bearish
+  if (side === 'short' && rate > FUNDING_CONTRARIAN_THRESHOLD) return 0.10
 
   return 0
 }

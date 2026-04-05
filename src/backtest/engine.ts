@@ -197,7 +197,7 @@ export async function runBacktestAsync(
   const slippage = config.slippagePct ?? BACKTEST_SLIPPAGE_PCT
   const commission = config.commissionPct ?? BACKTEST_COMMISSION_PCT
   const asyncExitMode = config.exitMode ?? 'multi'
-  const simulator = new TradeSimulator(config.initialCapital, slippage, commission, asyncExitMode)
+  const simulator = new TradeSimulator(config.initialCapital, slippage, commission, asyncExitMode, config.strategy ?? 'layered')
 
   const emitter = getPipelineEmitter()
   let currentBarIndex = 0

@@ -192,13 +192,13 @@ export function paperSimulateTrigger(trigger: TriggerOrder): ExchangeOrderResult
 /** Insert a new order into the database. */
 async function insertOrder(order: Order): Promise<void> {
   await sql`
-    INSERT INTO orders (id, coin, side, type, price, size, status, setup_id, sl_price, tp_price, exchange_order_id, created_at, updated_at, fill_price, filled_at, strategy_id)
+    INSERT INTO orders (id, coin, side, type, price, size, status, setup_id, sl_price, tp_price, exchange_order_id, created_at, updated_at, fill_price, filled_at, strategy_id, position_id)
     VALUES (
       ${order.id}, ${order.coin}, ${order.side}, ${order.type}, ${order.price},
       ${order.size}, ${order.status}, ${order.setupId}, ${order.slPrice}, ${order.tpPrice},
       ${order.exchangeOrderId}, ${new Date(order.createdAt)}, ${new Date(order.updatedAt)},
       ${order.fillPrice}, ${order.filledAt ? new Date(order.filledAt) : null},
-      ${order.strategyId}
+      ${order.strategyId}, ${order.positionId}
     )
   `
 }
@@ -211,7 +211,8 @@ async function updateOrderInDb(order: Order): Promise<void> {
       exchange_order_id = ${order.exchangeOrderId},
       fill_price = ${order.fillPrice},
       filled_at = ${order.filledAt ? new Date(order.filledAt) : null},
-      updated_at = ${new Date(order.updatedAt)}
+      updated_at = ${new Date(order.updatedAt)},
+      position_id = ${order.positionId}
     WHERE id = ${order.id}
   `
 }
@@ -254,6 +255,7 @@ function rowToOrder(row: Record<string, unknown>): Order {
     fillPrice: (row.fill_price as number) ?? null,
     fillSize: 0,  // TODO: add fill_size column in S10 migration
     strategyId: (row.strategy_id as string) ?? DEFAULT_STRATEGY,
+    positionId: (row.position_id as string) ?? null,
   }
 }
 
@@ -330,6 +332,7 @@ export class OrderManager {
       fillPrice: null,
       fillSize: 0,
       strategyId,
+      positionId: null,
     }
 
     // Persist pending
@@ -382,22 +385,32 @@ export class OrderManager {
       return
     }
 
+    // Guard: skip if already filled (prevents double-dispatch in paper mode / WS race)
+    if (order.status === 'filled') {
+      log.warn('order-manager', `onOrderFilled skipped — order ${orderId} already filled`)
+      return
+    }
+
     const now = Date.now()
     order.status = 'filled'
     order.fillPrice = fillPrice
     order.filledAt = now
     order.fillSize = fillSize
     order.updatedAt = now
+
+    // Create position ID and store on order for reliable lookup
+    const positionId = randomUUID()
+    order.positionId = positionId
+
     await updateOrderInDb(order)
     this.orders.set(order.id, order)
 
-    log.info('order-manager', `Order filled: ${order.id} ${order.coin} @ ${fillPrice}`)
+    log.info('order-manager', `Order filled: ${order.id} ${order.coin} @ ${fillPrice} positionId=${positionId}`)
 
     // R9: Place SL + TP trigger orders on exchange
     await this.placeSLTP(order)
 
-    // Create position ID and dispatch to agent (with strategyId for correct routing)
-    const positionId = randomUUID()
+    // Dispatch to agent (with strategyId for correct routing)
     this.dispatchToAgent?.(order.coin, {
       type: 'order_filled',
       orderId: order.id,
@@ -409,8 +422,9 @@ export class OrderManager {
   /**
    * Handle partial fill. Updates fill size but stays in ENTERING.
    * Full transition only on complete fill.
+   * @param fillPrice Actual fill price from exchange (not the original order price).
    */
-  async onPartialFill(orderId: string, filledSize: number): Promise<void> {
+  async onPartialFill(orderId: string, filledSize: number, fillPrice?: number): Promise<void> {
     const order = this.orders.get(orderId) ?? await getOrderById(orderId)
     if (!order) {
       log.error('order-manager', `Partial fill for unknown order: ${orderId}`)
@@ -425,9 +439,10 @@ export class OrderManager {
 
     log.info('order-manager', `Partial fill: ${order.id} ${order.coin} filled=${filledSize}/${order.size}`)
 
-    // If filled enough (>= requested), treat as full fill
+    // If filled enough (>= requested), treat as full fill — use actual fill price
     if (filledSize >= order.size) {
-      await this.onOrderFilled(orderId, order.price, filledSize)
+      const actualPrice = fillPrice ?? order.fillPrice ?? order.price
+      await this.onOrderFilled(orderId, actualPrice, filledSize)
     }
   }
 
@@ -728,14 +743,15 @@ export class OrderManager {
       this.triggerOrders.delete(entryOrder.id)
     }
 
-    // Place close order (opposite side)
+    // Place close order (opposite side) — use entry fillPrice as reference (HL needs a valid price even for market orders)
     const closeSide: 'long' | 'short' = entryOrder.side === 'long' ? 'short' : 'long'
     const closeSize = entryOrder.fillSize > 0 ? entryOrder.fillSize : entryOrder.size
+    const refPrice = entryOrder.fillPrice ?? entryOrder.price
     const cloid = generateCloid()
     if (PAPER_TRADE) {
-      paperSimulateFill(entryOrder.coin, closeSide, 0, closeSize, cloid)
+      paperSimulateFill(entryOrder.coin, closeSide, refPrice, closeSize, cloid)
     } else {
-      await submitToExchange(entryOrder.coin, closeSide, 'market', 0, closeSize, cloid, svc)
+      await submitToExchange(entryOrder.coin, closeSide, 'market', refPrice, closeSize, cloid, svc)
     }
 
     log.info('order-manager', `Position close submitted: ${entryOrder.coin} reason=${reason}`)
@@ -750,17 +766,18 @@ export class OrderManager {
 
   /**
    * Find the filled entry order associated with a position.
-   * Simple scan — with 1 position per coin, this is fast.
+   * Matches by positionId (stored on order at fill time).
+   * Falls back to coin match for backward compatibility.
    */
   private findOrderByPositionContext(positionId: string): Order | null {
-    // Look for a filled order whose coin matches a position
-    // In current design, positionId is generated at fill time and stored in CoinContext,
-    // but not in the order itself. We match by coin + filled status.
+    // Primary: match by positionId stored on the order at fill time
     for (const [, order] of this.orders) {
-      if (order.status === 'filled') {
-        return order  // 1 position per coin → first filled order is the match
+      if (order.status === 'filled' && order.positionId === positionId) {
+        return order
       }
     }
+    // No match — position not found
+    log.warn('order-manager', `findOrderByPositionContext: no filled order with positionId=${positionId}`)
     return null
   }
 

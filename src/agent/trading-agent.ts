@@ -258,13 +258,16 @@ export function handleExiting(
     }
   }
 
-  // Tick: check if exit is taking too long (exchange issue)
-  if (event.type === 'tick') {
+  // Tick: check if exit is taking too long (exchange issue) — retry close, don't lose position
+  if (event.type === 'tick' && ctx.positionId) {
     const age = Date.now() - ctx.stateEnteredAt
     if (age > ORDER_TIMEOUT_MS) {
       return {
-        nextState: 'IDLE',
-        actions: [journalAction('error', ctx.coin, { reason: 'Exit timeout — position may still be open on exchange' })],
+        nextState: 'EXITING',
+        actions: [
+          { type: 'close_position', positionId: ctx.positionId, reason: 'exit_timeout_retry' },
+          journalAction('error', ctx.coin, { reason: 'Exit timeout — retrying close', positionId: ctx.positionId }),
+        ],
       }
     }
   }

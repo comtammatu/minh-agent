@@ -97,7 +97,16 @@ export const PATTERN_TTL_BARS: Record<string, number> = {
   'price-action': 6,
   'volume-profile': 12,
   'ema-rsi': 1,
+  'smc-sd': 12,
 }
+
+// ─── SMC+S&D Zone Bounce Strategy ────────────────────────────────────────────
+
+/** How many bars back to look for a BOS/CHoCH to establish direction. */
+export const SMC_BREAK_LOOKBACK = 10
+
+/** Minimum bars between signals on same coin/interval (dedup). */
+export const SMC_DEDUP_BARS = 5
 
 // ─── Layered Pipeline Config ─────────────────────────────────────────────────
 
@@ -171,7 +180,12 @@ export const DELTA_STRONG_THRESHOLD = 0.6
 export const BOOK_IMBALANCE_THRESHOLD = 0.3
 
 /** Negative funding rate threshold for contrarian boost. */
-export const FUNDING_CONTRARIAN_THRESHOLD = -0.0001
+/**
+ * Funding rate threshold for contrarian confirmation (absolute value).
+ * Long boost when rate < -threshold (shorts paying longs).
+ * Short boost when rate > +threshold (longs paying shorts).
+ */
+export const FUNDING_CONTRARIAN_THRESHOLD = 0.0001
 
 // ─── Phase D: Asset Context / OI Config ────────────────────────────────────
 
@@ -406,13 +420,15 @@ export const PORTFOLIO_RISK = {
   maxTotalConcurrent: 6,
   /** Per-strategy capital allocation as fraction of total account (must sum ≤ 1.0). */
   strategyAllocations: {
-    layered: 0.5,
-    quant: 0.5,
+    layered: 0.35,
+    quant: 0.35,
+    'smc-sd': 0.30,
   } as Record<string, number>,
   /** Per-strategy max concurrent positions. */
   strategyMaxConcurrent: {
     layered: 3,
     quant: 3,
+    'smc-sd': 2,
   } as Record<string, number>,
 } as const
 

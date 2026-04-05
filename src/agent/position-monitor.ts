@@ -194,12 +194,19 @@ export class PositionMonitor {
   private syncInterval: ReturnType<typeof setInterval> | null = null
   /** Callback to dispatch events to TradingAgent (with strategyId). */
   private dispatchToAgent: ((coin: string, event: AgentEvent, strategyId?: string) => void) | null = null
+  /** Callback to update SL on exchange via OrderManager (parentOrderId, newSlPrice). */
+  private onUpdateStop: ((parentOrderId: string, newSlPrice: number) => void) | null = null
   /** Callback to update account equity on TradingAgent. */
   private onEquityUpdate: ((equity: number) => void) | null = null
 
   /** Set the callback for dispatching events to the agent state machine. */
   setAgentDispatch(fn: (coin: string, event: AgentEvent, strategyId?: string) => void): void {
     this.dispatchToAgent = fn
+  }
+
+  /** Set the callback for SL updates via OrderManager.modifySLPrice. */
+  setUpdateStopCallback(fn: (parentOrderId: string, newSlPrice: number) => void): void {
+    this.onUpdateStop = fn
   }
 
   /** Set the callback for updating account equity (Sprint 4.5: portfolio risk). */
@@ -290,10 +297,8 @@ export class PositionMonitor {
       case 'trail_update':
         pos.slPrice = action.newSlPrice
         log.info('position-monitor', `Trail SL update: ${pos.coin} new SL @ ${action.newSlPrice.toFixed(2)}`)
-        // Dispatch update_stop action to OrderManager via agent (with strategyId)
-        this.dispatchToAgent?.(pos.coin, {
-          type: 'tick',  // agent processes update_stop via handleInPosition
-        }, pos.strategyId)
+        // Dispatch directly to OrderManager for SL modification on exchange
+        this.onUpdateStop?.(pos.entryOrderId, action.newSlPrice)
         break
 
       case 'partial_close': {

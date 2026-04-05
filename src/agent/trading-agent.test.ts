@@ -307,13 +307,15 @@ describe('handleExiting', () => {
     expect(result.nextState).toBe('PAUSED')
   })
 
-  it('goes IDLE on exit timeout', () => {
+  it('retries close on exit timeout (stays EXITING)', () => {
     const ctx = makeCoinCtx({
       state: 'EXITING',
+      positionId: 'pos-timeout',
       stateEnteredAt: Date.now() - 6 * 60 * 1000,
     })
     const result = handleExiting(ctx, { type: 'tick' }, makeGlobal())
-    expect(result.nextState).toBe('IDLE')
+    expect(result.nextState).toBe('EXITING')
+    expect(result.actions.some(a => a.type === 'close_position')).toBe(true)
     expect(result.actions.some(a => a.type === 'log_journal' && a.eventType === 'error')).toBe(true)
   })
 })

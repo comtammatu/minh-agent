@@ -108,9 +108,9 @@ function mergeAndRank(
   }
   merged.push(cur)
 
-  // Count touches + detect broken zones
+  // Count touches + detect broken zones (start from zone creation index, not bar 0)
   for (const zone of merged) {
-    for (let i = 0; i <= upToIdx; i++) {
+    for (let i = zone.latestSourceIdx + 1; i <= upToIdx; i++) {
       const c = candles[i]!
       const touched = kind === 'demand'
         ? c.l <= zone.top && c.l >= zone.bottom

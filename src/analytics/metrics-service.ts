@@ -12,6 +12,7 @@
 
 import { log } from '../lib/logger.js'
 import { SIMULATED_ACCOUNT } from '../config.js'
+import { getExchangeService } from '../execution/exchange-service.js'
 import { buildLiveMetrics } from './metrics.js'
 import {
   getClosedTrades,
@@ -49,10 +50,14 @@ export async function getLiveMetrics(): Promise<LiveMetrics> {
     getOpenPositionCount(),
   ])
 
+  // Use real account balance if available, fall back to simulated for paper/startup
+  const realBalance = getExchangeService().getCachedAccountValue()
+  const capital = realBalance > 0 ? realBalance : SIMULATED_ACCOUNT
+
   return buildLiveMetrics({
     allTrades,
     patternRows,
-    initialCapital: SIMULATED_ACCOUNT,
+    initialCapital: capital,
     openPositionCount,
   })
 }

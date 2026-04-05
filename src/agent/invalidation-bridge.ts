@@ -68,24 +68,28 @@ export class InvalidationBridge {
       return this.record(setupId, reason, 'unknown', 'IDLE', false, 'none')
     }
 
-    const coinState = agent.getCoinState(coin)
-    const coinCtx = agent.getCoinContext(coin)
+    // Check all strategies for this coin (multi-strategy support)
+    const snapshot = agent.getSnapshot()
+    let matchedCtx: { state: string; strategyId: string } | null = null
 
-    // No active setup for this coin → nothing to invalidate
-    if (!coinCtx || !coinCtx.activeSetup) {
-      log.debug('invalidation-bridge', `Invalidation for ${setupId}: coin ${coin} has no active setup — skipping`)
+    for (const [key, entry] of Object.entries(snapshot.coins)) {
+      // key format: "coin:strategyId"
+      if (!key.startsWith(coin + ':') && key !== coin) continue
+      // Look for matching setupId in the active setup
+      const ctx = agent.getCoinContext(coin, entry.strategyId)
+      if (ctx?.activeSetup?.id === setupId) {
+        matchedCtx = { state: entry.state, strategyId: entry.strategyId }
+        break
+      }
+    }
+
+    if (!matchedCtx) {
+      const coinState = agent.getCoinState(coin)
+      log.debug('invalidation-bridge', `Invalidation for ${setupId}: no matching active setup in any strategy — skipping`)
       return this.record(setupId, reason, coin, coinState, false, 'none')
     }
 
-    // Setup ID mismatch → different TF or pattern type, skip
-    if (coinCtx.activeSetup.id !== setupId) {
-      log.debug(
-        'invalidation-bridge',
-        `Invalidation mismatch: ${setupId} ≠ active ${coinCtx.activeSetup.id} — skipping`,
-      )
-      return this.record(setupId, reason, coin, coinState, false, 'none')
-    }
-
+    const coinState = matchedCtx.state as AgentState
     // Match! Dispatch to agent and determine action.
     const actionTaken = predictAction(coinState)
     log.info(
@@ -93,7 +97,7 @@ export class InvalidationBridge {
       `INVALIDATION → ACTION | ${coin} | state=${coinState} | setup=${setupId} | reason=${reason} | action=${actionTaken}`,
     )
 
-    agent.dispatch(coin, { type: 'setup_invalidated', setupId, reason })
+    agent.dispatch(coin, { type: 'setup_invalidated', setupId, reason }, matchedCtx.strategyId)
 
     return this.record(setupId, reason, coin, coinState, true, actionTaken)
   }

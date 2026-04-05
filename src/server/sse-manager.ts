@@ -13,6 +13,7 @@
  */
 
 import { log } from '../lib/logger.js'
+import { SSE_MAX_CONNECTIONS } from '../config.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -28,13 +29,18 @@ export interface SSEClient {
 // ─── Connection Registry ────────────────────────────────────────────────────
 
 const clients = new Map<string, SSEClient>()
+const encoder = new TextEncoder()
 let nextId = 0
 
-/** Register a new SSE client. Returns client ID for cleanup. */
+/** Register a new SSE client. Returns client ID for cleanup, or null if limit reached. */
 export function addClient(
   channel: SSEChannel,
   controller: ReadableStreamDefaultController,
-): string {
+): string | null {
+  if (clients.size >= SSE_MAX_CONNECTIONS) {
+    log.warn('sse', `Connection limit reached (${SSE_MAX_CONNECTIONS}), rejecting new client on channel=${channel}`)
+    return null
+  }
   const id = `sse_${++nextId}_${Date.now()}`
   clients.set(id, { id, channel, controller, connectedAt: Date.now() })
   log.debug('sse', `Client connected: ${id} on channel=${channel} (total=${clients.size})`)
@@ -78,7 +84,6 @@ export function formatSSE(event: string, data: unknown): string {
  */
 export function broadcast(channel: SSEChannel, event: string, data: unknown): void {
   const message = formatSSE(event, data)
-  const encoder = new TextEncoder()
   const encoded = encoder.encode(message)
 
   for (const [id, client] of clients) {
@@ -98,7 +103,6 @@ export function broadcast(channel: SSEChannel, event: string, data: unknown): vo
  * SSE spec: lines starting with ":" are comments, ignored by EventSource.
  */
 export function sendKeepalive(): void {
-  const encoder = new TextEncoder()
   const msg = encoder.encode(`: keepalive ${Date.now()}\n\n`)
 
   for (const [id, client] of clients) {
