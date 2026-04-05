@@ -8,10 +8,21 @@
  *   4. Yielding does not corrupt results
  */
 
-import { describe, test, expect } from 'bun:test'
+import { describe, test, expect, beforeAll } from 'bun:test'
 import { runBacktest, runBacktestAsync, type BacktestProgress } from '../../src/backtest/engine.js'
 import type { BacktestConfig } from '../../src/backtest/types.js'
 import type { Candle, CandleInterval } from '../../src/types.js'
+import { getStrategyRegistry, resetStrategyRegistry } from '../../src/scanner/strategy.js'
+import { LayeredStrategyAdapter } from '../../src/scanner/strategies/layered-adapter.js'
+import { QuantStrategyAdapter } from '../../src/scanner/strategies/quant-adapter.js'
+
+// Register strategies before any test runs
+beforeAll(() => {
+  resetStrategyRegistry()
+  const reg = getStrategyRegistry()
+  reg.register(new LayeredStrategyAdapter())
+  reg.register(new QuantStrategyAdapter())
+})
 
 // ─── Test Helpers ───────────────────────────────────────────────────────────
 

@@ -13,7 +13,7 @@
 import type { Candle, CandleInterval, Signal, PatternType } from '../../types.js'
 import type { IStrategy } from '../strategy.js'
 import { runLayeredPipeline, clearLayeredState } from '../pipeline.js'
-import { INDICATOR_WINDOW } from '../../config.js'
+import { MIN_CANDLES_FOR_SCAN } from '../../config.js'
 
 export class LayeredStrategyAdapter implements IStrategy {
   readonly id = 'layered'
@@ -31,7 +31,9 @@ export class LayeredStrategyAdapter implements IStrategy {
   }
 
   minCandles(): number {
-    return INDICATOR_WINDOW
+    // Layered pipeline works with MIN_CANDLES_FOR_SCAN (50+) candles.
+    // INDICATOR_WINDOW (200) is the ideal window, but not a hard minimum.
+    return MIN_CANDLES_FOR_SCAN
   }
 
   clearState(): void {

@@ -242,7 +242,7 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 
 | # | Session | Status | Date | Notes |
 |---|---------|--------|------|-------|
-| S1 | Strategy Interface + Registry | | | |
+| S1 | Strategy Interface + Registry | DONE | 2026-04-02 | IStrategy + Registry + 2 adapters + 35 tests, 1013 total pass |
 | S2 | Pipeline Refactor | | | |
 | S3 | DB Migration 005 | | | |
 | S4 | Exchange Pool + Wallets | | | |

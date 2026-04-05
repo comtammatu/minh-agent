@@ -170,11 +170,12 @@ export function computeExpiresAtBar(type: ActiveSetup['type'], detectedAtBar: nu
   return detectedAtBar + PATTERN_TTL_BARS[type]
 }
 
-/** Build a unique setup ID. At most one active setup per coin/tf/type. */
+/** Build a unique setup ID. At most one active setup per strategy/coin/tf/type. */
 export function setupId(
   coin: string,
   interval: CandleInterval,
   type: ActiveSetup['type'],
+  strategyId: string = 'layered',
 ): string {
-  return `${coin}|${interval}|${type}`
+  return `${strategyId}:${coin}|${interval}|${type}`
 }

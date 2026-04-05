@@ -240,9 +240,9 @@ describe('runQuantPipeline — pipeline stats', () => {
     const candles = generateCandles(250, 'up', 'oversold')
     const idx = candles.length - 2
 
-    const statsBefore = getPipelineStats()
+    const statsBefore = getPipelineStats('quant')
     runQuantPipeline('BTC', '1h', candles, idx)
-    const statsAfter = getPipelineStats()
+    const statsAfter = getPipelineStats('quant')
 
     expect(statsAfter.totalTicks).toBe(statsBefore.totalTicks + 1)
     if (emittedSetups.length > 0) {

@@ -18,7 +18,7 @@
 
 import type { Candle, CandleInterval, ActiveSetup, SignalSide } from '../types.js'
 import { ema, rsi, atr } from '../indicators/core.js'
-import { getPipelineEmitter, getMutablePipelineStats } from './pipeline.js'
+import { getPipelineEmitter, getOrCreateStats } from './pipeline.js'
 import { computeExpiresAtBar, setupId } from './invalidation.js'
 import {
   QUANT_EMA_FAST,
@@ -46,7 +46,7 @@ export function runQuantPipeline(
   candles: Candle[],
   idx: number,
 ): void {
-  const stats = getMutablePipelineStats()
+  const stats = getOrCreateStats('quant')
   stats.totalTicks++
 
   // Need enough candles for EMA(200) — candles array must have >= QUANT_EMA_SLOW entries
@@ -95,7 +95,7 @@ export function runQuantPipeline(
   const slPrice = side === 'long' ? close - slDistance : close + slDistance
   const tpPrice = side === 'long' ? close + tpDistance : close - tpDistance
 
-  const id = setupId(coin, interval, 'ema-rsi')
+  const id = setupId(coin, interval, 'ema-rsi', 'quant')
 
   const setup: ActiveSetup = {
     id,

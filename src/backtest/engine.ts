@@ -27,8 +27,8 @@ import {
   getPipelineEmitter,
   clearPipelineState,
   getPipelineStats,
-  setStrategy,
 } from '../scanner/pipeline.js'
+import { getStrategyRegistry } from '../scanner/strategy.js'
 import { clearStore, clearOnPersist, getCandles } from '../feed/store.js'
 import { atr } from '../indicators/core.js'
 import { BACKTEST_SLIPPAGE_PCT, BACKTEST_COMMISSION_PCT, ATR_TRAIL_MULTIPLIER, INDICATOR_WINDOW, BACKTEST_CHUNK_SIZE } from '../config.js'
@@ -48,7 +48,7 @@ export function runBacktest(
   clearPipelineState()
   clearStore()
   clearOnPersist()  // prevent DB writes during backtest
-  setStrategy(config.strategy ?? 'layered')
+  getStrategyRegistry().activateOnly(config.strategy ?? 'layered')
 
   const slippage = config.slippagePct ?? BACKTEST_SLIPPAGE_PCT
   const commission = config.commissionPct ?? BACKTEST_COMMISSION_PCT
@@ -109,13 +109,13 @@ export function runBacktest(
     const equityCurve = buildEquityCurve(trades, config.initialCapital)
 
     // Capture pipeline diagnostic stats before cleanup
-    const pipelineStatsSnapshot = getPipelineStats()
+    const pipelineStatsSnapshot = getPipelineStats(config.strategy ?? 'layered')
 
     return { config, metrics, trades, equityCurve, pipelineStats: pipelineStatsSnapshot }
   } finally {
     // ── Cleanup: remove listener + reset state ──────────────────────────
     emitter.off('setup', onSetup)
-    setStrategy('layered')  // restore default
+    getStrategyRegistry().activateOnly(null)  // restore fan-out
     clearPipelineState()
     clearStore()
   }
@@ -191,7 +191,7 @@ export async function runBacktestAsync(
   clearPipelineState()
   clearStore()
   clearOnPersist()
-  setStrategy(config.strategy ?? 'layered')
+  getStrategyRegistry().activateOnly(config.strategy ?? 'layered')
 
   const slippage = config.slippagePct ?? BACKTEST_SLIPPAGE_PCT
   const commission = config.commissionPct ?? BACKTEST_COMMISSION_PCT
@@ -247,14 +247,14 @@ export async function runBacktestAsync(
     const trades = simulator.getTrades()
     const metrics = computeMetrics(trades, config.initialCapital)
     const equityCurve = buildEquityCurve(trades, config.initialCapital)
-    const pipelineStatsSnapshot = getPipelineStats()
+    const pipelineStatsSnapshot = getPipelineStats(config.strategy ?? 'layered')
 
     onProgress?.({ bar: total, total, pct: 100, phase: 'done' })
 
     return { config, metrics, trades, equityCurve, pipelineStats: pipelineStatsSnapshot }
   } finally {
     emitter.off('setup', onSetup)
-    setStrategy('layered')
+    getStrategyRegistry().activateOnly(null)  // restore fan-out
     clearPipelineState()
     clearStore()
   }

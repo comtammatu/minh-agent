@@ -5,10 +5,21 @@
  * Uses the real store (setCandles/clearStore) + clearPipelineState for isolation.
  */
 
-import { describe, it, expect, beforeEach } from 'bun:test'
+import { describe, it, expect, beforeEach, beforeAll } from 'bun:test'
 import { onCandleTick, getStatus, getActiveSetups, clearPipelineState } from '../src/scanner/pipeline.js'
 import { setCandles, clearStore } from '../src/feed/store.js'
 import type { Candle, CandleInterval } from '../src/types.js'
+import { getStrategyRegistry, resetStrategyRegistry } from '../src/scanner/strategy.js'
+import { LayeredStrategyAdapter } from '../src/scanner/strategies/layered-adapter.js'
+import { QuantStrategyAdapter } from '../src/scanner/strategies/quant-adapter.js'
+
+// Register strategies before any test runs
+beforeAll(() => {
+  resetStrategyRegistry()
+  const reg = getStrategyRegistry()
+  reg.register(new LayeredStrategyAdapter())
+  reg.register(new QuantStrategyAdapter())
+})
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

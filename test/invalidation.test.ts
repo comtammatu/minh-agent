@@ -171,8 +171,18 @@ describe('invalidation — 0-bar skip', () => {
 })
 
 describe('setupId', () => {
-  it('generates correct id', () => {
-    expect(setupId('BTC', '4h', 'fvg')).toBe('BTC|4h|fvg')
+  it('generates correct id with default strategyId', () => {
+    expect(setupId('BTC', '4h', 'fvg')).toBe('layered:BTC|4h|fvg')
+  })
+
+  it('generates correct id with explicit strategyId', () => {
+    expect(setupId('BTC', '4h', 'fvg', 'quant')).toBe('quant:BTC|4h|fvg')
+  })
+
+  it('different strategies produce different ids for same coin/tf/type', () => {
+    const layered = setupId('ETH', '1h', 'order-block', 'layered')
+    const quant = setupId('ETH', '1h', 'order-block', 'quant')
+    expect(layered).not.toBe(quant)
   })
 })
 

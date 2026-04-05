@@ -120,21 +120,40 @@ function zeroPipelineStats(): PipelineStats {
   }
 }
 
-let pipelineStats = zeroPipelineStats()
+/** Per-strategy pipeline stats. Key = strategyId. */
+const pipelineStatsMap = new Map<string, PipelineStats>()
 
-/** Get current pipeline diagnostic stats (snapshot copy). */
-export function getPipelineStats(): PipelineStats {
-  return { ...pipelineStats }
+/** Get or create mutable stats for a strategy. */
+export function getOrCreateStats(strategyId: string): PipelineStats {
+  let stats = pipelineStatsMap.get(strategyId)
+  if (!stats) {
+    stats = zeroPipelineStats()
+    pipelineStatsMap.set(strategyId, stats)
+  }
+  return stats
 }
 
-/** Get mutable reference to pipeline stats (for sub-pipelines like quant). */
-export function getMutablePipelineStats(): PipelineStats {
-  return pipelineStats
+/** Get pipeline stats for a specific strategy (snapshot copy). */
+export function getPipelineStats(strategyId: string = 'layered'): PipelineStats {
+  return { ...(pipelineStatsMap.get(strategyId) ?? zeroPipelineStats()) }
 }
 
-/** Reset pipeline diagnostic stats (call before backtest run). */
-export function resetPipelineStats(): void {
-  pipelineStats = zeroPipelineStats()
+/** Get full per-strategy stats map (snapshot copies). */
+export function getPipelineStatsMap(): Map<string, PipelineStats> {
+  const result = new Map<string, PipelineStats>()
+  for (const [id, stats] of pipelineStatsMap) {
+    result.set(id, { ...stats })
+  }
+  return result
+}
+
+/** Reset pipeline diagnostic stats. If strategyId given, reset only that strategy. */
+export function resetPipelineStats(strategyId?: string): void {
+  if (strategyId) {
+    pipelineStatsMap.set(strategyId, zeroPipelineStats())
+  } else {
+    pipelineStatsMap.clear()
+  }
 }
 
 /** Format pipeline stats as a human-readable report. */
@@ -166,19 +185,8 @@ export function formatPipelineStats(stats: PipelineStats): string {
 
 // ── Module-level state ──────────────────────────────────────────────────────
 
-import type { StrategyType } from '../backtest/types.js'
-import { runQuantPipeline, clearQuantState } from './quant-pipeline.js'
-import { QUANT_EMA_SLOW } from '../config.js'
-
-// ── Strategy Selector ────────────────────────────────────────────────────────
-
-let activeStrategy: StrategyType = 'layered'
-
-/** Set active strategy for pipeline dispatch. */
-export function setStrategy(s: StrategyType): void { activeStrategy = s }
-
-/** Get current active strategy. */
-export function getStrategy(): StrategyType { return activeStrategy }
+import { clearQuantState } from './quant-pipeline.js'
+import { getStrategyRegistry } from './strategy.js'
 
 const activeSetups = new Map<string, ActiveSetup>()
 
@@ -210,7 +218,7 @@ const statusState = new Map<string, StatusSnapshot>()
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
-/** Called by WS subscription on every candle tick. */
+/** Called by WS subscription on every candle tick. Dispatches to all registered strategies. */
 export function onCandleTick(
   coin: string,
   interval: CandleInterval,
@@ -229,20 +237,15 @@ export function onCandleTick(
   // First tick for this coin/tf — no previous closed candle yet
   if (prevTs === undefined) return
 
-  const candles = getCandles(coin, interval, INDICATOR_WINDOW)
+  // Fan-out to all registered strategies via StrategyRegistry
+  const registry = getStrategyRegistry()
+  // Fetch enough candles for the most demanding strategy (+2 for closed-candle idx)
+  const maxMin = Math.max(INDICATOR_WINDOW, ...registry.getAll().map(s => s.minCandles()))
+  const candles = getCandles(coin, interval, maxMin + 2)
   if (candles.length < MIN_CANDLES_FOR_SCAN + 1) return
 
-  // Scan on the CLOSED candle (second-to-last)
   const idx = candles.length - 2
-
-  if (activeStrategy === 'quant') {
-    // Quant needs EMA(200) → requires idx >= 199 → need 202+ candles
-    const quantCandles = getCandles(coin, interval, QUANT_EMA_SLOW + 2)
-    const quantIdx = quantCandles.length - 2
-    runQuantPipeline(coin, interval, quantCandles, quantIdx)
-  } else {
-    runPipeline(coin, interval, candles, idx)
-  }
+  registry.runAll(coin, interval, candles, idx)
 }
 
 /** Get current status snapshots for all coin/tf combinations. */
@@ -272,13 +275,26 @@ export function clearCoinState(coin: string): void {
   for (const k of lastCandleTs.keys()) { if (k.startsWith(prefix)) lastCandleTs.delete(k) }
 }
 
-/** Clear all state — used in tests and backtest engine. */
-export function clearPipelineState(): void {
-  activeSetups.clear()
-  statusState.clear()
-  lastCandleTs.clear()
-  resetPipelineStats()
-  clearQuantState()
+/**
+ * Clear pipeline state. If strategyId given, clear only that strategy's stats.
+ * Without strategyId, clears everything (all setups, status, timestamps, stats, quant state).
+ */
+export function clearPipelineState(strategyId?: string): void {
+  if (strategyId) {
+    // Granular: clear only setups belonging to this strategy + its stats
+    for (const [id] of activeSetups) {
+      if (id.startsWith(`${strategyId}:`)) activeSetups.delete(id)
+    }
+    resetPipelineStats(strategyId)
+    if (strategyId === 'quant') clearQuantState()
+  } else {
+    // Full clear
+    activeSetups.clear()
+    statusState.clear()
+    lastCandleTs.clear()
+    resetPipelineStats()
+    clearQuantState()
+  }
 }
 
 // ── Aliases for StrategyRegistry adapter (Sprint 4.5) ────────────────────────
@@ -291,7 +307,7 @@ export function clearLayeredState(): void {
   activeSetups.clear()
   statusState.clear()
   lastCandleTs.clear()
-  resetPipelineStats()
+  resetPipelineStats('layered')
 }
 
 // ── Pipeline ─────────────────────────────────────────────────────────────────
@@ -305,6 +321,7 @@ export function runPipeline(
 ): void {
   const sk = `${coin}|${interval}`
   const confirmedSlice = candles.slice(0, idx + 1)
+  const pipelineStats = getOrCreateStats('layered')
 
   pipelineStats.totalTicks++
 
@@ -451,7 +468,7 @@ export function runPipeline(
     riskAssessment: risk,
   }
 
-  const id = setupId(coin, interval, signal.type)
+  const id = setupId(coin, interval, signal.type, 'layered')
   const existing = activeSetups.get(id)
 
   // Skip if already tracking with equal or higher confidence
