@@ -484,3 +484,49 @@ Mode: **BIG CHANGE** — full interactive review.
 - Test Review: diagram produced, 0 gaps (4 new test files + 3 extended, ~60-80 new tests)
 - Performance: 0 issues (registry fan-out, exchange pool, per-strategy stats all O(1))
 - Failure modes: 8 mapped, 0 critical gaps
+
+---
+
+## Sprint 4.5 Session Log
+
+### S1 — Strategy Interface + Registry (2026-04-02)
+
+**Completed:**
+- `src/scanner/strategy.ts`: IStrategy interface (scan/minCandles/clearState) + StrategyRegistry (register/getAll/get/runAll)
+- `src/scanner/strategies/layered-adapter.ts`: LayeredStrategyAdapter wraps existing runPipeline
+- `src/scanner/strategies/quant-adapter.ts`: QuantStrategyAdapter wraps existing runQuantPipeline
+- `src/types.ts` + `src/backtest/types.ts`: strategyId on ActiveSetup, extended StrategyType
+- `test/strategy-registry.test.ts`: 35 tests — registry CRUD, fan-out, adapters
+
+**Tests:** 1013 pass, 0 fail.
+
+### S2 — Pipeline Refactor (2026-04-06)
+
+**Completed:**
+- Removed global `activeStrategy`, `setStrategy()`, `getStrategy()` from pipeline.ts
+- Fan-out dispatch: `onCandleTick` → `registry.runAll()` for all registered strategies
+- `activeSetups` keyed by `strategyId:coin|tf|type` (not just `coin|tf|type`)
+- `setupId()` includes strategyId in invalidation.ts
+- Per-strategy PipelineStats via `Map<strategyId, PipelineStats>`
+
+**Tests:** 1013 pass, 0 fail.
+
+### S3 — DB Migration 005 (2026-04-06)
+
+**Completed:**
+- `src/db/migrations/005_strategies.sql`: CREATE TABLE strategies (id, name, enabled, config, wallet_address, capital_allocation, created_at)
+- Seed default 'layered' strategy via INSERT ON CONFLICT DO NOTHING
+- ADD COLUMN strategy_id TEXT DEFAULT 'layered' on orders + positions
+- ADD COLUMN strategy_id TEXT (no default) on trade_journal
+- Schema debt E29: ADD COLUMN cloid TEXT + fill_size DOUBLE PRECISION on orders
+- CREATE INDEX idx_orders_strategy, idx_positions_strategy
+- `test/db/migration-005.test.ts`: 8 integration tests — table schema, seed data, defaults, NULL default for trade_journal, indexes, idempotency
+
+**Design decisions:**
+- trade_journal.strategy_id has no DEFAULT — legacy entries before multi-strategy don't need backfill (NULL = pre-strategy era)
+- All ADD COLUMN uses DO $$ EXCEPTION WHEN duplicate_column pattern for idempotency
+- Default strategy seeded as 'layered' so existing FK references are valid
+
+**Tests:** 1023 pass, 0 fail. [CONFIRMED] against live TimescaleDB — 35 DB integration tests pass.
+
+**Phase 4.5A: Foundation — COMPLETE.** All 8 DoD items checked.

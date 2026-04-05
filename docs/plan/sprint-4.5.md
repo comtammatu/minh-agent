@@ -243,8 +243,8 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 | # | Session | Status | Date | Notes |
 |---|---------|--------|------|-------|
 | S1 | Strategy Interface + Registry | DONE | 2026-04-02 | IStrategy + Registry + 2 adapters + 35 tests, 1013 total pass |
-| S2 | Pipeline Refactor | | | |
-| S3 | DB Migration 005 | | | |
+| S2 | Pipeline Refactor | DONE | 2026-04-06 | Remove global state, fan-out via StrategyRegistry, per-strategy stats |
+| S3 | DB Migration 005 | DONE | 2026-04-06 | strategies table + strategy_id on 3 tables + cloid/fill_size E29 fix, 1023 tests pass |
 | S4 | Exchange Pool + Wallets | | | |
 | S5 | Agent State Per-Strategy | | | |
 | S6 | Portfolio Risk Manager | | | |
@@ -258,14 +258,14 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 ## Definition of Done
 
 ### Phase 4.5A: Foundation
-- [ ] `IStrategy` interface defined with scan/minCandles/clearState
-- [ ] `StrategyRegistry` with register/getAll/runAll fan-out
-- [ ] `LayeredStrategyAdapter` wraps existing pipeline (no logic change)
-- [ ] `QuantStrategyAdapter` wraps existing quant-pipeline (no logic change)
-- [ ] `activeSetups` keyed by `strategyId:coin|tf|type`
-- [ ] `setupId()` includes strategyId
-- [ ] Migration 005 applies cleanly (additive, backward compat)
-- [ ] All existing tests pass unchanged
+- [x] `IStrategy` interface defined with scan/minCandles/clearState (S1)
+- [x] `StrategyRegistry` with register/getAll/runAll fan-out (S1)
+- [x] `LayeredStrategyAdapter` wraps existing pipeline (no logic change) (S1)
+- [x] `QuantStrategyAdapter` wraps existing quant-pipeline (no logic change) (S1)
+- [x] `activeSetups` keyed by `strategyId:coin|tf|type` (S2)
+- [x] `setupId()` includes strategyId (S2)
+- [x] Migration 005 applies cleanly (additive, backward compat) [CONFIRMED] (S3)
+- [x] All existing tests pass unchanged — 1023 pass (S3)
 
 ### Phase 4.5B: Isolation
 - [ ] `ExchangePool` creates per-strategy ExchangeService instances
