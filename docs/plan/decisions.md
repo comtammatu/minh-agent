@@ -643,3 +643,32 @@ Mode: **BIG CHANGE** — full interactive review.
 **Backward compat verified:** Single-wallet mode (no STRATEGY_WALLETS env) uses ExchangePool.getShared() fallback. Order.strategyId defaults to 'layered'. All 1094 existing tests pass unchanged.
 
 **Tests:** 1105 pass (11 new), 0 fail.
+
+---
+
+## Sprint 4.5 Close Summary (2026-04-06)
+
+**Sprint 4.5: ISOLATE — Multi-Strategy Architecture + Agent Wallets**
+
+10/10 sessions DONE. All DoD items CONFIRMED.
+
+### Key Deliverables
+- IStrategy interface + StrategyRegistry with fan-out dispatch
+- ExchangePool: per-strategy agent wallets with single-wallet fallback
+- Per-strategy agent state (coin:strategyId key), GlobalContext, circuit breakers
+- PortfolioRiskManager: global exposure cap across all strategies
+- DB migration 005: strategies table + strategy_id on orders/positions/journal
+- Dashboard strategy selector + Telegram /strategy commands
+- Architecture.md + sprint-5.md updated
+
+### Metrics
+- 1121 tests pass, 0 fail
+- ~108 new tests added (Sprint 4.5 specific)
+- CSO audit: 0 findings (clean)
+- No regressions in Sprint 1-4 functionality
+
+### Architecture Decisions (V1-V8, E25-E30)
+All logged in detail above. Key choices: fan-out registry (V1), coin:strategyId agent state key (V2), agent wallet per strategy (V3), fixed % capital allocation (V8).
+
+### Next
+Sprint 5: ADVISE (gated on >= 100 closed trades). Sprint 6-7: Memory layers.

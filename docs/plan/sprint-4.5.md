@@ -290,11 +290,11 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 - [x] `decisions.md` logged with V1-V8 + E25-E30 (S10)
 
 ### Always
-- [ ] `bun test --run` — ALL tests pass (Sprint 1-4 + new)
-- [ ] No `any` without justification comment
-- [ ] No magic numbers — all thresholds in `config.ts`
-- [ ] Pure function boundary maintained (scanner/ and indicators/ zero I/O)
-- [ ] No secrets in code
+- [x] `bun test --run` — ALL tests pass (Sprint 1-4 + new) [CONFIRMED] 1121 pass, 0 fail
+- [x] No `any` without justification comment [CONFIRMED]
+- [x] No magic numbers — all thresholds in `config.ts` [CONFIRMED]
+- [x] Pure function boundary maintained (scanner/ and indicators/ zero I/O) [CONFIRMED]
+- [x] No secrets in code [CONFIRMED]
 
 ---
 
