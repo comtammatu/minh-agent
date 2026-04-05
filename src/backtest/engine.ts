@@ -53,7 +53,8 @@ export function runBacktest(
   const slippage = config.slippagePct ?? BACKTEST_SLIPPAGE_PCT
   const commission = config.commissionPct ?? BACKTEST_COMMISSION_PCT
   const exitMode = config.exitMode ?? 'multi'
-  const simulator = new TradeSimulator(config.initialCapital, slippage, commission, exitMode)
+  const strategyId = config.strategy ?? 'layered'
+  const simulator = new TradeSimulator(config.initialCapital, slippage, commission, exitMode, strategyId)
 
   // ── Wire pipeline → simulator ───────────────────────────────────────────
   const emitter = getPipelineEmitter()
