@@ -45,6 +45,11 @@ export function registerSubscription(sub: ISubscription): void {
   }
 }
 
+/** Get total active WS subscription count. */
+export function getSubscriptionCount(): number {
+  return activeSubscriptions.length
+}
+
 /** Remove a subscription from the global activeSubscriptions array. */
 export function removeSubscription(sub: ISubscription): void {
   const idx = activeSubscriptions.indexOf(sub)
@@ -86,7 +91,7 @@ export async function subscribeCandles(
     }
   })
 
-  activeSubscriptions.push(sub)
+  registerSubscription(sub)
   lastCandleTime.set(k, Date.now())
 
   // Track per-coin for selective unsubscribe

@@ -22,7 +22,7 @@ import {
   TIMEFRAMES,
   TIMEFRAME_MS,
   STALENESS_CHECK_INTERVAL_MS,
-  STATUS_INTERVAL_MS,
+
   MIN_CONFIDENCE,
   CONFLUENCE_MIN,
   REGIME_MULTIPLIERS,
@@ -37,7 +37,7 @@ import {
 } from './config.js'
 import { backfillAllCoins, fetchCandles, probeCoins } from './feed/rest.js'
 import { setCandles, clearCoinData, setOnPersist, appendCandle, candleCount } from './feed/store.js'
-import { subscribeCandles, unsubscribeCandles, closeAll, checkStaleness } from './feed/ws.js'
+import { subscribeCandles, unsubscribeCandles, closeAll, checkStaleness, getSubscriptionCount } from './feed/ws.js'
 import { startFundingPolling, stopFundingPolling, addFundingCoin, removeFundingCoin } from './feed/funding.js'
 import { startOiFeed, stopOiFeed, addOiCoin, removeOiCoin } from './feed/asset-ctx.js'
 import { subscribeTrades, unsubscribeTrades } from './feed/trades.js'
@@ -58,6 +58,7 @@ import {
 import { log } from './lib/logger.js'
 import { getHealthMonitor } from './agent/self-healing.js'
 import { ANSI } from './ui/terminal.js'
+import { startTui, stopTui, appendSignal, appendLog } from './ui/tui.jsx'
 import { getPipelineEmitter } from './scanner/pipeline.js'
 import { getAgent } from './agent/trading-agent.js'
 import { getOrderManager } from './agent/order-manager.js'
@@ -71,6 +72,7 @@ import { getExchangePool } from './execution/exchange-pool.js'
 import { getStrategyRegistry } from './scanner/strategy.js'
 import { LayeredStrategyAdapter } from './scanner/strategies/layered-adapter.js'
 import { QuantStrategyAdapter } from './scanner/strategies/quant-adapter.js'
+import { SmcSdStrategy } from './scanner/strategies/smc-sd.js'
 import type { CandleInterval } from './types.js'
 
 // ── Banner ───────────────────────────────────────────────────────────────────
@@ -318,6 +320,7 @@ async function main(): Promise<void> {
   const registry = getStrategyRegistry()
   registry.register(new LayeredStrategyAdapter())
   registry.register(new QuantStrategyAdapter())
+  registry.register(new SmcSdStrategy())
   const strategyIds = registry.getAll().map(s => s.id)
   console.log(`[${ts()}] ${ANSI.dim}STRAT${ANSI.reset} | ${strategyIds.length} strategies registered: ${strategyIds.join(', ')}`)
 
@@ -396,6 +399,9 @@ async function main(): Promise<void> {
   // Agent → PositionMonitor (dispatch back with strategyId)
   pm.setAgentDispatch((coin, event, strategyId) => agent.dispatch(coin, event, strategyId))
 
+  // PositionMonitor → OrderManager: trail stop SL updates go directly to exchange
+  pm.setUpdateStopCallback((parentOrderId, newSlPrice) => om.modifySLPrice(parentOrderId, newSlPrice))
+
   // Sprint 4.5: Wire equity update from position monitor → agent (for portfolio risk)
   pm.setEquityCallback(equity => agent.setAccountEquity(equity))
 
@@ -416,38 +422,28 @@ async function main(): Promise<void> {
 
   log.info('agent', `Agent wired: ${strategyIds.length} strategies + exchange pool + order manager + position monitor + invalidation bridge + SSE + Telegram bot`)
 
+  // Wire agent actions → TUI signals log
+  agent.onAction(action => appendSignal(action))
+
   // 10. Start coin refresh loop
   selector.startRefreshLoop()
 
-  // 11. STATUS interval — per-coin compact aggregate
-  activeIntervals.push(setInterval(() => {
-    const trackedCoins = selector.getTrackedCoins()
-    const snapshots = getStatus()
-    if (snapshots.length === 0) return
-
-    // Aggregate by coin: pick dominant regime + highest grade + sum setups
-    const byCoin = new Map<string, { regime: string; grade: string; setups: number }>()
-    for (const s of snapshots) {
-      const prev = byCoin.get(s.coin)
-      if (!prev) {
-        const g = s.confluenceGrade ? `${s.confluenceGrade}${Math.floor(s.biasConfidence * 10)}` : '—'
-        byCoin.set(s.coin, { regime: s.regime, grade: g, setups: s.activeCount })
-      } else {
-        prev.setups += s.activeCount
-        prev.regime = s.regime
-        if (s.confluenceGrade) {
-          prev.grade = `${s.confluenceGrade}${Math.floor(s.biasConfidence * 10)}`
-        }
+  // 11. Start TUI dashboard (replaces old console.log STATUS interval)
+  startTui({
+    getAgentSnapshot: () => agent.getSnapshot(),
+    getPositions: () => pm.getPositions(),
+    getStatus: () => getStatus(),
+    getHealthReport: () => health.getReport(),
+    getAccountState: () => {
+      try {
+        return pool.getShared().getAccountState()
+      } catch {
+        return null
       }
-    }
-
-    const parts = trackedCoins.map(coin => {
-      const info = byCoin.get(coin)
-      if (!info) return `${coin} — 0`
-      return `${coin} ${info.regime} ${info.grade} ${info.setups} setup`
-    })
-    console.log(`[${ts()}] ${ANSI.dim}STATUS${ANSI.reset} | ${trackedCoins.length} coins | ${parts.slice(0, 10).join(' | ')}${trackedCoins.length > 10 ? ` ... +${trackedCoins.length - 10} more` : ''}`)
-  }, STATUS_INTERVAL_MS))
+    },
+    getSubscriptionCount,
+    getTrackedCoins: () => selector.getTrackedCoins(),
+  })
 
   // 12. Staleness watchdog (candles + order book)
   activeIntervals.push(setInterval(() => {
@@ -461,8 +457,9 @@ async function main(): Promise<void> {
   })
 }
 
-/** Clean up intervals, WS connections, refresh loop, polling, agent sync, and DB before reconnect. */
+/** Clean up intervals, WS connections, refresh loop, polling, agent sync, TUI, and DB before reconnect. */
 async function cleanup(): Promise<void> {
+  stopTui()
   selector.stopRefreshLoop()
   getPositionMonitor().stopSync()
   stopBot()

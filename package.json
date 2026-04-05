@@ -13,13 +13,15 @@
   "dependencies": {
     "@elysiajs/bearer": "^1.4.3",
     "@elysiajs/cors": "^1.4.1",
-    "@elysiajs/static": "^1.4.7",
     "@nktkas/hyperliquid": "^0.32.2",
     "elysia": "^1.4.28",
+    "ink": "^6.8.0",
     "postgres": "^3.4.8",
+    "react": "^19.2.4",
     "viem": "^2.47.6"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/react": "^19.2.14"
   }
 }

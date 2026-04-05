@@ -62,8 +62,6 @@ import {
   BACKTEST_COMMISSION_PCT,
 } from '../config.js'
 import * as CONFIG from '../config.js'
-import { staticPlugin } from '@elysiajs/static'
-import { join } from 'path'
 
 const startedAt = Date.now()
 
@@ -569,21 +567,6 @@ function createApp() {
           params: t.Object({ id: t.String() }),
         })
     )
-
-    // ── Dashboard static files (serve built React app) ──────────────────
-    // Serves from dashboard/dist/ — Vite build output
-    // Falls back to index.html for client-side routing
-
-  try {
-    const dashboardPath = join(import.meta.dir, '../../dashboard/dist')
-    app.use(staticPlugin({
-      assets: dashboardPath,
-      prefix: '/',
-      alwaysStatic: false,
-    }))
-  } catch {
-    // Dashboard not built yet — skip static serving
-  }
 
   return app
 }
