@@ -245,7 +245,7 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 | S1 | Strategy Interface + Registry | DONE | 2026-04-02 | IStrategy + Registry + 2 adapters + 35 tests, 1013 total pass |
 | S2 | Pipeline Refactor | DONE | 2026-04-06 | Remove global state, fan-out via StrategyRegistry, per-strategy stats |
 | S3 | DB Migration 005 | DONE | 2026-04-06 | strategies table + strategy_id on 3 tables + cloid/fill_size E29 fix, 1023 tests pass |
-| S4 | Exchange Pool + Wallets | | | |
+| S4 | Exchange Pool + Wallets | DONE | 2026-04-06 | WalletConfig + ExchangePool + single-wallet fallback, 1050 tests pass |
 | S5 | Agent State Per-Strategy | | | |
 | S6 | Portfolio Risk Manager | | | |
 | S7 | Integration Wiring | | | |
@@ -268,8 +268,8 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 - [x] All existing tests pass unchanged — 1023 pass (S3)
 
 ### Phase 4.5B: Isolation
-- [ ] `ExchangePool` creates per-strategy ExchangeService instances
-- [ ] Single-wallet mode (no `STRATEGY_WALLETS` env) backward compatible
+- [x] `ExchangePool` creates per-strategy ExchangeService instances (S4)
+- [x] Single-wallet mode (no `STRATEGY_WALLETS` env) backward compatible (S4)
 - [ ] Agent state keyed by `coin:strategyId`
 - [ ] Per-strategy `GlobalContext` (dailyPnl, circuit breakers independent)
 - [ ] `PortfolioRiskManager` enforces global exposure cap
