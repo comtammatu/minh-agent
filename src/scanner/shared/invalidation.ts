@@ -15,8 +15,8 @@
  * TTL: max bar lifetime per type (PATTERN_TTL_BARS in config.ts)
  */
 
-import type { Candle, ActiveSetup, InvalidationReason, CandleInterval } from '../types.js'
-import { PATTERN_TTL_BARS } from '../config.js'
+import type { Candle, ActiveSetup, InvalidationReason, CandleInterval } from '../../types.js'
+import { PATTERN_TTL_BARS } from '../../config.js'
 
 export interface InvalidationResult {
   invalidated: boolean

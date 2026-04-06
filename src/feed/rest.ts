@@ -5,7 +5,7 @@
 
 import { HttpTransport, InfoClient } from '@nktkas/hyperliquid'
 import type { Candle, CandleInterval, BackfillResult } from '../types.js'
-import { BACKFILL_CANDLE_COUNT, BACKFILL_CANDLE_COUNTS, BACKFILL_CONCURRENCY } from '../config.js'
+import { BACKFILL_CANDLE_COUNT, BACKFILL_CANDLE_COUNTS, BACKFILL_BATCH_SIZE, BACKFILL_CONCURRENCY } from '../config.js'
 import { acquire } from './rate-limiter.js'
 import { log } from '../lib/logger.js'
 
@@ -38,7 +38,7 @@ export async function fetchCandles(
   interval: CandleInterval,
   startTime: number,
   endTime?: number,
-  maxRetries = 2,
+  maxRetries = 3,
 ): Promise<Candle[] | null> {
   let attempt = 0
   let rateLimitHits = 0
@@ -53,6 +53,7 @@ export async function fetchCandles(
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       const is429 = msg.includes('429') || msg.includes('rate limit') || msg.includes('Too Many')
+      const is500 = msg.includes('500') || msg.includes('Internal Server Error')
 
       if (is429) {
         rateLimitHits++
@@ -68,8 +69,10 @@ export async function fetchCandles(
       attempt++
       if (attempt > maxRetries) return null
 
+      // HL returns 500 under load — back off longer
+      const delay = is500 ? 2000 * attempt : 500 * attempt
       log.warn('backfill', `${coin} ${interval}: error (attempt ${attempt}/${maxRetries}): ${msg}`)
-      await new Promise(r => setTimeout(r, 500 * attempt))
+      await new Promise(r => setTimeout(r, delay))
     }
   }
 
@@ -82,15 +85,68 @@ export async function fetchCandles(
  */
 export function backfillStartTime(interval: CandleInterval, count?: number): number {
   if (count === undefined) count = BACKFILL_CANDLE_COUNTS[interval] ?? BACKFILL_CANDLE_COUNT
-  const intervalMs: Record<CandleInterval, number> = {
-    '1m': 60_000,
-    '5m': 300_000,
-    '15m': 900_000,
-    '1h': 3_600_000,
-    '4h': 14_400_000,
-    '1d': 86_400_000,
+  return Date.now() - count * INTERVAL_MS[interval]
+}
+
+const INTERVAL_MS: Record<CandleInterval, number> = {
+  '1m': 60_000,
+  '5m': 300_000,
+  '15m': 900_000,
+  '1h': 3_600_000,
+  '4h': 14_400_000,
+  '1d': 86_400_000,
+}
+
+/**
+ * Fetch candles in batches of BACKFILL_BATCH_SIZE to avoid HL 500 errors on large requests.
+ * Walks forward from startTime, merging results. Stops early if a batch returns empty.
+ * Returns null only if the first batch fails (coin/TF unavailable).
+ */
+export async function fetchCandlesBatched(
+  coin: string,
+  interval: CandleInterval,
+  totalCount: number,
+): Promise<Candle[] | null> {
+  if (totalCount <= BACKFILL_BATCH_SIZE) {
+    const startTime = Date.now() - totalCount * INTERVAL_MS[interval]
+    return fetchCandles(coin, interval, startTime)
   }
-  return Date.now() - count * intervalMs[interval]
+
+  const all: Candle[] = []
+  const now = Date.now()
+  const fullStartTime = now - totalCount * INTERVAL_MS[interval]
+  const batchDuration = BACKFILL_BATCH_SIZE * INTERVAL_MS[interval]
+  const batches = Math.ceil(totalCount / BACKFILL_BATCH_SIZE)
+
+  for (let i = 0; i < batches; i++) {
+    const batchStart = fullStartTime + i * batchDuration
+    const batchEnd = Math.min(batchStart + batchDuration, now)
+
+    const candles = await fetchCandles(coin, interval, batchStart, batchEnd)
+
+    if (candles === null) {
+      if (i === 0) return null // first batch failed → coin/TF unavailable
+      log.warn('backfill', `${coin} ${interval}: batch ${i + 1}/${batches} failed — using ${all.length} candles`)
+      break
+    }
+
+    all.push(...candles)
+
+    if (candles.length === 0) break // no more data
+  }
+
+  // Deduplicate by timestamp (batches may overlap at boundaries)
+  const seen = new Set<number>()
+  const deduped: Candle[] = []
+  for (const c of all) {
+    if (!seen.has(c.t)) {
+      seen.add(c.t)
+      deduped.push(c)
+    }
+  }
+
+  deduped.sort((a, b) => a.t - b.t)
+  return deduped
 }
 
 /**
@@ -221,8 +277,8 @@ export async function backfillAllCoins(
 
     async function runTask(coin: string, interval: CandleInterval): Promise<void> {
       try {
-        const startTime = backfillStartTime(interval)
-        const candles = await fetchCandles(coin, interval, startTime)
+        const totalCount = BACKFILL_CANDLE_COUNTS[interval] ?? BACKFILL_CANDLE_COUNT
+        const candles = await fetchCandlesBatched(coin, interval, totalCount)
 
         if (candles === null) {
           log.warn('backfill', `${coin} ${interval}: FAILED — skipping`)

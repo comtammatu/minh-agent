@@ -20,7 +20,7 @@ import type { Candle, CandleInterval, ActiveSetup, SignalSide } from '../types.j
 import { ema, rsi, atr } from '../indicators/core.js'
 import { getPipelineEmitter } from './orchestrator.js'
 import { getOrCreateStats } from './diagnostics.js'
-import { computeExpiresAtBar, setupId } from './invalidation.js'
+import { computeExpiresAtBar, setupId } from './shared/invalidation.js'
 import {
   QUANT_EMA_FAST,
   QUANT_EMA_SLOW,

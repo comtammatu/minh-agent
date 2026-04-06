@@ -9,8 +9,8 @@
  * Pure function. Zero I/O.
  */
 
-import type { MarketRegime, SignalSide } from '../types.js'
-import { REGIME_MULTIPLIERS } from '../config.js'
+import type { MarketRegime, SignalSide } from '../../types.js'
+import { REGIME_MULTIPLIERS } from '../../config.js'
 
 /**
  * Apply regime modifier to confidence.

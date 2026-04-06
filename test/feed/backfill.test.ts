@@ -29,18 +29,23 @@ function makeCandle(t: number): Candle {
 
 // ── Mock rest.ts ──────────────────────────────────────────────────────────
 
+const mockFetch = async (coin: string, interval: CandleInterval, _startTime: number) => {
+  concurrentNow++
+  if (concurrentNow > maxConcurrent) maxConcurrent = concurrentNow
+  callLog.push({ coin, interval })
+
+  await new Promise(r => setTimeout(r, fetchDelay))
+
+  concurrentNow--
+
+  if (failCoins.has(coin)) return null
+  return [makeCandle(1000), makeCandle(2000)]
+}
+
 mock.module('../../src/feed/rest.js', () => ({
-  fetchCandles: async (coin: string, interval: CandleInterval, _startTime: number) => {
-    concurrentNow++
-    if (concurrentNow > maxConcurrent) maxConcurrent = concurrentNow
-    callLog.push({ coin, interval })
-
-    await new Promise(r => setTimeout(r, fetchDelay))
-
-    concurrentNow--
-
-    if (failCoins.has(coin)) return null
-    return [makeCandle(1000), makeCandle(2000)]
+  fetchCandles: mockFetch,
+  fetchCandlesBatched: async (coin: string, interval: CandleInterval, _totalCount: number) => {
+    return mockFetch(coin, interval, 0)
   },
   backfillStartTime: (_interval: CandleInterval) => 0,
   info: {

@@ -20,7 +20,7 @@ import type { IStrategy } from '../strategy.js'
 import { detectStructureBreaks, findPivots, premiumDiscount, compileKeyZones } from '../../indicators/smc.js'
 import { isAtZone } from '../layers/confirm.js'
 import { computeStructureTargets } from '../layers/trigger.js'
-import { applyRegimeModifier } from '../regime.js'
+import { applyRegimeModifier } from '../shared/regime.js'
 import { detectRegime, atr } from '../../indicators/core.js'
 import { detectVSA } from '../../indicators/vsa.js'
 import {

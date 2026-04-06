@@ -48,7 +48,7 @@ export function handleIdle(
       nextState: 'WATCHING',
       actions: [
         { type: 'watch', setup },
-        journalAction('signal', ctx.coin, { setupId: setup.id, grade, confidence: setup.confidence }),
+        journalAction('signal', ctx.coin, { setupId: setup.id, grade, confidence: setup.confidence, side: setup.side }),
       ],
     }
   }
@@ -89,7 +89,7 @@ export function handleWatching(
         nextState: 'WATCHING',
         actions: [
           { type: 'watch', setup },
-          journalAction('signal', ctx.coin, { setupId: setup.id, grade, replaced: ctx.activeSetup.id }),
+          journalAction('signal', ctx.coin, { setupId: setup.id, grade, confidence: setup.confidence, side: setup.side, replaced: ctx.activeSetup.id }),
         ],
       }
     }

@@ -30,9 +30,9 @@ import { confirmZones } from './layers/confirm.js'
 import { findTrigger } from './layers/trigger.js'
 import { detectPriceAction } from '../indicators/price-action.js'
 import { scoreConfluence } from './confluence.js'
-import { applyRegimeModifier } from './regime.js'
+import { applyRegimeModifier } from './shared/regime.js'
 import { assessRisk } from './risk-filter.js'
-import { isInvalidated, computeExpiresAtBar, setupId } from './invalidation.js'
+import { isInvalidated, computeExpiresAtBar, setupId } from './shared/invalidation.js'
 import { atr } from '../indicators/core.js'
 import {
   MIN_CONFIDENCE,

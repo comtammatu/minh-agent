@@ -15,7 +15,7 @@ import type {
 import { appendCandle, getCandles } from '../feed/store.js'
 import { getStrategyRegistry } from './strategy.js'
 import { clearQuantState } from './quant-pipeline.js'
-import { computeExpiresAtBar, setupId } from './invalidation.js'
+import { computeExpiresAtBar, setupId } from './shared/invalidation.js'
 import { getOrCreateStats, resetPipelineStats } from './diagnostics.js'
 import {
   MIN_CANDLES_FOR_SCAN,

@@ -40,9 +40,9 @@ export function shouldSound(action: AgentAction): boolean {
 
 // ─── Play ─────────────────────────────────────────────────────────────────
 
-/** Emit BEL character to stdout. */
+/** Emit BEL character via stderr to avoid conflicting with ink's stdout control. */
 export function playSound(): void {
-  process.stdout.write('\x07')
+  process.stderr.write('\x07')
 }
 
 /**

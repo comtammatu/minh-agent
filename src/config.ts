@@ -24,6 +24,9 @@ export const HIP3_MIN_24H_VOLUME = 500_000
 
 export const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'] as const
 
+// TFs that generate signals. 1m excluded — used only for entry refinement on 5m/15m signals.
+export const SIGNAL_TIMEFRAMES = ['5m', '15m', '1h', '4h', '1d'] as const
+
 export const MIN_CONFIDENCE = 0.4
 
 export const REGIME_MULTIPLIERS = {
@@ -35,7 +38,7 @@ export const REGIME_MULTIPLIERS = {
 // Minimum candles required before scanning
 export const MIN_CANDLES_FOR_SCAN = 50
 
-// Candles to fetch per REST backfill call (per TF)
+// Total candles to fetch per TF during backfill
 // Small TFs: 500 candles (low weight, recent data sufficient for structure)
 // Large TFs: 5000 candles (full history for regime/structure detection)
 export const BACKFILL_CANDLE_COUNTS: Record<string, number> = {
@@ -46,11 +49,14 @@ export const BACKFILL_CANDLE_COUNTS: Record<string, number> = {
   '4h': 5000,
   '1d': 5000,
 }
+
+// Max candles per single REST request (HL 500 errors above this)
+export const BACKFILL_BATCH_SIZE = 500
 /** Default fallback if TF not in map. */
 export const BACKFILL_CANDLE_COUNT = 5000
 
-// Max concurrent REST backfill requests
-export const BACKFILL_CONCURRENCY = 10
+// Max concurrent REST backfill requests (keep low to avoid HL 500s)
+export const BACKFILL_CONCURRENCY = 3
 
 // Max rounds to replace coins that fail backfill (0 readyTFs) at startup
 export const BACKFILL_REPLACEMENT_ROUNDS = 2
@@ -76,6 +82,10 @@ export const STATUS_INTERVAL_MS = 60_000
 
 // ATR multiplier for zone proximity buffer (confirm layer)
 export const ZONE_BUFFER_ATR_MULT = 0.3
+
+// ATR multiplier for wick-based SL buffer (trigger layer)
+// SL placed just beyond candle extreme instead of zone boundary for tighter R:R
+export const SL_WICK_ATR_MULT = 0.3
 
 // Volume profile lookback window for confirm layer
 export const VP_LOOKBACK = 100

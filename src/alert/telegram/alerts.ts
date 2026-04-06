@@ -93,6 +93,26 @@ export async function sendTelegramAlert(
 
     if (!res.ok) {
       const body = await res.text().catch(() => '<unreadable>')
+
+      // MarkdownV2 parse error → retry as plain text (strip formatting)
+      if (res.status === 400 && body.includes("can't parse entities")) {
+        log.warn('telegram', `MarkdownV2 parse error — retrying as plain text`)
+        const plain = message.replace(/\\([_*\[\]()~`>#+\-=|{}.!\\])/g, '$1')
+        const retryRes = await fetchFn(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: config.chatId,
+            text: plain,
+            disable_web_page_preview: true,
+          }),
+          signal: AbortSignal.timeout(TELEGRAM.timeoutMs),
+        })
+        if (retryRes.ok) return true
+        log.error('telegram', `Plain text retry also failed: HTTP ${retryRes.status}`)
+        return false
+      }
+
       log.error('telegram', `Send failed: HTTP ${res.status} — ${body}`)
       return false
     }
