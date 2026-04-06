@@ -134,10 +134,10 @@ describe('checkPortfolioEntry', () => {
 
   describe('per-strategy allocation cap', () => {
     it('blocks entry when strategy would exceed allocated capital × exposure multiplier', () => {
-      // layered allocation = 50% of 10k = 5k, × 3x = 15k cap
-      // Existing 14k + proposed 2k = 16k → blocked
+      // layered allocation = 35% of 10k = 3.5k, × 3x = 10.5k cap
+      // Existing 10k + proposed 2k = 12k → blocked
       const result = checkPortfolioEntry(makeInput({
-        positions: [makePosition({ strategyId: 'layered', notionalValue: 14_000 })],
+        positions: [makePosition({ strategyId: 'layered', notionalValue: 10_000 })],
         strategyId: 'layered',
         proposedNotional: 2_000,
       }))
@@ -147,10 +147,10 @@ describe('checkPortfolioEntry', () => {
     })
 
     it('allows entry within allocation cap', () => {
-      // layered allocation = 50% of 10k = 5k, × 3x = 15k cap
-      // Existing 10k + proposed 4k = 14k → OK
+      // layered allocation = 35% of 10k = 3.5k, × 3x = 10.5k cap
+      // Existing 6k + proposed 4k = 10k → OK
       const result = checkPortfolioEntry(makeInput({
-        positions: [makePosition({ strategyId: 'layered', notionalValue: 10_000 })],
+        positions: [makePosition({ strategyId: 'layered', notionalValue: 6_000 })],
         strategyId: 'layered',
         proposedNotional: 4_000,
       }))

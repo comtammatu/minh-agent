@@ -2,132 +2,161 @@
 
 Copy template bên dưới, thay các placeholder `{{...}}`, paste vào Claude Code để bắt đầu session.
 
+## Thiết kế
+
+Template này được tối ưu cho Claude Agent Teams:
+- **Ngắn gọn**: chỉ chứa context mà session-lead cần, không lặp lại nội dung đã có trong agent definitions
+- **Structured data**: scope/files/constraints ở dạng dễ parse để lead phân chia cho agents
+- **Workflow rõ ràng**: START → PLAN → BUILD → VERIFY → CLOSE, mỗi phase có output cụ thể
+- **Agent roster**: liệt kê agent types + tool capabilities để lead quyết định team composition
+
+### Agent definitions (đọc thêm nếu cần):
+- `.claude/agents/session-lead.md` — orchestrator, merge, verify
+- `.claude/agents/coder.md` — implement features (Read/Write/Edit/Bash/Glob/Grep)
+- `.claude/agents/test-writer.md` — write + update tests (Read/Write/Edit/Bash/Glob/Grep)
+- `.claude/agents/code-reviewer.md` — review diffs, read-only (Read/Bash/Glob/Grep)
+
 ---
 
 ## Template
 
 ```
-Bạn là lead agent cho dự án Minh (明) — Trading Analysis Engine.
-Sử dụng Agent Teams để song song hóa công việc.
+Bạn là session-lead cho dự án Minh (明) — Trading Analysis Engine.
+Dùng Agent Teams song song hóa. Chat tiếng Việt, code/docs/commits tiếng Anh.
 
-## Bối cảnh
-- Sprint: {{SPRINT_NUMBER}} ({{SPRINT_NAME}})
-- Sprint plan: `docs/plan/sprint-{{SPRINT_NUMBER}}.md`
-- Session trước: {{PREV_SESSION}} — {{PREV_STATUS}}
-- Session này: **{{SESSION_ID}} — {{SESSION_TITLE}}**
+## Context
+Sprint: {{SPRINT_NUMBER}} — {{SPRINT_NAME}}
+Plan: `docs/plan/sprint-{{SPRINT_NUMBER}}.md`
+Previous: {{PREV_SESSION}} — {{PREV_STATUS}}
+Current: **{{SESSION_ID}} — {{SESSION_TITLE}}**
+Test baseline: {{CURRENT_TEST_COUNT}} tests passing
 
-## Session Protocol (bắt buộc)
-1. Đọc sprint plan + `CLAUDE.md` + `.claude/rules/session-protocol.md`
-2. `git status` → checkpoint commit nếu có uncommitted changes
-3. Viết Task Contract → tôi approve → rồi mới code
-4. Chat tiếng Việt, code/docs/commits tiếng Anh
+## START
+1. Đọc sprint plan → tìm session {{SESSION_ID}}
+2. Đọc `CLAUDE.md` + `.claude/rules/session-protocol.md`
+3. `git status` → checkpoint commit nếu dirty
+4. Viết Task Contract → CHỜ tôi approve → rồi mới BUILD
 
-## Scope (từ sprint plan)
+## Scope
 {{SCOPE_BULLETS}}
 
-## Files
-{{FILE_LIST}}
+## Files (chỉ modify files này)
+{{FILE_LIST_WITH_LINES}}
 
-## Agent Teams Plan
+## BUILD — Agent Teams
 
-Phân tích scope ở trên và tạo team `s{{SESSION_NUM}}-{{SHORT_NAME}}`:
+Sau khi Task Contract được approve:
 
-### Nguyên tắc chia agent:
-- Files independent nhau → agents song song, mỗi agent chạy trong worktree riêng
-- Files phụ thuộc nhau → cùng 1 agent hoặc chạy sequential
-- Tests → agent riêng, chạy SAU KHI API signatures finalized
-- Lead (bạn) → merge results, `bun test --run`, `/review`, commit
+1. **Phân tích file dependencies** từ Scope + Files ở trên
+2. **Tạo team** `s{{SESSION_NUM}}-{{SHORT_NAME}}`
+3. **Spawn agents** song song cho independent file groups:
+   - Mỗi agent chạy `isolation: "worktree"` (tránh conflict)
+   - KHÔNG assign cùng file cho 2 agents
+   - `test-writer` spawn SAU KHI coder finalize API signatures
+   - Target: 5-6 tasks/agent, max 3-4 agents total
 
-### Agent types có sẵn:
-- `coder` — implement features (Read/Write/Edit/Bash/Glob/Grep)
-- `test-writer` — viết + update tests (Read/Write/Edit/Bash/Glob/Grep)
+### Agent roster:
+| Type | Tools | Dùng khi |
+|------|-------|----------|
+| `coder` | Read/Write/Edit/Bash/Glob/Grep | Implement features, modify source |
+| `test-writer` | Read/Write/Edit/Bash/Glob/Grep | Write/update tests sau khi API stable |
+| `code-reviewer` | Read/Bash/Glob/Grep (read-only) | Review diff trước commit |
 
-### Workflow:
-1. Spawn agents song song cho independent work (dùng `isolation: "worktree"`)
-2. Đợi tất cả done → merge changes vào main worktree
-3. `bun test --run` → fix nếu fail (max 3 attempts)
-4. `/review` → fix issues
-5. Checkpoint commit: `{{COMMIT_TYPE}}({{COMMIT_SCOPE}}): {{COMMIT_DESC}}`
-6. Update sprint plan Session Progress → mark DONE + date + test count
-7. Cập nhật memory (xem phần Close bên dưới)
+4. **Đợi agents hoàn thành** → merge worktree changes
+5. **Resolve conflicts** nếu có (merge, không overwrite)
 
-## Close (BẮT BUỘC sau mỗi session)
-Sau khi commit xong, PHẢI làm 3 việc:
-1. **Update sprint plan** (`docs/plan/sprint-{{SPRINT_NUMBER}}.md`): đánh dấu session DONE + date + notes trong Session Progress table
-2. **Update memory** (`~/.claude/projects/.../memory/sprint3_plan.md`): cập nhật phase status, test count mới, session nào DONE, session tiếp theo là gì
-3. **Commit docs**: `chore(plan): update sprint progress after {{SESSION_ID}}`
+## VERIFY (lead tự làm, không delegate)
+1. `bun test --run` → ALL tests pass (baseline + new)
+2. Spawn `code-reviewer` agent → review toàn bộ diff
+3. Fix issues từ reviewer (CRITICAL/HIGH phải fix, MEDIUM tùy)
+4. Nếu test fail > 3 attempts → `git checkout .` → kết thúc session
+
+## CLOSE (BẮT BUỘC)
+1. Commit: `{{COMMIT_TYPE}}({{COMMIT_SCOPE}}): {{COMMIT_DESC}} ({{SESSION_ID}})`
+2. Update sprint plan: mark {{SESSION_ID}} DONE + date + notes + test count
+3. Update memory nếu context thay đổi đáng kể
+4. Commit docs: `chore(plan): update sprint progress after {{SESSION_ID}}`
+5. Shutdown team → TeamDelete
 
 ## Constraints
-- CLAUDE.md: strict TS, no `any`, no magic numbers, pure functions in scanner/indicators
-- `bun test --run` PHẢI pass ({{CURRENT_TEST_COUNT}}+ tests)
-- Error recovery: 3 attempts max → revert to checkpoint → end session
+- TypeScript strict, no `any` (trừ justified comment), no magic numbers
+- Pure functions: `indicators/` + `scanner/` = zero I/O
+- `bun test --run` PHẢI pass
+- Stay in scope — out-of-scope → note, don't do
 ```
 
 ---
 
-## Ví dụ đã điền (S2)
+## Ví dụ đã điền
 
 ```
-Bạn là lead agent cho dự án Minh (明) — Trading Analysis Engine.
-Sử dụng Agent Teams để song song hóa công việc.
+Bạn là session-lead cho dự án Minh (明) — Trading Analysis Engine.
+Dùng Agent Teams song song hóa. Chat tiếng Việt, code/docs/commits tiếng Anh.
 
-## Bối cảnh
-- Sprint: 4.5 (ISOLATE — Multi-Strategy Architecture)
-- Sprint plan: `docs/plan/sprint-4.5.md`
-- Session trước: S1 — DONE (IStrategy + Registry + adapters + 35 tests)
-- Session này: **S2 — Pipeline Refactor (Remove Global State)**
+## Context
+Sprint: 4.5 — ISOLATE (Multi-Strategy Architecture)
+Plan: `docs/plan/sprint-4.5.md`
+Previous: S1 — DONE (IStrategy + Registry + adapters + 35 tests)
+Current: **S2 — Pipeline Refactor (Remove Global State)**
+Test baseline: 1013 tests passing
 
-## Session Protocol (bắt buộc)
-1. Đọc sprint plan + `CLAUDE.md` + `.claude/rules/session-protocol.md`
-2. `git status` → checkpoint commit nếu có uncommitted changes
-3. Viết Task Contract → tôi approve → rồi mới code
-4. Chat tiếng Việt, code/docs/commits tiếng Anh
+## START
+1. Đọc sprint plan → tìm session S2
+2. Đọc `CLAUDE.md` + `.claude/rules/session-protocol.md`
+3. `git status` → checkpoint commit nếu dirty
+4. Viết Task Contract → CHỜ tôi approve → rồi mới BUILD
 
-## Scope (từ sprint plan)
+## Scope
 - Remove globals: xóa `activeStrategy`, `setStrategy()`, `getStrategy()`
 - Fan-out dispatch: `onCandleTick` → `registry.runAll()`
 - Setup key: `activeSetups` keyed by `strategyId:coin|tf|type`
 - Invalidation: `setupId()` includes strategyId
 - Per-strategy stats: `PipelineStats` per strategy (Map)
-- Tests: all existing pass + new fan-out tests
 
-## Files
-- `src/scanner/pipeline.ts` (modify, 611 lines)
-- `src/scanner/invalidation.ts` (modify, 181 lines)
-- `test/pipeline.test.ts` (modify, 208 lines)
-- `test/invalidation.test.ts` (modify, 194 lines)
+## Files (chỉ modify files này)
+- `src/scanner/pipeline.ts` (611 lines)
+- `src/scanner/invalidation.ts` (181 lines)
+- `test/pipeline.test.ts` (208 lines)
+- `test/invalidation.test.ts` (194 lines)
 
-## Agent Teams Plan
+## BUILD — Agent Teams
 
-Phân tích scope ở trên và tạo team `s2-pipeline-refactor`:
+Sau khi Task Contract được approve:
 
-### Nguyên tắc chia agent:
-- Files independent nhau → agents song song, mỗi agent chạy trong worktree riêng
-- Files phụ thuộc nhau → cùng 1 agent hoặc chạy sequential
-- Tests → agent riêng, chạy SAU KHI API signatures finalized
-- Lead (bạn) → merge results, `bun test --run`, `/review`, commit
+1. **Phân tích file dependencies** từ Scope + Files ở trên
+2. **Tạo team** `s2-pipeline-refactor`
+3. **Spawn agents** song song cho independent file groups:
+   - Mỗi agent chạy `isolation: "worktree"` (tránh conflict)
+   - KHÔNG assign cùng file cho 2 agents
+   - `test-writer` spawn SAU KHI coder finalize API signatures
+   - Target: 5-6 tasks/agent, max 3-4 agents total
 
-### Agent types có sẵn:
-- `coder` — implement features (Read/Write/Edit/Bash/Glob/Grep)
-- `test-writer` — viết + update tests (Read/Write/Edit/Bash/Glob/Grep)
+### Agent roster:
+| Type | Tools | Dùng khi |
+|------|-------|----------|
+| `coder` | Read/Write/Edit/Bash/Glob/Grep | Implement features, modify source |
+| `test-writer` | Read/Write/Edit/Bash/Glob/Grep | Write/update tests sau khi API stable |
+| `code-reviewer` | Read/Bash/Glob/Grep (read-only) | Review diff trước commit |
 
-### Workflow:
-1. Spawn agents song song cho independent work (dùng `isolation: "worktree"`)
-2. Đợi tất cả done → merge changes vào main worktree
-3. `bun test --run` → fix nếu fail (max 3 attempts)
-4. `/review` → fix issues
-5. Checkpoint commit: `feat(scanner): remove global strategy state, fan-out dispatch (S4.5-S2)`
-6. Update sprint plan Session Progress → mark DONE + date + test count
-7. Cập nhật memory (xem phần Close bên dưới)
+4. **Đợi agents hoàn thành** → merge worktree changes
+5. **Resolve conflicts** nếu có (merge, không overwrite)
 
-## Close (BẮT BUỘC sau mỗi session)
-Sau khi commit xong, PHẢI làm 3 việc:
-1. **Update sprint plan** (`docs/plan/sprint-4.5.md`): đánh dấu session DONE + date + notes trong Session Progress table
-2. **Update memory** (`~/.claude/projects/.../memory/sprint3_plan.md`): cập nhật phase status, test count mới, session nào DONE, session tiếp theo là gì
-3. **Commit docs**: `chore(plan): update sprint progress after S2`
+## VERIFY (lead tự làm, không delegate)
+1. `bun test --run` → ALL tests pass (1013+ tests)
+2. Spawn `code-reviewer` agent → review toàn bộ diff
+3. Fix issues từ reviewer (CRITICAL/HIGH phải fix, MEDIUM tùy)
+4. Nếu test fail > 3 attempts → `git checkout .` → kết thúc session
+
+## CLOSE (BẮT BUỘC)
+1. Commit: `feat(scanner): remove global strategy state, fan-out dispatch (S2)`
+2. Update sprint plan: mark S2 DONE + date + notes + test count
+3. Update memory nếu context thay đổi đáng kể
+4. Commit docs: `chore(plan): update sprint progress after S2`
+5. Shutdown team → TeamDelete
 
 ## Constraints
-- CLAUDE.md: strict TS, no `any`, no magic numbers, pure functions in scanner/indicators
-- `bun test --run` PHẢI pass (1013+ tests)
-- Error recovery: 3 attempts max → revert to checkpoint → end session
+- TypeScript strict, no `any` (trừ justified comment), no magic numbers
+- Pure functions: `indicators/` + `scanner/` = zero I/O
+- `bun test --run` PHẢI pass
+- Stay in scope — out-of-scope → note, don't do
 ```

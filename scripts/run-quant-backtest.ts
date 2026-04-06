@@ -12,6 +12,10 @@ import { formatPipelineStats } from '../src/scanner/pipeline.js'
 import type { BacktestConfig } from '../src/backtest/types.js'
 import type { CandleInterval } from '../src/types.js'
 import { computeHTFIntervals, computeHTFWarmupMs } from '../src/backtest/data-manager.js'
+import { getStrategyRegistry } from '../src/scanner/strategy.js'
+import { LayeredStrategyAdapter } from '../src/scanner/strategies/layered-adapter.js'
+import { QuantStrategyAdapter } from '../src/scanner/strategies/quant-adapter.js'
+import { SmcSdStrategy } from '../src/scanner/strategies/smc-sd.js'
 
 // Configurable via CLI args: bun run scripts/run-quant-backtest.ts [months] [coins...]
 const args = process.argv.slice(2)
@@ -25,7 +29,7 @@ const timeframes: CandleInterval[] = ['5m', '15m', '1h', '4h', '1d']
 const initialCapital = 10_000
 
 async function main() {
-  console.log('=== Quant vs Layered Backtest Comparison ===')
+  console.log('=== Layered vs Quant vs SMC+S&D Backtest Comparison ===')
   console.log(`Coins: ${coins.join(', ')}`)
   console.log(`Timeframes: ${timeframes.join(', ')}`)
   console.log(`Period: ${months} months`)
@@ -50,6 +54,12 @@ async function main() {
       await dm.downloadHistory(coin, htf, htfStart, endDate)
     }
   }
+
+  // Register strategies before running backtests
+  const reg = getStrategyRegistry()
+  reg.register(new LayeredStrategyAdapter())
+  reg.register(new QuantStrategyAdapter())
+  reg.register(new SmcSdStrategy())
 
   console.log('Loading candles...')
   const candles = await dm.loadForBacktest(coins, timeframes, startDate, endDate)
@@ -85,43 +95,61 @@ async function main() {
   if (quantStats) console.log(formatPipelineStats(quantStats))
   console.log('')
 
+  // Run SMC+S&D backtest
+  console.log('--- Running SMC+S&D strategy (single-exit) ---')
+  const smcConfig: BacktestConfig = {
+    coins, timeframes, initialCapital,
+    slippagePct: 0.0005, commissionPct: 0.0003,
+    strategy: 'smc-sd',
+    exitMode: 'single',
+  }
+  const smcResult = runBacktest(candles, smcConfig)
+  const smcStats = smcResult.pipelineStats
+  console.log(`Trades: ${smcResult.metrics.totalTrades}`)
+  console.log(`Net PnL: $${smcResult.metrics.netPnl.toFixed(2)}`)
+  if (smcStats) console.log(formatPipelineStats(smcStats))
+  console.log('')
+
   // Comparison table
   const m1 = layeredResult.metrics
   const m2 = quantResult.metrics
+  const m3 = smcResult.metrics
 
   console.log('=== COMPARISON ===')
-  console.log('+-------------------------+-----------+-----------+')
-  console.log('| Metric                  | Layered   | Quant     |')
-  console.log('+-------------------------+-----------+-----------+')
-  const row = (label: string, v1: string, v2: string) =>
-    console.log(`| ${label.padEnd(23)} | ${v1.padStart(9)} | ${v2.padStart(9)} |`)
+  console.log('+-------------------------+-----------+-----------+-----------+')
+  console.log('| Metric                  | Layered   | Quant     | SMC+S&D   |')
+  console.log('+-------------------------+-----------+-----------+-----------+')
+  const row = (label: string, v1: string, v2: string, v3: string) =>
+    console.log(`| ${label.padEnd(23)} | ${v1.padStart(9)} | ${v2.padStart(9)} | ${v3.padStart(9)} |`)
 
-  row('Total trades', String(m1.totalTrades), String(m2.totalTrades))
-  row('Win rate', `${(m1.winRate * 100).toFixed(1)}%`, `${(m2.winRate * 100).toFixed(1)}%`)
-  row('Net PnL', `$${m1.netPnl.toFixed(0)}`, `$${m2.netPnl.toFixed(0)}`)
-  row('Expectancy', `$${m1.expectancy.toFixed(2)}`, `$${m2.expectancy.toFixed(2)}`)
-  row('Profit Factor', m1.profitFactor.toFixed(2), m2.profitFactor.toFixed(2))
-  row('Max Drawdown', `${(m1.maxDrawdown * 100).toFixed(1)}%`, `${(m2.maxDrawdown * 100).toFixed(1)}%`)
-  row('Sharpe', m1.sharpeRatio.toFixed(2), m2.sharpeRatio.toFixed(2))
-  row('Sortino', m1.sortinoRatio.toFixed(2), m2.sortinoRatio.toFixed(2))
-  row('Avg R:R', m1.avgRR.toFixed(2), m2.avgRR.toFixed(2))
-  row('Avg Hold (bars)', m1.avgHoldingBars.toFixed(0), m2.avgHoldingBars.toFixed(0))
-  console.log('+-------------------------+-----------+-----------+')
+  row('Total trades', String(m1.totalTrades), String(m2.totalTrades), String(m3.totalTrades))
+  row('Win rate', `${(m1.winRate * 100).toFixed(1)}%`, `${(m2.winRate * 100).toFixed(1)}%`, `${(m3.winRate * 100).toFixed(1)}%`)
+  row('Net PnL', `$${m1.netPnl.toFixed(0)}`, `$${m2.netPnl.toFixed(0)}`, `$${m3.netPnl.toFixed(0)}`)
+  row('Expectancy', `$${m1.expectancy.toFixed(2)}`, `$${m2.expectancy.toFixed(2)}`, `$${m3.expectancy.toFixed(2)}`)
+  row('Profit Factor', m1.profitFactor.toFixed(2), m2.profitFactor.toFixed(2), m3.profitFactor.toFixed(2))
+  row('Max Drawdown', `${(m1.maxDrawdown * 100).toFixed(1)}%`, `${(m2.maxDrawdown * 100).toFixed(1)}%`, `${(m3.maxDrawdown * 100).toFixed(1)}%`)
+  row('Sharpe', m1.sharpeRatio.toFixed(2), m2.sharpeRatio.toFixed(2), m3.sharpeRatio.toFixed(2))
+  row('Sortino', m1.sortinoRatio.toFixed(2), m2.sortinoRatio.toFixed(2), m3.sortinoRatio.toFixed(2))
+  row('Avg R:R', m1.avgRR.toFixed(2), m2.avgRR.toFixed(2), m3.avgRR.toFixed(2))
+  row('Avg Hold (bars)', m1.avgHoldingBars.toFixed(0), m2.avgHoldingBars.toFixed(0), m3.avgHoldingBars.toFixed(0))
+  console.log('+-------------------------+-----------+-----------+-----------+')
 
-  // Top trades from quant
-  if (m2.totalTrades > 0) {
-    console.log('')
-    console.log('=== QUANT TOP TRADES ===')
-    const sorted = [...quantResult.trades].sort((a, b) => b.pnl - a.pnl)
-    const top5 = sorted.slice(0, 5)
-    const bot5 = sorted.slice(-5).reverse()
-    console.log('Best:')
-    for (const t of top5) {
-      console.log(`  ${t.coin} ${t.interval} ${t.side} | pnl=$${t.pnl.toFixed(2)} | exit=${t.exitReason}`)
-    }
-    console.log('Worst:')
-    for (const t of bot5) {
-      console.log(`  ${t.coin} ${t.interval} ${t.side} | pnl=$${t.pnl.toFixed(2)} | exit=${t.exitReason}`)
+  // Top trades from each strategy
+  for (const [name, result] of [['QUANT', quantResult], ['SMC+S&D', smcResult]] as const) {
+    if (result.metrics.totalTrades > 0) {
+      console.log('')
+      console.log(`=== ${name} TOP TRADES ===`)
+      const sorted = [...result.trades].sort((a, b) => b.pnl - a.pnl)
+      const top5 = sorted.slice(0, 5)
+      const bot5 = sorted.slice(-5).reverse()
+      console.log('Best:')
+      for (const t of top5) {
+        console.log(`  ${t.coin} ${t.interval} ${t.side} | pnl=$${t.pnl.toFixed(2)} | exit=${t.exitReason}`)
+      }
+      console.log('Worst:')
+      for (const t of bot5) {
+        console.log(`  ${t.coin} ${t.interval} ${t.side} | pnl=$${t.pnl.toFixed(2)} | exit=${t.exitReason}`)
+      }
     }
   }
 

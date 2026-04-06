@@ -31,6 +31,7 @@ export type PatternType =
   | 'price-action'
   | 'volume-profile'
   | 'ema-rsi'
+  | 'smc-sd'
 
 export interface Signal {
   type: PatternType
