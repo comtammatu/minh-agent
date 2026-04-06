@@ -118,20 +118,20 @@ describe('computePositionSizeDetailed', () => {
 
 describe('computeStructureStop', () => {
   it('long: stop below zone bottom minus ATR buffer', () => {
-    // zoneBottom=98, ATR=2, buffer=0.5 → atrBuffer=1 → stop=97
+    // zoneBottom=98, ATR=2, buffer=0.7 → atrBuffer=1.4 → stop=96.6
     const result = computeStructureStop('long', 98, 100, 2, 100)
-    expect(result.price).toBe(97)
+    expect(result.price).toBeCloseTo(96.6, 4)
     expect(result.method).toBe('structure')
-    expect(result.atrBuffer).toBe(1)
-    expect(result.distancePct).toBeCloseTo(0.03, 4)
+    expect(result.atrBuffer).toBeCloseTo(1.4, 4)
+    expect(result.distancePct).toBeCloseTo(0.034, 3)
   })
 
   it('short: stop above zone top plus ATR buffer', () => {
-    // zoneTop=102, ATR=2, buffer=0.5 → atrBuffer=1 → stop=103
+    // zoneTop=102, ATR=2, buffer=0.7 → atrBuffer=1.4 → stop=103.4
     const result = computeStructureStop('short', 100, 102, 2, 100)
-    expect(result.price).toBe(103)
+    expect(result.price).toBeCloseTo(103.4, 4)
     expect(result.method).toBe('structure')
-    expect(result.distancePct).toBeCloseTo(0.03, 4)
+    expect(result.distancePct).toBeCloseTo(0.034, 3)
   })
 })
 

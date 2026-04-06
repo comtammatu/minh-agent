@@ -141,6 +141,21 @@ export function isInvalidated(
       break
     }
 
+    case 'smc-sd': {
+      // Zone-based invalidation: close beyond zone boundary + ATR buffer
+      const smcZoneBottom = pd['zoneBottom'] as number
+      const smcZoneTop = pd['zoneTop'] as number
+      const smcAtr = (pd['atrAtEntry'] as number) ?? 0
+      const invBuffer = smcAtr * 0.5  // ATR buffer before invalidating
+      if (setup.side === 'long' && c.c < ((smcZoneBottom ?? setup.slPrice) - invBuffer)) {
+        return { invalidated: true, reason: 'zone-broken' }
+      }
+      if (setup.side === 'short' && c.c > ((smcZoneTop ?? setup.slPrice) + invBuffer)) {
+        return { invalidated: true, reason: 'zone-broken' }
+      }
+      break
+    }
+
     case 'volume-profile': {
       const level = pd['level'] as string
       const poc = pd['poc'] as number
