@@ -19,7 +19,7 @@ import { BacktestDataManager, computeHTFIntervals, computeHTFWarmupMs } from './
 import { runBacktest } from './engine.js'
 import { walkForward } from './walk-forward.js'
 import { formatExpectancyReport, formatMetricsSummary } from './report.js'
-import { formatPipelineStats } from '../scanner/pipeline.js'
+import { formatPipelineStats } from '../scanner/diagnostics.js'
 import type { BacktestConfig, WalkForwardConfig } from './types.js'
 import type { CandleInterval } from '../types.js'
 import {

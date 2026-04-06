@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, beforeAll } from 'bun:test'
-import { onCandleTick, getStatus, getActiveSetups, clearPipelineState } from '../src/scanner/pipeline.js'
+import { onCandleTick, getStatus, getActiveSetups, clearPipelineState } from '../src/scanner/orchestrator.js'
 import { setCandles, clearStore } from '../src/feed/store.js'
 import type { Candle, CandleInterval } from '../src/types.js'
 import { getStrategyRegistry, resetStrategyRegistry } from '../src/scanner/strategy.js'

@@ -1,21 +1,9 @@
 /**
- * Layered Decision Framework — pipeline orchestrator.
+ * Layered 5-layer Wyckoff/SMC pipeline.
  *
- * Replaces the flat engine.ts with a 5-layer sequential pipeline + regime context.
- * Only file with module-level state (activeSetups, lastCandleTs, statusState).
- *
- * Flow per WS tick:
- *   1. Append candle to store (always)
- *   2. Closed-candle gate: skip if same timestamp (candle still forming)
- *   3. Readiness check: enough candles?
- *   4. Shared context: pivots, regime (parallel with layers)
- *   5. Layer 1: Bias (Wyckoff + SMC + HTF) → neutral = STOP
- *   6. Layer 2: Structure (PA swings) → deny = STOP
- *   7. Layer 3: Zones (bias-filtered) → empty = STOP
- *   8. Layer 4: Confirm (isAtZone + VSA/VP boosts)
- *   9. Layer 5: Trigger (PA pattern at zone) → null = wait
- *  10. Confluence + Regime + Risk → grade C or not tradeable = STOP
- *  11. Track + Alert + Invalidate
+ * Flow per closed candle:
+ *   L1 Bias → L2 Structure → L3 Zones → L4 Confirm → L5 Trigger
+ *   → R:R gate → Confluence + Risk + Regime → Track + Alert
  */
 
 import type {
@@ -26,7 +14,7 @@ import type {
   Signal,
   ConfluenceGrade,
 } from '../types.js'
-import { appendCandle, getCandles } from '../feed/store.js'
+import { getCandles } from '../feed/store.js'
 import { getLatestDelta } from '../feed/trades.js'
 import { getLatestBook } from '../feed/orderbook.js'
 import { getLatestFunding } from '../feed/funding.js'
@@ -54,284 +42,21 @@ import {
   HTF_MAP,
   SIMULATED_ACCOUNT,
   MIN_TP1_RR,
+  PATTERN_TTL_BARS,
 } from '../config.js'
 import { getExchangeService } from '../execution/exchange-service.js'
-import { EventEmitter } from 'events'
 import { playSound } from '../ui/sound.js'
 import { log } from '../lib/logger.js'
+import { getOrCreateStats } from './diagnostics.js'
+import { getStatusState, getActiveSetupsMap, getPipelineEmitter } from './orchestrator.js'
 
-// ── Pipeline Diagnostic Stats ────────────────────────────────────────────────
-
-export interface PipelineStats {
-  /** Total closed candles processed (entered runPipeline). */
-  totalTicks: number
-  /** Passed Layer 1 — bias is non-neutral. */
-  passL1Bias: number
-  /** Passed Layer 2 — structure not deny. */
-  passL2Structure: number
-  /** Passed Layer 3 — zones non-empty. */
-  passL3Zones: number
-  /** Passed Layer 4+5 — trigger found (confirm→trigger chain). */
-  passL5Trigger: number
-  /** Passed confluence gate (grade B+). */
-  passConfluence: number
-  /** Passed risk filter. */
-  passRisk: number
-  /** Passed regime modifier (final confidence ≥ MIN_CONFIDENCE). */
-  passRegime: number
-  /** Setups tracked (signal fully qualified). */
-  setupsTracked: number
-  /** Setups invalidated. */
-  setupsInvalidated: number
-  /** Layer 3 detail: total zones before freshness filter. */
-  l3ZonesTotal: number
-  /** Layer 3 detail: zones after freshness filter. */
-  l3ZonesFresh: number
-  /** Layer 4 detail: zones at zone (isAtZone true). */
-  l4ZonesAtZone: number
-  /** Layer 4 detail: zones confirmed (boost threshold met). */
-  l4ZonesConfirmed: number
-  /** L5 detail: ticks with confirmed zones but no PA pattern at all. */
-  l5NoPatternsDetected: number
-  /** L5 detail: ticks with PA patterns but wrong direction (filtered by bias). */
-  l5WrongDirection: number
-  /** L5 rejection log: detailed info for each L4-pass L5-reject event. */
-  l5Rejections: Array<{ coin: string; interval: string; idx: number; ts: number; patternsDetected: string[]; biasDir: string; confirmedCount: number }>
-}
-
-function zeroPipelineStats(): PipelineStats {
-  return {
-    totalTicks: 0,
-    passL1Bias: 0,
-    passL2Structure: 0,
-    passL3Zones: 0,
-    passL5Trigger: 0,
-    passConfluence: 0,
-    passRisk: 0,
-    passRegime: 0,
-    setupsTracked: 0,
-    setupsInvalidated: 0,
-    l3ZonesTotal: 0,
-    l3ZonesFresh: 0,
-    l4ZonesAtZone: 0,
-    l4ZonesConfirmed: 0,
-    l5NoPatternsDetected: 0,
-    l5WrongDirection: 0,
-    l5Rejections: [],
-  }
-}
-
-/** Per-strategy pipeline stats. Key = strategyId. */
-const pipelineStatsMap = new Map<string, PipelineStats>()
-
-/** Get or create mutable stats for a strategy. */
-export function getOrCreateStats(strategyId: string): PipelineStats {
-  let stats = pipelineStatsMap.get(strategyId)
-  if (!stats) {
-    stats = zeroPipelineStats()
-    pipelineStatsMap.set(strategyId, stats)
-  }
-  return stats
-}
-
-/** Get pipeline stats for a specific strategy (snapshot copy). */
-export function getPipelineStats(strategyId: string = 'layered'): PipelineStats {
-  return { ...(pipelineStatsMap.get(strategyId) ?? zeroPipelineStats()) }
-}
-
-/** Get full per-strategy stats map (snapshot copies). */
-export function getPipelineStatsMap(): Map<string, PipelineStats> {
-  const result = new Map<string, PipelineStats>()
-  for (const [id, stats] of pipelineStatsMap) {
-    result.set(id, { ...stats })
-  }
-  return result
-}
-
-/** Reset pipeline diagnostic stats. If strategyId given, reset only that strategy. */
-export function resetPipelineStats(strategyId?: string): void {
-  if (strategyId) {
-    pipelineStatsMap.set(strategyId, zeroPipelineStats())
-  } else {
-    pipelineStatsMap.clear()
-  }
-}
-
-/** Format pipeline stats as a human-readable report. */
-export function formatPipelineStats(stats: PipelineStats): string {
-  const t = stats.totalTicks
-  const pct = (n: number) => t > 0 ? `${(n / t * 100).toFixed(2)}%` : '0%'
-  const lines = [
-    '=== PIPELINE DIAGNOSTIC STATS ===',
-    `Total ticks:         ${t}`,
-    `L1 Bias pass:        ${stats.passL1Bias} (${pct(stats.passL1Bias)})`,
-    `L2 Structure pass:   ${stats.passL2Structure} (${pct(stats.passL2Structure)})`,
-    `L3 Zones pass:       ${stats.passL3Zones} (${pct(stats.passL3Zones)})`,
-    `  L3 total zones:    ${stats.l3ZonesTotal}`,
-    `  L3 fresh zones:    ${stats.l3ZonesFresh} (${stats.l3ZonesTotal > 0 ? (stats.l3ZonesFresh / stats.l3ZonesTotal * 100).toFixed(1) + '%' : '0%'} fresh)`,
-    `  L4 zones at zone:  ${stats.l4ZonesAtZone}`,
-    `  L4 zones confirmed:${stats.l4ZonesConfirmed}`,
-    `L5 Trigger pass:     ${stats.passL5Trigger} (${pct(stats.passL5Trigger)})`,
-    `  L5 no pattern:     ${stats.l5NoPatternsDetected}`,
-    `  L5 wrong dir:      ${stats.l5WrongDirection}`,
-    `Confluence pass:     ${stats.passConfluence} (${pct(stats.passConfluence)})`,
-    `Risk pass:           ${stats.passRisk} (${pct(stats.passRisk)})`,
-    `Regime pass:         ${stats.passRegime} (${pct(stats.passRegime)})`,
-    `Setups tracked:      ${stats.setupsTracked}`,
-    `Setups invalidated:  ${stats.setupsInvalidated}`,
-    '=================================',
-  ]
-  return lines.join('\n')
-}
-
-// ── Module-level state ──────────────────────────────────────────────────────
-
-import { clearQuantState } from './quant-pipeline.js'
-import { getStrategyRegistry } from './strategy.js'
-
-const activeSetups = new Map<string, ActiveSetup>()
-
-/**
- * Pipeline EventEmitter (R10).
- * Emits 'setup' when a new setup is tracked, 'invalidation' when one is removed.
- * Agent subscribes via getPipelineEmitter().
- */
-const pipelineEmitter = new EventEmitter()
-
-/** Get the pipeline event emitter for agent subscription. */
-export function getPipelineEmitter(): EventEmitter {
-  return pipelineEmitter
-}
-const lastCandleTs = new Map<string, number>()
-
-export interface StatusSnapshot {
-  coin: string
-  interval: CandleInterval
-  regime: MarketRegime
-  bias: string
-  biasConfidence: number
-  confluenceGrade: ConfluenceGrade | null
-  activeCount: number
-  lastUpdateAt: number
-}
-
-const statusState = new Map<string, StatusSnapshot>()
-
-// ── Public API ───────────────────────────────────────────────────────────────
-
-/** Called by WS subscription on every candle tick. Dispatches to all registered strategies. */
-export function onCandleTick(
-  coin: string,
-  interval: CandleInterval,
-  candle: Candle,
-): void {
-  // Always store latest candle data
-  appendCandle(coin, interval, candle)
-
-  // ── Closed-candle gate ──────────────────────────────────────────────────
-  const sk = `${coin}|${interval}`
-  const prevTs = lastCandleTs.get(sk)
-
-  if (prevTs === candle.t) return  // same candle still forming
-  lastCandleTs.set(sk, candle.t)
-
-  // First tick for this coin/tf — no previous closed candle yet
-  if (prevTs === undefined) return
-
-  // 1m: store candles for entry refinement only, skip signal scan
-  if (interval === '1m') return
-
-  // Fan-out to all registered strategies via StrategyRegistry
-  const registry = getStrategyRegistry()
-  // Fetch enough candles for the most demanding strategy (+2 for closed-candle idx)
-  const maxMin = Math.max(INDICATOR_WINDOW, ...registry.getAll().map(s => s.minCandles()))
-  const candles = getCandles(coin, interval, maxMin + 2)
-  if (candles.length < MIN_CANDLES_FOR_SCAN + 1) return
-
-  const idx = candles.length - 2
-  const signalResults = registry.runAll(coin, interval, candles, idx)
-
-  // Handle modern strategies that return Signal directly (not legacy emit pattern)
-  for (const { strategyId, signal } of signalResults) {
-    const id = setupId(coin, interval, signal.type, strategyId)
-    const setup: ActiveSetup = {
-      ...signal,
-      id,
-      coin,
-      interval,
-      strategyId,
-      detectedAt: Date.now(),
-      detectedAtBar: idx,
-      expiresAtBar: computeExpiresAtBar(signal.type, idx),
-    }
-    activeSetups.set(id, setup)
-    const stats = getOrCreateStats(strategyId)
-    stats.setupsTracked++
-    pipelineEmitter.emit('setup', setup)
-  }
-}
-
-/** Get current status snapshots for all coin/tf combinations. */
-export function getStatus(): StatusSnapshot[] {
-  return Array.from(statusState.values())
-}
-
-/** Get all currently active setups. */
-export function getActiveSetups(): ActiveSetup[] {
-  return Array.from(activeSetups.values())
-}
-
-/** Get unique list of coins that have at least one active setup. */
-export function getActiveSetupCoins(): string[] {
-  const coins = new Set<string>()
-  for (const setup of activeSetups.values()) {
-    coins.add(setup.coin)
-  }
-  return Array.from(coins)
-}
-
-/** Clear state for a specific coin (all timeframes). */
-export function clearCoinState(coin: string): void {
-  const prefix = `${coin}|`
-  for (const k of activeSetups.keys()) { if (k.startsWith(prefix)) activeSetups.delete(k) }
-  for (const k of statusState.keys()) { if (k.startsWith(prefix)) statusState.delete(k) }
-  for (const k of lastCandleTs.keys()) { if (k.startsWith(prefix)) lastCandleTs.delete(k) }
-}
-
-/**
- * Clear pipeline state. If strategyId given, clear only that strategy's stats.
- * Without strategyId, clears everything (all setups, status, timestamps, stats, quant state).
- */
-export function clearPipelineState(strategyId?: string): void {
-  if (strategyId) {
-    // Granular: clear only setups belonging to this strategy + its stats
-    for (const [id] of activeSetups) {
-      if (id.startsWith(`${strategyId}:`)) activeSetups.delete(id)
-    }
-    resetPipelineStats(strategyId)
-    if (strategyId === 'quant') clearQuantState()
-  } else {
-    // Full clear
-    activeSetups.clear()
-    statusState.clear()
-    lastCandleTs.clear()
-    resetPipelineStats()
-    clearQuantState()
-  }
-}
-
-// ── Aliases for StrategyRegistry adapter (Sprint 4.5) ────────────────────────
-
-/** Alias for strategy adapter import. Calls the layered 5-layer pipeline. */
+// Re-export runPipeline as runLayeredPipeline for strategy adapter
 export { runPipeline as runLayeredPipeline }
 
-/** Clear layered pipeline state only (not quant). Used by LayeredStrategyAdapter. */
-export function clearLayeredState(): void {
-  activeSetups.clear()
-  statusState.clear()
-  lastCandleTs.clear()
-  resetPipelineStats('layered')
-}
+// Re-export clearLayeredState for strategy adapter
+export { clearLayeredState } from './orchestrator.js'
+
+const PATTERN_TTL_BARS_LOOKUP = PATTERN_TTL_BARS
 
 // ── Pipeline ─────────────────────────────────────────────────────────────────
 
@@ -345,6 +70,8 @@ export function runPipeline(
   const sk = `${coin}|${interval}`
   const confirmedSlice = candles.slice(0, idx + 1)
   const pipelineStats = getOrCreateStats('layered')
+  const statusState = getStatusState()
+  const activeSetups = getActiveSetupsMap()
 
   pipelineStats.totalTicks++
 
@@ -362,7 +89,7 @@ export function runPipeline(
   const bias = determineBias(confirmedSlice, idx, htfCandles, pivots)
 
   // Update status (even if bias is neutral — show current state)
-  const activeCount = countActiveSetupsFor(coin, interval)
+  const activeCount = countActiveSetupsFor(activeSetups, coin, interval)
   statusState.set(sk, {
     coin,
     interval,
@@ -376,7 +103,7 @@ export function runPipeline(
 
   if (!bias || bias.bias === 'neutral') {
     // STOP — invalidate existing setups still
-    invalidateSetups(coin, interval, confirmedSlice, idx)
+    invalidateSetups(activeSetups, pipelineStats, coin, interval, confirmedSlice, idx)
     return
   }
   pipelineStats.passL1Bias++
@@ -384,7 +111,7 @@ export function runPipeline(
   // ── Layer 2: Structure ─────────────────────────────────────────────────
   const verdict = confirmStructure(confirmedSlice, idx, bias, swings)
   if (verdict === 'deny') {
-    invalidateSetups(coin, interval, confirmedSlice, idx)
+    invalidateSetups(activeSetups, pipelineStats, coin, interval, confirmedSlice, idx)
     return
   }
   pipelineStats.passL2Structure++
@@ -396,7 +123,7 @@ export function runPipeline(
   pipelineStats.l3ZonesTotal += zonesResult.totalBeforeFilter
   pipelineStats.l3ZonesFresh += zones.length
   if (zones.length === 0) {
-    invalidateSetups(coin, interval, confirmedSlice, idx)
+    invalidateSetups(activeSetups, pipelineStats, coin, interval, confirmedSlice, idx)
     return
   }
   pipelineStats.passL3Zones++
@@ -420,7 +147,7 @@ export function runPipeline(
   // Per spec Section 9.2: "volume im ắng → zone yếu, nên skip"
   const confirmed = atZoneResults.filter(z => z.confirmed)
   if (confirmed.length === 0) {
-    invalidateSetups(coin, interval, confirmedSlice, idx)
+    invalidateSetups(activeSetups, pipelineStats, coin, interval, confirmedSlice, idx)
     return
   }
 
@@ -445,20 +172,18 @@ export function runPipeline(
         confirmedCount: confirmed.filter(z => z.confirmed).length,
       })
     }
-    invalidateSetups(coin, interval, confirmedSlice, idx)
+    invalidateSetups(activeSetups, pipelineStats, coin, interval, confirmedSlice, idx)
     return
   }
   pipelineStats.passL5Trigger++
 
   // ── R:R geometry gate ─────────────────────────────────────────────────
   // Reject setups where planned R:R is below MIN_TP1_RR (1.5).
-  // With wick-based SL, most setups should pass. This catches edge cases
-  // where TP target is too close relative to SL distance.
   const slDist = Math.abs(signal.entryPrice - signal.slPrice)
   const tpDist = Math.abs(signal.tpPrice - signal.entryPrice)
   const plannedRR = slDist > 0 ? tpDist / slDist : 0
   if (plannedRR < MIN_TP1_RR) {
-    invalidateSetups(coin, interval, confirmedSlice, idx)
+    invalidateSetups(activeSetups, pipelineStats, coin, interval, confirmedSlice, idx)
     return
   }
 
@@ -474,7 +199,7 @@ export function runPipeline(
   })
 
   if (confluence.grade === 'C') {
-    invalidateSetups(coin, interval, confirmedSlice, idx)
+    invalidateSetups(activeSetups, pipelineStats, coin, interval, confirmedSlice, idx)
     return
   }
   pipelineStats.passConfluence++
@@ -487,7 +212,7 @@ export function runPipeline(
   const accountValue = getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT
   const risk = assessRisk(signal, zone, currentPrice, atrVal, accountValue)
   if (!risk.tradeable) {
-    invalidateSetups(coin, interval, confirmedSlice, idx)
+    invalidateSetups(activeSetups, pipelineStats, coin, interval, confirmedSlice, idx)
     return
   }
   pipelineStats.passRisk++
@@ -495,7 +220,7 @@ export function runPipeline(
   // Regime modifier on final confidence
   const finalConf = applyRegimeModifier(confluence.confidence, signal.side, regime)
   if (finalConf < MIN_CONFIDENCE) {
-    invalidateSetups(coin, interval, confirmedSlice, idx)
+    invalidateSetups(activeSetups, pipelineStats, coin, interval, confirmedSlice, idx)
     return
   }
   pipelineStats.passRegime++
@@ -516,7 +241,7 @@ export function runPipeline(
 
   // Skip if already tracking with equal or higher confidence
   if (existing && existing.confidence >= finalConf) {
-    invalidateSetups(coin, interval, confirmedSlice, idx)
+    invalidateSetups(activeSetups, pipelineStats, coin, interval, confirmedSlice, idx)
     return
   }
 
@@ -538,20 +263,24 @@ export function runPipeline(
   logSetupAlert(coin, interval, setup, regime, bias.source, confluence, risk)
 
   // R10: Emit setup event for agent subscription
+  const pipelineEmitter = getPipelineEmitter()
   pipelineEmitter.emit('setup', setup)
 
   // Invalidate after processing
-  invalidateSetups(coin, interval, confirmedSlice, idx)
+  invalidateSetups(activeSetups, pipelineStats, coin, interval, confirmedSlice, idx)
 }
 
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 function invalidateSetups(
+  activeSetups: Map<string, ActiveSetup>,
+  pipelineStats: { setupsInvalidated: number },
   coin: string,
   interval: CandleInterval,
   candles: Candle[],
   currentBarIdx: number,
 ): void {
+  const pipelineEmitter = getPipelineEmitter()
   for (const [id, setup] of activeSetups) {
     if (setup.coin !== coin || setup.interval !== interval) continue
 
@@ -567,11 +296,11 @@ function invalidateSetups(
   }
 }
 
-// Import TTL for age calculation
-import { PATTERN_TTL_BARS } from '../config.js'
-const PATTERN_TTL_BARS_LOOKUP = PATTERN_TTL_BARS
-
-function countActiveSetupsFor(coin: string, interval: CandleInterval): number {
+function countActiveSetupsFor(
+  activeSetups: Map<string, ActiveSetup>,
+  coin: string,
+  interval: CandleInterval,
+): number {
   let count = 0
   for (const setup of activeSetups.values()) {
     if (setup.coin === coin && setup.interval === interval) count++
@@ -638,4 +367,3 @@ function logSetupAlert(
 function fmt(n: number): string {
   return n >= 1000 ? n.toFixed(0) : n >= 10 ? n.toFixed(2) : n.toFixed(4)
 }
-

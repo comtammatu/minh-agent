@@ -296,10 +296,10 @@ describe('CoinSelector', () => {
 
 describe('getActiveSetupCoins', () => {
   it('exports from pipeline', async () => {
-    const { getActiveSetupCoins } = await import('../../src/scanner/pipeline.js')
+    const { getActiveSetupCoins } = await import('../../src/scanner/orchestrator.js')
     expect(typeof getActiveSetupCoins).toBe('function')
     // With no active setups, returns empty
-    const { clearPipelineState } = await import('../../src/scanner/pipeline.js')
+    const { clearPipelineState } = await import('../../src/scanner/orchestrator.js')
     clearPipelineState()
     expect(getActiveSetupCoins()).toEqual([])
   })

@@ -26,8 +26,8 @@ import {
   onCandleTick,
   getPipelineEmitter,
   clearPipelineState,
-  getPipelineStats,
-} from '../scanner/pipeline.js'
+} from '../scanner/orchestrator.js'
+import { getPipelineStats } from '../scanner/diagnostics.js'
 import { getStrategyRegistry } from '../scanner/strategy.js'
 import { clearStore, clearOnPersist, getCandles } from '../feed/store.js'
 import { atr } from '../indicators/core.js'

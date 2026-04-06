@@ -4,9 +4,9 @@
  * Startup sequence:
  *   0. Run DB migrations
  *   1. CoinSelector: fetch top coins from HL by OI
- *   2. Load candles from PG → memory, gap-fill missing via REST
- *   3. WS subscribe all coins (candles × 6 TFs + trades + order book)
- *   4. REST backfill remaining (coins not in PG get full backfill)
+ *   2. WS subscribe all coins FIRST (capture real-time immediately)
+ *   3. Load candles from PG → memory
+ *   4. Gap-fill + REST backfill (batched, skips coin/TFs already sufficient)
  *   5. Wire PG write-through for live WS candles
  *   6. Start funding + OI polling
  *   7. Print ARMED + coin counts
@@ -35,7 +35,7 @@ import {
   PAPER_TRADE,
   MIN_CANDLES_FOR_SCAN,
 } from './config.js'
-import { backfillAllCoins, fetchCandles, probeCoins } from './feed/rest.js'
+import { backfillAllCoins, fetchCandles, fetchCandlesBatched, probeCoins } from './feed/rest.js'
 import { setCandles, clearCoinData, setOnPersist, appendCandle, candleCount } from './feed/store.js'
 import { subscribeCandles, unsubscribeCandles, closeAll, checkStaleness, getSubscriptionCount } from './feed/ws.js'
 import { startFundingPolling, stopFundingPolling, addFundingCoin, removeFundingCoin } from './feed/funding.js'
@@ -44,7 +44,7 @@ import { subscribeTrades, unsubscribeTrades } from './feed/trades.js'
 import { subscribeOrderBook, unsubscribeOrderBook, checkBookStaleness } from './feed/orderbook.js'
 import { createCoinSelector } from './feed/coin-selector.js'
 import type { RefreshResult } from './feed/coin-selector.js'
-import { onCandleTick, getStatus, getActiveSetupCoins, clearCoinState } from './scanner/pipeline.js'
+import { onCandleTick, getStatus, getActiveSetupCoins, clearCoinState } from './scanner/orchestrator.js'
 import { sql, closeDb } from './db/connection.js'
 import { runMigrations } from './db/migrate.js'
 import {
@@ -57,8 +57,8 @@ import {
 } from './db/candle-repo.js'
 import { log, setTuiSink, clearTuiSink } from './lib/logger.js'
 import { getHealthMonitor } from './agent/self-healing.js'
-import { startTui, stopTui, appendSignal, appendLog } from './ui/tui.jsx'
-import { getPipelineEmitter } from './scanner/pipeline.js'
+import { startTui, stopTui, appendSignal, appendLog, setBackfillDone, type TuiDataSources } from './ui/tui.jsx'
+import { getPipelineEmitter } from './scanner/orchestrator.js'
 import { getAgent } from './agent/trading-agent.js'
 import { getOrderManager } from './agent/order-manager.js'
 import { getPositionMonitor } from './agent/position-monitor.js'
@@ -72,15 +72,7 @@ import { QuantStrategyAdapter } from './scanner/strategies/quant-adapter.js'
 import { SmcSdStrategy } from './scanner/strategies/smc-sd.js'
 import type { CandleInterval } from './types.js'
 
-// ── Banner ───────────────────────────────────────────────────────────────────
-
-const modeTag = PAPER_TRADE ? 'PAPER' : 'LIVE'
-log.info('startup', `Minh (明) v2.0.0 — Autonomous Trading Agent [${modeTag}]`)
-log.info('startup',
-  `Config: dynamic top coins × ${TIMEFRAMES.join(',')} | ` +
-  `min:${MIN_CONFIDENCE} | confluence:${CONFLUENCE_MIN}+ | ` +
-  `regime:${REGIME_MULTIPLIERS.aligned}/${REGIME_MULTIPLIERS.neutral}/${REGIME_MULTIPLIERS.counter}`,
-)
+// ── Banner (logged inside main() before TUI starts) ────────────────────────
 
 // ── Coin Lifecycle Helpers ──────────────────────────────────────────────────
 
@@ -140,6 +132,15 @@ const selector = createCoinSelector(getActiveSetupCoins, onCoinsRefreshed)
 const activeIntervals: ReturnType<typeof setInterval>[] = []
 
 async function main(): Promise<void> {
+  // Banner — logged before TUI starts, so these safely go to console
+  const modeTag = PAPER_TRADE ? 'PAPER' : 'LIVE'
+  log.info('startup', `Minh (明) v2.0.0 — Autonomous Trading Agent [${modeTag}]`)
+  log.info('startup',
+    `Config: dynamic top coins × ${TIMEFRAMES.join(',')} | ` +
+    `min:${MIN_CONFIDENCE} | confluence:${CONFLUENCE_MIN}+ | ` +
+    `regime:${REGIME_MULTIPLIERS.aligned}/${REGIME_MULTIPLIERS.neutral}/${REGIME_MULTIPLIERS.counter}`,
+  )
+
   // 0. Run DB migrations
   await runMigrations(sql)
 
@@ -174,66 +175,70 @@ async function main(): Promise<void> {
     log.info('startup', `COINS | after probe: ${coins.length} coins (${probeFailed.length} replaced)`)
   }
 
-  // 2. Load candles from PG → memory, then gap-fill missing candles via REST
+  // 2. WS subscribe FIRST — capture real-time candles immediately
+  for (const coin of coins) {
+    await subscribeCoin(coin)
+  }
+
+  // 2b. Start TUI immediately — shows backfill progress (transitions to dashboard when done)
+  const tuiSources: TuiDataSources = {
+    getAgentSnapshot: () => ({
+      global: { dailyPnl: 0, totalConsecutiveLosses: 0, globalPaused: false, globalPauseReason: null, uptime: 0 },
+      coins: {},
+    }),
+    getPositions: () => new Map(),
+    getStatus: () => getStatus(),
+    getHealthReport: () => ({
+      overall: 'ok', uptime: 0, rssBytes: process.memoryUsage().rss,
+      components: {
+        feed: { status: 'ok', consecutiveErrors: 0 },
+        db: { status: 'ok', consecutiveErrors: 0 },
+        exchange: { status: 'ok', consecutiveErrors: 0 },
+      },
+    }),
+    getAccountState: () => null,
+    getSubscriptionCount,
+    getTrackedCoins: () => selector.getTrackedCoins(),
+  }
+  setTuiSink(appendLog)
+  startTui(tuiSources)
+
+  // 3. Load candles from PG → memory
   const pgTimestamps = await getAllLastTimestamps()
   const now = Date.now()
   let pgLoadedTotal = 0
-  let gapFillTotal = 0
 
   for (const coin of coins) {
     for (const tf of TIMEFRAMES) {
       const interval = tf as CandleInterval
       const storeKey = `${coin}|${interval}`
       const lastPgTs = pgTimestamps.get(storeKey) ?? null
-      const intervalMs = TIMEFRAME_MS[interval]
       const fullCount = BACKFILL_CANDLE_COUNTS[interval] ?? BACKFILL_CANDLE_COUNT
 
-      if (shouldGapFill(lastPgTs, now, intervalMs, fullCount)) {
-        // Load existing candles from PG into memory
+      if (lastPgTs !== null) {
         const pgCandles = await loadCandles(coin, interval, fullCount)
         if (pgCandles.length > 0) {
           setCandles(coin, interval, pgCandles)
           pgLoadedTotal += pgCandles.length
         }
-
-        // Gap-fill: fetch only missing candles from REST
-        const gapStart = computeGapStart(lastPgTs, intervalMs)!
-        const gapCandles = await fetchCandles(coin, interval, gapStart, now)
-        if (gapCandles && gapCandles.length > 0) {
-          // Persist gap-fill candles to PG
-          await bulkUpsertCandles(coin, interval, gapCandles)
-          // Merge into in-memory store (setCandles would overwrite, so append each)
-          for (const c of gapCandles) {
-            appendCandle(coin, interval, c)
-          }
-          gapFillTotal += gapCandles.length
-        }
       }
-      // else: no PG data → will do full REST backfill below
     }
   }
 
-  if (pgLoadedTotal > 0 || gapFillTotal > 0) {
-    log.info('startup', `PG load: ${pgLoadedTotal} candles | Gap-fill: ${gapFillTotal} candles`)
+  if (pgLoadedTotal > 0) {
+    log.info('startup', `PG load: ${pgLoadedTotal} candles`)
   }
 
-  // 3. Subscribe all coins (WS first, before backfill — captures candles during backfill)
-  for (const coin of coins) {
-    await subscribeCoin(coin)
-  }
-
-  // 4. REST backfill all coins — skips coin/TFs already loaded from PG gap-fill
+  // 4. Gap-fill + full backfill via REST (batched, skips coin/TFs already sufficient)
   const backfillResults = await backfillAllCoins(
     coins,
     (coin, interval, candles) => {
       setCandles(coin, interval, candles)
-      // Persist backfilled candles to PG
       bulkUpsertCandles(coin, interval, candles).catch(err => {
         log.error('persist', `bulk upsert failed ${coin}|${interval}: ${err instanceof Error ? err.message : String(err)}`)
       })
     },
     undefined, // concurrency — use default
-    // Skip coin/TFs that already have enough candles from PG gap-fill (step 2)
     (coin, interval) => candleCount(coin, interval) >= MIN_CANDLES_FOR_SCAN,
   )
   const tfReady = new Map<string, number>()
@@ -282,6 +287,9 @@ async function main(): Promise<void> {
   if (allFailed.size > 0) {
     log.info('lifecycle', `COIN-REPLACE | done — replaced ${allFailed.size} failed coins | now tracking ${coins.length}`)
   }
+
+  // 4c. Signal TUI: backfill complete → transition to dashboard
+  setBackfillDone()
 
   // 5. Wire PG write-through for live WS candles (R14: sync write-through)
   //    Wired AFTER backfill so startup uses efficient bulk operations, not per-candle upserts
@@ -407,23 +415,17 @@ async function main(): Promise<void> {
   // 10. Start coin refresh loop
   selector.startRefreshLoop()
 
-  // 11. Start TUI dashboard (replaces old console.log STATUS interval)
-  startTui({
-    getAgentSnapshot: () => agent.getSnapshot(),
-    getPositions: () => pm.getPositions(),
-    getStatus: () => getStatus(),
-    getHealthReport: () => health.getReport(),
-    getAccountState: () => {
-      try {
-        return pool.getShared().getAccountState()
-      } catch {
-        return null
-      }
-    },
-    getSubscriptionCount,
-    getTrackedCoins: () => selector.getTrackedCoins(),
-  })
-  setTuiSink(appendLog)
+  // 11. Upgrade TUI data sources — agent + health now initialized
+  tuiSources.getAgentSnapshot = () => agent.getSnapshot()
+  tuiSources.getPositions = () => pm.getPositions()
+  tuiSources.getHealthReport = () => health.getReport()
+  tuiSources.getAccountState = () => {
+    try {
+      return pool.getShared().getAccountState()
+    } catch {
+      return null
+    }
+  }
 
   // 12. Staleness watchdog (candles + order book)
   activeIntervals.push(setInterval(() => {

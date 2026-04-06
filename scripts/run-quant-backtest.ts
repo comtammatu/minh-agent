@@ -8,7 +8,7 @@
 
 import { BacktestDataManager } from '../src/backtest/data-manager.js'
 import { runBacktest } from '../src/backtest/engine.js'
-import { formatPipelineStats } from '../src/scanner/pipeline.js'
+import { formatPipelineStats } from '../src/scanner/diagnostics.js'
 import type { BacktestConfig } from '../src/backtest/types.js'
 import type { CandleInterval } from '../src/types.js'
 import { computeHTFIntervals, computeHTFWarmupMs } from '../src/backtest/data-manager.js'
