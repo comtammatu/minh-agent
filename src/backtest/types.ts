@@ -6,7 +6,7 @@
  */
 
 import type { CandleInterval, PatternType, ConfluenceGrade, SignalSide } from '../types.js'
-import type { PipelineStats } from '../scanner/diagnostics.js'
+import type { PipelineStats } from '../strategy/diagnostics.js'
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 

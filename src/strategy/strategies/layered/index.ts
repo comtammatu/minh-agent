@@ -11,7 +11,7 @@
  */
 
 import type { Candle, CandleInterval, Signal, PatternType } from '../../../types.js'
-import type { IStrategy } from '../../strategy.js'
+import type { IStrategy } from '../../registry.js'
 import { runLayeredPipeline, clearLayeredState } from './pipeline.js'
 import { MIN_CANDLES_FOR_SCAN } from '../../../config.js'
 

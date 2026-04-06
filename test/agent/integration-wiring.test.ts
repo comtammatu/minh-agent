@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'bun:test'
-import { getStrategyRegistry, resetStrategyRegistry } from '../../src/scanner/strategy.js'
+import { getStrategyRegistry, resetStrategyRegistry } from '../../src/strategy/registry.js'
 import { stateKey, parseStateKey } from '../../src/agent/trading-orchestrator.js'
 
 // ── StrategyRegistry wiring ─────────────────────────────────────────────────

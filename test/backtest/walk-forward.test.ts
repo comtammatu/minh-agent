@@ -20,9 +20,9 @@ import { describe, test, expect, beforeAll } from 'bun:test'
 import { walkForward, bootstrapExpectancyCI, perWindowConsistency, formatGateReport } from '../../src/backtest/walk-forward.js'
 import type { BacktestConfig, BacktestTrade, WalkForwardConfig, WalkForwardWindow, BacktestMetrics } from '../../src/backtest/types.js'
 import type { Candle, CandleInterval } from '../../src/types.js'
-import { getStrategyRegistry, resetStrategyRegistry } from '../../src/scanner/strategy.js'
-import { LayeredStrategyAdapter } from '../../src/scanner/strategies/layered/index.js'
-import { QuantStrategyAdapter } from '../../src/scanner/strategies/quant/index.js'
+import { getStrategyRegistry, resetStrategyRegistry } from '../../src/strategy/registry.js'
+import { LayeredStrategyAdapter } from '../../src/strategy/strategies/layered/index.js'
+import { QuantStrategyAdapter } from '../../src/strategy/strategies/quant/index.js'
 
 // Register strategies before any test runs
 beforeAll(() => {

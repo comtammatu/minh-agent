@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'bun:test'
-import { determineBias } from '../../src/scanner/strategies/layered/layers/bias.js'
+import { determineBias } from '../../src/strategy/strategies/layered/layers/bias.js'
 import type { Candle, PivotPoint } from '../../src/types.js'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

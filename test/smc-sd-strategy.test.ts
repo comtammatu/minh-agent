@@ -11,7 +11,7 @@
  */
 
 import { describe, test, expect, beforeEach } from 'bun:test'
-import { SmcSdStrategy } from '../src/scanner/strategies/smc-sd/index.js'
+import { SmcSdStrategy } from '../src/strategy/strategies/smc-sd/index.js'
 import type { Candle } from '../src/types.js'
 import { MIN_CANDLES_FOR_SCAN } from '../src/config.js'
 

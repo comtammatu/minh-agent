@@ -26,9 +26,9 @@ import {
   onCandleTick,
   getPipelineEmitter,
   clearPipelineState,
-} from '../scanner/orchestrator.js'
-import { getPipelineStats } from '../scanner/diagnostics.js'
-import { getStrategyRegistry } from '../scanner/strategy.js'
+} from '../strategy/orchestrator.js'
+import { getPipelineStats } from '../strategy/diagnostics.js'
+import { getStrategyRegistry } from '../strategy/registry.js'
 import { clearStore, clearOnPersist, getCandles } from '../feed/store.js'
 import { atr } from '../indicators/core.js'
 import { BACKTEST_SLIPPAGE_PCT, BACKTEST_COMMISSION_PCT, ATR_TRAIL_MULTIPLIER, INDICATOR_WINDOW, BACKTEST_CHUNK_SIZE } from '../config.js'

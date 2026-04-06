@@ -13,7 +13,7 @@
 
 import { describe, test, expect, beforeEach, mock } from 'bun:test'
 import type { PatternType } from '../../../src/types.js'
-import type { IStrategy } from '../../../src/scanner/strategy.js'
+import type { IStrategy } from '../../../src/strategy/registry.js'
 
 // ── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -73,7 +73,7 @@ import {
   StrategyRegistry,
   resetStrategyRegistry,
   getStrategyRegistry,
-} from '../../../src/scanner/strategy.js'
+} from '../../../src/strategy/registry.js'
 
 import {
   registerBuiltinCommands,

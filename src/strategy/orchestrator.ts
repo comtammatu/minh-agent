@@ -13,7 +13,7 @@ import type {
   MarketRegime,
 } from '../types.js'
 import { appendCandle, getCandles } from '../feed/store.js'
-import { getStrategyRegistry } from './strategy.js'
+import { getStrategyRegistry } from './registry.js'
 import { clearQuantState } from './strategies/quant/pipeline.js'
 import { computeExpiresAtBar, setupId } from './shared/invalidation.js'
 import { getOrCreateStats, resetPipelineStats } from './diagnostics.js'

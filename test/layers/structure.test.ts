@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'bun:test'
-import { confirmStructure } from '../../src/scanner/strategies/layered/layers/structure.js'
+import { confirmStructure } from '../../src/strategy/strategies/layered/layers/structure.js'
 import type { Candle, BiasResult, SwingPoint } from '../../src/types.js'
 
 function makeCandle(overrides: Partial<Candle> = {}): Candle {

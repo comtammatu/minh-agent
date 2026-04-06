@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { isInvalidated, computeExpiresAtBar, setupId } from '../src/scanner/shared/invalidation.js'
+import { isInvalidated, computeExpiresAtBar, setupId } from '../src/strategy/shared/invalidation.js'
 import type { ActiveSetup, Candle, CandleInterval } from '../src/types.js'
 import { PATTERN_TTL_BARS } from '../src/config.js'
 

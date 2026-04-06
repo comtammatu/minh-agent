@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'bun:test'
-import { scoreConfluence } from '../src/scanner/strategies/layered/confluence.js'
+import { scoreConfluence } from '../src/strategy/strategies/layered/confluence.js'
 import type { BiasResult, StructureVerdict, ZoneConfirmation, Signal, KeyZone } from '../src/types.js'
 
 function makeBias(confidence = 0.7): BiasResult {

@@ -6,12 +6,12 @@
  */
 
 import { describe, it, expect, beforeEach, beforeAll } from 'bun:test'
-import { onCandleTick, getStatus, getActiveSetups, clearPipelineState } from '../src/scanner/orchestrator.js'
+import { onCandleTick, getStatus, getActiveSetups, clearPipelineState } from '../src/strategy/orchestrator.js'
 import { setCandles, clearStore } from '../src/feed/store.js'
 import type { Candle, CandleInterval } from '../src/types.js'
-import { getStrategyRegistry, resetStrategyRegistry } from '../src/scanner/strategy.js'
-import { LayeredStrategyAdapter } from '../src/scanner/strategies/layered/index.js'
-import { QuantStrategyAdapter } from '../src/scanner/strategies/quant/index.js'
+import { getStrategyRegistry, resetStrategyRegistry } from '../src/strategy/registry.js'
+import { LayeredStrategyAdapter } from '../src/strategy/strategies/layered/index.js'
+import { QuantStrategyAdapter } from '../src/strategy/strategies/quant/index.js'
 
 // Register strategies before any test runs
 beforeAll(() => {

@@ -10,7 +10,7 @@
  */
 
 import type { Candle, CandleInterval, Signal, PatternType } from '../../../types.js'
-import type { IStrategy } from '../../strategy.js'
+import type { IStrategy } from '../../registry.js'
 import { runQuantPipeline, clearQuantState } from './pipeline.js'
 import { QUANT_EMA_SLOW } from '../../../config.js'
 

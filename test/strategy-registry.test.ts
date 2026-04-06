@@ -14,10 +14,10 @@
 
 import { describe, test, expect, beforeEach } from 'bun:test'
 import type { Candle, CandleInterval, Signal, PatternType } from '../src/types.js'
-import { StrategyRegistry, resetStrategyRegistry, getStrategyRegistry } from '../src/scanner/strategy.js'
-import type { IStrategy } from '../src/scanner/strategy.js'
-import { LayeredStrategyAdapter } from '../src/scanner/strategies/layered/index.js'
-import { QuantStrategyAdapter } from '../src/scanner/strategies/quant/index.js'
+import { StrategyRegistry, resetStrategyRegistry, getStrategyRegistry } from '../src/strategy/registry.js'
+import type { IStrategy } from '../src/strategy/registry.js'
+import { LayeredStrategyAdapter } from '../src/strategy/strategies/layered/index.js'
+import { QuantStrategyAdapter } from '../src/strategy/strategies/quant/index.js'
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 

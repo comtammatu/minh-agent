@@ -21,7 +21,7 @@ import { getPositionMonitor } from '../../agent/position-monitor.js'
 import { getHealthMonitor } from '../../agent/self-healing.js'
 import { getLiveMetrics } from '../../analytics/metrics-service.js'
 import { closeAllPositions } from '../../agent/close-all.js'
-import { getStrategyRegistry } from '../../scanner/strategy.js'
+import { getStrategyRegistry } from '../../strategy/registry.js'
 import { TELEGRAM_BOT } from '../../config.js'
 import type { CommandDef } from './types.js'
 

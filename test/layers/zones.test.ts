@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'bun:test'
-import { findEntryZones } from '../../src/scanner/strategies/layered/layers/zones.js'
+import { findEntryZones } from '../../src/strategy/strategies/layered/layers/zones.js'
 import type { Candle, BiasResult } from '../../src/types.js'
 
 function makeCandle(overrides: Partial<Candle> = {}): Candle {

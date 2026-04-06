@@ -12,7 +12,7 @@ import { describe, test, expect, beforeEach } from 'bun:test'
 import { TradeSimulator } from '../../src/backtest/simulator.js'
 import type { BacktestTrade } from '../../src/backtest/types.js'
 import type { ActiveSetup, Candle, CandleInterval } from '../../src/types.js'
-import { getStrategyRegistry } from '../../src/scanner/strategy.js'
+import { getStrategyRegistry } from '../../src/strategy/registry.js'
 
 // ─── Test Helpers ───────────────────────────────────────────────────────────
 
