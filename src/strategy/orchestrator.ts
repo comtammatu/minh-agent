@@ -130,7 +130,9 @@ export function getActiveSetupCoins(): string[] {
 /** Clear state for a specific coin (all timeframes). */
 export function clearCoinState(coin: string): void {
   const prefix = `${coin}|`
-  for (const k of activeSetups.keys()) { if (k.startsWith(prefix)) activeSetups.delete(k) }
+  // Setup keys are "strategyId:coin|interval|type" — match ":coin|" anywhere in key
+  const setupNeedle = `:${coin}|`
+  for (const k of activeSetups.keys()) { if (k.includes(setupNeedle)) activeSetups.delete(k) }
   for (const k of statusState.keys()) { if (k.startsWith(prefix)) statusState.delete(k) }
   for (const k of lastCandleTs.keys()) { if (k.startsWith(prefix)) lastCandleTs.delete(k) }
 }
@@ -159,9 +161,12 @@ export function clearPipelineState(strategyId?: string): void {
 
 // ── Aliases for StrategyRegistry adapter (Sprint 4.5) ────────────────────────
 
-/** Clear layered pipeline state only (not quant). Used by LayeredStrategyAdapter. */
+/** Clear layered pipeline state only (not quant/smc-sd). Used by LayeredStrategyAdapter. */
 export function clearLayeredState(): void {
-  activeSetups.clear()
+  // Only delete setups belonging to the layered strategy
+  for (const k of activeSetups.keys()) {
+    if (k.startsWith('layered:')) activeSetups.delete(k)
+  }
   statusState.clear()
   lastCandleTs.clear()
   resetPipelineStats('layered')
