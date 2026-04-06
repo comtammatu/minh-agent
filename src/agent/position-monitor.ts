@@ -35,6 +35,8 @@ import {
 } from '../config.js'
 import { getExchangeService } from '../execution/exchange-service.js'
 import { log } from '../lib/logger.js'
+import { PAPER_TRADE, PAPER_SLIPPAGE_PCT } from '../config.js'
+import { getPaperTracker } from './paper-tracker.js'
 
 // ─── Exchange Query (S10: real HL clearinghouseState) ──────────────────────
 
@@ -315,26 +317,43 @@ export class PositionMonitor {
         break
       }
 
-      case 'close':
+      case 'close': {
         log.info('position-monitor', `Position close: ${pos.coin} reason=${action.reason}`)
+
+        // Paper mode: compute P&L from tracker (entry recorded by OrderManager)
+        let closePrice = 0
+        let pnl = 0
+        if (PAPER_TRADE) {
+          // Use trailing stop price as close price for trail hits, SL/TP for those triggers
+          const trailPrice = pos.trailingState?.currentStopPrice ?? 0
+          const estimatedClose = trailPrice > 0
+            ? trailPrice
+            : pos.slPrice  // fallback to SL as close estimate
+          const slippageDir = (pos.side === 'long' ? -1 : 1)  // close side gets adverse slippage
+          closePrice = estimatedClose * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
+          const trade = getPaperTracker().recordExit(pos.entryOrderId, closePrice)
+          if (trade) pnl = trade.pnl
+        }
+
         // Determine PnL direction from reason for event type
         if (action.reason.startsWith('trail_stop_hit')) {
           this.dispatchToAgent?.(pos.coin, {
             type: 'trail_stop_hit',
             positionId: pos.positionId,
-            closePrice: 0,  // filled by execution layer (S10)
-            pnl: 0,         // computed by execution layer (S10)
+            closePrice,
+            pnl,
           }, pos.strategyId)
         } else {
           this.dispatchToAgent?.(pos.coin, {
             type: 'position_closed',
             positionId: pos.positionId,
-            closePrice: 0,
-            pnl: 0,
+            closePrice,
+            pnl,
             reason: action.reason,
           }, pos.strategyId)
         }
         break
+      }
 
       case 'alert':
         log.warn('position-monitor', `ALERT ${pos.coin}: ${action.message}`)
@@ -388,6 +407,9 @@ export class PositionMonitor {
     }
 
     if (this.positions.size === 0) return []
+
+    // Paper mode: no real exchange positions — skip reconciliation to avoid false closes
+    if (PAPER_TRADE) return []
 
     const snapshots = await queryExchangePositions()
     const actions = reconcilePositions(this.positions, snapshots)

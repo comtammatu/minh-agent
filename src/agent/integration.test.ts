@@ -121,55 +121,33 @@ describe('End-to-end integration', () => {
     pm.setAgentDispatch((coin, event) => agent.dispatch(coin, event))
   })
 
-  it('setup event transitions agent from IDLE → WATCHING', () => {
+  it('setup event transitions agent from IDLE → ENTERING', () => {
     const setup = makeSetup()
     pipelineEmitter.emit('setup', setup)
 
     const btc = getCoinState(agent, 'BTC')
     expect(btc).toBeDefined()
-    expect(btc.state).toBe('WATCHING')
+    expect(btc.state).toBe('ENTERING')
   })
 
-  it('repeated setup in WATCHING stays WATCHING (no auto-promote to ENTERING)', () => {
+  it('setup in ENTERING stays ENTERING (already placing order)', () => {
     const setup = makeSetup()
 
-    // First setup → WATCHING
+    // First setup → ENTERING
     pipelineEmitter.emit('setup', setup)
-    expect(getCoinState(agent, 'BTC').state).toBe('WATCHING')
+    expect(getCoinState(agent, 'BTC').state).toBe('ENTERING')
 
-    // Same setup again — stays WATCHING (same confidence, no upgrade)
+    // Same setup again — stays ENTERING (handleEntering ignores setup_detected)
     pipelineEmitter.emit('setup', setup)
-    expect(getCoinState(agent, 'BTC').state).toBe('WATCHING')
+    expect(getCoinState(agent, 'BTC').state).toBe('ENTERING')
   })
 
-  it('higher confidence setup replaces active setup in WATCHING', () => {
-    const setup = makeSetup({ confidence: 0.7 })
-    pipelineEmitter.emit('setup', setup)
-    expect(getCoinState(agent, 'BTC').state).toBe('WATCHING')
-
-    // Higher confidence → replaces
-    const betterSetup = makeSetup({ confidence: 0.9 })
-    pipelineEmitter.emit('setup', betterSetup)
-    expect(getCoinState(agent, 'BTC').state).toBe('WATCHING')
-
-    // watch action should have been emitted for the upgrade
-    const watchActions = actions.filter(a => a.type === 'watch')
-    expect(watchActions.length).toBeGreaterThanOrEqual(1)
-  })
-
-  it('full lifecycle: WATCHING → ENTERING (manual) → fill → IN_POSITION → exit → IDLE', () => {
+  it('full lifecycle: IDLE → ENTERING → fill → IN_POSITION → exit → IDLE', () => {
     const setup = makeSetup()
 
-    // IDLE → WATCHING
+    // IDLE → ENTERING (place_order emitted)
     pipelineEmitter.emit('setup', setup)
-    expect(getCoinState(agent, 'BTC').state).toBe('WATCHING')
-
-    // Simulate orchestrator promoting to ENTERING (in real flow, place_order triggers this)
-    const coinsMap = (agent as unknown as { coins: Map<string, unknown> }).coins
-    const ctx = coinsMap.get('BTC:layered') as { state: string; pendingOrderId: string | null; stateEnteredAt: number }
-    ctx.state = 'ENTERING'
-    ctx.pendingOrderId = 'ord-1'
-    ctx.stateEnteredAt = Date.now()
+    expect(getCoinState(agent, 'BTC').state).toBe('ENTERING')
 
     // ENTERING → IN_POSITION (order filled)
     agent.dispatch('BTC', {
@@ -200,12 +178,12 @@ describe('End-to-end integration', () => {
     expect(getCoinState(agent, 'BTC').state).toBe('IDLE')
   })
 
-  it('invalidation event transitions WATCHING → IDLE', () => {
+  it('invalidation event transitions ENTERING → IDLE', () => {
     const setup = makeSetup()
     pipelineEmitter.emit('setup', setup)
-    expect(getCoinState(agent, 'BTC').state).toBe('WATCHING')
+    expect(getCoinState(agent, 'BTC').state).toBe('ENTERING')
 
-    // Emit invalidation with matching setupId
+    // Emit invalidation with matching setupId — cancels pending order
     pipelineEmitter.emit('invalidation', setup.id, 'zone_broken')
     expect(getCoinState(agent, 'BTC').state).toBe('IDLE')
   })
@@ -278,14 +256,14 @@ describe('End-to-end integration', () => {
     pipelineEmitter.emit('setup', btcSetup)
     pipelineEmitter.emit('setup', ethSetup)
 
-    expect(getCoinState(agent, 'BTC').state).toBe('WATCHING')
-    expect(getCoinState(agent, 'ETH').state).toBe('WATCHING')
+    expect(getCoinState(agent, 'BTC').state).toBe('ENTERING')
+    expect(getCoinState(agent, 'ETH').state).toBe('ENTERING')
 
     // Invalidate only BTC
     pipelineEmitter.emit('invalidation', btcSetup.id, 'zone_broken')
 
     expect(getCoinState(agent, 'BTC').state).toBe('IDLE')
-    expect(getCoinState(agent, 'ETH').state).toBe('WATCHING')
+    expect(getCoinState(agent, 'ETH').state).toBe('ENTERING')
   })
 
   it('circuit breaker tracks daily PnL', () => {

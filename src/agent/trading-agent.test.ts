@@ -74,26 +74,26 @@ function makeGlobal(overrides: Partial<GlobalContext> = {}): GlobalContext {
 // ── Pure Handler Tests ───────────────────────────────────────────────────────
 
 describe('handleIdle', () => {
-  it('transitions to WATCHING on grade B setup', () => {
+  it('transitions to ENTERING on grade B setup', () => {
     const ctx = makeCoinCtx()
     const setup = makeSetup({ confluenceGrade: 'B' })
     const result = handleIdle(ctx, { type: 'setup_detected', setup }, makeGlobal())
-    expect(result.nextState).toBe('WATCHING')
-    expect(result.actions.some(a => a.type === 'watch')).toBe(true)
+    expect(result.nextState).toBe('ENTERING')
+    expect(result.actions.some(a => a.type === 'place_order')).toBe(true)
   })
 
-  it('transitions to WATCHING on grade A setup', () => {
+  it('transitions to ENTERING on grade A setup', () => {
     const ctx = makeCoinCtx()
     const setup = makeSetup({ confluenceGrade: 'A' })
     const result = handleIdle(ctx, { type: 'setup_detected', setup }, makeGlobal())
-    expect(result.nextState).toBe('WATCHING')
+    expect(result.nextState).toBe('ENTERING')
   })
 
-  it('transitions to WATCHING on grade A+ setup', () => {
+  it('transitions to ENTERING on grade A+ setup', () => {
     const ctx = makeCoinCtx()
     const setup = makeSetup({ confluenceGrade: 'A+' })
     const result = handleIdle(ctx, { type: 'setup_detected', setup }, makeGlobal())
-    expect(result.nextState).toBe('WATCHING')
+    expect(result.nextState).toBe('ENTERING')
   })
 
   it('stays IDLE on grade C setup', () => {
@@ -369,27 +369,19 @@ describe('TradingAgent', () => {
     expect(agent.getCoinState('BTC')).toBe('IDLE')
   })
 
-  it('dispatches setup_detected → WATCHING', () => {
+  it('dispatches setup_detected → ENTERING', () => {
     const setup = makeSetup({ confluenceGrade: 'A' })
     const result = agent.dispatch('BTC', { type: 'setup_detected', setup })
-    expect(result.nextState).toBe('WATCHING')
-    expect(agent.getCoinState('BTC')).toBe('WATCHING')
+    expect(result.nextState).toBe('ENTERING')
+    expect(agent.getCoinState('BTC')).toBe('ENTERING')
   })
 
-  it('full lifecycle: IDLE → WATCHING → ENTERING → IN_POSITION → EXITING → IDLE', () => {
+  it('full lifecycle: IDLE → ENTERING → IN_POSITION → EXITING → IDLE', () => {
     const setup = makeSetup({ confluenceGrade: 'B' })
 
-    // IDLE → WATCHING
+    // IDLE → ENTERING (place_order emitted)
     agent.dispatch('BTC', { type: 'setup_detected', setup })
-    expect(agent.getCoinState('BTC')).toBe('WATCHING')
-
-    // Simulate entry trigger: directly push to ENTERING
-    // (In real flow, WATCHING would emit place_order action on entry trigger)
-    // For testing, we simulate the order placement side-effect
-    const btxCtx = (agent as unknown as { coins: Map<string, CoinContext> }).coins.get('BTC:layered')!
-    btxCtx.state = 'ENTERING'
-    btxCtx.pendingOrderId = 'ord-1'
-    btxCtx.stateEnteredAt = Date.now()
+    expect(agent.getCoinState('BTC')).toBe('ENTERING')
 
     // ENTERING → IN_POSITION
     agent.dispatch('BTC', { type: 'order_filled', orderId: 'ord-1', fillPrice: 50100, positionId: 'pos-1' })
@@ -408,8 +400,8 @@ describe('TradingAgent', () => {
     agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup({ coin: 'BTC', confluenceGrade: 'A' }) })
     agent.dispatch('ETH', { type: 'setup_detected', setup: makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', confluenceGrade: 'B' }) })
 
-    expect(agent.getCoinState('BTC')).toBe('WATCHING')
-    expect(agent.getCoinState('ETH')).toBe('WATCHING')
+    expect(agent.getCoinState('BTC')).toBe('ENTERING')
+    expect(agent.getCoinState('ETH')).toBe('ENTERING')
     expect(agent.getCoinState('SOL')).toBe('IDLE')  // never touched
   })
 
@@ -437,7 +429,7 @@ describe('TradingAgent', () => {
 
     const snap = agent.getSnapshot()
     expect(snap.coins['BTC:layered']).toBeDefined()
-    expect(snap.coins['BTC:layered']!.state).toBe('WATCHING')
+    expect(snap.coins['BTC:layered']!.state).toBe('ENTERING')
     expect(snap.global.dailyPnl).toBe(0)
     expect(snap.global.globalPaused).toBe(false)
     expect(typeof snap.global.uptime).toBe('number')
@@ -460,7 +452,7 @@ describe('TradingAgent', () => {
     const setup = makeSetup({ confluenceGrade: 'A' })
     emitter.emit('setup', setup)
 
-    expect(agent.getCoinState('BTC')).toBe('WATCHING')
+    expect(agent.getCoinState('BTC')).toBe('ENTERING')
   })
 
   it('handles pipeline invalidation events via bridge', () => {
@@ -471,10 +463,10 @@ describe('TradingAgent', () => {
     agent.subscribeToPipeline(emitter)
     bridge.connect(emitter, agent)
 
-    // First put in WATCHING
+    // First put in ENTERING
     const setup = makeSetup({ confluenceGrade: 'A' })
     emitter.emit('setup', setup)
-    expect(agent.getCoinState('BTC')).toBe('WATCHING')
+    expect(agent.getCoinState('BTC')).toBe('ENTERING')
 
     // Invalidate — bridge validates setupId match before dispatch
     emitter.emit('invalidation', 'BTC|1h|order-block|long', 'zone-broken')
@@ -488,7 +480,7 @@ describe('TradingAgent', () => {
     agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup({ confluenceGrade: 'A' }) })
 
     expect(actions.length).toBeGreaterThan(0)
-    expect(actions.some((a: any) => a.type === 'watch')).toBe(true)
+    expect(actions.some((a: any) => a.type === 'place_order')).toBe(true)
   })
 
   it('crash recovery: exchange position → IN_POSITION', () => {
@@ -524,9 +516,9 @@ describe('TradingAgent', () => {
   // ── Circuit Breaker Integration (S11) ───────────────────────────────────
 
   it('checkCircuitBreakers pauses on daily loss', () => {
-    // Put BTC in WATCHING
+    // Put BTC in ENTERING
     agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup({ confluenceGrade: 'A' }) })
-    expect(agent.getCoinState('BTC')).toBe('WATCHING')
+    expect(agent.getCoinState('BTC')).toBe('ENTERING')
 
     // Simulate daily loss > 3% of 10000
     agent.recordPnl(-350, 10000)  // -3.5% → trips daily loss CB
@@ -540,7 +532,7 @@ describe('TradingAgent', () => {
     const btcCtx = (agent as unknown as { coins: Map<string, CoinContext> }).coins
     btcCtx.set('BTC:layered', makeCoinCtx({ state: 'IN_POSITION', positionId: 'pos-1', coin: 'BTC' }))
 
-    // Put ETH in WATCHING
+    // Put ETH in ENTERING
     agent.dispatch('ETH', { type: 'setup_detected', setup: makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', confluenceGrade: 'A' }) })
 
     // Trigger daily loss CB
@@ -619,7 +611,7 @@ describe('TradingAgent — correlation guard', () => {
       type: 'setup_detected',
       setup: makeSetup({ coin: 'BTC', confluenceGrade: 'A' }),
     })
-    expect(result.nextState).toBe('WATCHING')
+    expect(result.nextState).toBe('ENTERING')
   })
 
   it('blocks entry when correlated positions exceed limit', () => {
@@ -653,7 +645,7 @@ describe('TradingAgent — correlation guard', () => {
 
     // ETH is in eth-ecosystem, not btc-ecosystem — should be allowed
     agent.onSetup(makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', confluenceGrade: 'A' }))
-    expect(agent.getCoinState('ETH')).toBe('WATCHING')
+    expect(agent.getCoinState('ETH')).toBe('ENTERING')
   })
 
   it('allows entry for unknown coins (not in any group)', () => {
@@ -665,7 +657,7 @@ describe('TradingAgent — correlation guard', () => {
 
     // HYPE is not in any correlation group — should always pass
     agent.onSetup(makeSetup({ coin: 'HYPE', id: 'HYPE|1h|ob|long', confluenceGrade: 'A' }))
-    expect(agent.getCoinState('HYPE')).toBe('WATCHING')
+    expect(agent.getCoinState('HYPE')).toBe('ENTERING')
   })
 
   it('counts ENTERING state coins as open for correlation check', () => {
@@ -690,22 +682,22 @@ describe('TradingAgent — correlation guard', () => {
       [{ coin: 'BTC', positionId: 'p1', side: 'long' }],
     )
 
-    // ETH in WATCHING — not counted as open
+    // ETH in ENTERING — counted as open
     agent.dispatch('ETH', { type: 'setup_detected', setup: makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', confluenceGrade: 'A' }) })
 
     const openCoins = agent.getOpenPositionCoins()
     expect(openCoins).toContain('BTC')       // IN_POSITION
-    expect(openCoins).not.toContain('ETH')   // WATCHING, not ENTERING/IN_POSITION
+    expect(openCoins).toContain('ETH')       // ENTERING — counted as open
   })
 
-  it('does not block when coin is already WATCHING (re-evaluation)', () => {
-    // BTC already watching — correlation guard only checks IDLE/WATCHING → new entry
+  it('does not block when coin is already ENTERING (re-evaluation)', () => {
+    // BTC already in ENTERING — correlation guard only checks IDLE/WATCHING → new entry
     agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup({ coin: 'BTC', confluenceGrade: 'A' }) })
-    expect(agent.getCoinState('BTC')).toBe('WATCHING')
+    expect(agent.getCoinState('BTC')).toBe('ENTERING')
 
-    // Sending another setup while WATCHING — guard runs but no correlated open positions
+    // Sending another setup while ENTERING — guard skips (not IDLE/WATCHING), handleEntering ignores it
     agent.onSetup(makeSetup({ coin: 'BTC', id: 'BTC|1h|ob2|long', confluenceGrade: 'A+', confidence: 0.9 }))
-    // Should still be WATCHING (upgraded setup)
-    expect(agent.getCoinState('BTC')).toBe('WATCHING')
+    // Should still be ENTERING
+    expect(agent.getCoinState('BTC')).toBe('ENTERING')
   })
 })

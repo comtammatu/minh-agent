@@ -84,8 +84,8 @@ describe('Multi-strategy state independence', () => {
     agent.dispatch('BTC', { type: 'setup_detected', setup: layeredSetup }, 'layered')
     agent.dispatch('BTC', { type: 'setup_detected', setup: quantSetup }, 'quant')
 
-    expect(agent.getCoinState('BTC', 'layered')).toBe('WATCHING')
-    expect(agent.getCoinState('BTC', 'quant')).toBe('WATCHING')
+    expect(agent.getCoinState('BTC', 'layered')).toBe('ENTERING')
+    expect(agent.getCoinState('BTC', 'quant')).toBe('ENTERING')
 
     // Invalidate layered — quant should remain WATCHING
     agent.dispatch('BTC', {
@@ -95,7 +95,7 @@ describe('Multi-strategy state independence', () => {
     }, 'layered')
 
     expect(agent.getCoinState('BTC', 'layered')).toBe('IDLE')
-    expect(agent.getCoinState('BTC', 'quant')).toBe('WATCHING')
+    expect(agent.getCoinState('BTC', 'quant')).toBe('ENTERING')
   })
 
   it('different coins, same strategy → independent states', () => {
@@ -105,21 +105,21 @@ describe('Multi-strategy state independence', () => {
     agent.dispatch('BTC', { type: 'setup_detected', setup: btcSetup }, 'quant')
     agent.dispatch('ETH', { type: 'setup_detected', setup: ethSetup }, 'quant')
 
-    expect(agent.getCoinState('BTC', 'quant')).toBe('WATCHING')
-    expect(agent.getCoinState('ETH', 'quant')).toBe('WATCHING')
+    expect(agent.getCoinState('BTC', 'quant')).toBe('ENTERING')
+    expect(agent.getCoinState('ETH', 'quant')).toBe('ENTERING')
 
     // Pause BTC only (via dispatch), ETH unaffected
     agent.dispatch('BTC', { type: 'pause', reason: 'manual' }, 'quant')
 
     expect(agent.getCoinState('BTC', 'quant')).toBe('PAUSED')
-    expect(agent.getCoinState('ETH', 'quant')).toBe('WATCHING')
+    expect(agent.getCoinState('ETH', 'quant')).toBe('ENTERING')
   })
 
   it('onSetup routes to correct strategy from setup.strategyId', () => {
     const setup = makeSetup({ strategyId: 'quant', confluenceGrade: 'A' })
     agent.onSetup(setup)
 
-    expect(agent.getCoinState('BTC', 'quant')).toBe('WATCHING')
+    expect(agent.getCoinState('BTC', 'quant')).toBe('ENTERING')
     // Default strategy should still be IDLE
     expect(agent.getCoinState('BTC', 'layered')).toBe('IDLE')
   })
@@ -129,7 +129,7 @@ describe('Multi-strategy state independence', () => {
     delete (setup as Record<string, unknown>).strategyId
     agent.onSetup(setup)
 
-    expect(agent.getCoinState('BTC', 'layered')).toBe('WATCHING')
+    expect(agent.getCoinState('BTC', 'layered')).toBe('ENTERING')
   })
 
   it('getCoinState defaults to layered for backward compat', () => {
@@ -137,7 +137,7 @@ describe('Multi-strategy state independence', () => {
     agent.dispatch('BTC', { type: 'setup_detected', setup }, 'layered')
 
     // No strategyId argument → defaults to 'layered'
-    expect(agent.getCoinState('BTC')).toBe('WATCHING')
+    expect(agent.getCoinState('BTC')).toBe('ENTERING')
   })
 })
 
@@ -222,8 +222,8 @@ describe('Per-strategy circuit breakers (V6)', () => {
       setup: makeSetup({ strategyId: 'quant', id: 'BTC|1h|breakout|long', confluenceGrade: 'A' }),
     }, 'quant')
 
-    expect(agent.getCoinState('BTC', 'layered')).toBe('WATCHING')
-    expect(agent.getCoinState('BTC', 'quant')).toBe('WATCHING')
+    expect(agent.getCoinState('BTC', 'layered')).toBe('ENTERING')
+    expect(agent.getCoinState('BTC', 'quant')).toBe('ENTERING')
 
     // Trip CB on layered (3.5% daily loss)
     agent.recordPnl(-350, 10000, 'ETH', 'layered')
@@ -233,7 +233,7 @@ describe('Per-strategy circuit breakers (V6)', () => {
     expect(agent.getCoinState('BTC', 'layered')).toBe('PAUSED')
 
     expect(agent.getStrategyGlobal('quant').globalPaused).toBe(false)
-    expect(agent.getCoinState('BTC', 'quant')).toBe('WATCHING')
+    expect(agent.getCoinState('BTC', 'quant')).toBe('ENTERING')
   })
 
   it('CB respects R5 per-strategy: IN_POSITION coins keep SL/TP', () => {
@@ -252,7 +252,7 @@ describe('Per-strategy circuit breakers (V6)', () => {
       pauseUntil: null,
     })
 
-    // Put ETH WATCHING for layered
+    // Put ETH ENTERING for layered
     agent.dispatch('ETH', {
       type: 'setup_detected',
       setup: makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', strategyId: 'layered', confluenceGrade: 'A' }),
@@ -279,7 +279,7 @@ describe('Per-strategy circuit breakers (V6)', () => {
     agent.pauseStrategy('layered', 'manual test')
 
     expect(agent.getCoinState('BTC', 'layered')).toBe('PAUSED')
-    expect(agent.getCoinState('ETH', 'quant')).toBe('WATCHING')
+    expect(agent.getCoinState('ETH', 'quant')).toBe('ENTERING')
     expect(agent.getStrategyGlobal('layered').globalPaused).toBe(true)
     expect(agent.getStrategyGlobal('quant').globalPaused).toBe(false)
   })
@@ -330,11 +330,11 @@ describe('Multi-strategy snapshot', () => {
 
     expect(snap.coins['BTC:layered']).toBeDefined()
     expect(snap.coins['BTC:layered']!.strategyId).toBe('layered')
-    expect(snap.coins['BTC:layered']!.state).toBe('WATCHING')
+    expect(snap.coins['BTC:layered']!.state).toBe('ENTERING')
 
     expect(snap.coins['BTC:quant']).toBeDefined()
     expect(snap.coins['BTC:quant']!.strategyId).toBe('quant')
-    expect(snap.coins['BTC:quant']!.state).toBe('WATCHING')
+    expect(snap.coins['BTC:quant']!.state).toBe('ENTERING')
   })
 
   it('snapshot includes per-strategy globals', () => {
@@ -376,17 +376,11 @@ describe('Full lifecycle: two strategies, same coin', () => {
       setup: makeSetup({ strategyId: 'quant', id: 'BTC|1h|breakout|long', confluenceGrade: 'B' }),
     }, 'quant')
 
-    // Both WATCHING
-    expect(agent.getCoinState('BTC', 'layered')).toBe('WATCHING')
-    expect(agent.getCoinState('BTC', 'quant')).toBe('WATCHING')
+    // Both ENTERING (place_order emitted)
+    expect(agent.getCoinState('BTC', 'layered')).toBe('ENTERING')
+    expect(agent.getCoinState('BTC', 'quant')).toBe('ENTERING')
 
-    // Layered progresses to IN_POSITION
-    const coinsMap = (agent as unknown as { coins: Map<string, CoinContext> }).coins
-    const layeredCtx = coinsMap.get('BTC:layered')!
-    layeredCtx.state = 'ENTERING'
-    layeredCtx.pendingOrderId = 'ord-L1'
-    layeredCtx.stateEnteredAt = Date.now()
-
+    // Layered progresses to IN_POSITION (order filled)
     agent.dispatch('BTC', {
       type: 'order_filled',
       orderId: 'ord-L1',
@@ -395,7 +389,7 @@ describe('Full lifecycle: two strategies, same coin', () => {
     }, 'layered')
 
     expect(agent.getCoinState('BTC', 'layered')).toBe('IN_POSITION')
-    expect(agent.getCoinState('BTC', 'quant')).toBe('WATCHING')  // still WATCHING
+    expect(agent.getCoinState('BTC', 'quant')).toBe('ENTERING')  // still ENTERING
 
     // Quant invalidated — goes IDLE
     agent.dispatch('BTC', {

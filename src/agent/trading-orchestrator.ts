@@ -484,10 +484,8 @@ export class TradingAgent {
   }
 
   private applyContextUpdate(ctx: CoinContext, action: AgentAction, event: AgentEvent): void {
-    if (action.type === 'watch' || (action.type === 'log_journal' && action.eventType === 'signal')) {
-      if (action.type === 'watch') {
-        ctx.activeSetup = action.setup
-      }
+    if (action.type === 'watch' || action.type === 'place_order') {
+      ctx.activeSetup = action.setup
     }
 
     if (event.type === 'order_filled') {

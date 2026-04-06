@@ -42,6 +42,9 @@ import { getExchangeService, type ExchangeService } from '../execution/exchange-
 import type { ExchangePool } from '../execution/exchange-pool.js'
 import { log } from '../lib/logger.js'
 import { withRetry, isRetryableExchangeError } from '../lib/retry.js'
+import { getPaperTracker } from './paper-tracker.js'
+import { computePositionSize } from './exits.js'
+import { DEFAULT_RISK_PERCENT, SIMULATED_ACCOUNT, TARGET_MARGIN_PCT } from '../config.js'
 
 /** Default strategy ID for backward compatibility (single-strategy mode). */
 const DEFAULT_STRATEGY = 'layered'
@@ -268,12 +271,19 @@ export class OrderManager {
   private triggerOrders: Map<string, TriggerOrder[]> = new Map()
   /** Callback to dispatch events back to TradingAgent (with strategyId). */
   private dispatchToAgent: ((coin: string, event: AgentEvent, strategyId?: string) => void) | null = null
+  /** Callback to register position with PositionMonitor on fill. */
+  private onPositionOpen: ((params: { positionId: string; coin: string; side: 'long' | 'short'; entryPrice: number; size: number; slPrice: number; tpPrice: number; entryOrderId: string; strategyId?: string }) => void) | null = null
   /** ExchangePool for per-strategy exchange routing (Sprint 4.5). */
   private exchangePool: ExchangePool | null = null
 
   /** Set the callback for dispatching events to the agent state machine. */
   setAgentDispatch(fn: (coin: string, event: AgentEvent, strategyId?: string) => void): void {
     this.dispatchToAgent = fn
+  }
+
+  /** Set callback to register positions with PositionMonitor on order fill. */
+  setPositionOpenCallback(fn: (params: { positionId: string; coin: string; side: 'long' | 'short'; entryPrice: number; size: number; slPrice: number; tpPrice: number; entryOrderId: string; strategyId?: string }) => void): void {
+    this.onPositionOpen = fn
   }
 
   /** Set the ExchangePool for per-strategy exchange routing (Sprint 4.5). */
@@ -310,7 +320,15 @@ export class OrderManager {
       return null
     }
 
-    // Build order
+    // Build order — compute position size if not provided (quant/smc-sd don't set it)
+    let size = setup.patternData.positionSizeCoins as number ?? 0
+    if (size <= 0 && entryPrice > 0 && slPrice > 0) {
+      const accountValue = PAPER_TRADE
+        ? getPaperTracker().getBalance()
+        : (getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT)
+      size = computePositionSize(accountValue, DEFAULT_RISK_PERCENT, entryPrice, slPrice)
+    }
+
     const now = Date.now()
     const cloid = generateCloid()
     const order: Order = {
@@ -319,7 +337,7 @@ export class OrderManager {
       side,
       type: 'market',  // default to market for entry
       price: entryPrice,
-      size: setup.patternData.positionSizeCoins as number ?? 0,
+      size,
       status: 'pending',
       setupId: setup.id,
       slPrice,
@@ -342,6 +360,16 @@ export class OrderManager {
 
     // Submit to exchange (or simulate in paper mode) — route to strategy-specific wallet
     const svc = this.getExchangeForStrategy(strategyId)
+
+    // Set leverage before entry: ensures margin = sizeUsd / leverage ≤ TARGET_MARGIN_PCT × account
+    if (!PAPER_TRADE && svc && entryPrice > 0) {
+      const accountValue = svc.getCachedAccountValue() || SIMULATED_ACCOUNT
+      const sizeUsd = order.size * entryPrice
+      const targetMarginUsd = accountValue * TARGET_MARGIN_PCT
+      const requiredLeverage = sizeUsd / targetMarginUsd
+      await svc.setLeverage(coin, requiredLeverage)
+    }
+
     const result = PAPER_TRADE
       ? paperSimulateFill(coin, side, entryPrice, order.size, cloid)
       : await submitToExchange(coin, side, order.type, entryPrice, order.size, cloid, svc)
@@ -358,6 +386,7 @@ export class OrderManager {
       if (PAPER_TRADE) {
         const slippageDir = side === 'long' ? 1 : -1
         const paperFillPrice = entryPrice * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
+        getPaperTracker().recordEntry(order.id, coin, side, paperFillPrice, order.size)
         await this.onOrderFilled(order.id, paperFillPrice, order.size)
       }
     } else {
@@ -409,6 +438,19 @@ export class OrderManager {
 
     // R9: Place SL + TP trigger orders on exchange
     await this.placeSLTP(order)
+
+    // Register position with PositionMonitor for tracking (trail stop, partial close, TUI display)
+    this.onPositionOpen?.({
+      positionId,
+      coin: order.coin,
+      side: order.side,
+      entryPrice: fillPrice,
+      size: fillSize,
+      slPrice: order.slPrice,
+      tpPrice: order.tpPrice,
+      entryOrderId: order.id,
+      strategyId: order.strategyId,
+    })
 
     // Dispatch to agent (with strategyId for correct routing)
     this.dispatchToAgent?.(order.coin, {
@@ -749,7 +791,20 @@ export class OrderManager {
     const refPrice = entryOrder.fillPrice ?? entryOrder.price
     const cloid = generateCloid()
     if (PAPER_TRADE) {
-      paperSimulateFill(entryOrder.coin, closeSide, refPrice, closeSize, cloid)
+      const slippageDir = closeSide === 'long' ? 1 : -1
+      const closePrice = refPrice * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
+      paperSimulateFill(entryOrder.coin, closeSide, closePrice, closeSize, cloid)
+      const trade = getPaperTracker().recordExit(entryOrder.id, closePrice)
+      // Dispatch with real P&L so agent state machine + circuit breakers work
+      if (trade && entryOrder.positionId) {
+        this.dispatchToAgent?.(entryOrder.coin, {
+          type: 'position_closed',
+          positionId: entryOrder.positionId,
+          closePrice,
+          pnl: trade.pnl,
+          reason,
+        }, entryOrder.strategyId)
+      }
     } else {
       await submitToExchange(entryOrder.coin, closeSide, 'market', refPrice, closeSize, cloid, svc)
     }

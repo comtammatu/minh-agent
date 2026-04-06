@@ -43,8 +43,10 @@ import {
   SIMULATED_ACCOUNT,
   MIN_TP1_RR,
   PATTERN_TTL_BARS,
+  PAPER_TRADE,
 } from '../../../config.js'
 import { getExchangeService } from '../../../execution/exchange-service.js'
+import { getPaperTracker } from '../../../agent/paper-tracker.js'
 import { playSound } from '../../../ui/sound.js'
 import { log } from '../../../lib/logger.js'
 import { getOrCreateStats } from '../../diagnostics.js'
@@ -209,7 +211,10 @@ export function runPipeline(
   const atrVal = atr(confirmedSlice, idx, 14)
   const zone = bestZone?.zone ?? zones[0]!
   // R11: Use real account balance from ExchangeService, fallback to SIMULATED_ACCOUNT
-  const accountValue = getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT
+  // Paper mode: use PaperTracker balance (changes after each trade)
+  const accountValue = PAPER_TRADE
+    ? getPaperTracker().getBalance()
+    : (getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT)
   const risk = assessRisk(signal, zone, currentPrice, atrVal, accountValue)
   if (!risk.tradeable) {
     invalidateSetups(activeSetups, pipelineStats, coin, interval, confirmedSlice, idx)

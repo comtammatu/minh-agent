@@ -45,9 +45,9 @@ export function handleIdle(
       return { nextState: 'IDLE', actions: [journalAction('skip', ctx.coin, { reason: `Grade ${grade} below B`, setupId: setup.id })] }
     }
     return {
-      nextState: 'WATCHING',
+      nextState: 'ENTERING',
       actions: [
-        { type: 'watch', setup },
+        { type: 'place_order', setup },
         journalAction('signal', ctx.coin, { setupId: setup.id, grade, confidence: setup.confidence, side: setup.side }),
       ],
     }
@@ -133,6 +133,7 @@ export function handleEntering(
         fillPrice: event.fillPrice,
         positionId: event.positionId,
         setupId: ctx.activeSetup?.id,
+        side: ctx.activeSetup?.side,
       })],
     }
   }
@@ -171,20 +172,20 @@ export function handleEntering(
     }
   }
 
-  if (event.type === 'setup_invalidated' && ctx.pendingOrderId) {
-    return {
-      nextState: 'IDLE',
-      actions: [
-        { type: 'cancel_order', orderId: ctx.pendingOrderId, reason: event.reason },
-        journalAction('invalidate', ctx.coin, { setupId: event.setupId, reason: event.reason }),
-      ],
+  if (event.type === 'setup_invalidated') {
+    const actions: AgentAction[] = []
+    if (ctx.pendingOrderId) {
+      actions.push({ type: 'cancel_order', orderId: ctx.pendingOrderId, reason: event.reason })
     }
+    actions.push(journalAction('invalidate', ctx.coin, { setupId: event.setupId, reason: event.reason }))
+    return { nextState: 'IDLE', actions }
   }
 
-  if (event.type === 'pause') {
-    const actions: AgentAction[] = [journalAction('pause', ctx.coin, { reason: event.reason })]
+  if (event.type === 'pause' || event.type === 'circuit_break') {
+    const reason = event.reason
+    const actions: AgentAction[] = [journalAction('pause', ctx.coin, { reason })]
     if (ctx.pendingOrderId) {
-      actions.unshift({ type: 'cancel_order', orderId: ctx.pendingOrderId, reason: 'paused' })
+      actions.unshift({ type: 'cancel_order', orderId: ctx.pendingOrderId, reason })
     }
     return { nextState: 'PAUSED', actions }
   }

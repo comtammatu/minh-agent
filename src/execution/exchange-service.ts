@@ -102,6 +102,9 @@ export class ExchangeService {
   /** Cached account value — refreshed on each getAccountState() call. */
   private cachedAccountValue: number = 0
 
+  /** coin → maxLeverage from meta.universe (loaded once at init). */
+  private maxLeverageMap: Map<string, number> = new Map()
+
   /** Whether the service has been initialized. */
   private initialized = false
 
@@ -157,8 +160,19 @@ export class ExchangeService {
 
     this.exchange = new ExchangeClient({ transport: this.transport, wallet })
     this.converter = await SymbolConverter.create({ transport: this.transport })
-    this.initialized = true
 
+    // Load maxLeverage per coin from meta.universe
+    try {
+      const meta = await info.meta()
+      for (const asset of meta.universe) {
+        this.maxLeverageMap.set(asset.name, asset.maxLeverage)
+      }
+      log.info('exchange-service', `Loaded maxLeverage for ${this.maxLeverageMap.size} assets`)
+    } catch (err) {
+      log.warn('exchange-service', `Failed to load maxLeverage data: ${err instanceof Error ? err.message : err}`)
+    }
+
+    this.initialized = true
     log.info('exchange-service', 'ExchangeService initialized (wallet + SymbolConverter)')
   }
 
@@ -198,6 +212,39 @@ export class ExchangeService {
   getSzDecimals(coin: string): number | undefined {
     this.ensureInit()
     return this.converter!.getSzDecimals(coin)
+  }
+
+  /** Get max leverage for a coin (from meta.universe). Returns undefined if unknown. */
+  getMaxLeverage(coin: string): number | undefined {
+    return this.maxLeverageMap.get(coin)
+  }
+
+  // ── Leverage ──────────────────────────────────────────────────────────────
+
+  /**
+   * Set cross leverage for a coin before placing an entry order.
+   * Ensures margin used = sizeUsd / leverage ≤ targetMarginUsd.
+   * leverage must be integer ≥ 1.
+   */
+  async setLeverage(coin: string, leverage: number): Promise<void> {
+    this.ensureInit()
+    const assetId = this.converter!.getAssetId(coin)
+    if (assetId === undefined) {
+      log.warn('exchange-service', `setLeverage: unknown asset ${coin}`)
+      return
+    }
+    const maxLev = this.maxLeverageMap.get(coin)
+    const lev = maxLev !== undefined
+      ? Math.min(Math.max(1, Math.ceil(leverage)), maxLev)
+      : Math.max(1, Math.ceil(leverage))
+    try {
+      await acquire()
+      await this.exchange!.updateLeverage({ asset: assetId, isCross: true, leverage: lev })
+      log.info('exchange-service', `setLeverage: ${coin} → ${lev}x cross${maxLev !== undefined ? ` (max=${maxLev}x)` : ''}`)
+    } catch (err) {
+      // Non-fatal: order placement still proceeds, HL uses existing leverage
+      log.warn('exchange-service', `setLeverage failed for ${coin}: ${err instanceof Error ? err.message : err}`)
+    }
   }
 
   // ── Order Placement ───────────────────────────────────────────────────────

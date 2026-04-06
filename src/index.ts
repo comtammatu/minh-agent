@@ -57,7 +57,9 @@ import {
 } from './db/candle-repo.js'
 import { log, setTuiSink, clearTuiSink } from './lib/logger.js'
 import { getHealthMonitor } from './agent/self-healing.js'
-import { startTui, stopTui, appendSignal, appendLog, setBackfillDone, type TuiDataSources } from './ui/tui.jsx'
+import { startTui, stopTui, appendSignal, appendLog, setBackfillDone, type TuiDataSources, type PaperStats } from './ui/tui.jsx'
+import { getPaperTracker } from './agent/paper-tracker.js'
+import { getLatestAssetCtx } from './feed/asset-ctx.js'
 import { getPipelineEmitter } from './strategy/orchestrator.js'
 import { getAgent } from './agent/trading-agent.js'
 import { getOrderManager } from './agent/order-manager.js'
@@ -199,6 +201,26 @@ async function main(): Promise<void> {
     getAccountState: () => null,
     getSubscriptionCount,
     getTrackedCoins: () => selector.getTrackedCoins(),
+    getPaperStats: () => {
+      if (!PAPER_TRADE) return null
+      const pt = getPaperTracker()
+      const trades = pt.getTrades()
+      const wins = trades.filter(t => t.pnl > 0).length
+      const losses = trades.filter(t => t.pnl <= 0).length
+      const total = trades.length
+      return {
+        balance: pt.getBalance(),
+        tradeCount: total,
+        wins,
+        losses,
+        winRate: total > 0 ? wins / total : 0,
+      }
+    },
+    getAssetPrice: (coin: string) => {
+      const ctx = getLatestAssetCtx(coin)
+      if (!ctx) return null
+      return { markPrice: ctx.markPrice, funding: ctx.funding }
+    },
   }
   setTuiSink(appendLog)
   startTui(tuiSources)
@@ -388,6 +410,9 @@ async function main(): Promise<void> {
   // Agent → OrderManager (bidirectional) — dispatch includes strategyId (Sprint 4.5)
   agent.onAction(action => om.handleAction(action))
   om.setAgentDispatch((coin, event, strategyId) => agent.dispatch(coin, event, strategyId))
+
+  // OrderManager → PositionMonitor: register position on fill (enables TUI display + trail stop)
+  om.setPositionOpenCallback(params => pm.openPosition(params))
 
   // Agent → PositionMonitor (dispatch back with strategyId)
   pm.setAgentDispatch((coin, event, strategyId) => agent.dispatch(coin, event, strategyId))

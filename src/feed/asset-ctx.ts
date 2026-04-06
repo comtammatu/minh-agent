@@ -11,7 +11,7 @@
 import { info } from './rest.js'
 import { getWsClient, registerSubscription, removeSubscription } from './ws.js'
 import { acquire } from './rate-limiter.js'
-import { MARK_ORACLE_DIVERGENCE_THRESHOLD } from '../config.js'
+import { MARK_ORACLE_DIVERGENCE_THRESHOLD, HIP3_DEXES } from '../config.js'
 import { log } from '../lib/logger.js'
 import type { AssetCtxSnapshot } from '../types.js'
 import type { ISubscription } from '@nktkas/hyperliquid'
@@ -25,8 +25,8 @@ let wsSub: ISubscription | null = null
 // Mutable set — WS sends all coins, we only store coins in this set
 const trackedCoins = new Set<string>()
 
-// Index → coin name mapping (fetched once from meta.universe at startup)
-let coinNames: string[] = []
+// dexId → index→coinName mapping. '' = main perp, 'xyz' = HIP-3, etc.
+const dexCoinNames = new Map<string, string[]>()
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -67,20 +67,41 @@ export async function startOiFeed(coins: string[]): Promise<void> {
   trackedCoins.clear()
   for (const coin of coins) trackedCoins.add(coin)
 
-  // Fetch meta once for index→name mapping (need rate limiter for REST call)
+  // Fetch main perp coin names (index → name)
   await acquire()
   const meta = await info.meta()
-  coinNames = meta.universe.map(a => a.name)
+  dexCoinNames.set('', meta.universe.map(a => a.name))
 
-  // Subscribe to allDexsAssetCtxs WS — single subscription for all coins
+  // Fetch HIP-3 coin names for each configured DEX
+  for (const dex of HIP3_DEXES) {
+    try {
+      await acquire()
+      const res = await fetch('https://api.hyperliquid.xyz/info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'metaAndAssetCtxs', dex }),
+      })
+      if (res.ok) {
+        const [hip3Meta] = (await res.json()) as [{ universe: { name: string }[] }, unknown]
+        dexCoinNames.set(dex, hip3Meta.universe.map(a => a.name))
+        log.info('asset-ctx', `HIP-3 dex "${dex}": loaded ${hip3Meta.universe.length} coin names`)
+      }
+    } catch (err) {
+      log.warn('asset-ctx', `Failed to load HIP-3 names for dex "${dex}": ${err instanceof Error ? err.message : err}`)
+    }
+  }
+
+  // Subscribe to allDexsAssetCtxs WS — single subscription covers all dexes
   const client = getWsClient()
   wsSub = await client.allDexsAssetCtxs((event) => {
     try {
       const now = Date.now()
-      // event.ctxs is [dex, PerpAssetCtxSchema[]][] — typically one dex
-      for (const [, ctxs] of event.ctxs) {
+      for (const [dexId, ctxs] of event.ctxs) {
+        const names = dexCoinNames.get(dexId)
+        if (!names) continue  // unknown dex — no name mapping loaded
+
         for (let i = 0; i < ctxs.length; i++) {
-          const name = coinNames[i]
+          const name = names[i]
           if (!name || !trackedCoins.has(name)) continue
 
           const ctx = ctxs[i]!
@@ -94,7 +115,6 @@ export async function startOiFeed(coins: string[]): Promise<void> {
             timestamp: now,
           }
 
-          // Skip if any parsed value is NaN
           if (isNaN(snapshot.openInterest) || isNaN(snapshot.markPrice) || isNaN(snapshot.oraclePrice)) {
             continue
           }
@@ -121,6 +141,7 @@ export async function stopOiFeed(): Promise<void> {
     removeSubscription(wsSub)
     wsSub = null
   }
+  dexCoinNames.clear()
 }
 
 /** Add a coin to the tracked set (takes effect immediately — next WS event will include it). */

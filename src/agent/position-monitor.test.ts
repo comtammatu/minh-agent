@@ -467,7 +467,9 @@ describe('PositionMonitor', () => {
       expect(actions).toHaveLength(0)
     })
 
-    it('detects position gone (stub returns empty)', async () => {
+    it('skips reconciliation in paper mode (no false closes)', async () => {
+      // In paper mode, syncWithExchange must NOT close paper positions via exchange reconciliation.
+      // Real positions only exist in PositionMonitor, not on HL — reconciliation would falsely close them.
       let dispatched: { coin: string; event: unknown } | null = null
       pm.setAgentDispatch((coin, event) => { dispatched = { coin, event } })
 
@@ -476,17 +478,11 @@ describe('PositionMonitor', () => {
         entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1',
       })
 
-      // Stub returns empty → position gone
       const actions = await pm.syncWithExchange()
-      expect(actions).toHaveLength(1)
-      expect(actions[0]!.type).toBe('close')
-
-      // Position removed from tracking
-      expect(pm.getPosition('pos-1')).toBeNull()
-
-      // Event dispatched
-      expect(dispatched).not.toBeNull()
-      expect((dispatched!.event as { type: string }).type).toBe('position_closed')
+      // Paper mode: reconciliation skipped → no actions, position still tracked
+      expect(actions).toHaveLength(0)
+      expect(pm.getPosition('pos-1')).not.toBeNull()
+      expect(dispatched).toBeNull()
     })
   })
 

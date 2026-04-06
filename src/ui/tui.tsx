@@ -3,7 +3,7 @@
  *
  * Layout:
  *   ┌─ Header Bar ──────────────────────────────────────────────┐
- *   ├─ Account ──────────┬─ System ─────────────────────────────┤
+ *   ├─ Account ──────────┬─ Strategy ──┬─ System ──────────────┤
  *   ├─ Positions ─────────────────────────────────────────────  ┤
  *   ├─ Watchlist L ──────┬─ Watchlist R ────────────────────────┤
  *   ├─ Tape (Signal Log) ───────────────────────────────────────┤
@@ -25,6 +25,19 @@ import type { CandleInterval } from '../types.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
+export interface PaperStats {
+  balance: number
+  tradeCount: number
+  wins: number
+  losses: number
+  winRate: number
+}
+
+export interface AssetPrice {
+  markPrice: number
+  funding: number
+}
+
 export interface TuiDataSources {
   getAgentSnapshot: () => AgentSnapshot
   getPositions: () => Map<string, { coin: string; side: 'long' | 'short'; currentSize: number; entryPrice: number; slPrice: number; tpPrice: number; strategyId: string }>
@@ -33,6 +46,8 @@ export interface TuiDataSources {
   getAccountState: () => Promise<{ effectiveBalance: number; accountValue: number; spotUsdcBalance: number; totalMarginUsed: number; withdrawable: number }> | null
   getSubscriptionCount: () => number
   getTrackedCoins: () => string[]
+  getPaperStats: () => PaperStats | null
+  getAssetPrice: (coin: string) => AssetPrice | null
 }
 
 // ─── State (module-level for appendSignal + backfill progress) ─────────────
@@ -84,21 +99,25 @@ function timeNow(): string {
 
 // ─── Components ─────────────────────────────────────────────────────────────
 
-function Panel({ title, children, width, height, minHeight }: {
+function Panel({ title, children, width, height, minHeight, flexGrow, flexShrink }: {
   title: string
   children: React.ReactNode
   width?: string | number
   height?: number
   minHeight?: number
+  flexGrow?: number
+  flexShrink?: number
 }) {
   return (
     <Box
       flexDirection="column"
       borderStyle="single"
       borderColor={BORDER_COLOR}
-      width={width ?? '100%'}
+      width={width ?? (flexGrow != null ? undefined : '100%')}
       height={height}
       minHeight={minHeight}
+      flexGrow={flexGrow}
+      flexShrink={flexShrink}
       paddingLeft={1}
       paddingRight={1}
     >
@@ -143,53 +162,48 @@ const HeaderBar = memo(function HeaderBar({ snapshot, coinCount }: { snapshot: A
 
 // ─── Account ────────────────────────────────────────────────────────────────
 
-const AccountPanel = memo(function AccountPanel({ account, dailyPnl }: {
+const AccountPanel = memo(function AccountPanel({ account, dailyPnl, unrealizedPnl, paperStats }: {
   account: { effectiveBalance: number; accountValue: number; spotUsdcBalance: number; totalMarginUsed: number; withdrawable: number } | null
   dailyPnl: number
+  unrealizedPnl: number
+  paperStats: PaperStats | null
 }) {
   const pnlColor = dailyPnl >= 0 ? 'green' : 'red'
   const pnlSign = dailyPnl >= 0 ? '+' : ''
+  const uPnlColor = unrealizedPnl >= 0 ? 'green' : 'red'
+  const uPnlSign = unrealizedPnl >= 0 ? '+' : ''
+
+  const balance = paperStats?.balance ?? account?.effectiveBalance ?? null
+  const marginUsed = account?.totalMarginUsed ?? null
+  const available = account?.withdrawable ?? null
 
   return (
-    <Panel title="Account" width="35%">
-      {account ? (
-        <>
-          <Box justifyContent="space-between">
-            <Text color={DIM}>Balance</Text>
-            <Text bold>${account.effectiveBalance.toFixed(2)}</Text>
-          </Box>
-          <Box justifyContent="space-between">
-            <Text color={DIM}>Margin Used</Text>
-            <Text>${account.totalMarginUsed.toFixed(2)}</Text>
-          </Box>
-          <Box justifyContent="space-between">
-            <Text color={DIM}>Available</Text>
-            <Text color="green">${account.withdrawable.toFixed(2)}</Text>
-          </Box>
-          <Box justifyContent="space-between">
-            <Text color={DIM}>Day P&L</Text>
-            <Text bold color={pnlColor}>{pnlSign}${dailyPnl.toFixed(2)}</Text>
-          </Box>
-        </>
-      ) : (
-        <>
-          <Box justifyContent="space-between">
-            <Text color={DIM}>Balance</Text>
-            <Text color={DIM}>---</Text>
-          </Box>
-          <Box justifyContent="space-between">
-            <Text color={DIM}>Margin Used</Text>
-            <Text color={DIM}>---</Text>
-          </Box>
-          <Box justifyContent="space-between">
-            <Text color={DIM}>Available</Text>
-            <Text color={DIM}>---</Text>
-          </Box>
-          <Box justifyContent="space-between">
-            <Text color={DIM}>Day P&L</Text>
-            <Text color={DIM}>---</Text>
-          </Box>
-        </>
+    <Panel title="Account" flexGrow={1}>
+      <Box justifyContent="space-between">
+        <Text color={DIM}>Balance</Text>
+        <Text bold>{balance != null ? `$${balance.toFixed(2)}` : '---'}</Text>
+      </Box>
+      <Box justifyContent="space-between">
+        <Text color={DIM}>Margin</Text>
+        <Text>{marginUsed != null ? `$${marginUsed.toFixed(2)}` : '---'}</Text>
+      </Box>
+      <Box justifyContent="space-between">
+        <Text color={DIM}>Available</Text>
+        <Text color="green">{available != null ? `$${available.toFixed(2)}` : '---'}</Text>
+      </Box>
+      <Box justifyContent="space-between">
+        <Text color={DIM}>Day P&L</Text>
+        <Text bold color={pnlColor}>{pnlSign}${dailyPnl.toFixed(2)}</Text>
+      </Box>
+      <Box justifyContent="space-between">
+        <Text color={DIM}>Unreal.</Text>
+        <Text color={uPnlColor}>{uPnlSign}${unrealizedPnl.toFixed(2)}</Text>
+      </Box>
+      {paperStats && (
+        <Box justifyContent="space-between">
+          <Text color={DIM}>Trades</Text>
+          <Text><Text color="green">{paperStats.wins}W</Text><Text color={DIM}>/</Text><Text color="red">{paperStats.losses}L</Text> <Text color={ACCENT}>{(paperStats.winRate * 100).toFixed(0)}%</Text></Text>
+        </Box>
       )}
     </Panel>
   )
@@ -205,7 +219,7 @@ const SystemPanel = memo(function SystemPanel({ report, subCount }: {
   const subPct = ((subCount / WS_MAX_SUBSCRIPTIONS) * 100).toFixed(0)
 
   return (
-    <Panel title="System" width="35%">
+    <Panel title="System" flexGrow={1}>
       <Box justifyContent="space-between">
         <Text color={DIM}>Feed</Text>
         <Text color={statusColor(report.components.feed.status)}>{statusDot(report.components.feed.status)} {report.components.feed.status}</Text>
@@ -232,8 +246,9 @@ const SystemPanel = memo(function SystemPanel({ report, subCount }: {
 
 // ─── Positions ──────────────────────────────────────────────────────────────
 
-const PositionsPanel = memo(function PositionsPanel({ positions }: {
+const PositionsPanel = memo(function PositionsPanel({ positions, getAssetPrice }: {
   positions: Array<{ coin: string; side: 'long' | 'short'; currentSize: number; entryPrice: number; slPrice: number; tpPrice: number; strategyId: string }>
+  getAssetPrice: (coin: string) => AssetPrice | null
 }) {
   if (positions.length === 0) {
     return (
@@ -243,84 +258,90 @@ const PositionsPanel = memo(function PositionsPanel({ positions }: {
     )
   }
 
-  return (
-    <Panel title={`Positions (${positions.length})`}>
-      <Box>
-        <Text color={DIM}>
-          {' '}{'COIN'.padEnd(10)} {'SIDE'.padEnd(7)} {'SIZE'.padEnd(10)} {'ENTRY'.padEnd(12)} {'SL'.padEnd(10)} {'TP'.padEnd(10)} STRATEGY
-        </Text>
+  const PC = { coin: 12, side: 6, size: 10, entry: 10, sl: 10, tp: 10, upnl: 10 }
+  const header = (
+    <Box>
+      <Text color={DIM}>{'COIN'.padEnd(PC.coin)} {'SIDE'.padEnd(PC.side)} {'ENTRY'.padEnd(PC.entry)} {'SL'.padEnd(PC.sl)} {'TP'.padEnd(PC.tp)} {'UPNL'.padEnd(PC.upnl)} STRATEGY</Text>
+    </Box>
+  )
+  const renderRow = (p: typeof positions[number]) => {
+    const asset = getAssetPrice(p.coin)
+    const upnl = asset
+      ? (asset.markPrice - p.entryPrice) * Math.abs(p.currentSize) * (p.side === 'long' ? 1 : -1)
+      : null
+    const upnlStr = upnl != null
+      ? `${upnl >= 0 ? '+' : ''}${upnl.toFixed(2)}`
+      : '—'
+    return (
+      <Box key={`${p.coin}-${p.strategyId}`}>
+        <Text bold>{p.coin.padEnd(PC.coin)} </Text>
+        <Text bold color={p.side === 'long' ? 'green' : 'red'}>{p.side.slice(0, 1).toUpperCase().padEnd(PC.side)} </Text>
+        <Text color={ACCENT}>{formatPrice(p.entryPrice).padEnd(PC.entry)} </Text>
+        <Text color="red">{formatPrice(p.slPrice).padEnd(PC.sl)} </Text>
+        <Text color="green">{formatPrice(p.tpPrice).padEnd(PC.tp)} </Text>
+        <Text color={upnl == null ? undefined : upnl >= 0 ? 'green' : 'red'}>{upnlStr.padEnd(PC.upnl)} </Text>
+        <Text color={DIM}>{p.strategyId}</Text>
       </Box>
-      {positions.map(p => (
-        <Box key={`${p.coin}-${p.strategyId}`}>
-          <Text bold> {p.coin.padEnd(10)} </Text>
-          <Text bold color={p.side === 'long' ? 'green' : 'red'}>
-            {p.side.toUpperCase().padEnd(7)}
-          </Text>
-          <Text>
-            {Math.abs(p.currentSize).toString().padEnd(10)}{' '}
-          </Text>
-          <Text color={ACCENT}>
-            {p.entryPrice.toFixed(2).padEnd(11)}{' '}
-          </Text>
-          <Text color="red">
-            {p.slPrice.toFixed(2).padEnd(9)}{' '}
-          </Text>
-          <Text color="green">
-            {p.tpPrice.toFixed(2).padEnd(9)}{' '}
-          </Text>
-          <Text color={DIM}>{p.strategyId}</Text>
-        </Box>
-      ))}
+    )
+  }
+  const mid = Math.ceil(positions.length / 2)
+  const left = positions.slice(0, mid)
+  const right = positions.slice(mid)
+  const renderColumn = (rows: typeof positions, label: string) => (
+    <Panel title={label} width="50%">
+      {header}
+      {rows.map(renderRow)}
     </Panel>
+  )
+  return (
+    <Box>
+      {renderColumn(left, `Positions 1-${mid} (${positions.length})`)}
+      {renderColumn(right, `Positions ${mid + 1}-${positions.length}`)}
+    </Box>
   )
 })
 
 // ─── Watchlist ───────────────────────────────────────────────────────────────
 
-type CoinInfo = { regime: string; grade: string; setups: number; bias: string; tfsReady: number }
+type TFSnapshot = { regime: string; bias: string }
+type CoinInfo = { grade: string; setups: number; tfs: Record<string, TFSnapshot>; price: number | null; funding: number | null }
 
-/** Count TFs with enough candle data for scanning. */
-function countReadyTFs(coin: string): number {
-  let count = 0
-  for (const tf of TIMEFRAMES) {
-    if (candleCount(coin, tf as CandleInterval) >= MIN_CANDLES_FOR_SCAN) count++
-  }
-  return count
-}
+const DISPLAY_TFS = ['15m', '1h', '4h', '1d'] as const
 
-function aggregateCoins(statuses: StatusSnapshot[]): Map<string, CoinInfo> {
+function aggregateCoins(statuses: StatusSnapshot[], getAssetPrice: (coin: string) => AssetPrice | null): Map<string, CoinInfo> {
   const byCoin = new Map<string, CoinInfo>()
   for (const s of statuses) {
-    const prev = byCoin.get(s.coin)
-    if (!prev) {
-      const g = s.confluenceGrade ? `${s.confluenceGrade}${Math.floor(s.biasConfidence * 10)}` : '\u2014'
-      byCoin.set(s.coin, { regime: s.regime, grade: g, setups: s.activeCount, bias: s.bias, tfsReady: countReadyTFs(s.coin) })
-    } else {
-      prev.setups += s.activeCount
-      if (s.confluenceGrade) {
-        prev.grade = `${s.confluenceGrade}${Math.floor(s.biasConfidence * 10)}`
-      }
-      prev.regime = s.regime
-      prev.bias = s.bias
+    let info = byCoin.get(s.coin)
+    if (!info) {
+      const asset = getAssetPrice(s.coin)
+      info = { grade: '\u2014', setups: 0, tfs: {}, price: asset?.markPrice ?? null, funding: asset?.funding ?? null }
+      byCoin.set(s.coin, info)
+    }
+    info.setups += s.activeCount
+    if (s.confluenceGrade) {
+      info.grade = `${s.confluenceGrade}${Math.floor(s.biasConfidence * 10)}`
+    }
+    if ((DISPLAY_TFS as readonly string[]).includes(s.interval)) {
+      info.tfs[s.interval] = { regime: s.regime, bias: s.bias }
     }
   }
   return byCoin
 }
 
-const TOTAL_TFS = TIMEFRAMES.length
 
 function regimeLabel(regime: string): string {
   switch (regime) {
-    case 'trending': return 'TREND'
-    case 'volatile': return 'VOLAT'
-    case 'sideways': return 'RANGE'
+    case 'BULL': return 'BULL'
+    case 'BEAR': return 'BEAR'
+    case 'VOLATILE': return 'VOLAT'
+    case 'SIDEWAYS': return 'SIDE'
     default: return regime.toUpperCase().slice(0, 5)
   }
 }
 
 function regimeColor(regime: string): 'green' | 'red' | 'yellow' {
-  if (regime === 'trending') return 'green'
-  if (regime === 'volatile') return 'red'
+  if (regime === 'BULL') return 'green'
+  if (regime === 'BEAR' || regime === 'VOLATILE') return 'red'
   return 'yellow'
 }
 
@@ -343,28 +364,59 @@ function gradeColor(grade: string): 'magenta' | 'green' | 'cyan' | undefined {
   return undefined
 }
 
-const COL = { coin: 12, regime: 8, grade: 5, setups: 3, bias: 10, tf: 5 }
-const COIN_HEADER = `${'COIN'.padEnd(COL.coin)} ${'RGME'.padEnd(COL.regime)} ${'GRD'.padEnd(COL.grade)} ${'#'.padEnd(COL.setups)} ${'BIAS'.padEnd(COL.bias)} TF`
+const COL = { coin: 12, grade: 5, setups: 5, price: 12, fund: 10, tfCell: 10 }
+const TF_HEADERS = DISPLAY_TFS.map(tf => tf.toUpperCase().padEnd(COL.tfCell)).join('')
+const COIN_HEADER = `${'COIN'.padEnd(COL.coin)} ${'GRD'.padEnd(COL.grade)} ${'#'.padEnd(COL.setups)} ${'PRICE'.padEnd(COL.price)} ${'FUND'.padEnd(COL.fund)} ${TF_HEADERS}`
+
+function tfCellText(snap: TFSnapshot | undefined): { label: string; color: 'green' | 'red' | 'yellow' | undefined } {
+  if (!snap) return { label: '\u2014'.padEnd(COL.tfCell), color: undefined }
+  const arrow = biasArrow(snap.bias)
+  const r = regimeLabel(snap.regime)
+  return { label: `${arrow}${r}`.padEnd(COL.tfCell), color: biasColor(snap.bias) ?? regimeColor(snap.regime) }
+}
+
+function formatPrice(price: number): string {
+  if (price >= 10000) return price.toFixed(0)
+  if (price >= 100) return price.toFixed(1)
+  if (price >= 1) return price.toFixed(2)
+  if (price >= 0.01) return price.toFixed(4)
+  return price.toFixed(6)
+}
+
+function formatFunding(rate: number): string {
+  return `${(rate * 100).toFixed(4)}%`
+}
+
+function fundingColor(rate: number): 'green' | 'red' | undefined {
+  if (rate > 0.0001) return 'green'   // positive = longs pay shorts
+  if (rate < -0.0001) return 'red'
+  return undefined
+}
 
 function CoinRow({ coin, info }: { coin: string; info: CoinInfo | undefined }) {
   if (!info) {
+    const empty = DISPLAY_TFS.map(() => '\u2014'.padEnd(COL.tfCell)).join('')
     return (
       <Box>
-        <Text color={DIM}> {coin.padEnd(COL.coin)} {'\u2014'.padEnd(COL.regime)} {'\u2014'.padEnd(COL.grade)} {'0'.padEnd(COL.setups)} {'\u2014'.padEnd(COL.bias)} \u2014</Text>
+        <Text color={DIM}>{coin.padEnd(COL.coin)} {'\u2014'.padEnd(COL.grade)} {'0'.padEnd(COL.setups)} {'\u2014'.padEnd(COL.price)} {'\u2014'.padEnd(COL.fund)} {empty}</Text>
       </Box>
     )
   }
 
-  const tfColor = info.tfsReady === TOTAL_TFS ? 'green' : info.tfsReady >= 4 ? 'yellow' : 'red'
+  const priceStr = info.price != null ? formatPrice(info.price).padEnd(COL.price) : '\u2014'.padEnd(COL.price)
+  const fundStr = info.funding != null ? formatFunding(info.funding).padEnd(COL.fund) : '\u2014'.padEnd(COL.fund)
 
   return (
     <Box>
-      <Text bold> {coin.padEnd(COL.coin)} </Text>
-      <Text color={regimeColor(info.regime)}>{regimeLabel(info.regime).padEnd(COL.regime)} </Text>
+      <Text bold>{coin.padEnd(COL.coin)} </Text>
       <Text bold={info.grade.startsWith('A')} color={gradeColor(info.grade)}>{info.grade.padEnd(COL.grade)} </Text>
       <Text>{String(info.setups).padEnd(COL.setups)} </Text>
-      <Text color={biasColor(info.bias)}>{biasArrow(info.bias)} {info.bias.padEnd(COL.bias - 2)} </Text>
-      <Text color={tfColor}>{info.tfsReady}/{TOTAL_TFS}</Text>
+      <Text color={ACCENT}>{priceStr} </Text>
+      <Text color={info.funding != null ? fundingColor(info.funding) : undefined}>{fundStr} </Text>
+      {DISPLAY_TFS.map(tf => {
+        const { label, color } = tfCellText(info.tfs[tf])
+        return <Text key={tf} color={color}>{label}</Text>
+      })}
     </Box>
   )
 }
@@ -377,7 +429,7 @@ const WatchlistColumn = memo(function WatchlistColumn({ title, coins, byCoin }: 
   return (
     <Panel title={title} width="50%">
       <Box>
-        <Text color={DIM}> {COIN_HEADER}</Text>
+        <Text color={DIM}>{COIN_HEADER}</Text>
       </Box>
       {coins.map((coin: string) => (
         <CoinRow key={coin} coin={coin} info={byCoin.get(coin)} />
@@ -386,8 +438,8 @@ const WatchlistColumn = memo(function WatchlistColumn({ title, coins, byCoin }: 
   )
 })
 
-const WatchlistPanel = memo(function WatchlistPanel({ statuses, trackedCoins }: { statuses: StatusSnapshot[]; trackedCoins: string[] }) {
-  const byCoin = useMemo(() => aggregateCoins(statuses), [statuses])
+const WatchlistPanel = memo(function WatchlistPanel({ statuses, trackedCoins, getAssetPrice }: { statuses: StatusSnapshot[]; trackedCoins: string[]; getAssetPrice: (coin: string) => AssetPrice | null }) {
+  const byCoin = useMemo(() => aggregateCoins(statuses, getAssetPrice), [statuses, getAssetPrice])
 
   if (trackedCoins.length === 0) {
     return (
@@ -414,6 +466,73 @@ const WatchlistPanel = memo(function WatchlistPanel({ statuses, trackedCoins }: 
   )
 })
 
+// ─── Strategy Panel ─────────────────────────────────────────────────────────
+
+interface StrategySummary {
+  strategyId: string
+  totalCoins: number
+  activeCoins: number
+  setupCount: number
+}
+
+function aggregateStrategies(snapshot: AgentSnapshot, statuses: StatusSnapshot[]): StrategySummary[] {
+  const byStrategy = new Map<string, StrategySummary>()
+
+  for (const [, coin] of Object.entries(snapshot.coins)) {
+    const sid = coin.strategyId
+    let s = byStrategy.get(sid)
+    if (!s) {
+      s = { strategyId: sid, totalCoins: 0, activeCoins: 0, setupCount: 0 }
+      byStrategy.set(sid, s)
+    }
+    s.totalCoins++
+    if (coin.state !== 'IDLE') s.activeCoins++
+  }
+
+  // Count setups from statuses
+  for (const st of statuses) {
+    if (st.activeCount > 0) {
+      // Try to find matching strategy — use 'layered' as default
+      const sid = 'layered'
+      let s = byStrategy.get(sid)
+      if (!s) {
+        s = { strategyId: sid, totalCoins: 0, activeCoins: 0, setupCount: 0 }
+        byStrategy.set(sid, s)
+      }
+      s.setupCount += st.activeCount
+    }
+  }
+
+  return Array.from(byStrategy.values())
+}
+
+const StrategyPanel = memo(function StrategyPanel({ snapshot, statuses }: {
+  snapshot: AgentSnapshot
+  statuses: StatusSnapshot[]
+}) {
+  const strategies = useMemo(() => aggregateStrategies(snapshot, statuses), [snapshot, statuses])
+
+  return (
+    <Panel title="Strategies" flexGrow={1}>
+      {strategies.length === 0 ? (
+        <Text color={DIM}>No strategies</Text>
+      ) : (
+        strategies.map(s => (
+          <Box key={s.strategyId} justifyContent="space-between">
+            <Text bold color={ACCENT}>{s.strategyId.slice(0, 10)}</Text>
+            <Text>
+              <Text color={s.activeCoins > 0 ? 'cyan' : DIM}>{s.activeCoins}</Text>
+              <Text color={DIM}>/{s.totalCoins} </Text>
+              {s.setupCount > 0 && <Text color="yellow">{s.setupCount} setups</Text>}
+              {s.setupCount === 0 && <Text color={DIM}>0 setups</Text>}
+            </Text>
+          </Box>
+        ))
+      )}
+    </Panel>
+  )
+})
+
 // ─── Buddy Pet (明 Dragon) ──────────────────────────────────────────────────
 
 type BuddyMood = 'idle' | 'scanning' | 'signal' | 'profit' | 'loss' | 'paused' | 'alert'
@@ -430,7 +549,6 @@ function getBuddyMood(snapshot: AgentSnapshot, positions: number, dailyPnl: numb
   return 'idle'
 }
 
-// ASCII sprites — 5 lines each, fixed width
 const BUDDY_SPRITES: Record<BuddyMood, string[]> = {
   idle: [
     '   /\\_/\\  ',
@@ -484,13 +602,13 @@ const BUDDY_SPRITES: Record<BuddyMood, string[]> = {
 }
 
 const BUDDY_SPEECH: Record<BuddyMood, string[]> = {
-  idle:     ['Scanning...', 'Watching markets', 'All quiet', 'Waiting for setups'],
+  idle: ['Scanning...', 'Watching markets', 'All quiet', 'Waiting for setups'],
   scanning: ['Eyes on chart', 'Structure forming', 'Analyzing...', 'Reading PA'],
-  signal:   ['Setup found!', 'Signal detected!', 'Check this out!', 'Entry nearby!'],
-  profit:   ['Nice trade!', 'Green day!', 'Money printer go', 'We cooking!'],
-  loss:     ['Rough patch...', 'Stay disciplined', 'Part of the game', 'Next one...'],
-  paused:   ['Taking a break', 'System paused', 'Standing by...', 'Resting...'],
-  alert:    ['Position open!', 'Monitoring trade', 'Watching entry', 'In the market!'],
+  signal: ['Setup found!', 'Signal detected!', 'Check this out!', 'Entry nearby!'],
+  profit: ['Nice trade!', 'Green day!', 'Money printer go', 'We cooking!'],
+  loss: ['Rough patch...', 'Stay disciplined', 'Part of the game', 'Next one...'],
+  paused: ['Taking a break', 'System paused', 'Standing by...', 'Resting...'],
+  alert: ['Position open!', 'Monitoring trade', 'Watching entry', 'In the market!'],
 }
 
 function getBuddySpeech(mood: BuddyMood, tick: number): string {
@@ -504,18 +622,17 @@ const BuddyPanel = memo(function BuddyPanel({ mood, tick }: { mood: BuddyMood; t
 
   const moodColor: 'green' | 'red' | 'yellow' | 'cyan' | 'magenta' =
     mood === 'profit' ? 'green'
-    : mood === 'loss' ? 'red'
-    : mood === 'paused' ? 'yellow'
-    : mood === 'signal' ? 'magenta'
-    : mood === 'alert' ? 'cyan'
-    : 'cyan'
+      : mood === 'loss' ? 'red'
+        : mood === 'paused' ? 'yellow'
+          : mood === 'signal' ? 'magenta'
+            : mood === 'alert' ? 'cyan'
+              : 'cyan'
 
-  // Speech bubble
   const bubbleWidth = Math.max(speech.length + 2, 12)
   const bubbleTop = '\u250C' + '\u2500'.repeat(bubbleWidth) + '\u2510'
   const bubbleBot = '\u2514' + '\u2500'.repeat(bubbleWidth) + '\u2518'
   const bubbleMid = '\u2502 ' + speech.padEnd(bubbleWidth - 1) + '\u2502'
-  const pointer =   '    \u2514\u2500\u2510'
+  const pointer = '    \u2514\u2500\u2510'
 
   return (
     <Box flexDirection="column" borderStyle="single" borderColor={BORDER_COLOR} paddingLeft={1} paddingRight={1} width={30} minHeight={9}>
@@ -532,6 +649,14 @@ const BuddyPanel = memo(function BuddyPanel({ mood, tick }: { mood: BuddyMood; t
 })
 
 // ─── Backfill Progress ─────────────────────────────────────────────────────
+
+function countReadyTFs(coin: string): number {
+  let count = 0
+  for (const tf of TIMEFRAMES) {
+    if (candleCount(coin, tf as CandleInterval) >= MIN_CANDLES_FOR_SCAN) count++
+  }
+  return count
+}
 
 const TOTAL_TFS_COUNT = TIMEFRAMES.length
 const BAR_FILLED = '\u2588'  // █
@@ -586,14 +711,33 @@ function BackfillPanel({ trackedCoins, termWidth }: { trackedCoins: string[]; te
 
 // ─── Tape (Signal Log) ─────────────────────────────────────────────────────
 
-const TapePanel = memo(function TapePanel({ signals }: { signals: string[] }) {
-  const recent = signals.slice(-50)
+const TapePanel = memo(function TapePanel({ signals, maxLines }: { signals: string[]; maxLines: number }) {
+  const [scrollOffset, setScrollOffset] = useState(0)
+  const visible = Math.max(3, maxLines)
+  const total = signals.length
+
+  // ↑ scrolls up (further back in history), ↓ scrolls back to bottom
+  useInput((_input, key) => {
+    if (key.upArrow) setScrollOffset(o => Math.min(o + 1, Math.max(0, total - visible)))
+    if (key.downArrow) setScrollOffset(o => Math.max(0, o - 1))
+  })
+
+  // When new signals arrive and user is at bottom, stay at bottom
+  const endIdx = total - scrollOffset
+  const startIdx = Math.max(0, endIdx - visible)
+  const recent = signals.slice(startIdx, endIdx)
+
+  const atBottom = scrollOffset === 0
+  const scrollInfo = total > visible
+    ? ` ↑↓  ${endIdx}/${total}${atBottom ? ' ▼' : ''}`
+    : ''
+
   return (
-    <Panel title="Tape" minHeight={10}>
+    <Panel title={`Tape${scrollInfo}`} flexGrow={1} flexShrink={1} minHeight={5}>
       {recent.length === 0 ? (
         <Text color={DIM}> Waiting for signals...</Text>
       ) : (
-        recent.map((line, i) => <Text key={i}> {line}</Text>)
+        recent.map((line, i) => <Text key={startIdx + i}> {line}</Text>)
       )}
     </Panel>
   )
@@ -680,6 +824,21 @@ function App({ sources }: { sources: TuiDataSources }) {
   const health = useMemo(() => sources.getHealthReport(), [tick])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const subCount = useMemo(() => sources.getSubscriptionCount(), [tick])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const paperStats = useMemo(() => sources.getPaperStats(), [tick])
+
+  // Compute unrealized PnL from open positions + mark prices
+  const unrealizedPnl = useMemo(() => {
+    let total = 0
+    for (const p of positions) {
+      const asset = sources.getAssetPrice(p.coin)
+      if (!asset) continue
+      const direction = p.side === 'long' ? 1 : -1
+      total += (asset.markPrice - p.entryPrice) * Math.abs(p.currentSize) * direction
+    }
+    return total
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [positions, tick])
 
   // ── Backfill progress screen ──
   if (!isBackfillDone) {
@@ -696,19 +855,19 @@ function App({ sources }: { sources: TuiDataSources }) {
 
   // ── Normal dashboard ──
   return (
-    <Box flexDirection="column" height={termRows}>
+    <Box flexDirection="column" height={termRows} overflow="hidden">
       <HeaderBar snapshot={snapshot} coinCount={trackedCoins.length} />
 
-      <Box>
-        <AccountPanel account={account} dailyPnl={snapshot.global.dailyPnl} />
+      <Box flexShrink={0}>
+        <AccountPanel account={account} dailyPnl={snapshot.global.dailyPnl} unrealizedPnl={unrealizedPnl} paperStats={paperStats} />
+        <StrategyPanel snapshot={snapshot} statuses={statuses} />
         <BuddyPanel mood={getBuddyMood(snapshot, positions.length, snapshot.global.dailyPnl, signals.length)} tick={tick} />
         <SystemPanel report={health} subCount={subCount} />
       </Box>
 
-      <PositionsPanel positions={positions} />
-      <WatchlistPanel statuses={statuses} trackedCoins={trackedCoins} />
-      <TapePanel signals={signals} />
-      <Box flexGrow={1} />
+      <PositionsPanel positions={positions} getAssetPrice={sources.getAssetPrice} />
+      <WatchlistPanel statuses={statuses} trackedCoins={trackedCoins} getAssetPrice={sources.getAssetPrice} />
+      <TapePanel signals={signals} maxLines={8} />
     </Box>
   )
 }
@@ -725,9 +884,16 @@ export function startTui(sources: TuiDataSources): void {
 
 /**
  * Append a signal/action to the tape panel.
- * Called from agent.onAction() wiring.
+ * Only setup-related events: signal (SETUP), enter (FILLED), exit (CLOSED).
+ * Skips SKIP and other noise.
  */
 export function appendSignal(action: AgentAction): void {
+  // Only pass through setup-relevant events
+  if (action.type === 'log_journal') {
+    const et = (action as { type: 'log_journal'; eventType: string }).eventType
+    if (et !== 'signal' && et !== 'enter' && et !== 'exit') return
+  }
+
   const line = formatAction(action)
   if (!line) return
 
@@ -740,14 +906,16 @@ export function appendSignal(action: AgentAction): void {
 
 /**
  * Add a log message to the tape panel.
- * Filters out noisy infrastructure warnings (staleness, etc.) — only signal/agent messages.
+ * Only accepts SETUP-related messages — filters out all other noise.
+ * Rewrites ISO timestamps to [HH:mm:ss.SSS] for consistency with formatAction output.
  */
 export function appendLog(msg: string): void {
-  // Skip infrastructure noise — staleness warnings are not trading signals
-  if (msg.includes('stale') && msg.includes('no candle update')) return
-  if (msg.includes('stale') && msg.includes('no book update')) return
+  // Only allow SETUP messages through to the tape
+  if (!msg.includes('SETUP')) return
 
-  const clean = msg.replace(/\x1b\[[0-9;]*m/g, '')
+  let clean = msg.replace(/\x1b\[[0-9;]*m/g, '')
+  // Rewrite ISO timestamp (e.g. "2026-04-06T09:05:05.827Z") → "[09:05:05.827]"
+  clean = clean.replace(/\d{4}-\d{2}-\d{2}T(\d{2}:\d{2}:\d{2}\.\d{3})Z/, '[$1]')
   for (const listener of signalListeners) {
     listener(clean)
   }
