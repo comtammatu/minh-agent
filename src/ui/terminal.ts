@@ -209,13 +209,3 @@ export function formatAgentStatus(snapshot: AgentSnapshot): string {
   return parts.join(' | ')
 }
 
-// ─── Print Wrappers (thin I/O layer) ─────────────────────────────────────
-
-export function printAction(action: AgentAction): void {
-  const line = formatAction(action)
-  if (line) console.log(line)
-}
-
-export function printAgentStatus(snapshot: AgentSnapshot): void {
-  console.log(formatAgentStatus(snapshot))
-}

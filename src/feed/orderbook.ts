@@ -12,6 +12,7 @@ import { getWsClient, registerSubscription, removeSubscription } from './ws.js'
 import { bidAskImbalance } from '../indicators/order-flow.js'
 import { BOOK_DEPTH_LEVELS, BOOK_STALENESS_MS } from '../config.js'
 import type { OrderBookSnapshot } from '../types.js'
+import { log } from '../lib/logger.js'
 
 // coin → latest snapshot
 const bookStore = new Map<string, OrderBookSnapshot>()
@@ -64,9 +65,7 @@ export async function subscribeOrderBook(coin: string): Promise<void> {
 
       lastBookTime.set(coin, Date.now())
     } catch (err) {
-      console.log(
-        `[BOOK] ${coin}: parse error — ${err instanceof Error ? err.message : String(err)}`,
-      )
+      log.error('orderbook', `${coin}: parse error — ${err instanceof Error ? err.message : String(err)}`)
     }
   })
 
@@ -96,7 +95,7 @@ export function checkBookStaleness(): void {
   for (const [coin, lastTime] of lastBookTime) {
     const silent = now - lastTime
     if (silent > BOOK_STALENESS_MS) {
-      console.log(`[WARNING] ${coin} book: stale ${Math.round(silent / 1000)}s — no L2 update`)
+      log.warn('orderbook', `${coin} book: stale ${Math.round(silent / 1000)}s — no L2 update`)
     }
   }
 }

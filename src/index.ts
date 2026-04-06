@@ -55,9 +55,8 @@ import {
   computeGapStart,
   shouldGapFill,
 } from './db/candle-repo.js'
-import { log } from './lib/logger.js'
+import { log, setTuiSink, clearTuiSink } from './lib/logger.js'
 import { getHealthMonitor } from './agent/self-healing.js'
-import { ANSI } from './ui/terminal.js'
 import { startTui, stopTui, appendSignal, appendLog } from './ui/tui.jsx'
 import { getPipelineEmitter } from './scanner/pipeline.js'
 import { getAgent } from './agent/trading-agent.js'
@@ -75,12 +74,10 @@ import type { CandleInterval } from './types.js'
 
 // ── Banner ───────────────────────────────────────────────────────────────────
 
-const modeTag = PAPER_TRADE
-  ? `${ANSI.bold}${ANSI.yellow}PAPER${ANSI.reset}`
-  : `${ANSI.bold}${ANSI.red}LIVE${ANSI.reset}`
-console.log(`[${ts()}] ${ANSI.bold}${ANSI.cyan}Minh (明) v2.0.0${ANSI.reset} — Autonomous Trading Agent [${modeTag}]`)
-console.log(
-  `[${ts()}] Config: dynamic top coins × ${TIMEFRAMES.join(',')} | ` +
+const modeTag = PAPER_TRADE ? 'PAPER' : 'LIVE'
+log.info('startup', `Minh (明) v2.0.0 — Autonomous Trading Agent [${modeTag}]`)
+log.info('startup',
+  `Config: dynamic top coins × ${TIMEFRAMES.join(',')} | ` +
   `min:${MIN_CONFIDENCE} | confluence:${CONFLUENCE_MIN}+ | ` +
   `regime:${REGIME_MULTIPLIERS.aligned}/${REGIME_MULTIPLIERS.neutral}/${REGIME_MULTIPLIERS.counter}`,
 )
@@ -120,7 +117,7 @@ async function unsubscribeCoin(coin: string): Promise<void> {
 async function onCoinsRefreshed(result: RefreshResult): Promise<void> {
   // Subscribe + backfill new coins
   for (const coin of result.added) {
-    console.log(`[${ts()}] COIN-ADD | ${coin} — subscribing + backfilling`)
+    log.info('lifecycle', `COIN-ADD | ${coin} — subscribing + backfilling`)
     await subscribeCoin(coin)
     await backfillCoin(coin)
     await addFundingCoin(coin)
@@ -129,7 +126,7 @@ async function onCoinsRefreshed(result: RefreshResult): Promise<void> {
 
   // Unsubscribe dropped coins (no active setup — already filtered by CoinSelector)
   for (const coin of result.dropped) {
-    console.log(`[${ts()}] COIN-DROP | ${coin} — unsubscribing + clearing`)
+    log.info('lifecycle', `COIN-DROP | ${coin} — unsubscribing + clearing`)
     await unsubscribeCoin(coin)
   }
 }
@@ -158,7 +155,7 @@ async function main(): Promise<void> {
 
   const hip3Count = selector.getHip3Coins().length
   const nativeCount = coins.length - hip3Count
-  console.log(`[${ts()}] COINS | ${coins.length} coins selected (${nativeCount} native + ${hip3Count} HIP-3)`)
+  log.info('startup', `COINS | ${coins.length} coins selected (${nativeCount} native + ${hip3Count} HIP-3)`)
 
   // 1b. Probe all coins with a quick 1m candle fetch — drop unavailable coins early
   const { valid: validCoins, failed: probeFailed } = await probeCoins(coins)
@@ -174,7 +171,7 @@ async function main(): Promise<void> {
     }
     coins = selector.getTrackedCoins()
     const newHip3 = selector.getHip3Coins().length
-    console.log(`[${ts()}] COINS | after probe: ${coins.length} coins (${probeFailed.length} replaced)`)
+    log.info('startup', `COINS | after probe: ${coins.length} coins (${probeFailed.length} replaced)`)
   }
 
   // 2. Load candles from PG → memory, then gap-fill missing candles via REST
@@ -250,7 +247,7 @@ async function main(): Promise<void> {
     if (failedThisRound.length === 0) break
 
     for (const fc of failedThisRound) allFailed.add(fc)
-    console.log(`[${ts()}] COIN-REPLACE | round ${round}: removing ${failedThisRound.join(', ')} (0 readyTFs)`)
+    log.info('lifecycle', `COIN-REPLACE | round ${round}: removing ${failedThisRound.join(', ')} (0 readyTFs)`)
 
     // Unsubscribe failed coins (already subscribed in step 3)
     for (const fc of failedThisRound) {
@@ -260,11 +257,11 @@ async function main(): Promise<void> {
     // Get replacements from ranked list
     const replacements = selector.replaceFailed(failedThisRound)
     if (replacements.length === 0) {
-      console.log(`[${ts()}] COIN-REPLACE | no more candidates available`)
+      log.info('lifecycle', `COIN-REPLACE | no more candidates available`)
       break
     }
 
-    console.log(`[${ts()}] COIN-REPLACE | adding ${replacements.join(', ')}`)
+    log.info('lifecycle', `COIN-REPLACE | adding ${replacements.join(', ')}`)
 
     // Subscribe + backfill replacements
     for (const rc of replacements) {
@@ -283,7 +280,7 @@ async function main(): Promise<void> {
   }
 
   if (allFailed.size > 0) {
-    console.log(`[${ts()}] COIN-REPLACE | done — replaced ${allFailed.size} failed coins | now tracking ${coins.length}`)
+    log.info('lifecycle', `COIN-REPLACE | done — replaced ${allFailed.size} failed coins | now tracking ${coins.length}`)
   }
 
   // 5. Wire PG write-through for live WS candles (R14: sync write-through)
@@ -310,9 +307,7 @@ async function main(): Promise<void> {
     const r = tfReady.get(c) ?? 0
     return r > 0 && r < TIMEFRAMES.length
   }).length
-  console.log(
-    `[${ts()}] ${ANSI.bold}${ANSI.green}ARMED${ANSI.reset} | ${coins.length} coins: ${fullyReady} fully ready, ${partialReady} partial | ${TIMEFRAMES.length} TFs`,
-  )
+  log.info('startup', `ARMED | ${coins.length} coins: ${fullyReady} fully ready, ${partialReady} partial | ${TIMEFRAMES.length} TFs`)
 
   // 7b. Register strategies (Sprint 4.5: multi-strategy fan-out)
   const registry = getStrategyRegistry()
@@ -320,7 +315,7 @@ async function main(): Promise<void> {
   registry.register(new QuantStrategyAdapter())
   registry.register(new SmcSdStrategy())
   const strategyIds = registry.getAll().map(s => s.id)
-  console.log(`[${ts()}] ${ANSI.dim}STRAT${ANSI.reset} | ${strategyIds.length} strategies registered: ${strategyIds.join(', ')}`)
+  log.info('startup', `STRAT | ${strategyIds.length} strategies registered: ${strategyIds.join(', ')}`)
 
   // 7c. Init ExchangePool (Sprint 4.5: per-strategy wallets or shared fallback)
   const pool = getExchangePool()
@@ -333,39 +328,31 @@ async function main(): Promise<void> {
     const addrShort = `${acctAddr.slice(0, 6)}…${acctAddr.slice(-4)}`
 
     if (PAPER_TRADE) {
-      console.log(
-        `[${ts()}] ${ANSI.bold}${ANSI.yellow}MODE${ANSI.reset}  | PAPER TRADE — orders are SIMULATED, no real exchange calls`,
-      )
+      log.info('startup', 'MODE  | PAPER TRADE — orders are SIMULATED, no real exchange calls')
     } else {
-      console.log(
-        `[${ts()}] ${ANSI.bold}${ANSI.red}MODE${ANSI.reset}  | LIVE TRADING — real orders on Hyperliquid`,
-      )
+      log.info('startup', 'MODE  | LIVE TRADING — real orders on Hyperliquid')
     }
-    console.log(
-      `[${ts()}] ${ANSI.dim}ACCT${ANSI.reset}  | ${addrShort} | balance: $${account.effectiveBalance.toFixed(2)} (perp: $${account.accountValue.toFixed(2)} + spot: $${account.spotUsdcBalance.toFixed(2)}) | margin: $${account.totalMarginUsed.toFixed(2)} | free: $${account.withdrawable.toFixed(2)}`,
-    )
+    log.info('startup', `ACCT  | ${addrShort} | balance: $${account.effectiveBalance.toFixed(2)} (perp: $${account.accountValue.toFixed(2)} + spot: $${account.spotUsdcBalance.toFixed(2)}) | margin: $${account.totalMarginUsed.toFixed(2)} | free: $${account.withdrawable.toFixed(2)}`)
 
     if (positions.length > 0) {
-      console.log(`[${ts()}] ${ANSI.dim}POS${ANSI.reset}   | ${positions.length} open position(s):`)
-      for (const p of positions) {
-        const side = p.size > 0 ? `${ANSI.green}LONG${ANSI.reset}` : `${ANSI.red}SHORT${ANSI.reset}`
-        const pnlColor = p.unrealizedPnl >= 0 ? ANSI.green : ANSI.red
-        console.log(
-          `[${ts()}]        ${p.coin.padEnd(10)} ${side} ${Math.abs(p.size)} @ $${p.entryPrice.toFixed(2)} | uPnL: ${pnlColor}$${p.unrealizedPnl.toFixed(2)}${ANSI.reset}${p.liquidationPrice ? ` | liq: $${p.liquidationPrice.toFixed(2)}` : ''}`,
-        )
-      }
+      const posLines = positions.map(p => {
+        const side = p.size > 0 ? 'LONG' : 'SHORT'
+        const pnlSign = p.unrealizedPnl >= 0 ? '+' : ''
+        return `  ${p.coin.padEnd(10)} ${side} ${Math.abs(p.size)} @ $${p.entryPrice.toFixed(2)} | uPnL: ${pnlSign}$${p.unrealizedPnl.toFixed(2)}${p.liquidationPrice ? ` | liq: $${p.liquidationPrice.toFixed(2)}` : ''}`
+      }).join('\n')
+      log.info('startup', `POS   | ${positions.length} open position(s):\n${posLines}`)
     } else {
-      console.log(`[${ts()}] ${ANSI.dim}POS${ANSI.reset}   | no open positions`)
+      log.info('startup', 'POS   | no open positions')
     }
 
     if (pool.isMultiWallet()) {
-      console.log(`[${ts()}] ${ANSI.dim}POOL${ANSI.reset}  | Multi-wallet mode: ${pool.getStrategyIds().join(', ')}`)
+      log.info('startup', `POOL  | Multi-wallet mode: ${pool.getStrategyIds().join(', ')}`)
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    console.log(`[${ts()}] ${ANSI.yellow}ACCT${ANSI.reset}  | Could not fetch account info: ${msg}`)
+    log.warn('startup', `ACCT  | Could not fetch account info: ${msg}`)
     if (PAPER_TRADE) {
-      console.log(`[${ts()}] ${ANSI.bold}${ANSI.yellow}MODE${ANSI.reset}  | PAPER TRADE — continuing without wallet`)
+      log.info('startup', 'MODE  | PAPER TRADE — continuing without wallet')
     }
   }
 
@@ -436,6 +423,7 @@ async function main(): Promise<void> {
     getSubscriptionCount,
     getTrackedCoins: () => selector.getTrackedCoins(),
   })
+  setTuiSink(appendLog)
 
   // 12. Staleness watchdog (candles + order book)
   activeIntervals.push(setInterval(() => {
@@ -451,6 +439,7 @@ async function main(): Promise<void> {
 
 /** Clean up intervals, WS connections, refresh loop, polling, agent sync, TUI, and DB before reconnect. */
 async function cleanup(): Promise<void> {
+  clearTuiSink()
   stopTui()
   selector.stopRefreshLoop()
   getPositionMonitor().stopSync()
@@ -468,12 +457,12 @@ async function runWithReconnect(): Promise<never> {
 
   // SIGINT handler — register once, outside retry loop
   process.on('SIGINT', async () => {
-    console.log(`\n${ANSI.bold}${ANSI.yellow}[SHUTDOWN]${ANSI.reset} Closing connections...`)
+    log.info('shutdown', 'Closing connections...')
     getHealthMonitor().stopPeriodicCheck()
     getPositionMonitor().stopSync()
     await cleanup()
     await closeDb()
-    console.log(`${ANSI.bold}${ANSI.yellow}[SHUTDOWN]${ANSI.reset} Minh stopped gracefully.`)
+    log.info('shutdown', 'Minh stopped gracefully.')
     process.exit(0)
   })
 
@@ -482,8 +471,8 @@ async function runWithReconnect(): Promise<never> {
       await main()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error(`[${ts()}] CONNECTION LOST | ${msg}`)
-      console.log(`[${ts()}] RECONNECT | retrying in ${Math.round(delay / 1000)}s...`)
+      log.error('lifecycle', `CONNECTION LOST | ${msg}`)
+      log.info('lifecycle', `RECONNECT | retrying in ${Math.round(delay / 1000)}s...`)
 
       // Tear down everything before retry
       await cleanup()
@@ -491,13 +480,10 @@ async function runWithReconnect(): Promise<never> {
       await new Promise(r => setTimeout(r, delay))
       delay = Math.min(delay * WS_RECONNECT_BACKOFF, WS_RECONNECT_MAX_MS)
 
-      console.log(`[${ts()}] RECONNECT | restarting subscriptions + backfill...`)
+      log.info('lifecycle', 'RECONNECT | restarting subscriptions + backfill...')
     }
   }
 }
 
-function ts(): string {
-  return new Date().toISOString().slice(11, 19)
-}
 
 runWithReconnect()

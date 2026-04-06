@@ -14,6 +14,7 @@ import type { ISubscription } from '@nktkas/hyperliquid'
 import { getWsClient, registerSubscription, removeSubscription } from './ws.js'
 import { computeDelta } from '../indicators/order-flow.js'
 import type { DeltaState } from '../types.js'
+import { log } from '../lib/logger.js'
 
 // coin → current accumulated delta state
 const deltaStore = new Map<string, DeltaState>()
@@ -82,9 +83,7 @@ export async function subscribeTrades(coin: string): Promise<void> {
         barTs: prev.barTs,
       })
     } catch (err) {
-      console.log(
-        `[TRADES] ${coin}: parse error — ${err instanceof Error ? err.message : String(err)}`,
-      )
+      log.error('trades', `${coin}: parse error — ${err instanceof Error ? err.message : String(err)}`)
     }
   })
 

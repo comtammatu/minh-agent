@@ -24,21 +24,7 @@ import { handlers } from './trading-agent.js'
 import { runAllChecks, prunePnlHistory } from './circuit-breakers.js'
 import { shouldBlockCorrelatedEntry } from './correlation-guard.js'
 import { checkPortfolioEntry, type PortfolioPosition } from './portfolio-risk.js'
-import { ANSI } from '../ui/terminal.js'
-
-function ts(): string { return new Date().toISOString().slice(11, 19) }
-
-/** Color-coded state badge for terminal output. */
-function stateBadge(state: AgentState): string {
-  switch (state) {
-    case 'IDLE': return `${ANSI.dim}IDLE${ANSI.reset}`
-    case 'WATCHING': return `${ANSI.cyan}WATCHING${ANSI.reset}`
-    case 'ENTERING': return `${ANSI.yellow}ENTERING${ANSI.reset}`
-    case 'IN_POSITION': return `${ANSI.bold}${ANSI.green}IN_POS${ANSI.reset}`
-    case 'EXITING': return `${ANSI.magenta}EXITING${ANSI.reset}`
-    case 'PAUSED': return `${ANSI.red}PAUSED${ANSI.reset}`
-  }
-}
+import { log } from '../lib/logger.js'
 
 /** Default strategy ID for backward compatibility (single-strategy mode). */
 const DEFAULT_STRATEGY = 'layered'
@@ -130,7 +116,7 @@ export class TradingAgent {
       const openCoins = this.getOpenPositionCoins()
       const check = shouldBlockCorrelatedEntry(setup.coin, openCoins)
       if (check.blocked) {
-        console.log(`[${ts()}] ${ANSI.dim}AGENT${ANSI.reset} | ${setup.coin.padEnd(8)} ${ANSI.yellow}BLOCKED${ANSI.reset} correlation guard: ${check.reason}`)
+        log.info('agent', `${setup.coin.padEnd(8)} BLOCKED correlation guard: ${check.reason}`)
         this.emitter.emit('action', journalAction('skip', setup.coin, {
           reason: check.reason,
           setupId: setup.id,
@@ -163,14 +149,14 @@ export class TradingAgent {
       const detail = setup ? ` | ${setup.type} ${setup.side}` : ''
       const reason = event.type === 'setup_invalidated' ? ` | reason: ${event.reason}` : ''
       const strategyTag = strategyId !== DEFAULT_STRATEGY ? ` [${strategyId}]` : ''
-      console.log(`[${ts()}] ${ANSI.dim}AGENT${ANSI.reset} | ${coin.padEnd(8)} ${stateBadge(prevState)} → ${stateBadge(result.nextState)}${detail}${reason}${strategyTag}`)
+      log.info('agent', `${coin.padEnd(8)} ${prevState} → ${result.nextState}${detail}${reason}${strategyTag}`)
     }
     ctx.state = result.nextState
 
     // Log skip/block actions
     for (const action of result.actions) {
       if (action.type === 'log_journal' && action.eventType === 'skip') {
-        console.log(`[${ts()}] ${ANSI.dim}AGENT${ANSI.reset} | ${coin.padEnd(8)} ${ANSI.yellow}SKIP${ANSI.reset} ${action.details?.reason ?? ''}`)
+        log.info('agent', `${coin.padEnd(8)} SKIP ${action.details?.reason ?? ''}`)
       }
     }
 
@@ -322,7 +308,7 @@ export class TradingAgent {
 
     if (result.tripped && !g.globalPaused) {
       const strategyTag = strategyId !== DEFAULT_STRATEGY ? ` [${strategyId}]` : ''
-      console.log(`[${ts()}] ${ANSI.bold}${ANSI.red}CIRCUIT BREAK${ANSI.reset}${strategyTag} | ${result.reason} | dailyPnl=$${g.dailyPnl.toFixed(2)} | pause until ${result.pauseUntil ? new Date(result.pauseUntil).toISOString().slice(11, 19) : 'manual resume'}`)
+      log.warn('agent', `CIRCUIT BREAK${strategyTag} | ${result.reason} | dailyPnl=$${g.dailyPnl.toFixed(2)} | pause until ${result.pauseUntil ? new Date(result.pauseUntil).toISOString().slice(11, 19) : 'manual resume'}`)
 
       g.globalPaused = true
       g.globalPauseReason = result.reason
@@ -575,7 +561,7 @@ export class TradingAgent {
 
     if (!check.allowed) {
       const strategyTag = strategyId !== DEFAULT_STRATEGY ? ` [${strategyId}]` : ''
-      console.log(`[${ts()}] ${ANSI.dim}AGENT${ANSI.reset} | ${coin.padEnd(8)} ${ANSI.yellow}PORTFOLIO BLOCKED${ANSI.reset} ${check.reason}${strategyTag}`)
+      log.info('agent', `${coin.padEnd(8)} PORTFOLIO BLOCKED ${check.reason}${strategyTag}`)
 
       // Replace place_order with skip journal entry, keep other actions
       return [

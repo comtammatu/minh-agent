@@ -15,6 +15,7 @@
  */
 
 import type { Candle, CandleInterval, Signal, PatternType } from '../types.js'
+import { log } from '../lib/logger.js'
 
 // ─── IStrategy Interface ────────────────────────────────────────────────────
 
@@ -169,10 +170,7 @@ export class StrategyRegistry {
         }
       } catch (err) {
         // Error isolation: log and continue. One strategy failure does not block others.
-        console.error(
-          `[strategy-registry] Strategy '${id}' threw during scan(${coin}, ${interval}):`,
-          err instanceof Error ? err.message : err,
-        )
+        log.error('strategy', `'${id}' threw during scan(${coin}, ${interval}): ${err instanceof Error ? err.message : String(err)}`)
       }
     }
 

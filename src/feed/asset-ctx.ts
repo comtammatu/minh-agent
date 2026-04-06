@@ -12,6 +12,7 @@ import { info } from './rest.js'
 import { getWsClient, registerSubscription, removeSubscription } from './ws.js'
 import { acquire } from './rate-limiter.js'
 import { MARK_ORACLE_DIVERGENCE_THRESHOLD } from '../config.js'
+import { log } from '../lib/logger.js'
 import type { AssetCtxSnapshot } from '../types.js'
 import type { ISubscription } from '@nktkas/hyperliquid'
 
@@ -106,9 +107,7 @@ export async function startOiFeed(coins: string[]): Promise<void> {
         }
       }
     } catch (err) {
-      console.log(
-        `[ASSET-CTX] WS parse error — ${err instanceof Error ? err.message : String(err)}`,
-      )
+      log.error('asset-ctx', `WS parse error — ${err instanceof Error ? err.message : String(err)}`)
     }
   })
 

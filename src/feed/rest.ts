@@ -7,6 +7,7 @@ import { HttpTransport, InfoClient } from '@nktkas/hyperliquid'
 import type { Candle, CandleInterval, BackfillResult } from '../types.js'
 import { BACKFILL_CANDLE_COUNT, BACKFILL_CANDLE_COUNTS, BACKFILL_CONCURRENCY } from '../config.js'
 import { acquire } from './rate-limiter.js'
+import { log } from '../lib/logger.js'
 
 const transport = new HttpTransport()
 export const info = new InfoClient({ transport })
@@ -56,10 +57,10 @@ export async function fetchCandles(
       if (is429) {
         rateLimitHits++
         if (rateLimitHits >= MAX_RATE_LIMIT_RETRIES) {
-          console.log(`[BACKFILL] ${coin} ${interval}: rate limited ${rateLimitHits}x — giving up`)
+          log.warn('backfill', `${coin} ${interval}: rate limited ${rateLimitHits}x — giving up`)
           return null
         }
-        console.log(`[BACKFILL] ${coin} ${interval}: rate limited (${rateLimitHits}/${MAX_RATE_LIMIT_RETRIES}) — waiting 2s`)
+        log.warn('backfill', `${coin} ${interval}: rate limited (${rateLimitHits}/${MAX_RATE_LIMIT_RETRIES}) — waiting 2s`)
         await new Promise(r => setTimeout(r, 2000))
         continue
       }
@@ -67,7 +68,7 @@ export async function fetchCandles(
       attempt++
       if (attempt > maxRetries) return null
 
-      console.log(`[BACKFILL] ${coin} ${interval}: error (attempt ${attempt}/${maxRetries}): ${msg}`)
+      log.warn('backfill', `${coin} ${interval}: error (attempt ${attempt}/${maxRetries}): ${msg}`)
       await new Promise(r => setTimeout(r, 500 * attempt))
     }
   }
@@ -142,7 +143,7 @@ export async function probeCoins(
   })
 
   if (failed.length > 0) {
-    console.log(`[PROBE] ${failed.length} coins unavailable: ${failed.join(', ')}`)
+    log.info('probe', `${failed.length} coins unavailable: ${failed.join(', ')}`)
   }
 
   return { valid, failed }
@@ -178,7 +179,7 @@ export async function backfillAllCoins(
     }
   }
   if (skipped > 0) {
-    console.log(`[BACKFILL] Skipping ${skipped} coin/TF pairs already loaded from PG`)
+    log.info('backfill', `skipping ${skipped} coin/TF pairs already loaded from PG`)
   }
 
   // Track per-coin ready count (pre-count skipped as ready)
@@ -224,17 +225,17 @@ export async function backfillAllCoins(
         const candles = await fetchCandles(coin, interval, startTime)
 
         if (candles === null) {
-          console.log(`[BACKFILL] ${coin} ${interval}: FAILED — skipping`)
+          log.warn('backfill', `${coin} ${interval}: FAILED — skipping`)
         } else if (candles.length === 0) {
-          console.log(`[BACKFILL] ${coin} ${interval}: empty`)
+          log.info('backfill', `${coin} ${interval}: empty`)
         } else {
           onCandles(coin, interval, candles)
           readyMap.set(coin, (readyMap.get(coin) ?? 0) + 1)
-          console.log(`[BACKFILL] ${coin} ${interval}: ${candles.length} candles`)
+          log.info('backfill', `${coin} ${interval}: ${candles.length} candles`)
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        console.log(`[BACKFILL] ${coin} ${interval}: unexpected error — ${msg}`)
+        log.error('backfill', `${coin} ${interval}: unexpected error — ${msg}`)
       }
     }
 

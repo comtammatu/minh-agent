@@ -27,11 +27,29 @@ export function _passes(level: LogLevel): boolean {
   return LEVEL_ORDER[level] >= LEVEL_ORDER[MIN_LEVEL]
 }
 
+// ─── TUI Sink ────────────────────────────────────────────────────────────
+
+let tuiSink: ((msg: string) => void) | null = null
+
+/** Route log output to TUI panel instead of console. Call after startTui(). */
+export function setTuiSink(sink: (msg: string) => void): void {
+  tuiSink = sink
+}
+
+/** Restore log output to console. Call before stopTui(). */
+export function clearTuiSink(): void {
+  tuiSink = null
+}
+
 function write(level: LogLevel, component: string, msg: string): void {
   if (!_passes(level)) return
   const line = _fmt(level, component, msg)
-  const method = _route(level)
-  console[method](line)
+  if (tuiSink) {
+    tuiSink(line)
+  } else {
+    const method = _route(level)
+    console[method](line)
+  }
 }
 
 export const log = {

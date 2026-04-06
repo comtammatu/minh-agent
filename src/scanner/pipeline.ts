@@ -56,8 +56,8 @@ import {
 } from '../config.js'
 import { getExchangeService } from '../execution/exchange-service.js'
 import { EventEmitter } from 'events'
-import { ANSI, formatSide, formatGrade } from '../ui/terminal.js'
 import { playSound } from '../ui/sound.js'
+import { log } from '../lib/logger.js'
 
 // ── Pipeline Diagnostic Stats ────────────────────────────────────────────────
 
@@ -245,7 +245,26 @@ export function onCandleTick(
   if (candles.length < MIN_CANDLES_FOR_SCAN + 1) return
 
   const idx = candles.length - 2
-  registry.runAll(coin, interval, candles, idx)
+  const signalResults = registry.runAll(coin, interval, candles, idx)
+
+  // Handle modern strategies that return Signal directly (not legacy emit pattern)
+  for (const { strategyId, signal } of signalResults) {
+    const id = setupId(coin, interval, signal.type, strategyId)
+    const setup: ActiveSetup = {
+      ...signal,
+      id,
+      coin,
+      interval,
+      strategyId,
+      detectedAt: Date.now(),
+      detectedAtBar: idx,
+      expiresAtBar: computeExpiresAtBar(signal.type, idx),
+    }
+    activeSetups.set(id, setup)
+    const stats = getOrCreateStats(strategyId)
+    stats.setupsTracked++
+    pipelineEmitter.emit('setup', setup)
+  }
 }
 
 /** Get current status snapshots for all coin/tf combinations. */
@@ -490,9 +509,7 @@ export function runPipeline(
   activeSetups.set(id, setup)
   pipelineStats.setupsTracked++
   if (existing) {
-    console.log(
-      `[${ts()}] ${ANSI.dim}↻ REPLACE${ANSI.reset} | ${coin} ${interval} | ${formatSide(existing.side)} ${existing.type} → ${formatSide(setup.side)} | conf ${existing.confidence.toFixed(2)} → ${setup.confidence.toFixed(2)}`,
-    )
+    log.info('pipeline', `↻ REPLACE | ${coin} ${interval} | ${existing.side.toUpperCase()} ${existing.type} → ${setup.side.toUpperCase()} | conf ${existing.confidence.toFixed(2)} → ${setup.confidence.toFixed(2)}`)
   }
   logSetupAlert(coin, interval, setup, regime, bias.source, confluence, risk)
 
@@ -517,9 +534,7 @@ function invalidateSetups(
     const result = isInvalidated(setup, candles, currentBarIdx)
     if (result.invalidated) {
       const age = currentBarIdx - (setup.expiresAtBar - (PATTERN_TTL_BARS_LOOKUP[setup.type] ?? 10))
-      console.log(
-        `[${ts()}] ${ANSI.yellow}⚠ INVALID${ANSI.reset} | ${coin} ${interval} | ${setup.type} ${formatSide(setup.side)} | reason: ${result.reason} | lived ${Math.max(age, 0)} bars`,
-      )
+      log.info('pipeline', `⚠ INVALID | ${coin} ${interval} | ${setup.type} ${setup.side.toUpperCase()} | reason: ${result.reason} | lived ${Math.max(age, 0)} bars`)
       activeSetups.delete(id)
       pipelineStats.setupsInvalidated++
       // R10: Emit invalidation event for agent subscription
@@ -558,16 +573,6 @@ function logSetupAlert(
 
   const regimeTag = isAligned ? `${regime} aligned` : regime
 
-  // Layered format per Sprint 1 Step 3 spec — ANSI enhanced (S15)
-  console.log(
-    `[${ts()}] ${ANSI.bold}⚡ SETUP${ANSI.reset} | ${coin} ${interval.toUpperCase()} | ${formatSide(setup.side)} ${setup.type} at ${setup.zoneOrigin ?? 'zone'} | ` +
-    `${formatGrade(confluence.grade)} (${confluence.count}/7) | conf:${setup.confidence.toFixed(2)} | ${regimeTag}`,
-  )
-  console.log(
-    `         entry:${fmt(setup.entryPrice)} sl:${fmt(setup.slPrice)} tp:${fmt(setup.tpPrice)} | ` +
-    `R:R 1:${rr.toFixed(2)} | bias:${biasSource} | structure:${setup.confluenceGrade ?? '-'}`,
-  )
-
   // VSA/VP boosts from patternData
   const pd = setup.patternData
   const vsaBoost = pd['vsaBoost'] as number | undefined
@@ -591,9 +596,13 @@ function logSetupAlert(
   if (divergenceWarning) boostParts.push('⚠DIV')
   if (throughZone) boostParts.push('through-zone')
 
-  console.log(
-    `         ${boostParts.length > 0 ? boostParts.join(' ') + ' | ' : ''}` +
-    `trigger:${pattern ?? setup.type} | risk:${risk.suggestedSize}`,
+  const boostStr = boostParts.length > 0 ? boostParts.join(' ') + ' | ' : ''
+
+  log.info('pipeline',
+    `⚡ SETUP | ${coin} ${interval.toUpperCase()} | ${setup.side.toUpperCase()} ${setup.type} at ${setup.zoneOrigin ?? 'zone'} | ` +
+    `${confluence.grade} (${confluence.count}/7) | conf:${setup.confidence.toFixed(2)} | ${regimeTag} | ` +
+    `entry:${fmt(setup.entryPrice)} sl:${fmt(setup.slPrice)} tp:${fmt(setup.tpPrice)} | R:R 1:${rr.toFixed(2)} | bias:${biasSource} | ` +
+    `${boostStr}trigger:${pattern ?? setup.type} | risk:${risk.suggestedSize}`,
   )
 
   // S15: Sound alert for grade B+ setups
@@ -606,6 +615,3 @@ function fmt(n: number): string {
   return n >= 1000 ? n.toFixed(0) : n >= 10 ? n.toFixed(2) : n.toFixed(4)
 }
 
-function ts(): string {
-  return new Date().toISOString().slice(11, 19)
-}

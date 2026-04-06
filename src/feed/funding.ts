@@ -13,6 +13,7 @@ import {
   FUNDING_HISTORY_HOURS,
 } from '../config.js'
 import type { FundingSnapshot } from '../types.js'
+import { log } from '../lib/logger.js'
 
 // coin → sorted snapshots (ascending by timestamp)
 const fundingStore = new Map<string, FundingSnapshot[]>()
@@ -89,8 +90,6 @@ async function fetchFunding(coin: string): Promise<void> {
     const valid = snapshots.filter(s => !isNaN(s.rate) && !isNaN(s.premium))
     fundingStore.set(coin, valid)
   } catch (err) {
-    console.log(
-      `[FUNDING] ${coin}: fetch error — ${err instanceof Error ? err.message : String(err)}`,
-    )
+    log.error('funding', `${coin}: fetch error — ${err instanceof Error ? err.message : String(err)}`)
   }
 }

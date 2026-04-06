@@ -13,7 +13,7 @@
  * Refresh: 3s interval. Signal log: event-driven via appendSignal().
  */
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo, memo } from 'react'
 import { render, Box, Text, useApp, useInput } from 'ink'
 import type { AgentAction } from '../agent/types.js'
 import type { AgentSnapshot } from '../agent/types.js'
@@ -87,7 +87,7 @@ function Panel({ title, children, width, height, minHeight }: {
   )
 }
 
-function HeaderPanel({ snapshot, coinCount }: { snapshot: AgentSnapshot; coinCount: number }) {
+const HeaderPanel = memo(function HeaderPanel({ snapshot, coinCount }: { snapshot: AgentSnapshot; coinCount: number }) {
   const mode = PAPER_TRADE ? 'PAPER' : 'LIVE'
   const modeColor = PAPER_TRADE ? 'yellow' : 'red'
   const paused = snapshot.global.globalPaused
@@ -104,9 +104,9 @@ function HeaderPanel({ snapshot, coinCount }: { snapshot: AgentSnapshot; coinCou
       <Text dimColor> │ q/Ctrl-C to quit</Text>
     </Box>
   )
-}
+})
 
-function AccountPanel({ account, dailyPnl }: {
+const AccountPanel = memo(function AccountPanel({ account, dailyPnl }: {
   account: { effectiveBalance: number; accountValue: number; spotUsdcBalance: number; totalMarginUsed: number; withdrawable: number } | null
   dailyPnl: number
 }) {
@@ -132,9 +132,9 @@ function AccountPanel({ account, dailyPnl }: {
       <Text> Daily PnL: <Text color={pnlColor}>{pnlSign}${dailyPnl.toFixed(2)}</Text></Text>
     </Panel>
   )
-}
+})
 
-function HealthPanel({ report, subCount }: {
+const HealthPanel = memo(function HealthPanel({ report, subCount }: {
   report: TuiDataSources['getHealthReport'] extends () => infer R ? R : never
   subCount: number
 }) {
@@ -150,9 +150,9 @@ function HealthPanel({ report, subCount }: {
       <Text> WS Subs:  {subCount}/{WS_MAX_SUBSCRIPTIONS}</Text>
     </Panel>
   )
-}
+})
 
-function PositionsPanel({ positions }: {
+const PositionsPanel = memo(function PositionsPanel({ positions }: {
   positions: Array<{ coin: string; side: 'long' | 'short'; currentSize: number; entryPrice: number; slPrice: number; tpPrice: number; strategyId: string }>
 }) {
   if (positions.length === 0) {
@@ -189,11 +189,12 @@ function PositionsPanel({ positions }: {
       ))}
     </Panel>
   )
-}
+})
 
-function CoinsPanel({ statuses, trackedCoins }: { statuses: StatusSnapshot[]; trackedCoins: string[] }) {
-  // Aggregate by coin
-  const byCoin = new Map<string, { regime: string; grade: string; setups: number; bias: string; tfsReady: number }>()
+type CoinInfo = { regime: string; grade: string; setups: number; bias: string; tfsReady: number }
+
+function aggregateCoins(statuses: StatusSnapshot[]): Map<string, CoinInfo> {
+  const byCoin = new Map<string, CoinInfo>()
   for (const s of statuses) {
     const prev = byCoin.get(s.coin)
     if (!prev) {
@@ -209,54 +210,83 @@ function CoinsPanel({ statuses, trackedCoins }: { statuses: StatusSnapshot[]; tr
       prev.bias = s.bias
     }
   }
+  return byCoin
+}
 
-  const totalTfs = 6 // TIMEFRAMES.length
+const COIN_HEADER = `${'COIN'.padEnd(8)} ${'REGIME'.padEnd(9)} ${'GRD'.padEnd(5)} ${'#'.padEnd(3)} ${'BIAS'.padEnd(8)} TF`
+const TOTAL_TFS = 6
 
-  if (trackedCoins.length === 0) {
+function CoinRow({ coin, info }: { coin: string; info: CoinInfo | undefined }) {
+  if (!info) {
     return (
-      <Panel title="Coins">
-        <Text dimColor> No coins tracked</Text>
-      </Panel>
+      <Box>
+        <Text dimColor> {coin.padEnd(8)} {'—'.padEnd(9)} {'—'.padEnd(5)} {'0'.padEnd(3)} {'—'.padEnd(8)} —</Text>
+      </Box>
     )
   }
 
+  const regimeColor: 'green' | 'red' | 'yellow' = info.regime === 'trending' ? 'green' : info.regime === 'volatile' ? 'red' : 'yellow'
+  const gradeColor: 'magenta' | 'green' | 'blue' | undefined = info.grade.startsWith('A+') ? 'magenta' : info.grade.startsWith('A') ? 'green' : info.grade.startsWith('B') ? 'blue' : undefined
+  const biasColor: 'green' | 'red' | undefined = info.bias === 'bullish' ? 'green' : info.bias === 'bearish' ? 'red' : undefined
+
   return (
-    <Panel title={`Coins (${trackedCoins.length})`} minHeight={5}>
-      <Box>
-        <Text dimColor>
-          {' '}{'COIN'.padEnd(10)} {'REGIME'.padEnd(10)} {'GRADE'.padEnd(7)} {'SETUPS'.padEnd(8)} {'BIAS'.padEnd(10)} TFs
-        </Text>
-      </Box>
-      {trackedCoins.map(coin => {
-        const info = byCoin.get(coin)
-        if (!info) {
-          return (
-            <Box key={coin}>
-              <Text dimColor> {coin.padEnd(10)} {'—'.padEnd(10)} {'—'.padEnd(7)} {'0'.padEnd(8)} {'—'.padEnd(10)} —</Text>
-            </Box>
-          )
-        }
-
-        const regimeColor: 'green' | 'red' | 'yellow' = info.regime === 'trending' ? 'green' : info.regime === 'volatile' ? 'red' : 'yellow'
-        const gradeColor: 'magenta' | 'green' | 'blue' | undefined = info.grade.startsWith('A+') ? 'magenta' : info.grade.startsWith('A') ? 'green' : info.grade.startsWith('B') ? 'blue' : undefined
-        const biasColor: 'green' | 'red' | undefined = info.bias === 'bullish' ? 'green' : info.bias === 'bearish' ? 'red' : undefined
-
-        return (
-          <Box key={coin}>
-            <Text> {coin.padEnd(10)} </Text>
-            <Text color={regimeColor}>{info.regime.padEnd(10)} </Text>
-            <Text bold={info.grade.startsWith('A+')} color={gradeColor}>{info.grade.padEnd(7)} </Text>
-            <Text>{String(info.setups).padEnd(8)} </Text>
-            <Text color={biasColor}>{info.bias.padEnd(10)} </Text>
-            <Text>{info.tfsReady}/{totalTfs}</Text>
-          </Box>
-        )
-      })}
-    </Panel>
+    <Box>
+      <Text> {coin.padEnd(8)} </Text>
+      <Text color={regimeColor}>{info.regime.padEnd(9)} </Text>
+      <Text bold={info.grade.startsWith('A+')} color={gradeColor}>{info.grade.padEnd(5)} </Text>
+      <Text>{String(info.setups).padEnd(3)} </Text>
+      <Text color={biasColor}>{info.bias.padEnd(8)} </Text>
+      <Text>{info.tfsReady}/{TOTAL_TFS}</Text>
+    </Box>
   )
 }
 
-function SignalsPanel({ signals }: { signals: string[] }) {
+const CoinColumn = memo(function CoinColumn({ title, coins, byCoin }: {
+  title: string
+  coins: string[]
+  byCoin: Map<string, CoinInfo>
+}) {
+  return (
+    <Panel title={title} width="50%">
+      <Box>
+        <Text dimColor> {COIN_HEADER}</Text>
+      </Box>
+      {coins.map((coin: string) => (
+        <CoinRow key={coin} coin={coin} info={byCoin.get(coin)} />
+      ))}
+    </Panel>
+  )
+})
+
+const CoinsPanel = memo(function CoinsPanel({ statuses, trackedCoins }: { statuses: StatusSnapshot[]; trackedCoins: string[] }) {
+  const byCoin = useMemo(() => aggregateCoins(statuses), [statuses])
+
+  if (trackedCoins.length === 0) {
+    return (
+      <Box>
+        <Panel title="Coins L" width="50%">
+          <Text dimColor> No coins tracked</Text>
+        </Panel>
+        <Panel title="Coins R" width="50%">
+          <Text dimColor> No coins tracked</Text>
+        </Panel>
+      </Box>
+    )
+  }
+
+  const mid = Math.ceil(trackedCoins.length / 2)
+  const left = trackedCoins.slice(0, mid)
+  const right = trackedCoins.slice(mid)
+
+  return (
+    <Box>
+      <CoinColumn title={`Coins 1-${mid} (${trackedCoins.length})`} coins={left} byCoin={byCoin} />
+      <CoinColumn title={`Coins ${mid + 1}-${trackedCoins.length}`} coins={right} byCoin={byCoin} />
+    </Box>
+  )
+})
+
+const SignalsPanel = memo(function SignalsPanel({ signals }: { signals: string[] }) {
   const recent = signals.slice(-15)
   return (
     <Panel title="Signals" minHeight={5}>
@@ -267,7 +297,7 @@ function SignalsPanel({ signals }: { signals: string[] }) {
       )}
     </Panel>
   )
-}
+})
 
 // ─── Main App ───────────────────────────────────────────────────────────────
 
@@ -323,13 +353,19 @@ function App({ sources }: { sources: TuiDataSources }) {
     }
   }, [])
 
-  // Read data (re-read each tick)
-  const snapshot = sources.getAgentSnapshot()
-  const positions = Array.from(sources.getPositions().values())
-  const statuses = sources.getStatus()
-  const health = sources.getHealthReport()
-  const subCount = sources.getSubscriptionCount()
-  const trackedCoins = sources.getTrackedCoins()
+  // Read data (re-read each tick, memoize derived values)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const snapshot = useMemo(() => sources.getAgentSnapshot(), [tick])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const positions = useMemo(() => Array.from(sources.getPositions().values()), [tick])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const statuses = useMemo(() => sources.getStatus(), [tick])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const health = useMemo(() => sources.getHealthReport(), [tick])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const subCount = useMemo(() => sources.getSubscriptionCount(), [tick])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const trackedCoins = useMemo(() => sources.getTrackedCoins(), [tick])
 
   return (
     <Box flexDirection="column">

@@ -4,7 +4,7 @@ import type { CandleInterval } from './types.js'
 export const FALLBACK_COINS = ['BTC', 'ETH', 'SOL', 'HYPE', 'TAO'] as const
 
 /** Number of top coins by OI to track (after volume filter). */
-export const TOP_COINS_LIMIT = 15
+export const TOP_COINS_LIMIT = 20
 
 /** Minimum 24h notional volume ($) to qualify for tracking. */
 export const MIN_24H_VOLUME = 500_000
@@ -285,8 +285,8 @@ export const ZONE_RISK = {
 
 // ─── Exit Strategy (Section 12) ─────────────────────────────────────────────
 
-/** Default risk per trade as fraction of account (5%). Pipeline is highly selective (~5 trades/month). */
-export const DEFAULT_RISK_PERCENT = 0.05
+/** Default risk per trade as fraction of account (2%). Capped to limit max drawdown. */
+export const DEFAULT_RISK_PERCENT = 0.02
 
 /** ATR stop multipliers by trade style. */
 export const ATR_STOP_MULTIPLIER = {
@@ -297,7 +297,7 @@ export const ATR_STOP_MULTIPLIER = {
 } as const
 
 /** ATR buffer added below structure stop (Section 12.2 Method 1). */
-export const STRUCTURE_STOP_ATR_BUFFER = 1.0
+export const STRUCTURE_STOP_ATR_BUFFER = 0.7
 
 /** Maximum stop distance as fraction of entry price. Beyond this → skip. */
 export const MAX_STOP_DISTANCE_PCT = 0.10

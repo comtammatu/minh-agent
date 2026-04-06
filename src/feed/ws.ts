@@ -9,6 +9,7 @@ import { WebSocketTransport, SubscriptionClient } from '@nktkas/hyperliquid'
 import type { ISubscription } from '@nktkas/hyperliquid'
 import type { Candle, CandleInterval } from '../types.js'
 import { STALENESS_THRESHOLD_MS, WS_MAX_SUBSCRIPTIONS } from '../config.js'
+import { log } from '../lib/logger.js'
 
 // Module-level WS client (one process, one WS connection)
 let wsClient: SubscriptionClient | null = null
@@ -36,12 +37,12 @@ export function getWsClient(): SubscriptionClient {
 /** Register a subscription for centralized cleanup on closeAll(). Warns near HL 1000 limit. */
 export function registerSubscription(sub: ISubscription): void {
   if (activeSubscriptions.length >= WS_MAX_SUBSCRIPTIONS) {
-    console.log(`[WS] LIMIT — ${activeSubscriptions.length}/${WS_MAX_SUBSCRIPTIONS} subscriptions, cannot add more`)
+    log.warn('ws', `LIMIT — ${activeSubscriptions.length}/${WS_MAX_SUBSCRIPTIONS} subscriptions, cannot add more`)
     return
   }
   activeSubscriptions.push(sub)
   if (activeSubscriptions.length >= WS_MAX_SUBSCRIPTIONS * 0.8) {
-    console.log(`[WS] WARNING — ${activeSubscriptions.length}/${WS_MAX_SUBSCRIPTIONS} subscriptions (80%+ capacity)`)
+    log.warn('ws', `${activeSubscriptions.length}/${WS_MAX_SUBSCRIPTIONS} subscriptions (80%+ capacity)`)
   }
 }
 
@@ -87,7 +88,7 @@ export async function subscribeCandles(
       lastCandleTime.set(k, Date.now())
       onCandle(coin, interval, candle)
     } catch (err) {
-      console.log(`[WS] ${k}: parse error — ${err instanceof Error ? err.message : String(err)}`)
+      log.error('ws', `${k}: parse error — ${err instanceof Error ? err.message : String(err)}`)
     }
   })
 
@@ -141,7 +142,7 @@ export function checkStaleness(): void {
   for (const [k, lastTime] of lastCandleTime) {
     const silent = now - lastTime
     if (silent > STALENESS_THRESHOLD_MS) {
-      console.log(`[WARNING] ${k}: stale ${Math.round(silent / 1000)}s — no candle update`)
+      log.warn('ws', `${k}: stale ${Math.round(silent / 1000)}s — no candle update`)
     }
   }
 }

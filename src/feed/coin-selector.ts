@@ -19,6 +19,7 @@ import {
   HIP3_TOP_COINS_LIMIT,
   HIP3_MIN_24H_VOLUME,
 } from '../config.js'
+import { log } from '../lib/logger.js'
 
 /**
  * Fetch all qualifying coins from HL ranked by open interest (descending).
@@ -44,8 +45,14 @@ export async function fetchRankedCoins(
       // Skip if no asset context
       if (!ctx) continue
 
-      const oi = parseFloat(ctx.openInterest)
-      if (isNaN(oi) || oi <= 0) continue
+      const oiCoins = parseFloat(ctx.openInterest)
+      if (isNaN(oiCoins) || oiCoins <= 0) continue
+
+      const markPx = parseFloat(ctx.markPx)
+      if (isNaN(markPx) || markPx <= 0) continue
+
+      // OI in USD (openInterest is in coin units, not USD)
+      const oi = oiCoins * markPx
 
       const vol = parseFloat(ctx.dayNtlVlm)
       if (isNaN(vol) || vol < minVolume) continue
@@ -58,7 +65,7 @@ export async function fetchRankedCoins(
     return coins.map(c => c.name)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    console.log(`[COIN-SELECTOR] fetchRankedCoins failed: ${msg}`)
+    log.error('coin-sel', `fetchRankedCoins failed: ${msg}`)
     return []
   }
 }
@@ -85,6 +92,7 @@ interface MetaAndCtxsResponse {
 interface AssetCtx {
   openInterest: string
   dayNtlVlm: string
+  markPx: string
 }
 
 /**
@@ -107,7 +115,7 @@ export async function fetchHip3RankedCoins(
         body: JSON.stringify({ type: 'metaAndAssetCtxs', dex }),
       })
       if (!res.ok) {
-        console.log(`[COIN-SELECTOR] HIP-3 ${dex}: HTTP ${res.status}`)
+        log.warn('coin-sel', `HIP-3 ${dex}: HTTP ${res.status}`)
         continue
       }
       const [meta, ctxs] = (await res.json()) as [MetaAndCtxsResponse, AssetCtx[]]
@@ -118,8 +126,13 @@ export async function fetchHip3RankedCoins(
         if (asset.isDelisted) continue
         if (!ctx) continue
 
-        const oi = parseFloat(ctx.openInterest)
-        if (isNaN(oi) || oi <= 0) continue
+        const oiCoins = parseFloat(ctx.openInterest)
+        if (isNaN(oiCoins) || oiCoins <= 0) continue
+
+        const markPx = parseFloat(ctx.markPx)
+        if (isNaN(markPx) || markPx <= 0) continue
+
+        const oi = oiCoins * markPx
 
         const vol = parseFloat(ctx.dayNtlVlm)
         if (isNaN(vol) || vol < minVolume) continue
@@ -128,7 +141,7 @@ export async function fetchHip3RankedCoins(
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.log(`[COIN-SELECTOR] fetchHip3RankedCoins ${dex} failed: ${msg}`)
+      log.error('coin-sel', `fetchHip3RankedCoins ${dex} failed: ${msg}`)
     }
   }
 
@@ -193,7 +206,7 @@ export function createCoinSelector(
 
     // If native fetch failed (empty), keep current list
     if (newRanked.length === 0 && topCoins.length > 0) {
-      console.log('[COIN-SELECTOR] refresh failed — keeping current list')
+      log.warn('coin-sel', 'refresh failed — keeping current list')
       return { added: [], dropped: [] }
     }
 
@@ -215,14 +228,14 @@ export function createCoinSelector(
     const kept = allDropped.filter(c => activeCoins.has(c))
 
     if (kept.length > 0) {
-      console.log(`[COIN-SELECTOR] keeping ${kept.length} dropped coins with active setups: ${kept.join(', ')}`)
+      log.info('coin-sel', `keeping ${kept.length} dropped coins with active setups: ${kept.join(', ')}`)
     }
 
     topCoins = newTop
     hip3Coins = newHip3
 
     if (newHip3.length > 0) {
-      console.log(`[COIN-SELECTOR] HIP-3: ${newHip3.length} coins — ${newHip3.join(', ')}`)
+      log.info('coin-sel', `HIP-3: ${newHip3.length} coins — ${newHip3.join(', ')}`)
     }
 
     const result: RefreshResult = { added, dropped }
@@ -238,13 +251,11 @@ export function createCoinSelector(
       try {
         const result = await refresh()
         if (result.added.length > 0 || result.dropped.length > 0) {
-          console.log(
-            `[COIN-SELECTOR] refreshed — +${result.added.length} added, -${result.dropped.length} dropped | tracking ${getTrackedCoins().length} coins`,
-          )
+          log.info('coin-sel', `refreshed — +${result.added.length} added, -${result.dropped.length} dropped | tracking ${getTrackedCoins().length} coins`)
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        console.log(`[COIN-SELECTOR] refresh loop error: ${msg}`)
+        log.error('coin-sel', `refresh loop error: ${msg}`)
       }
     }, COIN_REFRESH_INTERVAL_MS)
   }
