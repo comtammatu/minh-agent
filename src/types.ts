@@ -62,6 +62,20 @@ export interface ActiveSetup extends Signal {
 
 // ─── Market structure ─────────────────────────────────────────────────────────
 
+/** Raw pivot high/low point detected by findPivots(). */
+export interface PivotPoint {
+  kind: 'high' | 'low'
+  price: number
+  index: number
+}
+
+export interface StructureBreak {
+  kind: 'bos' | 'choch'
+  direction: 'bullish' | 'bearish'
+  level: number
+  index: number
+}
+
 export type SwingType = 'HH' | 'HL' | 'LH' | 'LL'
 
 export interface SwingPoint {

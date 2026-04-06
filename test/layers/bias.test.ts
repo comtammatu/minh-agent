@@ -8,8 +8,7 @@
 
 import { describe, it, expect } from 'bun:test'
 import { determineBias } from '../../src/scanner/layers/bias.js'
-import type { Candle } from '../../src/types.js'
-import type { PivotPoint } from '../../src/indicators/smc.js'
+import type { Candle, PivotPoint } from '../../src/types.js'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

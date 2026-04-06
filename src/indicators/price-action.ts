@@ -5,8 +5,9 @@
  * Pure functions. Zero I/O.
  */
 
-import type { Candle } from '../types.js'
+import type { Candle, SwingPoint, SwingType } from '../types.js'
 import { atr } from './core.js'
+import { findPivots } from './smc.js'
 
 export type PAPatternName =
   | 'doji' | 'dragonfly_doji' | 'gravestone_doji'
@@ -177,4 +178,58 @@ export function detectPriceAction(
   if (io) patterns.push(io)
 
   return patterns
+}
+
+// ─── Swing classification ──────────────────────────────────────────────────────
+
+/**
+ * Classify pivot highs/lows as HH/HL/LH/LL by comparing each pivot to
+ * the previous pivot of the same type. EH/EL (equal) are omitted.
+ */
+export function classifySwings(candles: Candle[], upToIdx: number): SwingPoint[] {
+  const pivots = findPivots(candles, upToIdx, 3)
+  const out: SwingPoint[] = []
+  let lastHigh: number | null = null
+  let lastLow: number | null = null
+
+  for (const p of pivots) {
+    if (p.kind === 'high') {
+      if (lastHigh !== null && p.price !== lastHigh) {
+        const t: SwingType = p.price > lastHigh ? 'HH' : 'LH'
+        out.push({ type: t, price: p.price, index: p.index })
+      }
+      lastHigh = p.price
+    } else {
+      if (lastLow !== null && p.price !== lastLow) {
+        const t: SwingType = p.price > lastLow ? 'HL' : 'LL'
+        out.push({ type: t, price: p.price, index: p.index })
+      }
+      lastLow = p.price
+    }
+  }
+
+  return out.sort((a, b) => a.index - b.index)
+}
+
+// ─── Structural bias ───────────────────────────────────────────────────────────
+
+export function detectStructuralBias(swings: SwingPoint[]): { bias: 'bullish' | 'bearish' | 'neutral'; confidence: number } {
+  if (swings.length < 4) return { bias: 'neutral', confidence: 0 }
+
+  const window = swings.slice(-Math.min(swings.length, 10))
+  let bullish = 0, bearish = 0
+
+  for (const s of window) {
+    if (s.type === 'HH' || s.type === 'HL') bullish++
+    else if (s.type === 'LH' || s.type === 'LL') bearish++
+  }
+
+  const total = bullish + bearish
+  if (total === 0) return { bias: 'neutral', confidence: 0 }
+
+  const br = bullish / total
+  const be = bearish / total
+  if (br >= 0.6) return { bias: 'bullish', confidence: br }
+  if (be >= 0.6) return { bias: 'bearish', confidence: be }
+  return { bias: 'neutral', confidence: Math.max(br, be) }
 }

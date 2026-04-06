@@ -15,8 +15,7 @@
  * Pure function. Zero I/O.
  */
 
-import type { Candle, BiasResult } from '../../types.js'
-import type { PivotPoint, StructureBreak } from '../../indicators/smc.js'
+import type { Candle, BiasResult, PivotPoint, StructureBreak } from '../../types.js'
 import type { WyckoffResult } from '../../indicators/wyckoff.js'
 import { detectWyckoff } from '../../indicators/wyckoff.js'
 import { detectStructureBreaks } from '../../indicators/smc.js'
@@ -101,11 +100,9 @@ export function determineBias(
       bias = latestCHoCH.direction === 'bullish' ? 'long' : 'short'
       confidence = 0.5
       source = 'smc-only'
-    } else if (latestBOS) {
-      bias = latestBOS.direction === 'bullish' ? 'long' : 'short'
-      confidence = 0.4
-      source = 'smc-only'
     }
+    // BOS-only (no CHoCH, no Wyckoff) = trend continuation with no reversal
+    // confirmation. Too low quality — stay neutral rather than generate bad bias.
     // else stays neutral
   }
 
@@ -162,13 +159,18 @@ function computeHTFBias(
   return 'neutral'
 }
 
+/** Max bars to look back for spring low reference (matches trendPeriod). */
+const SPRING_LOW_LOOKBACK = 50
+
 function findSpringLow(
   candles: Candle[],
   idx: number,
   pivots: PivotPoint[],
 ): number | null {
-  // Find the lowest pivot low in recent history as spring reference
-  const lows = pivots.filter(p => p.kind === 'low' && p.index <= idx)
+  // Find the lowest pivot low within recent lookback window — not absolute historical min.
+  // Using global min makes invalidation nearly impossible (close can't go below all-time low).
+  const minIdx = idx - SPRING_LOW_LOOKBACK
+  const lows = pivots.filter(p => p.kind === 'low' && p.index <= idx && p.index >= minIdx)
   if (lows.length === 0) return null
   let minPrice = Infinity
   for (const p of lows) {

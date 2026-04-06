@@ -3,23 +3,10 @@
  * Pure functions. Zero I/O.
  */
 
-import type { Candle, FVG, OrderBlock } from '../types.js'
+import type { Candle, FVG, OrderBlock, PivotPoint, StructureBreak } from '../types.js'
 
-// ─── Internal types ────────────────────────────────────────────────────────────
-
-/** Raw pivot high/low point (used internally + by structure.ts). */
-export interface PivotPoint {
-  kind: 'high' | 'low'
-  price: number
-  index: number
-}
-
-export interface StructureBreak {
-  kind: 'bos' | 'choch'
-  direction: 'bullish' | 'bearish'
-  level: number
-  index: number
-}
+// Re-export types for backward compatibility (canonical location: types.ts)
+export type { PivotPoint, StructureBreak } from '../types.js'
 
 export interface LiquiditySweep {
   direction: 'bullish' | 'bearish'

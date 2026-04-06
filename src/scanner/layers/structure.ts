@@ -8,7 +8,7 @@
  */
 
 import type { Candle, BiasResult, StructureVerdict, SwingPoint } from '../../types.js'
-import { classifySwings, detectStructuralBias } from '../../indicators/structure.js'
+import { classifySwings, detectStructuralBias } from '../../indicators/price-action.js'
 
 /**
  * Confirm or deny the Layer 1 bias using swing structure.

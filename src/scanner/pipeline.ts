@@ -34,7 +34,7 @@ import { getOiDelta, hasDivergence } from '../feed/asset-ctx.js'
 import type { OrderFlowContext } from './layers/confirm.js'
 import { detectRegime } from '../indicators/core.js'
 import { findPivots } from '../indicators/smc.js'
-import { classifySwings } from '../indicators/structure.js'
+import { classifySwings } from '../indicators/price-action.js'
 import { determineBias } from './layers/bias.js'
 import { confirmStructure } from './layers/structure.js'
 import { findEntryZones } from './layers/zones.js'
@@ -53,6 +53,7 @@ import {
   INDICATOR_WINDOW,
   HTF_MAP,
   SIMULATED_ACCOUNT,
+  MIN_TP1_RR,
 } from '../config.js'
 import { getExchangeService } from '../execution/exchange-service.js'
 import { EventEmitter } from 'events'
@@ -237,6 +238,9 @@ export function onCandleTick(
   // First tick for this coin/tf — no previous closed candle yet
   if (prevTs === undefined) return
 
+  // 1m: store candles for entry refinement only, skip signal scan
+  if (interval === '1m') return
+
   // Fan-out to all registered strategies via StrategyRegistry
   const registry = getStrategyRegistry()
   // Fetch enough candles for the most demanding strategy (+2 for closed-candle idx)
@@ -406,11 +410,19 @@ export function runPipeline(
     divergenceWarning: hasDivergence(coin),
     signalSide: bias.bias as 'long' | 'short',
   }
-  const confirmed = confirmZones(confirmedSlice, idx, zones, orderFlow)
+  const atZoneResults = confirmZones(confirmedSlice, idx, zones, orderFlow)
 
   // L4 diagnostic detail
-  pipelineStats.l4ZonesAtZone += confirmed.length
-  pipelineStats.l4ZonesConfirmed += confirmed.filter(z => z.confirmed).length
+  pipelineStats.l4ZonesAtZone += atZoneResults.length
+  pipelineStats.l4ZonesConfirmed += atZoneResults.filter(z => z.confirmed).length
+
+  // L4 hard filter: only pass zones with volume confirmation (VSA/VP/OF/throughZone)
+  // Per spec Section 9.2: "volume im ắng → zone yếu, nên skip"
+  const confirmed = atZoneResults.filter(z => z.confirmed)
+  if (confirmed.length === 0) {
+    invalidateSetups(coin, interval, confirmedSlice, idx)
+    return
+  }
 
   // ── Layer 5: Trigger ───────────────────────────────────────────────────
   const signal = findTrigger(confirmedSlice, idx, confirmed, bias)
@@ -437,6 +449,18 @@ export function runPipeline(
     return
   }
   pipelineStats.passL5Trigger++
+
+  // ── R:R geometry gate ─────────────────────────────────────────────────
+  // Reject setups where planned R:R is below MIN_TP1_RR (1.5).
+  // With wick-based SL, most setups should pass. This catches edge cases
+  // where TP target is too close relative to SL distance.
+  const slDist = Math.abs(signal.entryPrice - signal.slPrice)
+  const tpDist = Math.abs(signal.tpPrice - signal.entryPrice)
+  const plannedRR = slDist > 0 ? tpDist / slDist : 0
+  if (plannedRR < MIN_TP1_RR) {
+    invalidateSetups(coin, interval, confirmedSlice, idx)
+    return
+  }
 
   // ── Confluence + Risk + Regime ─────────────────────────────────────────
   const bestZone = confirmed.length > 0 ? confirmed[0]! : null
