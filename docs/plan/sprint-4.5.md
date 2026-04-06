@@ -252,6 +252,7 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 | S8 | Backtest Multi-Strategy | DONE | 2026-04-06 | strategyId on BacktestTrade + simulator propagation, 8 new tests, 1113 total pass |
 | S9 | Dashboard + Telegram | DONE | 2026-04-06 | StrategySelector component + Zustand store, Journal/Positions filter, SSE strategyId, Telegram /strategy (list/pause/resume + E30 guard), 8 new tests, 1121 total pass |
 | S10 | Docs + Sprint 5 Update | DONE | 2026-04-06 | architecture.md multi-strategy diagram, sprint-5.md strategy_id refs, decisions.md V1-V8 + E25-E30 |
+| S11 | Post-sprint fixes + Paper Tracker | DONE | 2026-04-07 | PaperTracker (paper P&L + equity curve), TUI strategy panel + unrealized PnL + paper stats, agent IDLE→ENTERING direct (skip WATCHING), circuit_break in ENTERING, setup_invalidated fix, setPositionOpenCallback wire, 1072 tests pass |
 
 ---
 
@@ -290,7 +291,7 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 - [x] `decisions.md` logged with V1-V8 + E25-E30 (S10)
 
 ### Always
-- [x] `bun test --run` — ALL tests pass (Sprint 1-4 + new) [CONFIRMED] 1121 pass, 0 fail
+- [x] `bun test --run` — ALL tests pass (Sprint 1-4 + new) [CONFIRMED] 1072 pass, 0 fail (2026-04-07)
 - [x] No `any` without justification comment [CONFIRMED]
 - [x] No magic numbers — all thresholds in `config.ts` [CONFIRMED]
 - [x] Pure function boundary maintained (scanner/ and indicators/ zero I/O) [CONFIRMED]
