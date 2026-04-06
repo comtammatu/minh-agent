@@ -9,9 +9,9 @@
  * Pure function. Zero I/O.
  */
 
-import type { Candle, BiasResult, KeyZone } from '../../types.js'
-import { compileKeyZones } from '../../indicators/smc.js'
-import { ZONE_MAX_AGE } from '../../config.js'
+import type { Candle, BiasResult, KeyZone } from '../../../../types.js'
+import { compileKeyZones } from '../../../../indicators/smc.js'
+import { ZONE_MAX_AGE } from '../../../../config.js'
 
 export interface EntryZonesResult {
   zones: KeyZone[]

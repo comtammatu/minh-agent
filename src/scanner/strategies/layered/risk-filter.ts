@@ -15,9 +15,9 @@
  * Pure function. Zero I/O.
  */
 
-import type { Signal, KeyZone, RiskAssessment } from '../types.js'
-import { ZONE_RISK, DEFAULT_RISK_PERCENT, MIN_POSITION_SIZE_PCT } from '../config.js'
-import { computePositionSize } from '../agent/exits.js'
+import type { Signal, KeyZone, RiskAssessment } from '../../../types.js'
+import { ZONE_RISK, DEFAULT_RISK_PERCENT, MIN_POSITION_SIZE_PCT } from '../../../config.js'
+import { computePositionSize } from '../../../agent/exits.js'
 
 /**
  * Assess risk for a signal at a zone.

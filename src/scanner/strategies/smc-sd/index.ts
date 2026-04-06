@@ -15,14 +15,14 @@
  * Pure function — zero I/O.
  */
 
-import type { Candle, CandleInterval, Signal, PatternType, SignalSide } from '../../types.js'
-import type { IStrategy } from '../strategy.js'
-import { detectStructureBreaks, findPivots, premiumDiscount, compileKeyZones } from '../../indicators/smc.js'
-import { isAtZone } from '../layers/confirm.js'
-import { computeStructureTargets } from '../layers/trigger.js'
-import { applyRegimeModifier } from '../shared/regime.js'
-import { detectRegime, atr } from '../../indicators/core.js'
-import { detectVSA } from '../../indicators/vsa.js'
+import type { Candle, CandleInterval, Signal, PatternType, SignalSide } from '../../../types.js'
+import type { IStrategy } from '../../strategy.js'
+import { detectStructureBreaks, findPivots, premiumDiscount, compileKeyZones } from '../../../indicators/smc.js'
+import { isAtZone } from '../layered/layers/confirm.js'
+import { computeStructureTargets } from '../layered/layers/trigger.js'
+import { applyRegimeModifier } from '../../shared/regime.js'
+import { detectRegime, atr } from '../../../indicators/core.js'
+import { detectVSA } from '../../../indicators/vsa.js'
 import {
   SMC_BREAK_LOOKBACK,
   SMC_DEDUP_BARS,
@@ -30,7 +30,7 @@ import {
   MIN_CONFIDENCE,
   STRUCTURE_STOP_ATR_BUFFER,
   MIN_CANDLES_FOR_SCAN,
-} from '../../config.js'
+} from '../../../config.js'
 
 // ── Dedup: track last signal bar per coin|interval ──────────────────────────
 

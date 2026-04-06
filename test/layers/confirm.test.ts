@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'bun:test'
-import { isAtZone, confirmZones } from '../../src/scanner/layers/confirm.js'
+import { isAtZone, confirmZones } from '../../src/scanner/strategies/layered/layers/confirm.js'
 import type { Candle, KeyZone, DeltaState } from '../../src/types.js'
 
 function makeCandle(overrides: Partial<Candle> = {}): Candle {

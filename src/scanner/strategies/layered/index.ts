@@ -10,10 +10,10 @@
  * pipeline using the same IStrategy interface as future strategies.
  */
 
-import type { Candle, CandleInterval, Signal, PatternType } from '../../types.js'
-import type { IStrategy } from '../strategy.js'
-import { runLayeredPipeline, clearLayeredState } from '../pipeline.js'
-import { MIN_CANDLES_FOR_SCAN } from '../../config.js'
+import type { Candle, CandleInterval, Signal, PatternType } from '../../../types.js'
+import type { IStrategy } from '../../strategy.js'
+import { runLayeredPipeline, clearLayeredState } from './pipeline.js'
+import { MIN_CANDLES_FOR_SCAN } from '../../../config.js'
 
 export class LayeredStrategyAdapter implements IStrategy {
   readonly id = 'layered'

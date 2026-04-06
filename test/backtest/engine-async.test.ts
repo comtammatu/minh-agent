@@ -13,8 +13,8 @@ import { runBacktest, runBacktestAsync, type BacktestProgress } from '../../src/
 import type { BacktestConfig } from '../../src/backtest/types.js'
 import type { Candle, CandleInterval } from '../../src/types.js'
 import { getStrategyRegistry, resetStrategyRegistry } from '../../src/scanner/strategy.js'
-import { LayeredStrategyAdapter } from '../../src/scanner/strategies/layered-adapter.js'
-import { QuantStrategyAdapter } from '../../src/scanner/strategies/quant-adapter.js'
+import { LayeredStrategyAdapter } from '../../src/scanner/strategies/layered/index.js'
+import { QuantStrategyAdapter } from '../../src/scanner/strategies/quant/index.js'
 
 // Register strategies before any test runs
 beforeAll(() => {

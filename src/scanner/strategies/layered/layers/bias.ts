@@ -15,11 +15,11 @@
  * Pure function. Zero I/O.
  */
 
-import type { Candle, BiasResult, PivotPoint, StructureBreak } from '../../types.js'
-import type { WyckoffResult } from '../../indicators/wyckoff.js'
-import { detectWyckoff } from '../../indicators/wyckoff.js'
-import { detectStructureBreaks } from '../../indicators/smc.js'
-import { atr } from '../../indicators/core.js'
+import type { Candle, BiasResult, PivotPoint, StructureBreak } from '../../../../types.js'
+import type { WyckoffResult } from '../../../../indicators/wyckoff.js'
+import { detectWyckoff } from '../../../../indicators/wyckoff.js'
+import { detectStructureBreaks } from '../../../../indicators/smc.js'
+import { atr } from '../../../../indicators/core.js'
 
 /** HTF confidence boost when HTF bias aligns with LTF bias. */
 const HTF_ALIGN_BOOST = 0.15

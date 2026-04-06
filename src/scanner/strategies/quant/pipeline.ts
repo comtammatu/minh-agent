@@ -16,11 +16,11 @@
  * Pure function — zero I/O. Emits ActiveSetup via pipeline emitter.
  */
 
-import type { Candle, CandleInterval, ActiveSetup, SignalSide } from '../types.js'
-import { ema, rsi, atr } from '../indicators/core.js'
-import { getPipelineEmitter } from './orchestrator.js'
-import { getOrCreateStats } from './diagnostics.js'
-import { computeExpiresAtBar, setupId } from './shared/invalidation.js'
+import type { Candle, CandleInterval, ActiveSetup, SignalSide } from '../../../types.js'
+import { ema, rsi, atr } from '../../../indicators/core.js'
+import { getPipelineEmitter } from '../../orchestrator.js'
+import { getOrCreateStats } from '../../diagnostics.js'
+import { computeExpiresAtBar, setupId } from '../../shared/invalidation.js'
 import {
   QUANT_EMA_FAST,
   QUANT_EMA_SLOW,
@@ -29,7 +29,7 @@ import {
   QUANT_RSI_OVERBOUGHT,
   QUANT_ATR_SL_MULT,
   QUANT_ATR_TP_MULT,
-} from '../config.js'
+} from '../../../config.js'
 
 // ── Dedup: track last signal bar per coin to avoid duplicates ────────────────
 

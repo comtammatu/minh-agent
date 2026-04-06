@@ -13,9 +13,9 @@ import type { BacktestConfig } from '../src/backtest/types.js'
 import type { CandleInterval } from '../src/types.js'
 import { computeHTFIntervals, computeHTFWarmupMs } from '../src/backtest/data-manager.js'
 import { getStrategyRegistry } from '../src/scanner/strategy.js'
-import { LayeredStrategyAdapter } from '../src/scanner/strategies/layered-adapter.js'
-import { QuantStrategyAdapter } from '../src/scanner/strategies/quant-adapter.js'
-import { SmcSdStrategy } from '../src/scanner/strategies/smc-sd.js'
+import { LayeredStrategyAdapter } from '../src/scanner/strategies/layered/index.js'
+import { QuantStrategyAdapter } from '../src/scanner/strategies/quant/index.js'
+import { SmcSdStrategy } from '../src/scanner/strategies/smc-sd/index.js'
 
 // Configurable via CLI args: bun run scripts/run-quant-backtest.ts [months] [coins...]
 const args = process.argv.slice(2)

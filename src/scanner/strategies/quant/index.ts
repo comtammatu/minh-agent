@@ -9,10 +9,10 @@
  * pipeline using the same IStrategy interface as future strategies.
  */
 
-import type { Candle, CandleInterval, Signal, PatternType } from '../../types.js'
-import type { IStrategy } from '../strategy.js'
-import { runQuantPipeline, clearQuantState } from '../quant-pipeline.js'
-import { QUANT_EMA_SLOW } from '../../config.js'
+import type { Candle, CandleInterval, Signal, PatternType } from '../../../types.js'
+import type { IStrategy } from '../../strategy.js'
+import { runQuantPipeline, clearQuantState } from './pipeline.js'
+import { QUANT_EMA_SLOW } from '../../../config.js'
 
 export class QuantStrategyAdapter implements IStrategy {
   readonly id = 'quant'

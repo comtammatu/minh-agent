@@ -67,9 +67,9 @@ import { startBot, stopBot } from './alert/telegram/index.js'
 import { connectToAgent as connectMetrics } from './analytics/metrics-service.js'
 import { getExchangePool } from './execution/exchange-pool.js'
 import { getStrategyRegistry } from './scanner/strategy.js'
-import { LayeredStrategyAdapter } from './scanner/strategies/layered-adapter.js'
-import { QuantStrategyAdapter } from './scanner/strategies/quant-adapter.js'
-import { SmcSdStrategy } from './scanner/strategies/smc-sd.js'
+import { LayeredStrategyAdapter } from './scanner/strategies/layered/index.js'
+import { QuantStrategyAdapter } from './scanner/strategies/quant/index.js'
+import { SmcSdStrategy } from './scanner/strategies/smc-sd/index.js'
 import type { CandleInterval } from './types.js'
 
 // ── Banner (logged inside main() before TUI starts) ────────────────────────

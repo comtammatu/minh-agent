@@ -12,7 +12,7 @@
  */
 
 import { describe, test, expect, beforeEach } from 'bun:test'
-import { runQuantPipeline, clearQuantState } from '../src/scanner/quant-pipeline.js'
+import { runQuantPipeline, clearQuantState } from '../src/scanner/strategies/quant/pipeline.js'
 import { clearPipelineState, getPipelineEmitter } from '../src/scanner/orchestrator.js'
 import { getPipelineStats } from '../src/scanner/diagnostics.js'
 import type { Candle, CandleInterval, ActiveSetup } from '../src/types.js'

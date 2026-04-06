@@ -28,7 +28,7 @@ import type {
   Signal,
   ConfluenceGrade,
   MarketRegime,
-} from '../types.js'
+} from '../../../types.js'
 
 export interface ConfluenceResult {
   grade: ConfluenceGrade

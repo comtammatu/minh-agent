@@ -3,7 +3,7 @@ import { runBacktest } from '../src/backtest/engine.js'
 import type { BacktestConfig } from '../src/backtest/types.js'
 import type { CandleInterval } from '../src/types.js'
 import { getStrategyRegistry } from '../src/scanner/strategy.js'
-import { SmcSdStrategy } from '../src/scanner/strategies/smc-sd.js'
+import { SmcSdStrategy } from '../src/scanner/strategies/smc-sd/index.js'
 
 const coins = ['BTC','ETH','SOL','DOGE','HYPE','XRP','ADA','AVAX','LINK','DOT','NEAR','SUI','ARB','OP','PEPE']
 const timeframes: CandleInterval[] = ['5m','15m','1h','4h','1d']

@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'bun:test'
-import { findTrigger } from '../../src/scanner/layers/trigger.js'
+import { findTrigger } from '../../src/scanner/strategies/layered/layers/trigger.js'
 import type { Candle, BiasResult, KeyZone, ZoneConfirmation } from '../../src/types.js'
 
 function makeCandle(overrides: Partial<Candle> = {}): Candle {

@@ -14,7 +14,7 @@ import type {
 } from '../types.js'
 import { appendCandle, getCandles } from '../feed/store.js'
 import { getStrategyRegistry } from './strategy.js'
-import { clearQuantState } from './quant-pipeline.js'
+import { clearQuantState } from './strategies/quant/pipeline.js'
 import { computeExpiresAtBar, setupId } from './shared/invalidation.js'
 import { getOrCreateStats, resetPipelineStats } from './diagnostics.js'
 import {

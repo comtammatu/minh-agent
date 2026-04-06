@@ -7,12 +7,12 @@
  * Pure function. Zero I/O.
  */
 
-import type { Candle, BiasResult, Signal, ZoneConfirmation, KeyZone } from '../../types.js'
-import type { CandlePattern, PAPatternName } from '../../indicators/price-action.js'
-import { detectPriceAction } from '../../indicators/price-action.js'
-import { compileKeyZones, findPivots } from '../../indicators/smc.js'
-import { atr } from '../../indicators/core.js'
-import { MIN_TP1_RR, SL_WICK_ATR_MULT } from '../../config.js'
+import type { Candle, BiasResult, Signal, ZoneConfirmation, KeyZone } from '../../../../types.js'
+import type { CandlePattern, PAPatternName } from '../../../../indicators/price-action.js'
+import { detectPriceAction } from '../../../../indicators/price-action.js'
+import { compileKeyZones, findPivots } from '../../../../indicators/smc.js'
+import { atr } from '../../../../indicators/core.js'
+import { MIN_TP1_RR, SL_WICK_ATR_MULT } from '../../../../config.js'
 
 /** Bullish PA patterns for long bias. */
 const BULLISH_PATTERNS: Set<PAPatternName> = new Set([

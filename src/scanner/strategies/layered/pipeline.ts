@@ -13,27 +13,27 @@ import type {
   MarketRegime,
   Signal,
   ConfluenceGrade,
-} from '../types.js'
-import { getCandles } from '../feed/store.js'
-import { getLatestDelta } from '../feed/trades.js'
-import { getLatestBook } from '../feed/orderbook.js'
-import { getLatestFunding } from '../feed/funding.js'
-import { getOiDelta, hasDivergence } from '../feed/asset-ctx.js'
+} from '../../../types.js'
+import { getCandles } from '../../../feed/store.js'
+import { getLatestDelta } from '../../../feed/trades.js'
+import { getLatestBook } from '../../../feed/orderbook.js'
+import { getLatestFunding } from '../../../feed/funding.js'
+import { getOiDelta, hasDivergence } from '../../../feed/asset-ctx.js'
 import type { OrderFlowContext } from './layers/confirm.js'
-import { detectRegime } from '../indicators/core.js'
-import { findPivots } from '../indicators/smc.js'
-import { classifySwings } from '../indicators/price-action.js'
+import { detectRegime } from '../../../indicators/core.js'
+import { findPivots } from '../../../indicators/smc.js'
+import { classifySwings } from '../../../indicators/price-action.js'
 import { determineBias } from './layers/bias.js'
 import { confirmStructure } from './layers/structure.js'
 import { findEntryZones } from './layers/zones.js'
 import { confirmZones } from './layers/confirm.js'
 import { findTrigger } from './layers/trigger.js'
-import { detectPriceAction } from '../indicators/price-action.js'
+import { detectPriceAction } from '../../../indicators/price-action.js'
 import { scoreConfluence } from './confluence.js'
-import { applyRegimeModifier } from './shared/regime.js'
+import { applyRegimeModifier } from '../../shared/regime.js'
 import { assessRisk } from './risk-filter.js'
-import { isInvalidated, computeExpiresAtBar, setupId } from './shared/invalidation.js'
-import { atr } from '../indicators/core.js'
+import { isInvalidated, computeExpiresAtBar, setupId } from '../../shared/invalidation.js'
+import { atr } from '../../../indicators/core.js'
 import {
   MIN_CONFIDENCE,
   CONFLUENCE_MIN,
@@ -43,18 +43,18 @@ import {
   SIMULATED_ACCOUNT,
   MIN_TP1_RR,
   PATTERN_TTL_BARS,
-} from '../config.js'
-import { getExchangeService } from '../execution/exchange-service.js'
-import { playSound } from '../ui/sound.js'
-import { log } from '../lib/logger.js'
-import { getOrCreateStats } from './diagnostics.js'
-import { getStatusState, getActiveSetupsMap, getPipelineEmitter } from './orchestrator.js'
+} from '../../../config.js'
+import { getExchangeService } from '../../../execution/exchange-service.js'
+import { playSound } from '../../../ui/sound.js'
+import { log } from '../../../lib/logger.js'
+import { getOrCreateStats } from '../../diagnostics.js'
+import { getStatusState, getActiveSetupsMap, getPipelineEmitter } from '../../orchestrator.js'
 
 // Re-export runPipeline as runLayeredPipeline for strategy adapter
 export { runPipeline as runLayeredPipeline }
 
 // Re-export clearLayeredState for strategy adapter
-export { clearLayeredState } from './orchestrator.js'
+export { clearLayeredState } from '../../orchestrator.js'
 
 const PATTERN_TTL_BARS_LOOKUP = PATTERN_TTL_BARS
 

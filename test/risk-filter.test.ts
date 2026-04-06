@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'bun:test'
-import { assessRisk } from '../src/scanner/risk-filter.js'
+import { assessRisk } from '../src/scanner/strategies/layered/risk-filter.js'
 import type { Signal, KeyZone } from '../src/types.js'
 
 function makeSignal(entry: number, sl: number, tp: number, side: 'long' | 'short' = 'long'): Signal {
