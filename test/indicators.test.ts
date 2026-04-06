@@ -11,7 +11,7 @@ import { join } from 'node:path'
 import { sma, ema, atr, rsi, adx, volumeRatio, detectRegime } from '../src/indicators/core.js'
 import { detectFVG, scanFVGs, detectOrderBlocks } from '../src/indicators/smc.js'
 import { detectWyckoff } from '../src/indicators/wyckoff.js'
-import { buildVolumeProfile } from '../src/indicators/volume-profile.js'
+import { buildVolumeProfile } from '../src/indicators/order-flow.js'
 import { analyzeStructure } from '../src/indicators/structure.js'
 import type { Candle } from '../src/types.js'
 
