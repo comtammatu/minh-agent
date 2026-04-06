@@ -45,6 +45,9 @@ export class SmcSdStrategy implements IStrategy {
   scan(coin: string, interval: CandleInterval, candles: Candle[], idx: number): Signal | null {
     if (idx < MIN_CANDLES_FOR_SCAN) return null
 
+    // Skip 4h — underperforms on this strategy (31.8% WR in backtest)
+    if (interval === '4h') return null
+
     // ── 1. DIRECTION from BOS/CHoCH ────────────────────────────────────────
     const breaks = detectStructureBreaks(candles, idx)
     // Find the most recent break within lookback window
