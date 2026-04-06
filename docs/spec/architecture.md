@@ -288,22 +288,25 @@ types.ts (0 deps)
     │                                uses atr, detectRegime from core
     └── indicators/order-flow.ts ─── pure functions (delta, absorption)
     │
-    ├── scanner/layers/bias.ts ────── uses wyckoff, smc (BOS/CHoCH), structure
-    ├── scanner/layers/structure.ts ── uses structure (classifySwings, structuralBias)
-    ├── scanner/layers/zones.ts ───── uses structure (compileKeyZones)
-    ├── scanner/layers/confirm.ts ─── uses vsa, volume-profile, order-flow
-    └── scanner/layers/trigger.ts ─── uses price-action
+    ├── strategy/orchestrator.ts ──── onCandleTick, activeSetups, statusState
+    ├── strategy/diagnostics.ts ───── PipelineStats, formatPipelineStats
+    ├── strategy/registry.ts ──────── IStrategy interface + StrategyRegistry
+    ├── strategy/shared/regime.ts ─── applyRegimeModifier
+    ├── strategy/shared/invalidation.ts ── TTL + invalidation rules
     │
-    ├── scanner/confluence.ts ──── scoring logic (grade C/B/A/A+)
-    ├── scanner/regime.ts ─────── applyRegimeModifier
-    ├── scanner/risk-filter.ts ── assessRisk (zone distance → size/RR)
-    ├── scanner/invalidation.ts ── uses types only (unchanged)
-    └── scanner/pipeline.ts ────── orchestrates all layers + confluence + regime + risk
+    ├── strategy/strategies/layered/
+    │   ├── index.ts ──────── LayeredStrategyAdapter (wraps pipeline)
+    │   ├── pipeline.ts ───── 5-layer Wyckoff/SMC pipeline
+    │   ├── confluence.ts ─── scoring logic (grade C/B/A/A+)
+    │   ├── risk-filter.ts ── assessRisk (zone distance → size/RR)
+    │   └── layers/ ───────── bias, structure, zones, confirm, trigger
     │
-    ├── scanner/strategy.ts ──────── IStrategy interface (Sprint 4.5)
-    ├── scanner/strategy-registry.ts ── register/fan-out/activate (Sprint 4.5)
-    ├── scanner/layered-adapter.ts ─── wraps runPipeline() (Sprint 4.5)
-    └── scanner/quant-adapter.ts ──── wraps runQuantPipeline() (Sprint 4.5)
+    ├── strategy/strategies/quant/
+    │   ├── index.ts ──────── QuantStrategyAdapter
+    │   └── pipeline.ts ───── EMA trend + RSI pullback
+    │
+    └── strategy/strategies/smc-sd/
+        └── index.ts ──────── SMC + S&D Zone Bounce
     │
     ├── feed/rest.ts ──── @nktkas/hyperliquid InfoClient
     ├── feed/ws.ts ─────── @nktkas/hyperliquid SubscriptionClient
@@ -346,7 +349,7 @@ types.ts (0 deps)
     │
     ├── dashboard/ ── React + Vite + Recharts (backtest, journal, compare, mobile)
     │
-    └── index.ts ── wires feed + scanner + agent + server + telegram
+    └── index.ts ── wires feed + strategy + agent + server + telegram
 ```
 
 ## Regime Detection Decision Tree
@@ -513,10 +516,10 @@ StrategyRegistry.runAll() — fan-out to ALL registered strategies
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| `IStrategy` | `src/scanner/strategy.ts` | Interface: `scan()`, `minCandles`, `clearState()` |
-| `StrategyRegistry` | `src/scanner/strategy-registry.ts` | Register/fan-out/activate strategies |
-| `LayeredStrategyAdapter` | `src/scanner/layered-adapter.ts` | Wraps existing 5-layer pipeline |
-| `QuantStrategyAdapter` | `src/scanner/quant-adapter.ts` | Wraps EMA+RSI quant pipeline |
+| `IStrategy` | `src/strategy/registry.ts` | Interface: `scan()`, `minCandles`, `clearState()` |
+| `StrategyRegistry` | `src/strategy/registry.ts` | Register/fan-out/activate strategies |
+| `LayeredStrategyAdapter` | `src/strategy/strategies/layered/index.ts` | Wraps existing 5-layer pipeline |
+| `QuantStrategyAdapter` | `src/strategy/strategies/quant/index.ts` | Wraps EMA+RSI quant pipeline |
 | `ExchangePool` | `src/execution/exchange-pool.ts` | Per-strategy HL agent wallet routing |
 | `PortfolioRiskManager` | `src/agent/portfolio-risk.ts` | Global exposure cap, per-strategy allocation |
 | `TradingOrchestrator` | `src/agent/trading-orchestrator.ts` | Per-strategy state, coin:strategyId keying |

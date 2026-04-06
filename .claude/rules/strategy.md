@@ -1,7 +1,7 @@
 ---
-paths: src/scanner/**/*.ts
+paths: src/strategy/**/*.ts
 ---
-# Scanner Rules
+# Strategy Rules
 
 - Pure functions only — zero I/O, zero side effects
 - 5-layer pipeline: Bias → Structure → Zones → Confirm → Trigger

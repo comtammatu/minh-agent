@@ -14,7 +14,7 @@ bun test --run            # Run all tests (single run, MUST pass before done)
 ## Constraints
 
 - MUST use TypeScript strict mode. NEVER use `any` without justification comment
-- NEVER do I/O in `indicators/` or `scanner/` — pure functions only, zero side effects
+- NEVER do I/O in `indicators/` or `strategy/` — pure functions only, zero side effects
 - I/O lives at edges: `feed/` and `index.ts` only
 - MUST run `bun test --run` before marking any task complete
 - Task Contract REQUIRED for 3+ step tasks (see `.claude/rules/session-protocol.md`)
@@ -25,8 +25,8 @@ bun test --run            # Run all tests (single run, MUST pass before done)
 ## Architecture
 
 ```
-Browser → Hyperliquid REST (backfill) + WS (live) → In-memory Store → Scanner Pipeline
-Scanner: Bias → Structure → Zones → Confirm → Trigger → Confluence → Regime filter
+Browser → Hyperliquid REST (backfill) + WS (live) → In-memory Store → Strategy Pipeline
+Strategy: Bias → Structure → Zones → Confirm → Trigger → Confluence → Regime filter
 ```
 
 Runtime: Bun | SDK: @nktkas/hyperliquid | Store: In-memory Map<string, Candle[]>
@@ -34,7 +34,7 @@ Runtime: Bun | SDK: @nktkas/hyperliquid | Store: In-memory Map<string, Candle[]>
 ## Key Directories
 
 - `src/indicators/` — Pure functions: ATR, SMA, EMA, RSI, ADX, FVG, OB, BOS, VSA, Wyckoff
-- `src/scanner/` — 5-layer pipeline + confluence + regime + risk filter + invalidation
+- `src/strategy/` — Orchestrator + diagnostics + registry + strategies (layered/quant/smc-sd) + shared (regime/invalidation)
 - `src/feed/` — REST backfill, WS subscribe, in-memory store (I/O boundary)
 - `src/config.ts` — All thresholds, regime multipliers, coin/TF lists
 - `src/types.ts` — Core type definitions
