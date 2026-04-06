@@ -115,6 +115,9 @@ export const PATTERN_TTL_BARS: Record<string, number> = {
 /** How many bars back to look for a BOS/CHoCH to establish direction. */
 export const SMC_BREAK_LOOKBACK = 20
 
+/** Timeframes to skip for SMC-SD strategy (underperforms in backtest). */
+export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = ['4h']
+
 /** Minimum bars between signals on same coin/interval (dedup). */
 export const SMC_DEDUP_BARS = 5
 

@@ -44,8 +44,8 @@ export function determineBias(
   const wyckoff = detectWyckoff(candles, idx)
   const breaks = detectStructureBreaks(candles, idx)
 
-  const latestCHoCH = findLast(breaks, b => b.kind === 'choch')
-  const latestBOS = findLast(breaks, b => b.kind === 'bos')
+  const latestCHoCH = breaks.findLast(b => b.kind === 'choch')
+  const latestBOS = breaks.findLast(b => b.kind === 'bos')
 
   // ── Wyckoff + SMC conflict resolution ──────────────────────────────────────
 
@@ -148,7 +148,7 @@ function computeHTFBias(
   const htfIdx = htfCandles.length - 1
   const htfWyckoff = detectWyckoff(htfCandles, htfIdx)
   const htfBreaks = detectStructureBreaks(htfCandles, htfIdx)
-  const htfCHoCH = findLast(htfBreaks, b => b.kind === 'choch')
+  const htfCHoCH = htfBreaks.findLast(b => b.kind === 'choch')
 
   if (htfWyckoff.phase === 'accumulation' || htfWyckoff.phase === 'markup') return 'long'
   if (htfWyckoff.phase === 'distribution' || htfWyckoff.phase === 'markdown') return 'short'
@@ -177,12 +177,4 @@ function findSpringLow(
     if (p.price < minPrice) minPrice = p.price
   }
   return minPrice
-}
-
-/** Array.findLast polyfill (pure). */
-function findLast<T>(arr: T[], predicate: (item: T) => boolean): T | undefined {
-  for (let i = arr.length - 1; i >= 0; i--) {
-    if (predicate(arr[i]!)) return arr[i]!
-  }
-  return undefined
 }

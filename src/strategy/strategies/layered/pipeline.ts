@@ -260,7 +260,7 @@ export function runPipeline(
   if (existing) {
     log.info('pipeline', `↻ REPLACE | ${coin} ${interval} | ${existing.side.toUpperCase()} ${existing.type} → ${setup.side.toUpperCase()} | conf ${existing.confidence.toFixed(2)} → ${setup.confidence.toFixed(2)}`)
   }
-  logSetupAlert(coin, interval, setup, regime, bias.source, confluence, risk)
+  logSetup(coin, interval, setup, regime, bias.source, confluence, risk)
 
   // R10: Emit setup event for agent subscription
   const pipelineEmitter = getPipelineEmitter()
@@ -308,7 +308,7 @@ function countActiveSetupsFor(
   return count
 }
 
-function logSetupAlert(
+function logSetup(
   coin: string,
   interval: CandleInterval,
   setup: ActiveSetup,
@@ -358,8 +358,12 @@ function logSetupAlert(
     `${boostStr}trigger:${pattern ?? setup.type} | risk:${risk.suggestedSize}`,
   )
 
-  // S15: Sound alert for grade B+ setups
-  if (confluence.grade === 'B' || confluence.grade === 'A' || confluence.grade === 'A+') {
+  playAlertIfQualified(confluence.grade)
+}
+
+/** S15: Sound alert for grade B+ setups. */
+function playAlertIfQualified(grade: ConfluenceGrade): void {
+  if (grade === 'B' || grade === 'A' || grade === 'A+') {
     playSound()
   }
 }
