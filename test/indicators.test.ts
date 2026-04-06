@@ -12,7 +12,6 @@ import { sma, ema, atr, rsi, adx, volumeRatio, detectRegime } from '../src/indic
 import { detectFVG, scanFVGs, detectOrderBlocks } from '../src/indicators/smc.js'
 import { detectWyckoff } from '../src/indicators/wyckoff.js'
 import { buildVolumeProfile } from '../src/indicators/order-flow.js'
-import { analyzeStructure } from '../src/indicators/structure.js'
 import type { Candle } from '../src/types.js'
 
 const fixtureDir = join(import.meta.dir, 'fixtures')
@@ -163,56 +162,8 @@ describe('smc indicators', () => {
   })
 })
 
-// ── Structure ─────────────────────────────────────────────────────────────────
-
-describe('structure', () => {
-  if (!fixturesExist) {
-    it.skip('fixtures not generated', () => {})
-    return
-  }
-
-  const fixture = loadFixture<{
-    structure: {
-      bias: string
-      biasConfidence: number
-      swings: unknown[]
-      demandZones: unknown[]
-      supplyZones: unknown[]
-    }
-  }>('structure.json')
-
-  if (!fixture) {
-    it.skip('structure.json not found', () => {})
-    return
-  }
-
-  const candleFixture = loadFixture<{ candles: Candle[] }>('core.json')
-  if (!candleFixture) {
-    it.skip('core.json not found', () => {})
-    return
-  }
-
-  it('analyzeStructure returns correct bias type', () => {
-    const result = analyzeStructure(candleFixture.candles)
-    expect(['bullish', 'bearish', 'neutral']).toContain(result.bias)
-  })
-
-  it('analyzeStructure bias matches golden reference', () => {
-    const result = analyzeStructure(candleFixture.candles)
-    expect(result.bias).toBe(fixture.structure.bias)
-  })
-
-  it('analyzeStructure returns swings array', () => {
-    const result = analyzeStructure(candleFixture.candles)
-    expect(Array.isArray(result.swings)).toBe(true)
-  })
-
-  it('analyzeStructure returns demandZones and supplyZones arrays', () => {
-    const result = analyzeStructure(candleFixture.candles)
-    expect(Array.isArray(result.demandZones)).toBe(true)
-    expect(Array.isArray(result.supplyZones)).toBe(true)
-  })
-})
+// ── Structure tests removed — analyzeStructure deleted in A6 ──────────────────
+// classifySwings + detectStructuralBias now tested in test/price-action-structure.test.ts
 
 // ── Smoke tests (no fixtures needed) ─────────────────────────────────────────
 
@@ -263,8 +214,4 @@ describe('core smoke tests', () => {
     expect(result!.vah).toBeGreaterThan(result!.val)
   })
 
-  it('analyzeStructure does not throw on minimum candles', () => {
-    const candles = buildTrendCandles(60)
-    expect(() => analyzeStructure(candles)).not.toThrow()
-  })
 })

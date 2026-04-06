@@ -10,9 +10,9 @@
 import type { Candle, BiasResult, Signal, ZoneConfirmation, KeyZone } from '../../types.js'
 import type { CandlePattern, PAPatternName } from '../../indicators/price-action.js'
 import { detectPriceAction } from '../../indicators/price-action.js'
-import { compileKeyZones } from '../../indicators/structure.js'
-import { findPivots } from '../../indicators/smc.js'
-import { MIN_TP1_RR } from '../../config.js'
+import { compileKeyZones, findPivots } from '../../indicators/smc.js'
+import { atr } from '../../indicators/core.js'
+import { MIN_TP1_RR, SL_WICK_ATR_MULT } from '../../config.js'
 
 /** Bullish PA patterns for long bias. */
 const BULLISH_PATTERNS: Set<PAPatternName> = new Set([
@@ -69,14 +69,18 @@ export function findTrigger(
   const zone = bestZone.zone
   const side = bias.bias as 'long' | 'short'
 
-  // Compute entry/SL
+  // Compute entry/SL — wick-based for tighter R:R geometry
+  // SL placed just beyond candle extreme + ATR buffer, not at zone boundary.
+  // Zone boundary remains the hard invalidation level (handled by invalidation layer).
   const entry = candle.c
+  const atrVal = atr(candles, idx, 14)
+  const slBuffer = !isNaN(atrVal) ? atrVal * SL_WICK_ATR_MULT : 0
   let sl: number
 
   if (side === 'long') {
-    sl = Math.min(candle.l, zone.bottom)
+    sl = candle.l - slBuffer
   } else {
-    sl = Math.max(candle.h, zone.top)
+    sl = candle.h + slBuffer
   }
 
   // Structure-based TP targets

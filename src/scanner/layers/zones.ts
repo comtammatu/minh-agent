@@ -10,7 +10,7 @@
  */
 
 import type { Candle, BiasResult, KeyZone } from '../../types.js'
-import { compileKeyZones } from '../../indicators/structure.js'
+import { compileKeyZones } from '../../indicators/smc.js'
 import { ZONE_MAX_AGE } from '../../config.js'
 
 export interface EntryZonesResult {

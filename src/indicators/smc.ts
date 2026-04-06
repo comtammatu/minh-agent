@@ -3,7 +3,8 @@
  * Pure functions. Zero I/O.
  */
 
-import type { Candle, FVG, OrderBlock, PivotPoint, StructureBreak } from '../types.js'
+import type { Candle, FVG, KeyZone, OrderBlock, PivotPoint, StructureBreak } from '../types.js'
+import { atr } from './core.js'
 
 // Re-export types for backward compatibility (canonical location: types.ts)
 export type { PivotPoint, StructureBreak } from '../types.js'
@@ -212,6 +213,126 @@ export function detectLiquiditySweep(
   }
 
   return null
+}
+
+// ─── Key zone compilation ─────────────────────────────────────────────────────
+
+interface RawZone {
+  top: number
+  bottom: number
+  kind: 'demand' | 'supply'
+  origin: string
+  sourceIdx: number
+}
+
+function mergeAndRank(
+  raw: RawZone[],
+  kind: 'demand' | 'supply',
+  candles: Candle[],
+  upToIdx: number,
+  mergeGap: number,
+  max: number,
+): KeyZone[] {
+  if (raw.length === 0) return []
+  raw.sort((a, b) => (a.top + a.bottom) / 2 - (b.top + b.bottom) / 2)
+
+  const merged: Array<{ top: number; bottom: number; origins: string[]; touches: number; lastTouch: number; broken: boolean; latestSourceIdx: number }> = []
+  let cur = { top: raw[0]!.top, bottom: raw[0]!.bottom, origins: [raw[0]!.origin], touches: 0, lastTouch: -1, broken: false, latestSourceIdx: raw[0]!.sourceIdx }
+
+  for (let i = 1; i < raw.length; i++) {
+    const z = raw[i]!
+    const curMid = (cur.top + cur.bottom) / 2
+    const zMid = (z.top + z.bottom) / 2
+
+    if (Math.abs(curMid - zMid) <= mergeGap) {
+      cur.top = Math.max(cur.top, z.top)
+      cur.bottom = Math.min(cur.bottom, z.bottom)
+      cur.origins.push(z.origin)
+      cur.latestSourceIdx = Math.max(cur.latestSourceIdx, z.sourceIdx)
+    } else {
+      merged.push(cur)
+      cur = { top: z.top, bottom: z.bottom, origins: [z.origin], touches: 0, lastTouch: -1, broken: false, latestSourceIdx: z.sourceIdx }
+    }
+  }
+  merged.push(cur)
+
+  for (const zone of merged) {
+    for (let i = zone.latestSourceIdx + 1; i <= upToIdx; i++) {
+      const c = candles[i]!
+      const touched = kind === 'demand'
+        ? c.l <= zone.top && c.l >= zone.bottom
+        : c.h >= zone.bottom && c.h <= zone.top
+      if (touched) { zone.touches++; zone.lastTouch = i }
+      const broken = kind === 'demand' ? c.c < zone.bottom : c.c > zone.top
+      if (broken) zone.broken = true
+    }
+  }
+
+  const zones: KeyZone[] = merged
+    .filter(z => !z.broken)
+    .map(z => {
+      const sourceScore = Math.min(z.origins.length / 3, 1)
+      const recency = z.lastTouch >= 0 ? Math.min(z.lastTouch / upToIdx, 1) : 0.5
+      const touchScore = z.touches >= 2 ? 0.8 : z.touches === 1 ? 0.5 : 0.3
+      const fresh = z.touches <= 1 ? 0.2 : 0
+      const strength = Math.min(sourceScore * 0.4 + recency * 0.25 + touchScore * 0.25 + fresh, 1)
+      return {
+        type: kind,
+        top: z.top,
+        bottom: z.bottom,
+        strength,
+        origin: z.origins[0]!,
+        createdAtIdx: z.latestSourceIdx,
+      }
+    })
+
+  zones.sort((a, b) => b.strength - a.strength)
+  return zones.slice(0, max)
+}
+
+export function compileKeyZones(
+  candles: Candle[],
+  upToIdx: number,
+): { demandZones: KeyZone[]; supplyZones: KeyZone[] } {
+  if (upToIdx < 30) return { demandZones: [], supplyZones: [] }
+
+  const curATR = atr(candles, upToIdx, 14)
+  if (isNaN(curATR) || curATR === 0) return { demandZones: [], supplyZones: [] }
+
+  const thick = curATR * 0.3
+  const mergeGap = curATR * 0.5
+  const MAX_ZONES = 8
+
+  const raw: RawZone[] = []
+
+  for (const ob of detectOrderBlocks(candles, upToIdx, { lookback: 50 })) {
+    raw.push({ top: ob.top, bottom: ob.bottom, kind: ob.bullish ? 'demand' : 'supply', origin: 'order-block', sourceIdx: ob.index })
+  }
+
+  for (const p of findPivots(candles, upToIdx, 3)) {
+    if (p.kind === 'low') {
+      raw.push({ top: p.price + thick, bottom: p.price, kind: 'demand', origin: 'swing', sourceIdx: p.index })
+    } else {
+      raw.push({ top: p.price, bottom: p.price - thick, kind: 'supply', origin: 'swing', sourceIdx: p.index })
+    }
+  }
+
+  for (const fvg of scanFVGs(candles, upToIdx)) {
+    raw.push({ top: fvg.top, bottom: fvg.bottom, kind: fvg.bullish ? 'demand' : 'supply', origin: 'fvg', sourceIdx: fvg.index })
+  }
+
+  const demand = raw.filter(z => z.kind === 'demand')
+  const supply = raw.filter(z => z.kind === 'supply')
+
+  const demandZones = mergeAndRank(demand, 'demand', candles, upToIdx, mergeGap, MAX_ZONES)
+  const supplyZones = mergeAndRank(supply, 'supply', candles, upToIdx, mergeGap, MAX_ZONES)
+
+  const price = candles[upToIdx]!.c
+  const midOf = (z: KeyZone) => (z.top + z.bottom) / 2
+  demandZones.sort((a, b) => Math.abs(price - midOf(a)) - Math.abs(price - midOf(b)))
+  supplyZones.sort((a, b) => Math.abs(price - midOf(a)) - Math.abs(price - midOf(b)))
+
+  return { demandZones, supplyZones }
 }
 
 // ─── S&D re-exports (canonical location: supply-demand.ts) ────────────────────

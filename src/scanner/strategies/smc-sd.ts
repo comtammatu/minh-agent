@@ -17,8 +17,7 @@
 
 import type { Candle, CandleInterval, Signal, PatternType, SignalSide } from '../../types.js'
 import type { IStrategy } from '../strategy.js'
-import { detectStructureBreaks, findPivots, premiumDiscount } from '../../indicators/smc.js'
-import { compileKeyZones } from '../../indicators/structure.js'
+import { detectStructureBreaks, findPivots, premiumDiscount, compileKeyZones } from '../../indicators/smc.js'
 import { isAtZone } from '../layers/confirm.js'
 import { computeStructureTargets } from '../layers/trigger.js'
 import { applyRegimeModifier } from '../regime.js'
