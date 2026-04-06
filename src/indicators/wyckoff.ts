@@ -16,7 +16,7 @@ export interface WyckoffResult {
 
 // ─── Spring / UTAD event helpers ──────────────────────────────────────────────
 
-function isSpring(candles: Candle[], idx: number, lookback: number): boolean {
+export function isSpring(candles: Candle[], idx: number, lookback: number = 20): boolean {
   if (idx < lookback + 1) return false
   let rangeLow = Infinity
   for (let i = idx - lookback; i < idx; i++) {
@@ -27,7 +27,7 @@ function isSpring(candles: Candle[], idx: number, lookback: number): boolean {
   return c.l < rangeLow && c.c > rangeLow
 }
 
-function isUTAD(candles: Candle[], idx: number, lookback: number): boolean {
+export function isUTAD(candles: Candle[], idx: number, lookback: number = 20): boolean {
   if (idx < lookback + 1) return false
   let rangeHigh = -Infinity
   for (let i = idx - lookback; i < idx; i++) {
@@ -44,9 +44,10 @@ function isUTAD(candles: Candle[], idx: number, lookback: number): boolean {
  * Detect Wyckoff phase at idx.
  *
  * Decision criteria:
- *   ATR(20)/ATR(50) < 0.7 (tight range):
- *     trendSlope < -0.02 → accumulation (optionally + spring)
- *     trendSlope > +0.02 → distribution (optionally + utad)
+ *   ATR(20)/ATR(50) < 0.7 (tight range = consolidation):
+ *     Current slope flat (|trendSlope| < 0.02) + prior slope < -0.02 → accumulation
+ *     Current slope flat (|trendSlope| < 0.02) + prior slope > +0.02 → distribution
+ *     (Accumulation = sideway AFTER downtrend; Distribution = sideway AFTER uptrend)
  *   ATR(20)/ATR(50) > 1.2 (expanding range):
  *     trendSlope > +0.02 → markup
  *     trendSlope < -0.02 → markdown
@@ -59,7 +60,8 @@ export function detectWyckoff(
   const rp = params.rangePeriod ?? 20
   const tp = params.trendPeriod ?? 50
 
-  if (idx < tp) return { phase: null, confidence: 0, event: null }
+  // Need 2× trendPeriod: current window + prior window for trend history
+  if (idx < tp * 2) return { phase: null, confidence: 0, event: null }
 
   const atrShort = atr(candles, idx, rp)
   const atrLong = atr(candles, idx, tp)
@@ -67,11 +69,20 @@ export function detectWyckoff(
 
   const atrRatio = atrShort / atrLong
 
+  // Current slope: SMA change over recent rangePeriod bars
   const smaLong = sma(candles, idx, tp)
   const smaPrev = sma(candles, idx - rp, tp)
   if (isNaN(smaLong) || isNaN(smaPrev) || smaPrev === 0) return { phase: null, confidence: 0, event: null }
-
   const trendSlope = (smaLong - smaPrev) / smaPrev
+
+  // Prior slope: SMA change over the window BEFORE the current consolidation
+  // This tells us what trend preceded the current tight range
+  const smaPriorEnd = sma(candles, idx - rp, tp)
+  const smaPriorStart = sma(candles, idx - rp * 2, tp)
+  const priorSlope = (!isNaN(smaPriorEnd) && !isNaN(smaPriorStart) && smaPriorStart !== 0)
+    ? (smaPriorEnd - smaPriorStart) / smaPriorStart
+    : 0
+
   const volR = volumeRatio(candles, idx, rp)
   const volDecreasing = !isNaN(volR) && volR < 0.8
   const volSpike = !isNaN(volR) && volR > 2.0
@@ -81,17 +92,22 @@ export function detectWyckoff(
   let event: WyckoffEvent | null = null
 
   if (atrRatio < 0.7) {
-    if (trendSlope < -0.02) {
+    // Tight range (consolidation). Need FLAT current slope + directional PRIOR slope.
+    const isFlat = Math.abs(trendSlope) < 0.02
+    if (isFlat && priorSlope < -0.02) {
+      // Sideway after downtrend → accumulation (smart money buying quietly)
       phase = 'accumulation'
       confidence = 0.6
       if (volDecreasing) confidence += 0.15
       if (isSpring(candles, idx, rp)) { confidence += 0.2; event = 'spring' }
-    } else if (trendSlope > 0.02) {
+    } else if (isFlat && priorSlope > 0.02) {
+      // Sideway after uptrend → distribution (smart money selling quietly)
       phase = 'distribution'
       confidence = 0.6
       if (volDecreasing) confidence += 0.15
       if (isUTAD(candles, idx, rp)) { confidence += 0.2; event = 'utad' }
     }
+    // Not flat or no prior trend → phase stays null (no Wyckoff phase detected)
   } else if (atrRatio > 1.2) {
     if (trendSlope > 0.02) {
       phase = 'markup'
