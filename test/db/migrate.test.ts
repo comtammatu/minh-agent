@@ -89,26 +89,23 @@ describe('runMigrations', () => {
     expect(result.length).toBe(1)
   })
 
-  it('orders table has correct constraints', async () => {
+  it('orders table has CHECK on side (long|short) — verified via catalog, no failing INSERT', async () => {
     if (!dbAvailable) return
 
-    // Insert valid order
-    await sql`
-      INSERT INTO orders (coin, side, type, price, size)
-      VALUES ('BTC', 'long', 'market', 50000, 0.1)
+    const rows = await sql<{ def: string }[]>`
+      SELECT pg_get_constraintdef(c.oid) AS def
+      FROM pg_constraint c
+      JOIN pg_class t ON c.conrelid = t.oid
+      JOIN pg_namespace n ON t.relnamespace = n.oid
+      WHERE n.nspname = 'public' AND t.relname = 'orders' AND c.contype = 'c'
     `
-
-    // Invalid side should fail
-    let threw = false
-    try {
-      await sql`
-        INSERT INTO orders (coin, side, type, price, size)
-        VALUES ('BTC', 'invalid', 'market', 50000, 0.1)
-      `
-    } catch {
-      threw = true
-    }
-    expect(threw).toBe(true)
+    const sideCheck = rows.some(
+      r =>
+        r.def.includes('side') &&
+        r.def.toLowerCase().includes('long') &&
+        r.def.toLowerCase().includes('short'),
+    )
+    expect(sideCheck).toBe(true)
   })
 
   it('pnl_hourly materialized view exists', async () => {

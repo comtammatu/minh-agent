@@ -18,6 +18,48 @@ import type {
   DailyPerfRow,
 } from './types.js'
 
+const ANALYTICS_MATVIEWS = [
+  'daily_performance',
+  'pattern_performance',
+  'pnl_hourly',
+] as const
+
+type AnalyticsMatviewName = (typeof ANALYTICS_MATVIEWS)[number]
+
+/** Matviews from 003/001 are created WITH NO DATA until first refresh; CONCURRENTLY is invalid until then. */
+async function refreshMatviewPlain(name: AnalyticsMatviewName): Promise<void> {
+  switch (name) {
+    case 'daily_performance':
+      await sql`REFRESH MATERIALIZED VIEW daily_performance`
+      break
+    case 'pattern_performance':
+      await sql`REFRESH MATERIALIZED VIEW pattern_performance`
+      break
+    case 'pnl_hourly':
+      await sql`REFRESH MATERIALIZED VIEW pnl_hourly`
+      break
+    default: {
+      const _exhaustive: never = name
+      void _exhaustive
+    }
+  }
+}
+
+/** Avoid REFRESH CONCURRENTLY while relispopulated is false (prevents server ERROR logs). */
+async function ensureAnalyticsMatviewsPopulated(): Promise<void> {
+  for (const name of ANALYTICS_MATVIEWS) {
+    const rows = await sql<{ populated: boolean }[]>`
+      SELECT c.relispopulated AS populated
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind = 'm' AND c.relname = ${name}
+    `
+    if (rows[0] && !rows[0].populated) {
+      await refreshMatviewPlain(name)
+    }
+  }
+}
+
 // ─── Read: Closed Trades ─────────────────────────────────────────────────────
 
 /**
@@ -149,13 +191,12 @@ export async function getPatternPerformance(since?: Date): Promise<PatternPerfRo
  */
 export async function refreshViews(): Promise<void> {
   try {
-    // Try CONCURRENTLY first (non-blocking, requires unique index + populated)
+    await ensureAnalyticsMatviewsPopulated()
     await sql`REFRESH MATERIALIZED VIEW CONCURRENTLY daily_performance`
     await sql`REFRESH MATERIALIZED VIEW CONCURRENTLY pattern_performance`
     await sql`REFRESH MATERIALIZED VIEW CONCURRENTLY pnl_hourly`
     log.debug('metrics-repo', 'Matviews refreshed (CONCURRENTLY)')
   } catch {
-    // First refresh after creation (WITH NO DATA) can't use CONCURRENTLY
     try {
       await sql`REFRESH MATERIALIZED VIEW daily_performance`
       await sql`REFRESH MATERIALIZED VIEW pattern_performance`

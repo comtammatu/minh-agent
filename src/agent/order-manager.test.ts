@@ -137,6 +137,11 @@ describe('OrderManager', () => {
     })
   })
 
+  it('getOrder returns null for malformed order ids without hitting DB', async () => {
+    expect(await om.getOrder('abc-123')).toBeNull()
+    expect(await om.getOrder('not-a-uuid')).toBeNull()
+  })
+
   // ── Cancel ───────────────────────────────────────────────────────────
 
   describe('cancelOrder', () => {

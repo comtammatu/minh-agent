@@ -24,6 +24,7 @@ import { handlers } from './trading-agent.js'
 import { runAllChecks, prunePnlHistory } from './circuit-breakers.js'
 import { shouldBlockCorrelatedEntry } from './correlation-guard.js'
 import { checkPortfolioEntry, type PortfolioPosition } from './portfolio-risk.js'
+import { DEFAULT_RISK_PERCENT } from '../config.js'
 import { log } from '../lib/logger.js'
 
 /** Default strategy ID for backward compatibility (single-strategy mode). */
@@ -163,8 +164,8 @@ export class TradingAgent {
     // Portfolio risk check: block place_order if over-exposed (S6)
     const filteredActions = this.filterByPortfolioRisk(result.actions, coin, strategyId, ctx)
     if (filteredActions !== result.actions) {
-      // place_order was blocked — revert to WATCHING
-      ctx.state = prevState === 'IDLE' ? 'WATCHING' : prevState
+      // place_order was blocked — stay IDLE when entry was direct from IDLE (no watch/activeSetup)
+      ctx.state = prevState === 'IDLE' ? 'IDLE' : prevState
       result.nextState = ctx.state
     }
 
@@ -548,7 +549,7 @@ export class TradingAgent {
     const placeAction = actions.find(a => a.type === 'place_order')
     // Use a conservative estimate: account equity × risk per trade as proposed notional
     // Real notional will be computed by PositionSizer in S7, but we need an estimate here
-    const proposedNotional = this.accountEquity * 0.05  // DEFAULT_RISK_PERCENT from config
+    const proposedNotional = this.accountEquity * DEFAULT_RISK_PERCENT
 
     const check = checkPortfolioEntry({
       positions: portfolioPositions,
@@ -585,7 +586,7 @@ export class TradingAgent {
         positions.push({
           coin: ctx.coin,
           strategyId: ctx.strategyId,
-          notionalValue: this.accountEquity * 0.05,
+          notionalValue: this.accountEquity * DEFAULT_RISK_PERCENT,
         })
       }
     }

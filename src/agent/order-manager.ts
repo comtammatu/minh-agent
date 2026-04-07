@@ -54,6 +54,11 @@ import { DEFAULT_RISK_PERCENT, SIMULATED_ACCOUNT, TARGET_MARGIN_PCT } from '../c
 /** Default strategy ID for backward compatibility (single-strategy mode). */
 const DEFAULT_STRATEGY = 'layered'
 
+/** `orders.id` is UUID — reject malformed strings before querying to avoid PostgreSQL ERROR logs. */
+function isValidOrderUuid(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+}
+
 // ─── Cloid Generation ───────────────────────────────────────────────────────
 
 /** Generate a 128-bit hex client order ID for HL idempotency. */
@@ -245,6 +250,9 @@ async function getActiveOrdersForCoinAndStrategy(
 
 /** Get order by ID. */
 async function getOrderById(orderId: string): Promise<Order | null> {
+  if (!isValidOrderUuid(orderId)) {
+    return null
+  }
   const rows = await sql`SELECT * FROM orders WHERE id = ${orderId} LIMIT 1`
   const first = rows[0]
   return first ? rowToOrder(first as Record<string, unknown>) : null
