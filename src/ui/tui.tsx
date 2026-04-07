@@ -21,7 +21,8 @@ import type { StatusSnapshot } from '../strategy/orchestrator.js'
 import { formatAction } from './terminal.js'
 import { PAPER_TRADE, WS_MAX_SUBSCRIPTIONS, TIMEFRAMES, MIN_CANDLES_FOR_SCAN } from '../config.js'
 import { candleCount } from '../feed/store.js'
-import type { CandleInterval } from '../types.js'
+import type { CandleInterval, ActiveSetup } from '../types.js'
+import type { InvalidationBridgeStats } from '../agent/invalidation-bridge.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -48,6 +49,9 @@ export interface TuiDataSources {
   getTrackedCoins: () => string[]
   getPaperStats: () => PaperStats | null
   getAssetPrice: (coin: string) => AssetPrice | null
+  getActiveSetups: () => ActiveSetup[]
+  /** Invalidation bridge: matched vs skipped per strategy (live session). */
+  getInvalidationStats: () => InvalidationBridgeStats
 }
 
 // ─── State (module-level for appendSignal + backfill progress) ─────────────
@@ -69,6 +73,48 @@ const BORDER_COLOR = 'gray'
 const TITLE_COLOR = 'white'
 const ACCENT = 'cyan'
 const DIM = 'gray'
+
+/**
+ * Split vertical space between Positions / Watchlist / Tape from terminal height.
+ * - Tall terminals → more rows for Watchlist (scan surface), modest Positions.
+ * - Tape stays capped so it never dominates.
+ */
+function computeTuiLayout(termRows: number): {
+  positionsRowsPerCol: number
+  watchlistRowsPerCol: number
+  tapeLines: number
+} {
+  // Header + Account/Strategies/Buddy/System row (tallest column ~Buddy): conservative
+  const RESERVED_ABOVE = 16
+  // Three stacked panels each: title + top/bottom border ≈ +3 lines vs content
+  const PANEL_CHROME = 9
+
+  const contentBudget = Math.max(10, termRows - RESERVED_ABOVE - PANEL_CHROME)
+
+  let tapeLines = Math.max(3, Math.min(8, Math.round(contentBudget * 0.2)))
+
+  const pair = contentBudget - tapeLines
+  let watchlistRowsPerCol = Math.max(4, Math.min(24, Math.round(pair * 0.58)))
+  let positionsRowsPerCol = Math.max(3, Math.min(10, Math.round(pair * 0.38)))
+
+  let total = positionsRowsPerCol + watchlistRowsPerCol + tapeLines
+  if (total > contentBudget) {
+    let over = total - contentBudget
+    const wShrink = Math.min(watchlistRowsPerCol - 4, over)
+    watchlistRowsPerCol -= wShrink
+    over -= wShrink
+    if (over > 0) {
+      const pShrink = Math.min(positionsRowsPerCol - 3, over)
+      positionsRowsPerCol -= pShrink
+      over -= pShrink
+    }
+    if (over > 0) {
+      tapeLines = Math.max(3, tapeLines - over)
+    }
+  }
+
+  return { positionsRowsPerCol, watchlistRowsPerCol, tapeLines }
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -246,19 +292,46 @@ const SystemPanel = memo(function SystemPanel({ report, subCount }: {
 
 // ─── Positions ──────────────────────────────────────────────────────────────
 
-const PositionsPanel = memo(function PositionsPanel({ positions, getAssetPrice }: {
+const PositionsPanel = memo(function PositionsPanel({ positions, getAssetPrice, rowsPerCol }: {
   positions: Array<{ coin: string; side: 'long' | 'short'; currentSize: number; entryPrice: number; slPrice: number; tpPrice: number; strategyId: string }>
   getAssetPrice: (coin: string) => AssetPrice | null
+  /** Max rows rendered per column to prevent layout breakout. */
+  rowsPerCol: number
 }) {
-  if (positions.length === 0) {
+  const [page, setPage] = useState(0) // 0 = first page
+  const total = positions.length
+  const pageSize = Math.max(2, rowsPerCol * 2)
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  // [ = prev page, ] = next page (avoids conflict with Tape ↑↓)
+  useInput((input) => {
+    if (input === '[') setPage(p => Math.max(0, p - 1))
+    if (input === ']') setPage(p => Math.min(p + 1, totalPages - 1))
+  })
+
+  // Clamp page when positions shrink (e.g. position closed)
+  const clampedPage = Math.min(page, totalPages - 1)
+
+  if (total === 0) {
     return (
       <Panel title="Positions">
-        <Text color={DIM}> No open positions</Text>
+        <Text color={DIM}>No open positions</Text>
       </Panel>
     )
   }
 
-  const PC = { coin: 12, side: 6, size: 10, entry: 10, sl: 10, tp: 10, upnl: 10 }
+  const startIdx = clampedPage * pageSize
+  const pagePositions = positions.slice(startIdx, startIdx + pageSize)
+  const mid = Math.min(rowsPerCol, Math.ceil(pagePositions.length / 2))
+  const left = pagePositions.slice(0, mid)
+  const right = pagePositions.slice(mid, mid + rowsPerCol)
+
+  const pageInfo = totalPages > 1
+    ? ` [/]  ${clampedPage + 1}/${totalPages}`
+    : ''
+  const rangeEnd = Math.min(startIdx + pageSize, total)
+
+  const PC = { coin: 12, side: 6, entry: 10, sl: 10, tp: 10, upnl: 10 }
   const header = (
     <Box>
       <Text color={DIM}>{'COIN'.padEnd(PC.coin)} {'SIDE'.padEnd(PC.side)} {'ENTRY'.padEnd(PC.entry)} {'SL'.padEnd(PC.sl)} {'TP'.padEnd(PC.tp)} {'UPNL'.padEnd(PC.upnl)} STRATEGY</Text>
@@ -279,24 +352,21 @@ const PositionsPanel = memo(function PositionsPanel({ positions, getAssetPrice }
         <Text color={ACCENT}>{formatPrice(p.entryPrice).padEnd(PC.entry)} </Text>
         <Text color="red">{formatPrice(p.slPrice).padEnd(PC.sl)} </Text>
         <Text color="green">{formatPrice(p.tpPrice).padEnd(PC.tp)} </Text>
-        <Text color={upnl == null ? undefined : upnl >= 0 ? 'green' : 'red'}>{upnlStr.padEnd(PC.upnl)} </Text>
+        <Text {...(upnl != null ? { color: upnl >= 0 ? 'green' as const : 'red' as const } : {})}>{upnlStr.padEnd(PC.upnl)} </Text>
         <Text color={DIM}>{p.strategyId}</Text>
       </Box>
     )
   }
-  const mid = Math.ceil(positions.length / 2)
-  const left = positions.slice(0, mid)
-  const right = positions.slice(mid)
   const renderColumn = (rows: typeof positions, label: string) => (
-    <Panel title={label} width="50%">
+    <Panel title={label} width="50%" height={rowsPerCol + 3} flexShrink={0}>
       {header}
       {rows.map(renderRow)}
     </Panel>
   )
   return (
     <Box>
-      {renderColumn(left, `Positions 1-${mid} (${positions.length})`)}
-      {renderColumn(right, `Positions ${mid + 1}-${positions.length}`)}
+      {renderColumn(left, `Positions ${startIdx + 1}-${startIdx + mid} (${total})${pageInfo}`)}
+      {renderColumn(right, `Positions ${startIdx + mid + 1}-${rangeEnd}`)}
     </Box>
   )
 })
@@ -376,11 +446,10 @@ function tfCellText(snap: TFSnapshot | undefined): { label: string; color: 'gree
 }
 
 function formatPrice(price: number): string {
-  if (price >= 10000) return price.toFixed(0)
-  if (price >= 100) return price.toFixed(1)
-  if (price >= 1) return price.toFixed(2)
-  if (price >= 0.01) return price.toFixed(4)
-  return price.toFixed(6)
+  if (price <= 0) return '0'
+  const exp = Math.floor(Math.log10(price))
+  const decimals = Math.max(0, Math.min(8, 4 - exp))
+  return price.toFixed(decimals)
 }
 
 function formatFunding(rate: number): string {
@@ -409,37 +478,48 @@ function CoinRow({ coin, info }: { coin: string; info: CoinInfo | undefined }) {
   return (
     <Box>
       <Text bold>{coin.padEnd(COL.coin)} </Text>
-      <Text bold={info.grade.startsWith('A')} color={gradeColor(info.grade)}>{info.grade.padEnd(COL.grade)} </Text>
+      <Text bold={info.grade.startsWith('A')} {...(gradeColor(info.grade) != null ? { color: gradeColor(info.grade) } : {})}>{info.grade.padEnd(COL.grade)} </Text>
       <Text>{String(info.setups).padEnd(COL.setups)} </Text>
       <Text color={ACCENT}>{priceStr} </Text>
-      <Text color={info.funding != null ? fundingColor(info.funding) : undefined}>{fundStr} </Text>
+      <Text {...(info.funding != null && fundingColor(info.funding) != null ? { color: fundingColor(info.funding) } : {})}>{fundStr} </Text>
       {DISPLAY_TFS.map(tf => {
         const { label, color } = tfCellText(info.tfs[tf])
-        return <Text key={tf} color={color}>{label}</Text>
+        return <Text key={tf} {...(color != null ? { color } : {})}>{label}</Text>
       })}
     </Box>
   )
 }
 
-const WatchlistColumn = memo(function WatchlistColumn({ title, coins, byCoin }: {
+const WatchlistColumn = memo(function WatchlistColumn({ title, coins, byCoin, rowsPerCol }: {
   title: string
   coins: string[]
   byCoin: Map<string, CoinInfo>
+  rowsPerCol: number
 }) {
+  const visible = coins.slice(0, rowsPerCol)
+  const hidden = Math.max(0, coins.length - visible.length)
   return (
-    <Panel title={title} width="50%">
+    <Panel title={title} width="50%" height={rowsPerCol + 3} flexShrink={0}>
       <Box>
         <Text color={DIM}>{COIN_HEADER}</Text>
       </Box>
-      {coins.map((coin: string) => (
+      {visible.map((coin: string) => (
         <CoinRow key={coin} coin={coin} info={byCoin.get(coin)} />
       ))}
+      {hidden > 0 && <Text color={DIM}>… +{hidden} more</Text>}
     </Panel>
   )
 })
 
-const WatchlistPanel = memo(function WatchlistPanel({ statuses, trackedCoins, getAssetPrice }: { statuses: StatusSnapshot[]; trackedCoins: string[]; getAssetPrice: (coin: string) => AssetPrice | null }) {
+const WatchlistPanel = memo(function WatchlistPanel({ statuses, trackedCoins, getAssetPrice, rowsPerCol }: {
+  statuses: StatusSnapshot[]
+  trackedCoins: string[]
+  getAssetPrice: (coin: string) => AssetPrice | null
+  /** Max rows rendered per column to prevent layout breakout. */
+  rowsPerCol: number
+}) {
   const byCoin = useMemo(() => aggregateCoins(statuses, getAssetPrice), [statuses, getAssetPrice])
+  const [page, setPage] = useState(0)
 
   if (trackedCoins.length === 0) {
     return (
@@ -454,14 +534,41 @@ const WatchlistPanel = memo(function WatchlistPanel({ statuses, trackedCoins, ge
     )
   }
 
-  const mid = Math.ceil(trackedCoins.length / 2)
-  const left = trackedCoins.slice(0, mid)
-  const right = trackedCoins.slice(mid)
+  const pageSize = Math.max(2, rowsPerCol * 2)
+  const total = trackedCoins.length
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  // { = prev page, } = next page (avoids conflict with Tape ↑↓ and Positions [ ])
+  useInput((input) => {
+    if (input === '{') setPage(p => Math.max(0, p - 1))
+    if (input === '}') setPage(p => Math.min(p + 1, totalPages - 1))
+  })
+
+  const clampedPage = Math.min(page, totalPages - 1)
+  const startIdx = clampedPage * pageSize
+  const pageCoins = trackedCoins.slice(startIdx, startIdx + pageSize)
+
+  const mid = Math.min(rowsPerCol, Math.ceil(pageCoins.length / 2))
+  const left = pageCoins.slice(0, mid)
+  const right = pageCoins.slice(mid, mid + rowsPerCol)
+
+  const pageInfo = totalPages > 1 ? ` {}/  ${clampedPage + 1}/${totalPages}` : ''
+  const rangeEnd = Math.min(startIdx + pageSize, total)
 
   return (
     <Box>
-      <WatchlistColumn title={`Watchlist 1-${mid} (${trackedCoins.length})`} coins={left} byCoin={byCoin} />
-      <WatchlistColumn title={`Watchlist ${mid + 1}-${trackedCoins.length}`} coins={right} byCoin={byCoin} />
+      <WatchlistColumn
+        title={`Watchlist ${startIdx + 1}-${startIdx + mid} (${total})${pageInfo}`}
+        coins={left}
+        byCoin={byCoin}
+        rowsPerCol={rowsPerCol}
+      />
+      <WatchlistColumn
+        title={`Watchlist ${startIdx + mid + 1}-${rangeEnd}`}
+        coins={right}
+        byCoin={byCoin}
+        rowsPerCol={rowsPerCol}
+      />
     </Box>
   )
 })
@@ -475,7 +582,7 @@ interface StrategySummary {
   setupCount: number
 }
 
-function aggregateStrategies(snapshot: AgentSnapshot, statuses: StatusSnapshot[]): StrategySummary[] {
+function aggregateStrategies(snapshot: AgentSnapshot, activeSetups: ActiveSetup[]): StrategySummary[] {
   const byStrategy = new Map<string, StrategySummary>()
 
   for (const [, coin] of Object.entries(snapshot.coins)) {
@@ -489,45 +596,58 @@ function aggregateStrategies(snapshot: AgentSnapshot, statuses: StatusSnapshot[]
     if (coin.state !== 'IDLE') s.activeCoins++
   }
 
-  // Count setups from statuses
-  for (const st of statuses) {
-    if (st.activeCount > 0) {
-      // Try to find matching strategy — use 'layered' as default
-      const sid = 'layered'
-      let s = byStrategy.get(sid)
-      if (!s) {
-        s = { strategyId: sid, totalCoins: 0, activeCoins: 0, setupCount: 0 }
-        byStrategy.set(sid, s)
-      }
-      s.setupCount += st.activeCount
+  // Count current active setups per strategy.
+  // Setup IDs are formatted as 'strategyId:coin|interval|type' — parse strategyId from prefix.
+  for (const setup of activeSetups) {
+    const sid = setup.id.split(':')[0] ?? 'unknown'
+    let s = byStrategy.get(sid)
+    if (!s) {
+      s = { strategyId: sid, totalCoins: 0, activeCoins: 0, setupCount: 0 }
+      byStrategy.set(sid, s)
     }
+    s.setupCount++
   }
 
   return Array.from(byStrategy.values())
 }
 
-const StrategyPanel = memo(function StrategyPanel({ snapshot, statuses }: {
+const StrategyPanel = memo(function StrategyPanel({ snapshot, activeSetups, invStats }: {
   snapshot: AgentSnapshot
-  statuses: StatusSnapshot[]
+  activeSetups: ActiveSetup[]
+  invStats: InvalidationBridgeStats
 }) {
-  const strategies = useMemo(() => aggregateStrategies(snapshot, statuses), [snapshot, statuses])
+  const strategies = useMemo(() => aggregateStrategies(snapshot, activeSetups), [snapshot, activeSetups])
 
   return (
     <Panel title="Strategies" flexGrow={1}>
       {strategies.length === 0 ? (
         <Text color={DIM}>No strategies</Text>
       ) : (
-        strategies.map(s => (
-          <Box key={s.strategyId} justifyContent="space-between">
-            <Text bold color={ACCENT}>{s.strategyId.slice(0, 10)}</Text>
-            <Text>
-              <Text color={s.activeCoins > 0 ? 'cyan' : DIM}>{s.activeCoins}</Text>
-              <Text color={DIM}>/{s.totalCoins} </Text>
-              {s.setupCount > 0 && <Text color="yellow">{s.setupCount} setups</Text>}
-              {s.setupCount === 0 && <Text color={DIM}>0 setups</Text>}
-            </Text>
-          </Box>
-        ))
+        <>
+          {strategies.map(s => {
+            const inv = invStats.byStrategy[s.strategyId]
+            const m = inv?.matched ?? 0
+            const sk = inv?.skipped ?? 0
+            return (
+              <Box key={s.strategyId} justifyContent="space-between">
+                <Text bold color={ACCENT}>{s.strategyId.slice(0, 10)}</Text>
+                <Text>
+                  <Text color={s.activeCoins > 0 ? 'cyan' : DIM}>{s.activeCoins}</Text>
+                  <Text color={DIM}>/{s.totalCoins} </Text>
+                  {s.setupCount > 0 && <Text color="yellow">{s.setupCount} setups</Text>}
+                  {s.setupCount === 0 && <Text color={DIM}>0 setups</Text>}
+                  <Text color={DIM}> | inv </Text>
+                  <Text color="green">{'\u2713'}{m}</Text>
+                  <Text color={DIM}> </Text>
+                  <Text color="yellow">{'\u2717'}{sk}</Text>
+                </Text>
+              </Box>
+            )
+          })}
+          {invStats.parseFailed > 0 && (
+            <Text color="yellow">inv parse err: {invStats.parseFailed}</Text>
+          )}
+        </>
       )}
     </Panel>
   )
@@ -549,55 +669,53 @@ function getBuddyMood(snapshot: AgentSnapshot, positions: number, dailyPnl: numb
   return 'idle'
 }
 
-const BUDDY_SPRITES: Record<BuddyMood, string[]> = {
+// Each mood has multiple frames for animation (outer = frames, inner = 5 sprite lines)
+const BUDDY_SPRITES: Record<BuddyMood, string[][]> = {
   idle: [
-    '   /\\_/\\  ',
-    '  ( o.o ) ',
-    '   > ^ <  ',
-    '  /|   |\\ ',
-    '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 ',
+    // F0: eyes open (shown 9/10 ticks → blink every ~1s)
+    ['   /\\_/\\  ', '  ( o.o ) ', '   > ^ <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
+    // F1: blink
+    ['   /\\_/\\  ', '  ( -.- ) ', '   > ^ <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
   ],
   scanning: [
-    '   /\\_/\\  ',
-    '  ( \u25C9.\u25C9 ) ',
-    '   > ^ <  ',
-    '  /| ~ |\\ ',
-    '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 ',
+    // 4-frame eye scan: forward → right → forward → left (400ms cycle)
+    ['   /\\_/\\  ', '  ( \u25C9.\u25C9 ) ', '   > ^ <  ', '  /| ~ |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
+    ['   /\\_/\\  ', '  (  .\u25C9@) ', '   > ~ <  ', '  /| ~ |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
+    ['   /\\_/\\  ', '  ( \u25C9.\u25C9 ) ', '   > ^ <  ', '  /| ~ |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
+    ['   /\\_/\\  ', '  (@\u25C9.  ) ', '   > ~ <  ', '  /| ~ |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
   ],
   signal: [
-    '   /\\_/\\  ',
-    '  ( \u2727.\u2727 ) ',
-    '   > \u2605 <  ',
-    ' \u26A1/|   |\\ ',
-    '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 ',
+    // 4-frame sparkle flash (400ms cycle)
+    ['   /\\_/\\  ', '  ( \u2727.\u2727 ) ', '   > \u2605 <  ', ' \u26A1/|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
+    ['   /\\_/\\  ', '  ( \u2605.\u2605 ) ', '   > \u2727 <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
+    ['   /\\_/\\  ', '  ( \u2727.\u2727 ) ', '   > \u2605 <  ', ' \u26A1/|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
+    ['   /\\_/\\  ', '  ( *.* ) ', '   > * <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
   ],
   profit: [
-    '   /\\_/\\  ',
-    '  ( ^.^ ) ',
-    '   > w <  ',
-    ' \u2728/|   |\\ ',
-    '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 ',
+    // 4-frame happy bounce (400ms cycle)
+    ['   /\\_/\\  ', '  ( ^.^ ) ', '   > w <  ', ' \u2728/|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
+    ['   /\\_/\\  ', '  ( ^o^ ) ', '   > W <  ', ' \u2728/|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
+    ['   /\\_/\\  ', '  ( ^.^ ) ', '   > w <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
+    ['   /\\_/\\  ', '  ( ^v^ ) ', '   > w <  ', ' \u2728/|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
   ],
   loss: [
-    '   /\\_/\\  ',
-    '  ( ;.; ) ',
-    '   > n <  ',
-    '  /|   |\\ ',
-    '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 ',
+    // 4-frame sad cycle (400ms cycle)
+    ['   /\\_/\\  ', '  ( ;.; ) ', '   > n <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
+    ['   /\\_/\\  ', '  ( ;_; ) ', '   > ~ <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
+    ['   /\\_/\\  ', '  ( ;.; ) ', '   > n <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
+    ['   /\\_/\\  ', '  ( ToT ) ', '   > ~ <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
   ],
   paused: [
-    '   /\\_/\\  ',
-    '  ( -.- ) ',
-    '   > ~ <  ',
-    '  /|   |\\ ',
-    '  zzZZ    ',
+    // 4-frame growing zzZ (400ms cycle)
+    ['   /\\_/\\  ', '  ( -.- ) ', '   > ~ <  ', '  /|   |\\ ', '  z       '],
+    ['   /\\_/\\  ', '  ( -.- ) ', '   > ~ <  ', '  /|   |\\ ', '  zZ      '],
+    ['   /\\_/\\  ', '  ( -_- ) ', '   > ~ <  ', '  /|   |\\ ', '  zZZ     '],
+    ['   /\\_/\\  ', '  ( -.- ) ', '   > ~ <  ', '  /|   |\\ ', '  zZZZ    '],
   ],
   alert: [
-    '   /\\_/\\  ',
-    '  ( \u25B2.\u25B2 ) ',
-    '   > ! <  ',
-    '  /| \u2191 |\\ ',
-    '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 ',
+    // 2-frame fast flash (200ms cycle)
+    ['   /\\_/\\  ', '  ( \u25B2.\u25B2 ) ', '   > ! <  ', '  /| \u2191 |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
+    ['   /\\_/\\  ', '  ( \u25CF.\u25CF ) ', '   > \u203C <  ', '  /| \u2191 |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
   ],
 }
 
@@ -617,7 +735,21 @@ function getBuddySpeech(mood: BuddyMood, tick: number): string {
 }
 
 const BuddyPanel = memo(function BuddyPanel({ mood, tick }: { mood: BuddyMood; tick: number }) {
-  const sprite = BUDDY_SPRITES[mood]
+  // Local 100ms animation tick — independent of the 1s main tick
+  const [animTick, setAnimTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setAnimTick(t => t + 1), 100)
+    return () => clearInterval(id)
+  }, [])
+
+  const frames = BUDDY_SPRITES[mood]
+  // idle: blink for 100ms every 1s (1 frame out of 10)
+  // alert: fast 200ms flash (2 frames)
+  // others: cycle all frames at 100ms each
+  const frameIdx = mood === 'idle'
+    ? (animTick % 10 === 9 ? 1 : 0)
+    : animTick % frames.length
+  const sprite = frames[frameIdx]!
   const speech = getBuddySpeech(mood, tick)
 
   const moodColor: 'green' | 'red' | 'yellow' | 'cyan' | 'magenta' =
@@ -711,33 +843,42 @@ function BackfillPanel({ trackedCoins, termWidth }: { trackedCoins: string[]; te
 
 // ─── Tape (Signal Log) ─────────────────────────────────────────────────────
 
-const TapePanel = memo(function TapePanel({ signals, maxLines }: { signals: string[]; maxLines: number }) {
-  const [scrollOffset, setScrollOffset] = useState(0)
-  const visible = Math.max(3, maxLines)
-  const total = signals.length
+const TAPE_PAGE_SIZE = 10
 
-  // ↑ scrolls up (further back in history), ↓ scrolls back to bottom
+const TapePanel = memo(function TapePanel({ signals, maxLines }: { signals: string[]; maxLines: number }) {
+  // page=0 → latest page, page=1 → one page back, etc.
+  const [page, setPage] = useState(0)
+  const total = signals.length
+  const totalPages = Math.max(1, Math.ceil(total / TAPE_PAGE_SIZE))
+
+  // ↑ = older page, ↓ = newer page (back to latest)
   useInput((_input, key) => {
-    if (key.upArrow) setScrollOffset(o => Math.min(o + 1, Math.max(0, total - visible)))
-    if (key.downArrow) setScrollOffset(o => Math.max(0, o - 1))
+    if (key.upArrow) setPage(p => Math.min(p + 1, totalPages - 1))
+    if (key.downArrow) setPage(p => Math.max(0, p - 1))
   })
 
-  // When new signals arrive and user is at bottom, stay at bottom
-  const endIdx = total - scrollOffset
-  const startIdx = Math.max(0, endIdx - visible)
-  const recent = signals.slice(startIdx, endIdx)
+  // Auto-reset to latest page when new signals arrive and user is already on latest
+  const prevTotal = React.useRef(total)
+  if (total !== prevTotal.current) {
+    if (page === 0) { /* stay on latest — slice will update automatically */ }
+    prevTotal.current = total
+  }
 
-  const atBottom = scrollOffset === 0
-  const scrollInfo = total > visible
-    ? ` ↑↓  ${endIdx}/${total}${atBottom ? ' ▼' : ''}`
+  const endIdx = total - page * TAPE_PAGE_SIZE
+  const startIdx = Math.max(0, endIdx - TAPE_PAGE_SIZE)
+  const lines = signals.slice(startIdx, endIdx).slice(-Math.max(1, maxLines))
+
+  const displayedPage = totalPages - page // 1-based, ascending (1=oldest page)
+  const pageInfo = total > TAPE_PAGE_SIZE
+    ? ` ↑↓  ${displayedPage}/${totalPages}${page === 0 ? ' ▼' : ''}`
     : ''
 
   return (
-    <Panel title={`Tape${scrollInfo}`} flexGrow={1} flexShrink={1} minHeight={5}>
-      {recent.length === 0 ? (
-        <Text color={DIM}> Waiting for signals...</Text>
+    <Panel title={`Tape${pageInfo}`} height={maxLines + 3} flexShrink={0} minHeight={6}>
+      {lines.length === 0 ? (
+        <Text color={DIM}>Waiting for signals...</Text>
       ) : (
-        recent.map((line, i) => <Text key={startIdx + i}> {line}</Text>)
+        lines.map((line, i) => <Text key={startIdx + i}>{line}</Text>)
       )}
     </Panel>
   )
@@ -763,12 +904,11 @@ function App({ sources }: { sources: TuiDataSources }) {
     }
   })
 
-  // Refresh during backfill: 1s for snappy progress bars, 3s after
+  // Refresh every 1s always — fast enough for live price/PnL updates
   useEffect(() => {
-    const ms = isBackfillDone ? 3000 : 1000
-    const id = setInterval(() => setTick(t => t + 1), ms)
+    const id = setInterval(() => setTick(t => t + 1), 1000)
     return () => clearInterval(id)
-  }, [isBackfillDone])
+  }, [])
 
   // Listen for backfill done signal
   useEffect(() => {
@@ -826,6 +966,12 @@ function App({ sources }: { sources: TuiDataSources }) {
   const subCount = useMemo(() => sources.getSubscriptionCount(), [tick])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const paperStats = useMemo(() => sources.getPaperStats(), [tick])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const activeSetups = useMemo(() => sources.getActiveSetups(), [tick])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const invStats = useMemo(() => sources.getInvalidationStats(), [tick])
+
+  const layout = useMemo(() => computeTuiLayout(termRows), [termRows])
 
   // Compute unrealized PnL from open positions + mark prices
   const unrealizedPnl = useMemo(() => {
@@ -860,14 +1006,14 @@ function App({ sources }: { sources: TuiDataSources }) {
 
       <Box flexShrink={0}>
         <AccountPanel account={account} dailyPnl={snapshot.global.dailyPnl} unrealizedPnl={unrealizedPnl} paperStats={paperStats} />
-        <StrategyPanel snapshot={snapshot} statuses={statuses} />
+        <StrategyPanel snapshot={snapshot} activeSetups={activeSetups} invStats={invStats} />
         <BuddyPanel mood={getBuddyMood(snapshot, positions.length, snapshot.global.dailyPnl, signals.length)} tick={tick} />
         <SystemPanel report={health} subCount={subCount} />
       </Box>
 
-      <PositionsPanel positions={positions} getAssetPrice={sources.getAssetPrice} />
-      <WatchlistPanel statuses={statuses} trackedCoins={trackedCoins} getAssetPrice={sources.getAssetPrice} />
-      <TapePanel signals={signals} maxLines={8} />
+      <PositionsPanel positions={positions} getAssetPrice={sources.getAssetPrice} rowsPerCol={layout.positionsRowsPerCol} />
+      <WatchlistPanel statuses={statuses} trackedCoins={trackedCoins} getAssetPrice={sources.getAssetPrice} rowsPerCol={layout.watchlistRowsPerCol} />
+      <TapePanel signals={signals} maxLines={layout.tapeLines} />
     </Box>
   )
 }
@@ -905,20 +1051,16 @@ export function appendSignal(action: AgentAction): void {
 }
 
 /**
- * Add a log message to the tape panel.
- * Only accepts SETUP-related messages — filters out all other noise.
- * Rewrites ISO timestamps to [HH:mm:ss.SSS] for consistency with formatAction output.
+ * No-op logger sink kept for API compatibility (index.ts calls setTuiSink(appendLog)).
+ * All tape content goes through appendSignal (agent.onAction) which has structured
+ * formatting. Raw logger output is suppressed to avoid noise and format inconsistency.
  */
-export function appendLog(msg: string): void {
-  // Only allow SETUP messages through to the tape
-  if (!msg.includes('SETUP')) return
-
-  let clean = msg.replace(/\x1b\[[0-9;]*m/g, '')
-  // Rewrite ISO timestamp (e.g. "2026-04-06T09:05:05.827Z") → "[09:05:05.827]"
-  clean = clean.replace(/\d{4}-\d{2}-\d{2}T(\d{2}:\d{2}:\d{2}\.\d{3})Z/, '[$1]')
-  for (const listener of signalListeners) {
-    listener(clean)
-  }
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function appendLog(_msg: string): void {
+  // No-op: all trading-relevant events (SETUP, FILLED, CLOSED, circuit_break,
+  // error, pause, invalidate) are routed via appendSignal (agent.onAction).
+  // Routing raw logger output here causes operational noise (stale candle warnings,
+  // pipeline INFO spam) to flood the tape with inconsistent formatting.
 }
 
 /**

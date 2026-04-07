@@ -71,6 +71,23 @@ export const REST_REFILL_MS = 3_000
 // Candles to use for indicator calculation
 export const INDICATOR_WINDOW = 200
 
+// ── In-memory candle retention ─────────────────────────────────────────────
+// Keep a bounded "hot window" per coin|TF in RAM.
+// Historical candles are persisted to PG (write-through), so retaining unbounded
+// arrays in memory provides little value and will eventually overwhelm the host.
+//
+// Notes:
+// - 1m is used for entry refinement only (no signal scan), so a smaller window is fine.
+// - Larger TFs use wider windows for regime/structure context.
+export const MAX_IN_MEMORY_CANDLES_BY_INTERVAL: Record<CandleInterval, number> = {
+  '1m': 1_000,
+  '5m': 2_000,
+  '15m': 5_000,
+  '1h': 5_000,
+  '4h': 5_000,
+  '1d': 5_000,
+} as const
+
 // Staleness: warn if no candle received in this many ms
 export const STALENESS_THRESHOLD_MS = 60_000
 

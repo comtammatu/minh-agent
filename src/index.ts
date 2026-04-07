@@ -44,7 +44,7 @@ import { subscribeTrades, unsubscribeTrades } from './feed/trades.js'
 import { subscribeOrderBook, unsubscribeOrderBook, checkBookStaleness } from './feed/orderbook.js'
 import { createCoinSelector } from './feed/coin-selector.js'
 import type { RefreshResult } from './feed/coin-selector.js'
-import { onCandleTick, getStatus, getActiveSetupCoins, clearCoinState } from './strategy/orchestrator.js'
+import { onCandleTick, getStatus, getActiveSetups, getActiveSetupCoins, clearCoinState } from './strategy/orchestrator.js'
 import { sql, closeDb } from './db/connection.js'
 import { runMigrations } from './db/migrate.js'
 import {
@@ -221,6 +221,15 @@ async function main(): Promise<void> {
       if (!ctx) return null
       return { markPrice: ctx.markPrice, funding: ctx.funding }
     },
+    getActiveSetups: () => getActiveSetups(),
+    getInvalidationStats: () => ({
+      total: 0,
+      matched: 0,
+      skipped: 0,
+      parseFailed: 0,
+      actions: {},
+      byStrategy: {},
+    }),
   }
   setTuiSink(appendLog)
   startTui(tuiSources)
@@ -420,6 +429,12 @@ async function main(): Promise<void> {
   // PositionMonitor → OrderManager: trail stop SL updates go directly to exchange
   pm.setUpdateStopCallback((parentOrderId, newSlPrice) => om.modifySLPrice(parentOrderId, newSlPrice))
 
+  // PositionMonitor price getter: used in paper mode to simulate SL/TP hits every 10s
+  pm.setPriceGetter((coin) => {
+    const ctx = getLatestAssetCtx(coin)
+    return ctx?.markPrice ?? null
+  })
+
   // Sprint 4.5: Wire equity update from position monitor → agent (for portfolio risk)
   pm.setEquityCallback(equity => agent.setAccountEquity(equity))
 
@@ -451,6 +466,7 @@ async function main(): Promise<void> {
       return null
     }
   }
+  tuiSources.getInvalidationStats = () => getInvalidationBridge().getStats()
 
   // 12. Staleness watchdog (candles + order book)
   activeIntervals.push(setInterval(() => {

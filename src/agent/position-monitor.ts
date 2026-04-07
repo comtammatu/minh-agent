@@ -200,6 +200,8 @@ export class PositionMonitor {
   private onUpdateStop: ((parentOrderId: string, newSlPrice: number) => void) | null = null
   /** Callback to update account equity on TradingAgent. */
   private onEquityUpdate: ((equity: number) => void) | null = null
+  /** Callback to get current mark price for a coin (paper mode SL/TP checks). */
+  private priceGetter: ((coin: string) => number | null) | null = null
 
   /** Set the callback for dispatching events to the agent state machine. */
   setAgentDispatch(fn: (coin: string, event: AgentEvent, strategyId?: string) => void): void {
@@ -214,6 +216,15 @@ export class PositionMonitor {
   /** Set the callback for updating account equity (Sprint 4.5: portfolio risk). */
   setEquityCallback(fn: (equity: number) => void): void {
     this.onEquityUpdate = fn
+  }
+
+  /**
+   * Set the callback to get current mark price for a coin.
+   * Required for paper mode SL/TP simulation.
+   * Wired in index.ts via getLatestAssetCtx().
+   */
+  setPriceGetter(fn: (coin: string) => number | null): void {
+    this.priceGetter = fn
   }
 
   // ── Position Lifecycle ────────────────────────────────────────────────
@@ -408,8 +419,11 @@ export class PositionMonitor {
 
     if (this.positions.size === 0) return []
 
-    // Paper mode: no real exchange positions — skip reconciliation to avoid false closes
-    if (PAPER_TRADE) return []
+    // Paper mode: simulate SL/TP hits using current mark prices instead of exchange query
+    if (PAPER_TRADE) {
+      await this.checkPaperExits()
+      return []
+    }
 
     const snapshots = await queryExchangePositions()
     const actions = reconcilePositions(this.positions, snapshots)
@@ -431,6 +445,67 @@ export class PositionMonitor {
     }
 
     return actions
+  }
+
+  // ── Paper SL/TP Simulation ────────────────────────────────────────────
+
+  /**
+   * Paper mode: check each tracked position against current mark price.
+   * Fires sl_hit or tp_hit events when price crosses the respective level.
+   * Called by syncWithExchange() every EXCHANGE_SYNC_INTERVAL_MS (10s).
+   *
+   * In live mode this is handled by HL trigger orders on exchange.
+   * In paper mode those triggers are only simulated — this method replaces them.
+   */
+  private async checkPaperExits(): Promise<void> {
+    if (this.positions.size === 0) return
+
+    // Collect positions to close (avoid mutating map during iteration)
+    const toClose: Array<{ pos: PositionState; reason: 'sl_hit' | 'tp_hit'; closePrice: number }> = []
+
+    for (const [, pos] of this.positions) {
+      const markPrice = this.priceGetter?.(pos.coin)
+      if (!markPrice || markPrice <= 0) continue
+
+      const side = pos.side
+      let closeReason: 'sl_hit' | 'tp_hit' | null = null
+      let closePrice = 0
+
+      // SL hit: adverse slippage (fills slightly worse than SL level)
+      if ((side === 'long' && markPrice <= pos.slPrice) ||
+          (side === 'short' && markPrice >= pos.slPrice)) {
+        closeReason = 'sl_hit'
+        const slippageDir = side === 'long' ? -1 : 1
+        closePrice = pos.slPrice * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
+      }
+      // TP hit: fills at TP level (slight adverse for realism)
+      else if ((side === 'long' && markPrice >= pos.tpPrice) ||
+               (side === 'short' && markPrice <= pos.tpPrice)) {
+        closeReason = 'tp_hit'
+        const slippageDir = side === 'long' ? -1 : 1
+        closePrice = pos.tpPrice * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
+      }
+
+      if (closeReason) {
+        toClose.push({ pos, reason: closeReason, closePrice })
+      }
+    }
+
+    for (const { pos, reason, closePrice } of toClose) {
+      const trade = getPaperTracker().recordExit(pos.entryOrderId, closePrice)
+      const pnl = trade?.pnl ?? 0
+      const pnlStr = pnl >= 0 ? `+${pnl.toFixed(2)}` : pnl.toFixed(2)
+      log.info('position-monitor', `[PAPER] ${reason.toUpperCase()} | ${pos.coin} ${pos.side.toUpperCase()} | entry=${pos.entryPrice.toFixed(2)} close=${closePrice.toFixed(2)} | pnl=${pnlStr}`)
+
+      this.dispatchToAgent?.(pos.coin, {
+        type: reason,
+        positionId: pos.positionId,
+        closePrice,
+        pnl,
+      }, pos.strategyId)
+
+      this.positions.delete(pos.positionId)
+    }
   }
 
   // ── Query ─────────────────────────────────────────────────────────────

@@ -18,7 +18,7 @@
 
 import type { Candle, CandleInterval, ActiveSetup, SignalSide } from '../../../types.js'
 import { ema, rsi, atr } from '../../../indicators/core.js'
-import { getPipelineEmitter } from '../../orchestrator.js'
+import { getPipelineEmitter, getActiveSetupsMap } from '../../orchestrator.js'
 import { getOrCreateStats } from '../../diagnostics.js'
 import { computeExpiresAtBar, setupId } from '../../shared/invalidation.js'
 import {
@@ -119,8 +119,10 @@ export function runQuantPipeline(
     detectedAt: Date.now(),
     detectedAtBar: idx,
     expiresAtBar: computeExpiresAtBar('ema-rsi', idx),
+    strategyId: 'quant',
   }
 
+  getActiveSetupsMap().set(id, setup)
   stats.setupsTracked++
   getPipelineEmitter().emit('setup', setup)
 }

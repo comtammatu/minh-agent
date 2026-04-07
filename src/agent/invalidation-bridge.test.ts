@@ -15,6 +15,7 @@ import { EventEmitter } from 'events'
 import {
   InvalidationBridge,
   parseCoinFromSetupId,
+  parseStrategyFromSetupId,
   resetInvalidationBridge,
 } from './invalidation-bridge.js'
 import { TradingAgent, resetAgent } from './trading-agent.js'
@@ -53,10 +54,31 @@ describe('parseCoinFromSetupId', () => {
     expect(parseCoinFromSetupId('SOL|4h|spring|long')).toBe('SOL')
   })
 
+  it('extracts coin from modern strategy-prefixed setupId', () => {
+    expect(parseCoinFromSetupId('layered:BTC|1h|order-block')).toBe('BTC')
+    expect(parseCoinFromSetupId('quant:ETH|15m|ema-rsi')).toBe('ETH')
+  })
+
   it('returns null for invalid setupId', () => {
     expect(parseCoinFromSetupId('')).toBeNull()
     expect(parseCoinFromSetupId('BTC')).toBeNull()
     expect(parseCoinFromSetupId('BT')).toBeNull()
+  })
+})
+
+describe('parseStrategyFromSetupId', () => {
+  it('returns strategy id for modern format', () => {
+    expect(parseStrategyFromSetupId('layered:BTC|1h|order-block')).toBe('layered')
+    expect(parseStrategyFromSetupId('quant:ETH|15m|ema-rsi')).toBe('quant')
+  })
+
+  it('returns legacy bucket for legacy format', () => {
+    expect(parseStrategyFromSetupId('BTC|1h|order-block|long')).toBe('legacy')
+  })
+
+  it('returns null for malformed ids', () => {
+    expect(parseStrategyFromSetupId('')).toBeNull()
+    expect(parseStrategyFromSetupId('BTC|1h')).toBeNull()
   })
 })
 
@@ -227,8 +249,27 @@ describe('InvalidationBridge', () => {
       const stats = bridge.getStats()
       expect(stats.total).toBe(3)
       expect(stats.matched).toBe(1)
+      expect(stats.skipped).toBe(2)
+      expect(stats.parseFailed).toBe(0)
+      // Matched row uses agent strategy id (default layered); skipped rows use legacy ids from setupId
+      expect(stats.byStrategy['layered']).toEqual({ matched: 1, skipped: 0 })
+      expect(stats.byStrategy['legacy']).toEqual({ matched: 0, skipped: 2 })
       expect(stats.actions['cancel_order']).toBe(1)
       expect(stats.actions['none']).toBe(2)
+    })
+
+    it('attributes matched vs skipped by strategy id for modern setupIds', () => {
+      const quantSetup = makeSetup({
+        id: 'quant:BTC|1h|ema-rsi',
+        type: 'ema-rsi',
+        strategyId: 'quant',
+      })
+      agent.dispatch('BTC', { type: 'setup_detected', setup: quantSetup }, 'quant')
+      bridge.onInvalidation('quant:BTC|1h|ema-rsi', 'zone-broken', agent)
+      expect(bridge.getStats().byStrategy['quant']).toEqual({ matched: 1, skipped: 0 })
+
+      bridge.onInvalidation('layered:ETH|1h|order-block', 'ttl-expired', agent)
+      expect(bridge.getStats().byStrategy['layered']).toEqual({ matched: 0, skipped: 1 })
     })
 
     it('clearHistory resets', () => {
@@ -255,6 +296,8 @@ describe('InvalidationBridge', () => {
       const record = bridge.onInvalidation('', 'unknown', agent)
       expect(record.matched).toBe(false)
       expect(record.coin).toBe('unknown')
+      expect(record.strategyKey).toBeUndefined()
+      expect(bridge.getStats().parseFailed).toBe(1)
     })
 
     it('handles unknown coin (never seen by agent)', () => {

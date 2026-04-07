@@ -32,7 +32,20 @@ export interface InvalidationRecord {
   coinState: AgentState
   matched: boolean
   actionTaken: 'none' | 'drop_watch' | 'cancel_order' | 'close_position'
+  /** Strategy bucket for TUI/stats; omitted when setupId did not parse to a coin */
+  strategyKey?: string
   ts: number
+}
+
+/** Aggregated invalidation counters (live TUI + ops). */
+export interface InvalidationBridgeStats {
+  total: number
+  matched: number
+  skipped: number
+  parseFailed: number
+  actions: Record<string, number>
+  /** Per-strategy matched vs skipped (no active setup / wrong setup). */
+  byStrategy: Record<string, { matched: number; skipped: number }>
 }
 
 // ─── Bridge ────────────────────────────────────────────────────────────────
@@ -65,7 +78,7 @@ export class InvalidationBridge {
     const coin = parseCoinFromSetupId(setupId)
     if (!coin) {
       log.warn('invalidation-bridge', `Cannot parse coin from setupId: ${setupId}`)
-      return this.record(setupId, reason, 'unknown', 'IDLE', false, 'none')
+      return this.record(setupId, reason, 'unknown', 'IDLE', false, 'none', undefined)
     }
 
     // Check all strategies for this coin (multi-strategy support)
@@ -85,8 +98,9 @@ export class InvalidationBridge {
 
     if (!matchedCtx) {
       const coinState = agent.getCoinState(coin)
+      const strategyKey = parseStrategyFromSetupId(setupId) ?? 'legacy'
       log.debug('invalidation-bridge', `Invalidation for ${setupId}: no matching active setup in any strategy — skipping`)
-      return this.record(setupId, reason, coin, coinState, false, 'none')
+      return this.record(setupId, reason, coin, coinState, false, 'none', strategyKey)
     }
 
     const coinState = matchedCtx.state as AgentState
@@ -99,7 +113,7 @@ export class InvalidationBridge {
 
     agent.dispatch(coin, { type: 'setup_invalidated', setupId, reason }, matchedCtx.strategyId)
 
-    return this.record(setupId, reason, coin, coinState, true, actionTaken)
+    return this.record(setupId, reason, coin, coinState, true, actionTaken, matchedCtx.strategyId)
   }
 
   /** Get recent invalidation history (for API / journal). */
@@ -107,15 +121,37 @@ export class InvalidationBridge {
     return this.history
   }
 
-  /** Get count of matched invalidations (stats). */
-  getStats(): { total: number; matched: number; actions: Record<string, number> } {
+  getStats(): InvalidationBridgeStats {
     const actions: Record<string, number> = {}
     let matched = 0
-    for (const r of this.history) {
-      if (r.matched) matched++
-      actions[r.actionTaken] = (actions[r.actionTaken] ?? 0) + 1
+    let skipped = 0
+    let parseFailed = 0
+    const byStrategy: Record<string, { matched: number; skipped: number }> = {}
+
+    const bump = (sid: string, kind: 'matched' | 'skipped'): void => {
+      let row = byStrategy[sid]
+      if (!row) {
+        row = { matched: 0, skipped: 0 }
+        byStrategy[sid] = row
+      }
+      row[kind]++
     }
-    return { total: this.history.length, matched, actions }
+
+    for (const r of this.history) {
+      actions[r.actionTaken] = (actions[r.actionTaken] ?? 0) + 1
+      if (r.strategyKey === undefined) {
+        parseFailed++
+        continue
+      }
+      if (r.matched) {
+        matched++
+        bump(r.strategyKey, 'matched')
+      } else {
+        skipped++
+        bump(r.strategyKey, 'skipped')
+      }
+    }
+    return { total: this.history.length, matched, skipped, parseFailed, actions, byStrategy }
   }
 
   /** Clear history (tests). */
@@ -132,6 +168,7 @@ export class InvalidationBridge {
     coinState: AgentState,
     matched: boolean,
     actionTaken: InvalidationRecord['actionTaken'],
+    strategyKey: string | undefined,
   ): InvalidationRecord {
     const record: InvalidationRecord = {
       setupId,
@@ -140,6 +177,7 @@ export class InvalidationBridge {
       coinState,
       matched,
       actionTaken,
+      strategyKey,
       ts: Date.now(),
     }
     this.history.push(record)
@@ -153,10 +191,44 @@ export class InvalidationBridge {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-/** Parse coin name from setupId format: `coin|interval|type|side` */
+/**
+ * Parse coin name from setupId.
+ *
+ * Supported formats:
+ * - Modern: `strategyId:COIN|interval|type` (from strategy/shared/invalidation.ts setupId())
+ * - Legacy: `COIN|interval|type|side`
+ */
 export function parseCoinFromSetupId(setupId: string): string | null {
   const parts = setupId.split('|')
-  return parts[0] && parts.length >= 3 ? parts[0] : null
+  if (!parts[0] || parts.length < 3) return null
+
+  // Modern prefix: "strategyId:COIN"
+  const first = parts[0]
+  const idx = first.lastIndexOf(':')
+  if (idx !== -1) {
+    const coin = first.slice(idx + 1)
+    return coin.length > 0 ? coin : null
+  }
+
+  // Legacy: "COIN"
+  return first
+}
+
+/**
+ * Strategy id from setupId for stats/TUI bucketing.
+ * - Modern `strategyId:COIN|interval|type` → strategyId
+ * - Legacy `COIN|interval|type|side` → `legacy`
+ */
+export function parseStrategyFromSetupId(setupId: string): string | null {
+  const parts = setupId.split('|')
+  if (!parts[0] || parts.length < 3) return null
+
+  const first = parts[0]
+  const idx = first.indexOf(':')
+  if (idx === -1) return 'legacy'
+
+  const sid = first.slice(0, idx)
+  return sid.length > 0 ? sid : null
 }
 
 /**

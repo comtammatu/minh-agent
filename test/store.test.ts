@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'bun:test'
 import { appendCandle, setCandles, getCandles, candleCount, clearStore } from '../src/feed/store.js'
+import { MAX_IN_MEMORY_CANDLES_BY_INTERVAL } from '../src/config.js'
 import type { Candle } from '../src/types.js'
 
 function makeCandle(t: number, price = 100): Candle {
@@ -41,6 +42,17 @@ describe('store', () => {
       expect(getCandles('BTC', '1h', 1)[0]!.t).toBe(1000)
       expect(getCandles('ETH', '1h', 1)[0]!.t).toBe(2000)
     })
+
+    it('trims in-memory candles to max window per interval', () => {
+      const cap = MAX_IN_MEMORY_CANDLES_BY_INTERVAL['1m']
+      for (let i = 1; i <= cap + 50; i++) {
+        appendCandle('BTC', '1m', makeCandle(i))
+      }
+      expect(candleCount('BTC', '1m')).toBe(cap)
+      const candles = getCandles('BTC', '1m', cap + 100)
+      expect(candles[0]!.t).toBe(51) // kept last `cap` candles
+      expect(candles.at(-1)!.t).toBe(cap + 50)
+    })
   })
 
   describe('setCandles', () => {
@@ -56,6 +68,16 @@ describe('store', () => {
       const candles = getCandles('BTC', '4h', 10)
       expect(candles[0]!.t).toBe(1000)
       expect(candles[2]!.t).toBe(3000)
+    })
+
+    it('trims when setting large candle arrays', () => {
+      const cap = MAX_IN_MEMORY_CANDLES_BY_INTERVAL['5m']
+      const all = Array.from({ length: cap + 25 }, (_, i) => makeCandle(i + 1))
+      setCandles('ETH', '5m', all)
+      expect(candleCount('ETH', '5m')).toBe(cap)
+      const candles = getCandles('ETH', '5m', cap + 100)
+      expect(candles[0]!.t).toBe(26)
+      expect(candles.at(-1)!.t).toBe(cap + 25)
     })
   })
 
