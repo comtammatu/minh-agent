@@ -225,11 +225,19 @@ async function updateOrderInDb(order: Order): Promise<void> {
   `
 }
 
-/** Get all pending/submitted orders for a coin. */
-async function getActiveOrdersForCoin(coin: string): Promise<Order[]> {
+/**
+ * Pending/submitted orders for a coin **and** strategy.
+ * Multi-wallet / multi-strategy: same coin may have one active entry per strategyId (V7).
+ */
+async function getActiveOrdersForCoinAndStrategy(
+  coin: string,
+  strategyId: string,
+): Promise<Order[]> {
   const rows = await sql`
     SELECT * FROM orders
-    WHERE coin = ${coin} AND status IN ('pending', 'submitted', 'partial')
+    WHERE coin = ${coin}
+      AND strategy_id = ${strategyId}
+      AND status IN ('pending', 'submitted', 'partial')
     ORDER BY created_at DESC
   `
   return rows.map(rowToOrder)
@@ -308,7 +316,7 @@ export class OrderManager {
 
   /**
    * Place an entry order from an ActiveSetup.
-   * 1. Check idempotency (no active order for this coin)
+   * 1. Check idempotency (no active order for this coin + strategyId)
    * 2. Generate cloid
    * 3. Persist to DB as 'pending'
    * 4. Submit to exchange (stub)
@@ -318,10 +326,13 @@ export class OrderManager {
     const { coin, side, entryPrice, slPrice, tpPrice } = setup
     const strategyId = setup.strategyId ?? DEFAULT_STRATEGY
 
-    // Idempotency: 1 order per coin (MAX_ORDERS_PER_COIN = 1)
-    const active = await getActiveOrdersForCoin(coin)
+    // Idempotency: 1 active entry order per (coin, strategyId)
+    const active = await getActiveOrdersForCoinAndStrategy(coin, strategyId)
     if (active.length >= MAX_ORDERS_PER_COIN) {
-      log.warn('order-manager', `Blocked duplicate order for ${coin} — active order exists: ${active[0]?.id}`)
+      log.warn(
+        'order-manager',
+        `Blocked duplicate order for ${coin} [${strategyId}] — active order exists: ${active[0]?.id}`,
+      )
       return null
     }
 
@@ -380,6 +391,14 @@ export class OrderManager {
           `Bumped ${coin} entry to HL min notional $${affordable.toFixed(2)} (risk-sized $${notionalAfterRiskCap.toFixed(2)} after leverage cap)`,
         )
       }
+    }
+
+    if (size <= 0 || entryPrice <= 0) {
+      log.warn(
+        'order-manager',
+        `Skip ${coin} [${strategyId}]: invalid entry/size (size=${size} entry=${entryPrice} sl=${slPrice})`,
+      )
+      return null
     }
 
     const now = Date.now()
@@ -799,9 +818,20 @@ export class OrderManager {
    */
   async handleAction(action: AgentAction): Promise<void> {
     switch (action.type) {
-      case 'place_order':
-        await this.placeOrder(action.setup)
+      case 'place_order': {
+        const setup = action.setup
+        const sid = setup.strategyId ?? DEFAULT_STRATEGY
+        const order = await this.placeOrder(setup)
+        if (order === null) {
+          // placeOrder can skip (duplicate, min notional, sizing) — must unblock agent ENTERING
+          this.dispatchToAgent?.(setup.coin, {
+            type: 'order_rejected',
+            orderId: '',
+            reason: 'place_order_skipped',
+          }, sid)
+        }
         break
+      }
       case 'cancel_order':
         await this.cancelOrder(action.orderId, action.reason)
         break
