@@ -5,8 +5,8 @@
  * long/short directions, multiple trades, edge cases.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest'
-import { PaperTracker } from './paper-tracker.js'
+import { describe, it, expect, beforeEach } from 'bun:test'
+import { PaperTracker, getPaperTracker, resetPaperTracker } from './paper-tracker.js'
 
 describe('PaperTracker', () => {
   let tracker: PaperTracker
@@ -143,5 +143,26 @@ describe('PaperTracker', () => {
     expect(trade.size).toBe(0.1)
     expect(trade.openedAt).toBeGreaterThan(0)
     expect(trade.closedAt).toBeGreaterThanOrEqual(trade.openedAt)
+  })
+})
+
+// ── Per-strategy registry (multi-wallet paper) ─────────────────────────────
+
+describe('getPaperTracker (per strategy)', () => {
+  beforeEach(() => {
+    resetPaperTracker()
+  })
+
+  it('isolates balances per strategyId', () => {
+    const layered = getPaperTracker('layered')
+    const quant = getPaperTracker('quant')
+    layered.recordEntry('o1', 'BTC', 'long', 50_000, 0.1)
+    layered.recordExit('o1', 51_000)
+    expect(layered.getBalance()).not.toBe(quant.getBalance())
+    expect(quant.getTrades()).toHaveLength(0)
+  })
+
+  it('returns same instance for same strategyId', () => {
+    expect(getPaperTracker('layered')).toBe(getPaperTracker('layered'))
   })
 })

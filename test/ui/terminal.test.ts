@@ -128,20 +128,34 @@ describe('formatAction', () => {
     expect(formatAction(action)).toBeNull()
   })
 
-  test('signal → SETUP with grade + confidence', () => {
+  test('signal → SETUP with grade + confidence + levels', () => {
     const action: AgentAction = {
       type: 'log_journal',
       eventType: 'signal',
       coin: 'BTC',
-      details: { grade: 'A', confidence: 0.85, side: 'long', setupId: 'abc' },
+      details: {
+        grade: 'A',
+        confidence: 0.85,
+        side: 'long',
+        setupId: 'abc',
+        interval: '5m',
+        entryPrice: 100,
+        slPrice: 95,
+        tpPrice: 110,
+      },
     }
     const result = formatAction(action)!
     expect(result).not.toBeNull()
     const stripped = strip(result)
     expect(stripped).toContain('SETUP')
     expect(stripped).toContain('BTC')
+    expect(stripped).toContain('5m')
     expect(stripped).toContain('LONG')
     expect(stripped).toContain('85%')
+    expect(stripped).toContain('entry')
+    expect(stripped).toContain('100.00')
+    expect(stripped).toContain('95.00')
+    expect(stripped).toContain('110.00')
   })
 
   test('enter → FILLED', () => {
@@ -274,15 +288,28 @@ describe('formatSetupAlert', () => {
       type: 'log_journal' as const,
       eventType: 'signal',
       coin: 'BTC',
-      details: { grade: 'A+', confidence: 0.92, side: 'long', setupId: 'test-123' },
+      details: {
+        grade: 'A+',
+        confidence: 0.92,
+        side: 'long',
+        setupId: 'test-123',
+        interval: '1h',
+        entryPrice: 50_000.12,
+        slPrice: 49_000,
+        tpPrice: 52_000,
+      },
     }
     const result = formatSetupAlert(action)!
     expect(result).not.toBeNull()
     const stripped = strip(result)
     expect(stripped).toContain('SETUP')
     expect(stripped).toContain('BTC')
+    expect(stripped).toContain('1h')
     expect(stripped).toContain('LONG')
     expect(stripped).toContain('92%')
+    expect(stripped).toContain('50000.12')
+    expect(stripped).toContain('49000.00')
+    expect(stripped).toContain('52000.00')
   })
 
   test('non-signal event → null', () => {

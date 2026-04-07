@@ -1,14 +1,17 @@
 /**
  * Paper P&L Tracker — simulated balance for PAPER_TRADE mode.
  *
- * Tracks entry/exit of paper trades, computes P&L, updates balance.
- * Balance starts at SIMULATED_ACCOUNT and changes after each closed trade.
- * Equity curve stored in-memory (no DB needed for paper mode).
+ * One {@link PaperTracker} per strategy (mirrors multi-wallet ExchangePool in live mode).
+ * Balances start at {@link getPaperInitialBalance} per strategy (env overrides).
  *
- * Singleton — accessed via getPaperTracker().
+ * Access: `getPaperTracker(strategyId)` — lazy-creates the tracker for that wallet.
  */
 
-import { SIMULATED_ACCOUNT, PAPER_SLIPPAGE_PCT } from '../config.js'
+import {
+  PAPER_DEFAULT_BALANCE_PER_WALLET,
+  PAPER_WALLET_STRATEGY_IDS,
+  getPaperInitialBalance,
+} from '../config.js'
 import { log } from '../lib/logger.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -39,6 +42,16 @@ export interface EquityPoint {
   balance: number
 }
 
+/** Per-strategy paper wallet summary (TUI / metrics). */
+export interface PaperWalletSummary {
+  strategyId: string
+  balance: number
+  tradeCount: number
+  wins: number
+  losses: number
+  winRate: number
+}
+
 // ─── PaperTracker Class ─────────────────────────────────────────────────────
 
 export class PaperTracker {
@@ -47,7 +60,7 @@ export class PaperTracker {
   private closedTrades: PaperTrade[] = []
   private equityCurve: EquityPoint[] = []
 
-  constructor(initialBalance: number = SIMULATED_ACCOUNT) {
+  constructor(initialBalance: number = PAPER_DEFAULT_BALANCE_PER_WALLET) {
     this.balance = initialBalance
     this.equityCurve.push({ ts: Date.now(), balance: this.balance })
   }
@@ -127,7 +140,7 @@ export class PaperTracker {
   }
 
   /** Reset all state (for tests). */
-  reset(initialBalance: number = SIMULATED_ACCOUNT): void {
+  reset(initialBalance: number = PAPER_DEFAULT_BALANCE_PER_WALLET): void {
     this.balance = initialBalance
     this.openPositions.clear()
     this.closedTrades = []
@@ -135,18 +148,59 @@ export class PaperTracker {
   }
 }
 
-// ─── Singleton ──────────────────────────────────────────────────────────────
+// ─── Per-strategy registry (mirrors 3-wallet live) ──────────────────────────
 
-let instance: PaperTracker | null = null
+const trackers = new Map<string, PaperTracker>()
 
-export function getPaperTracker(): PaperTracker {
-  if (!instance) {
-    instance = new PaperTracker()
+/**
+ * Get the paper P&L tracker for a strategy wallet (lazy init).
+ * Unknown `strategyId` still gets a tracker using {@link getPaperInitialBalance}.
+ */
+export function getPaperTracker(strategyId: string): PaperTracker {
+  let t = trackers.get(strategyId)
+  if (!t) {
+    t = new PaperTracker(getPaperInitialBalance(strategyId))
+    trackers.set(strategyId, t)
   }
-  return instance
+  return t
 }
 
-/** Reset singleton (tests only). */
+/** Eager-init trackers for all configured paper wallets (optional UI/metrics). */
+export function ensurePaperWalletsInitialized(): void {
+  for (const id of PAPER_WALLET_STRATEGY_IDS) {
+    getPaperTracker(id)
+  }
+}
+
+/**
+ * Summaries for each known paper wallet + aggregates (TUI).
+ */
+export function getPaperWalletSummaries(): PaperWalletSummary[] {
+  const out: PaperWalletSummary[] = []
+  for (const id of PAPER_WALLET_STRATEGY_IDS) {
+    const pt = getPaperTracker(id)
+    const trades = pt.getTrades()
+    const wins = trades.filter(t => t.pnl > 0).length
+    const losses = trades.filter(t => t.pnl <= 0).length
+    const total = trades.length
+    out.push({
+      strategyId: id,
+      balance: pt.getBalance(),
+      tradeCount: total,
+      wins,
+      losses,
+      winRate: total > 0 ? wins / total : 0,
+    })
+  }
+  return out
+}
+
+/** Sum of balances across known paper wallets. */
+export function getTotalPaperBalance(): number {
+  return getPaperWalletSummaries().reduce((s, w) => s + w.balance, 0)
+}
+
+/** Reset all paper trackers (tests only). */
 export function resetPaperTracker(): void {
-  instance = null
+  trackers.clear()
 }

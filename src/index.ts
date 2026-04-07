@@ -32,11 +32,11 @@ import {
   BACKFILL_CANDLE_COUNTS,
   BACKFILL_CANDLE_COUNT,
   BACKFILL_REPLACEMENT_ROUNDS,
-  PAPER_TRADE,
+  getEffectivePaperTrade,
   MIN_CANDLES_FOR_SCAN,
 } from './config.js'
 import { backfillAllCoins, fetchCandles, fetchCandlesBatched, probeCoins } from './feed/rest.js'
-import { setCandles, clearCoinData, setOnPersist, appendCandle, candleCount } from './feed/store.js'
+import { setCandles, clearCoinData, setOnPersist, appendCandle, candleCount, dayChangePctFromUtcDayOpen } from './feed/store.js'
 import { subscribeCandles, unsubscribeCandles, closeAll, checkStaleness, getSubscriptionCount } from './feed/ws.js'
 import { startFundingPolling, stopFundingPolling, addFundingCoin, removeFundingCoin } from './feed/funding.js'
 import { startOiFeed, stopOiFeed, addOiCoin, removeOiCoin } from './feed/asset-ctx.js'
@@ -44,7 +44,14 @@ import { subscribeTrades, unsubscribeTrades } from './feed/trades.js'
 import { subscribeOrderBook, unsubscribeOrderBook, checkBookStaleness } from './feed/orderbook.js'
 import { createCoinSelector } from './feed/coin-selector.js'
 import type { RefreshResult } from './feed/coin-selector.js'
-import { onCandleTick, getStatus, getActiveSetups, getActiveSetupCoins, clearCoinState } from './strategy/orchestrator.js'
+import {
+  onCandleTick,
+  getStatus,
+  getActiveSetups,
+  getActiveSetupCoins,
+  clearCoinState,
+  bootstrapPipelineFromStore,
+} from './strategy/orchestrator.js'
 import { sql, closeDb } from './db/connection.js'
 import { runMigrations } from './db/migrate.js'
 import {
@@ -57,15 +64,15 @@ import {
 } from './db/candle-repo.js'
 import { log, setTuiSink, clearTuiSink } from './lib/logger.js'
 import { getHealthMonitor } from './agent/self-healing.js'
-import { startTui, stopTui, appendSignal, appendLog, setBackfillDone, type TuiDataSources, type PaperStats } from './ui/tui.jsx'
-import { getPaperTracker } from './agent/paper-tracker.js'
+import { startTui, stopTui, appendLog, setBackfillDone, type TuiDataSources, type PaperStats } from './ui/tui.jsx'
+import { getPaperWalletSummaries, getTotalPaperBalance } from './agent/paper-tracker.js'
 import { getLatestAssetCtx } from './feed/asset-ctx.js'
 import { getPipelineEmitter } from './strategy/orchestrator.js'
 import { getAgent } from './agent/trading-agent.js'
 import { getOrderManager } from './agent/order-manager.js'
 import { getPositionMonitor } from './agent/position-monitor.js'
 import { getInvalidationBridge } from './agent/invalidation-bridge.js'
-import { startBot, stopBot } from './alert/telegram/index.js'
+import { startBot, stopBot, formatAlert, sendTelegramAlert } from './alert/telegram/index.js'
 import { connectToAgent as connectMetrics } from './analytics/metrics-service.js'
 import { getExchangePool } from './execution/exchange-pool.js'
 import { getStrategyRegistry } from './strategy/registry.js'
@@ -114,6 +121,7 @@ async function onCoinsRefreshed(result: RefreshResult): Promise<void> {
     log.info('lifecycle', `COIN-ADD | ${coin} — subscribing + backfilling`)
     await subscribeCoin(coin)
     await backfillCoin(coin)
+    bootstrapPipelineFromStore([coin])
     await addFundingCoin(coin)
     addOiCoin(coin)
   }
@@ -135,7 +143,7 @@ const activeIntervals: ReturnType<typeof setInterval>[] = []
 
 async function main(): Promise<void> {
   // Banner — logged before TUI starts, so these safely go to console
-  const modeTag = PAPER_TRADE ? 'PAPER' : 'LIVE'
+  const modeTag = getEffectivePaperTrade() ? 'PAPER' : 'LIVE'
   log.info('startup', `Minh (明) v2.0.0 — Autonomous Trading Agent [${modeTag}]`)
   log.info('startup',
     `Config: dynamic top coins × ${TIMEFRAMES.join(',')} | ` +
@@ -202,24 +210,29 @@ async function main(): Promise<void> {
     getSubscriptionCount,
     getTrackedCoins: () => selector.getTrackedCoins(),
     getPaperStats: () => {
-      if (!PAPER_TRADE) return null
-      const pt = getPaperTracker()
-      const trades = pt.getTrades()
-      const wins = trades.filter(t => t.pnl > 0).length
-      const losses = trades.filter(t => t.pnl <= 0).length
-      const total = trades.length
+      if (!getEffectivePaperTrade()) return null
+      const wallets = getPaperWalletSummaries()
+      const totalBalance = getTotalPaperBalance()
+      const wins = wallets.reduce((s, w) => s + w.wins, 0)
+      const losses = wallets.reduce((s, w) => s + w.losses, 0)
+      const tradeCount = wallets.reduce((s, w) => s + w.tradeCount, 0)
       return {
-        balance: pt.getBalance(),
-        tradeCount: total,
+        totalBalance,
+        wallets,
+        tradeCount,
         wins,
         losses,
-        winRate: total > 0 ? wins / total : 0,
+        winRate: tradeCount > 0 ? wins / tradeCount : 0,
       }
     },
     getAssetPrice: (coin: string) => {
       const ctx = getLatestAssetCtx(coin)
       if (!ctx) return null
-      return { markPrice: ctx.markPrice, funding: ctx.funding }
+      return {
+        markPrice: ctx.markPrice,
+        funding: ctx.funding,
+        dayChangePctUtc: dayChangePctFromUtcDayOpen(coin, ctx.markPrice),
+      }
     },
     getActiveSetups: () => getActiveSetups(),
     getInvalidationStats: () => ({
@@ -366,7 +379,7 @@ async function main(): Promise<void> {
     const acctAddr = svc.getAccountAddress()
     const addrShort = `${acctAddr.slice(0, 6)}…${acctAddr.slice(-4)}`
 
-    if (PAPER_TRADE) {
+    if (getEffectivePaperTrade()) {
       log.info('startup', 'MODE  | PAPER TRADE — orders are SIMULATED, no real exchange calls')
     } else {
       log.info('startup', 'MODE  | LIVE TRADING — real orders on Hyperliquid')
@@ -390,7 +403,7 @@ async function main(): Promise<void> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     log.warn('startup', `ACCT  | Could not fetch account info: ${msg}`)
-    if (PAPER_TRADE) {
+    if (getEffectivePaperTrade()) {
       log.info('startup', 'MODE  | PAPER TRADE — continuing without wallet')
     }
   }
@@ -404,8 +417,10 @@ async function main(): Promise<void> {
   const pm = getPositionMonitor()
   const bridge = getInvalidationBridge()
 
-  // Sprint 4.5: Wire ExchangePool to OrderManager for per-strategy exchange routing
-  om.setExchangePool(pool)
+  // Sprint 4.5: Wire ExchangePool to OrderManager only if init succeeded (paper can continue without wallet)
+  if (pool.isInitialized()) {
+    om.setExchangePool(pool)
+  }
 
   // Load active orders from DB (crash recovery R1)
   await om.loadActiveOrders()
@@ -415,6 +430,9 @@ async function main(): Promise<void> {
 
   // InvalidationBridge ← Pipeline (invalidation events) → Agent
   bridge.connect(getPipelineEmitter(), agent)
+
+  // One scan per coin/TF from backfilled store so bias/TUI/strategies are live immediately
+  bootstrapPipelineFromStore(coins)
 
   // Agent → OrderManager (bidirectional) — dispatch includes strategyId (Sprint 4.5)
   agent.onAction(action => om.handleAction(action))
@@ -444,13 +462,16 @@ async function main(): Promise<void> {
   // Wire metrics service: refresh matviews after each trade close
   connectMetrics(agent)
 
+  // Telegram trade alerts (HTML) — fire-and-forget
+  agent.onAction(action => {
+    const msg = formatAlert(action)
+    if (msg) void sendTelegramAlert(msg.text, globalThis.fetch, { parseMode: msg.parseMode })
+  })
+
   // Start Telegram bot (long-polling command interface)
   await startBot()
 
   log.info('agent', `Agent wired: ${strategyIds.length} strategies + exchange pool + order manager + position monitor + invalidation bridge + Telegram bot`)
-
-  // Wire agent actions → TUI signals log
-  agent.onAction(action => appendSignal(action))
 
   // 10. Start coin refresh loop
   selector.startRefreshLoop()

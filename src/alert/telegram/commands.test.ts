@@ -163,11 +163,13 @@ describe('registerBuiltinCommands', () => {
     expect(reply).toContain('/confirm')
     expect(reply).toContain('/report')
     expect(reply).toContain('/strategy')
+    expect(reply).toContain('/menu')
+    expect(reply).toContain('/paper')
   })
 
-  it('registers 11 built-in commands', () => {
+  it('registers 13 built-in commands', () => {
     registerBuiltinCommands()
-    expect(getCommands()).toHaveLength(11)
+    expect(getCommands()).toHaveLength(13)
   })
 })
 

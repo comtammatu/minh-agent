@@ -42,7 +42,7 @@ import { acquire } from '../feed/rate-limiter.js'
 import { log } from '../lib/logger.js'
 import { withRetry, isRetryableExchangeError, is503 } from '../lib/retry.js'
 import { getHealthMonitor } from '../agent/self-healing.js'
-import { RETRY, type WalletConfig } from '../config.js'
+import { RETRY, HL_MIN_ORDER_NOTIONAL_USD, type WalletConfig } from '../config.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -267,10 +267,10 @@ export class ExchangeService {
     const priceStr = formatPrice(params.price, szDecimals)
     const sizeStr = formatSize(params.size, szDecimals)
 
-    // Validate minimum order value ($10)
+    // Validate minimum order value (HL)
     const orderNotional = params.price * params.size
-    if (orderNotional < 10) {
-      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Order notional $${orderNotional.toFixed(2)} < $10 minimum` }
+    if (orderNotional < HL_MIN_ORDER_NOTIONAL_USD) {
+      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Order notional $${orderNotional.toFixed(2)} < $${HL_MIN_ORDER_NOTIONAL_USD} minimum` }
     }
 
     const isBuy = params.side === 'long'

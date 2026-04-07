@@ -152,6 +152,7 @@ export class SmcSdStrategy implements IStrategy {
     lastSignalBar.set(dedupKey, idx)
 
     // ── 9. Return Signal ──────────────────────────────────────────────────
+    // Agent MIN_GRADE_FOR_WATCH requires B+; omitting confluenceGrade → defaults to C → all skips.
     return {
       type: 'smc-sd',
       side,
@@ -159,6 +160,8 @@ export class SmcSdStrategy implements IStrategy {
       entryPrice: entry,
       slPrice: sl,
       tpPrice: tp1,
+      confluenceGrade: 'B',
+      confluenceCount: 3,
       patternData: {
         breakKind: recentBreak.kind,
         breakDirection: recentBreak.direction,

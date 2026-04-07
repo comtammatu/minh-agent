@@ -93,6 +93,12 @@ export function formatPnl(pnl: number): string {
 
 // ─── Setup Alert ──────────────────────────────────────────────────────────
 
+function formatSignalPriceTerminal(value: unknown): string {
+  if (value == null || typeof value !== 'number' || !Number.isFinite(value)) return '—'
+  const n = value
+  return n >= 100 ? n.toFixed(2) : n >= 1 ? n.toFixed(4) : n.toFixed(6)
+}
+
 export function formatSetupAlert(action: AgentAction & { type: 'log_journal' }): string | null {
   const { eventType, coin, details } = action
   if (eventType !== 'signal') return null
@@ -102,10 +108,15 @@ export function formatSetupAlert(action: AgentAction & { type: 'log_journal' }):
     ? (Number(details.confidence) * 100).toFixed(0)
     : '?'
   const setupId = String(details.setupId ?? '')
+  const interval = details.interval != null ? String(details.interval) : ''
+  const entry = formatSignalPriceTerminal(details.entryPrice)
+  const sl = formatSignalPriceTerminal(details.slPrice)
+  const tp = formatSignalPriceTerminal(details.tpPrice)
 
   return [
-    `${c(ANSI.bold, '⚡ SETUP')} ${formatGrade(grade)} ${coin} ${formatSide(details.side as 'long' | 'short' ?? 'long')}`,
-    `  conf: ${confidence}% | id: ${c(ANSI.dim, setupId)}`,
+    `${c(ANSI.bold, '⚡ SETUP')} ${formatGrade(grade)} ${coin} ${formatSide(details.side as 'long' | 'short' ?? 'long')}${interval ? ` ${c(ANSI.cyan, interval)}` : ''}`,
+    `  ${c(ANSI.dim, `entry ${entry} | SL ${sl} | TP ${tp}`)} | conf: ${confidence}%`,
+    `  id: ${c(ANSI.dim, setupId)}`,
   ].join('\n')
 }
 
@@ -122,7 +133,14 @@ export function formatAction(action: AgentAction): string | null {
       const confidence = details.confidence != null
         ? (Number(details.confidence) * 100).toFixed(0)
         : '?'
-      return `[${ts()}] ${c(ANSI.bold, '⚡ SETUP')} | ${coin} ${formatGrade(grade)} | ${formatSide(details.side as 'long' | 'short' ?? 'long')} conf:${confidence}%`
+      const interval = details.interval != null ? String(details.interval) : ''
+      const entry = formatSignalPriceTerminal(details.entryPrice)
+      const sl = formatSignalPriceTerminal(details.slPrice)
+      const tp = formatSignalPriceTerminal(details.tpPrice)
+      const head =
+        `[${ts()}] ${c(ANSI.bold, '⚡ SETUP')} | ${coin}${interval ? ` ${interval}` : ''} ${formatGrade(grade)} | ${formatSide(details.side as 'long' | 'short' ?? 'long')} conf:${confidence}%`
+      const geom = `         ${c(ANSI.dim, `entry ${entry} | SL ${sl} | TP ${tp}`)}`
+      return `${head}\n${geom}`
     }
 
     case 'enter': {

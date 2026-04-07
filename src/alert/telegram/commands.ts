@@ -15,14 +15,20 @@
  * /confirm   — confirm pending /closeall
  */
 
-import { escapeMarkdownV2 } from './alerts.js'
+import { escapeHtml, escapeMarkdownV2 } from './alerts.js'
 import { getAgent } from '../../agent/trading-agent.js'
 import { getPositionMonitor } from '../../agent/position-monitor.js'
 import { getHealthMonitor } from '../../agent/self-healing.js'
 import { getLiveMetrics } from '../../analytics/metrics-service.js'
 import { closeAllPositions } from '../../agent/close-all.js'
 import { getStrategyRegistry } from '../../strategy/registry.js'
-import { TELEGRAM_BOT } from '../../config.js'
+import {
+  TELEGRAM_BOT,
+  PAPER_TRADE,
+  getEffectivePaperTrade,
+  getPaperTradeRuntimeOverride,
+  setPaperTradeRuntimeOverride,
+} from '../../config.js'
 import type { CommandDef } from './types.js'
 
 // ─── Command Registry ──────────────────────────────────────────────────────
@@ -86,8 +92,14 @@ function statusHandler(): string {
     const watching = coinStates.filter(([, c]) => c.state === 'WATCHING').length
     const inPos = coinStates.filter(([, c]) => c.state === 'IN_POSITION').length
 
+    const ov = getPaperTradeRuntimeOverride()
+    const modeLine = ov === null
+      ? `Mode: ${esc(getEffectivePaperTrade() ? 'PAPER' : 'LIVE')} \\(env ${esc(PAPER_TRADE ? 'PAPER' : 'LIVE')}\\)`
+      : `Mode: ${esc(getEffectivePaperTrade() ? 'PAPER' : 'LIVE')} \\(override ${esc(ov ? 'PAPER' : 'LIVE')}, env ${esc(PAPER_TRADE ? 'PAPER' : 'LIVE')}\\)`
+
     return [
       `*Status*`,
+      modeLine,
       `Agent: ${paused}`,
       `Health: ${esc(health.overall)}`,
       `Uptime: ${esc(`${uptimeH}h ${uptimeM}m`)}`,
@@ -466,12 +478,88 @@ function strategyHandler(args: string): string {
   }
 }
 
+// ─── /menu (HTML body + inline keyboard in bot.ts) ───────────────────────
+
+function menuHandler(): string {
+  const h = escapeHtml
+  const eff = getEffectivePaperTrade() ? 'PAPER' : 'LIVE'
+  return [
+    `<b>Minh (明) — Menu</b>`,
+    `Chọn nút bên dưới hoặc gõ <code>/help</code>.`,
+    ``,
+    `Paper: <b>${h(eff)}</b> · env: <code>${h(PAPER_TRADE ? 'PAPER' : 'LIVE')}</code>`,
+  ].join('\n')
+}
+
+// ─── /paper ────────────────────────────────────────────────────────────────
+
+function paperHandler(args: string): string {
+  const esc = escapeMarkdownV2
+  const a = args.trim().toLowerCase()
+  if (a === 'on' || a === 'true' || a === '1') {
+    setPaperTradeRuntimeOverride(true)
+    return `Paper trade: *ON* \\(runtime\\)\\.`
+  }
+  if (a === 'off' || a === 'false' || a === '0') {
+    setPaperTradeRuntimeOverride(false)
+    return [
+      `Paper trade: *OFF* \\(live execution\\)\\.`,
+      `⚠️ Đảm bảo bạn hiểu rủi ro trước khi giao dịch thật\\.`,
+      `Dùng \\/paper reset để trở lại theo env\\.`,
+    ].join('\n')
+  }
+  if (a === 'reset' || a === 'env') {
+    setPaperTradeRuntimeOverride(null)
+    return `Đã xóa override\\. Env: *${esc(PAPER_TRADE ? 'PAPER' : 'LIVE')}*\\.`
+  }
+  const ov = getPaperTradeRuntimeOverride()
+  return [
+    `*Paper trade*`,
+    `Hiện tại: *${esc(getEffectivePaperTrade() ? 'PAPER' : 'LIVE')}*`,
+    `Env PAPER_TRADE: ${esc(PAPER_TRADE ? 'true' : 'false')}`,
+    `Override: ${ov === null ? 'none' : esc(ov ? 'ON' : 'OFF')}`,
+    ``,
+    `\\/paper on \\| off \\| reset`,
+  ].join('\n')
+}
+
+/** Inline keyboard for /menu — callback_data prefix \`c:\`. */
+export function getMainMenuKeyboard(): {
+  inline_keyboard: { text: string; callback_data: string }[][]
+} {
+  return {
+    inline_keyboard: [
+      [
+        { text: '📊 Status', callback_data: 'c:status' },
+        { text: '📈 Positions', callback_data: 'c:positions' },
+      ],
+      [
+        { text: '💰 PnL', callback_data: 'c:pnl' },
+        { text: '📑 Report', callback_data: 'c:report' },
+      ],
+      [
+        { text: '🟢 Paper ON', callback_data: 'c:paper_on' },
+        { text: '🔴 Paper OFF', callback_data: 'c:paper_off' },
+      ],
+      [{ text: '❓ Help', callback_data: 'c:help' }],
+    ],
+  }
+}
+
+/** Run a registered command by name (for callback_query). */
+export async function executeCommandByName(name: string, args: string, chatId: number): Promise<string> {
+  const cmd = findCommand(name)
+  if (!cmd) return `Unknown command: /${escapeMarkdownV2(name)}`
+  return cmd.handler(args, chatId)
+}
+
 // ─── Register Built-in Commands ────────────────────────────────────────────
 
 /** Register all built-in commands. Safe to call multiple times (idempotent). */
 export function registerBuiltinCommands(): void {
   if (commands.length > 0) return
   registerCommand({ name: 'help', description: 'Show this help message', handler: helpHandler })
+  registerCommand({ name: 'menu', description: 'Menu + inline buttons', handler: menuHandler })
   registerCommand({ name: 'status', description: 'Agent state, health, uptime', handler: statusHandler })
   registerCommand({ name: 'positions', description: 'Open positions list', handler: positionsHandler })
   registerCommand({ name: 'pnl', description: 'PnL summary (daily/weekly/monthly)', handler: pnlHandler })
@@ -482,4 +570,5 @@ export function registerBuiltinCommands(): void {
   registerCommand({ name: 'confirm', description: 'Confirm pending /closeall', handler: confirmHandler })
   registerCommand({ name: 'report', description: 'Daily report (PnL, patterns, coins)', handler: reportHandler })
   registerCommand({ name: 'strategy', description: 'List/pause/resume strategies', handler: strategyHandler })
+  registerCommand({ name: 'paper', description: 'Paper trade on/off/reset', handler: paperHandler })
 }

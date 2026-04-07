@@ -87,11 +87,21 @@ const MULTI_WALLET_ENV = JSON.stringify({
   quant: { privateKey: QUANT_PK, accountAddress: ACCOUNT_ADDR },
 })
 
+function deleteFlatWalletEnv(): void {
+  delete process.env.PRIVATE_KEY_LAYERED
+  delete process.env.ACCOUNT_ADDRESS_LAYERED
+  delete process.env.PRIVATE_KEY_QUANT
+  delete process.env.ACCOUNT_ADDRESS_QUANT
+  delete process.env.PRIVATE_KEY_SMC_SD
+  delete process.env.ACCOUNT_ADDRESS_SMC_SD
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 describe('parseStrategyWallets', () => {
   afterEach(() => {
     delete process.env.STRATEGY_WALLETS
+    deleteFlatWalletEnv()
   })
 
   it('should return empty Map when env not set', () => {
@@ -146,6 +156,31 @@ describe('parseStrategyWallets', () => {
     })
     expect(() => parseStrategyWallets()).toThrow('must be an object')
   })
+
+  it('should parse flat env vars when STRATEGY_WALLETS is unset', () => {
+    process.env.PRIVATE_KEY_LAYERED = LAYERED_PK
+    process.env.ACCOUNT_ADDRESS_LAYERED = ACCOUNT_ADDR
+    process.env.PRIVATE_KEY_QUANT = QUANT_PK
+    process.env.ACCOUNT_ADDRESS_QUANT = ACCOUNT_ADDR
+    const result = parseStrategyWallets()
+    expect(result.size).toBe(2)
+    expect(result.get('layered')?.privateKey).toBe(LAYERED_PK)
+    expect(result.get('quant')?.privateKey).toBe(QUANT_PK)
+  })
+
+  it('should prefer STRATEGY_WALLETS JSON over flat env when both set', () => {
+    process.env.STRATEGY_WALLETS = MULTI_WALLET_ENV
+    process.env.PRIVATE_KEY_LAYERED = '0xcccc0000000000000000000000000000000000000000000000000000000000cc'
+    process.env.ACCOUNT_ADDRESS_LAYERED = '0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC'
+    const result = parseStrategyWallets()
+    expect(result.get('layered')?.privateKey).toBe(LAYERED_PK)
+  })
+
+  it('should throw when flat env has only half of a pair', () => {
+    process.env.PRIVATE_KEY_LAYERED = LAYERED_PK
+    delete process.env.ACCOUNT_ADDRESS_LAYERED
+    expect(() => parseStrategyWallets()).toThrow('Incomplete wallet env for strategy "layered"')
+  })
 })
 
 describe('ExchangeService with WalletConfig', () => {
@@ -154,6 +189,7 @@ describe('ExchangeService with WalletConfig', () => {
     delete process.env.PRIVATE_KEY
     delete process.env.ACCOUNT_ADDRESS
     delete process.env.STRATEGY_WALLETS
+    deleteFlatWalletEnv()
   })
 
   it('should init with injected WalletConfig (no env vars needed)', async () => {
@@ -198,6 +234,7 @@ describe('ExchangePool', () => {
     resetExchangePool()
     resetExchangeService()
     delete process.env.STRATEGY_WALLETS
+    deleteFlatWalletEnv()
     // Set shared wallet env for fallback
     process.env.PRIVATE_KEY = SHARED_PK
     delete process.env.ACCOUNT_ADDRESS
@@ -207,6 +244,7 @@ describe('ExchangePool', () => {
     delete process.env.STRATEGY_WALLETS
     delete process.env.PRIVATE_KEY
     delete process.env.ACCOUNT_ADDRESS
+    deleteFlatWalletEnv()
   })
 
   // ── Single-wallet mode ────────────────────────────────────────────────
@@ -224,6 +262,13 @@ describe('ExchangePool', () => {
       expect(layered).toBe(quant)
       expect(quant).toBe(unknown)
       expect(layered.getWalletAddress()).toBe('0x1111111111111111111111111111111111111111')
+    })
+
+    it('isInitialized is false before init and true after', async () => {
+      const pool = new ExchangePool()
+      expect(pool.isInitialized()).toBe(false)
+      await pool.init()
+      expect(pool.isInitialized()).toBe(true)
     })
 
     it('should report not multi-wallet', async () => {

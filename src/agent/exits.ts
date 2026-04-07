@@ -101,6 +101,56 @@ export function computePositionSize(
 }
 
 /**
+ * Cap coin size so that, at the exchange's max leverage for this asset, initial margin
+ * does not exceed `accountValue × targetMarginPct`.
+ *
+ * `OrderManager` sets leverage to `ceil(sizeUsd / (account × targetMarginPct))` (capped
+ * by HL max leverage). When the cap binds, margin = sizeUsd / maxLev can exceed the
+ * intended budget → insufficient margin. Reducing notional fixes that.
+ *
+ * @returns Adjusted size in coin units; `wasCapped` if risk-based size was reduced.
+ */
+export function clampPositionSizeForMaxLeverage(
+  sizeCoins: number,
+  entryPrice: number,
+  accountValue: number,
+  targetMarginPct: number,
+  maxLeverage: number | undefined,
+): { sizeCoins: number; wasCapped: boolean } {
+  if (entryPrice <= 0 || accountValue <= 0 || sizeCoins <= 0) {
+    return { sizeCoins, wasCapped: false }
+  }
+  if (maxLeverage === undefined || maxLeverage <= 0) {
+    return { sizeCoins, wasCapped: false }
+  }
+  const sizeUsd = sizeCoins * entryPrice
+  const maxNotionalUsd = accountValue * targetMarginPct * maxLeverage
+  if (sizeUsd <= maxNotionalUsd) {
+    return { sizeCoins, wasCapped: false }
+  }
+  return { sizeCoins: maxNotionalUsd / entryPrice, wasCapped: true }
+}
+
+/**
+ * Leverage chosen before entry — mirrors `ExchangeService.setLeverage` (ceil, min 1, cap by maxLev).
+ * margin_used ≈ sizeUsd / leverage ≤ accountValue × targetMarginPct when max leverage does not bind.
+ */
+export function computeEntryLeverageForTargetMargin(
+  sizeUsd: number,
+  accountValue: number,
+  targetMarginPct: number,
+  maxLeverage: number | undefined,
+): number {
+  if (sizeUsd <= 0 || accountValue <= 0 || targetMarginPct <= 0) return 1
+  const targetMarginUsd = accountValue * targetMarginPct
+  const raw = sizeUsd / targetMarginUsd
+  if (maxLeverage !== undefined && maxLeverage > 0) {
+    return Math.min(Math.max(1, Math.ceil(raw)), maxLeverage)
+  }
+  return Math.max(1, Math.ceil(raw))
+}
+
+/**
  * Full position sizing with validation (Section 12.6).
  * Returns size in USD and coins, leverage, and verdict.
  */

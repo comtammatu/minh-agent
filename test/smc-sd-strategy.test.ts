@@ -131,6 +131,8 @@ describe('SmcSdStrategy', () => {
     // If no signal found, that's acceptable — depends on market pattern
     if (signal) {
       expect(signal.type).toBe('smc-sd')
+      expect(signal.confluenceGrade).toBe('B')
+      expect(signal.confluenceCount).toBe(3)
       expect(['long', 'short']).toContain(signal.side)
       expect(signal.confidence).toBeGreaterThanOrEqual(0)
       expect(signal.confidence).toBeLessThanOrEqual(1)

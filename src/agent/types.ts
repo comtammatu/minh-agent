@@ -168,6 +168,8 @@ export interface PositionState {
   slPrice: number
   tpPrice: number
   entryOrderId: string        // links to Order.id
+  /** Cross leverage set at entry (same rule as live `setLeverage`). */
+  leverage: number
   /** Strategy that owns this position (Sprint 4.5). */
   strategyId: string
   /** Trailing stop state — null until first monitor() call. */

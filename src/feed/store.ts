@@ -101,6 +101,18 @@ export function candleCount(coin: string, interval: CandleInterval): number {
   return store.get(key(coin, interval))?.length ?? 0
 }
 
+/**
+ * % change from the current daily candle open (00:00 UTC bar) to mark price.
+ * Uses the latest 1d candle's `o` as the session open vs Hyperliquid's UTC day alignment.
+ */
+export function dayChangePctFromUtcDayOpen(coin: string, markPrice: number): number | null {
+  const candles = getCandles(coin, '1d', 1)
+  if (candles.length === 0) return null
+  const dayOpen = candles[candles.length - 1]!.o
+  if (dayOpen <= 0 || !Number.isFinite(dayOpen) || !Number.isFinite(markPrice)) return null
+  return ((markPrice - dayOpen) / dayOpen) * 100
+}
+
 /** Clear all candle data for a specific coin (all timeframes). */
 export function clearCoinData(coin: string): void {
   for (const k of store.keys()) {

@@ -40,12 +40,11 @@ import {
   MIN_CANDLES_FOR_SCAN,
   INDICATOR_WINDOW,
   HTF_MAP,
-  SIMULATED_ACCOUNT,
   MIN_TP1_RR,
   PATTERN_TTL_BARS,
-  PAPER_TRADE,
+  getEffectivePaperTrade,
 } from '../../../config.js'
-import { getExchangeService } from '../../../execution/exchange-service.js'
+import { getCachedAccountValueForStrategy } from '../../../execution/exchange-pool.js'
 import { getPaperTracker } from '../../../agent/paper-tracker.js'
 import { playSound } from '../../../ui/sound.js'
 import { log } from '../../../lib/logger.js'
@@ -210,11 +209,11 @@ export function runPipeline(
   const currentPrice = confirmedSlice[idx]!.c
   const atrVal = atr(confirmedSlice, idx, 14)
   const zone = bestZone?.zone ?? zones[0]!
-  // R11: Use real account balance from ExchangeService, fallback to SIMULATED_ACCOUNT
-  // Paper mode: use PaperTracker balance (changes after each trade)
-  const accountValue = PAPER_TRADE
-    ? getPaperTracker().getBalance()
-    : (getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT)
+  // R11: Balance for this strategy's wallet (pool) or singleton fallback
+  // Paper mode: PaperTracker for `layered` (mirrors live multi-wallet)
+  const accountValue = getEffectivePaperTrade()
+    ? getPaperTracker('layered').getBalance()
+    : getCachedAccountValueForStrategy('layered')
   const risk = assessRisk(signal, zone, currentPrice, atrVal, accountValue)
   if (!risk.tradeable) {
     invalidateSetups(activeSetups, pipelineStats, coin, interval, confirmedSlice, idx)

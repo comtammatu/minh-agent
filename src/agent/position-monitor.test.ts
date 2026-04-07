@@ -27,7 +27,7 @@ function makePosition(overrides: Partial<PositionState> = {}): PositionState {
     originalSize: 1.0,
     slPrice: 95,      // 5% SL
     tpPrice: 110,     // 10% TP
-    entryOrderId: 'ord-1',
+    entryOrderId: 'ord-1', leverage: 10,
     trailingState: null,
     partialClosesFired: [],
     lastSyncAt: Date.now(),
@@ -361,7 +361,7 @@ describe('PositionMonitor', () => {
     it('tracks a new position', () => {
       const pos = pm.openPosition({
         positionId: 'pos-1', coin: 'BTC', side: 'long',
-        entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1',
+        entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1', leverage: 10,
       })
       expect(pos.positionId).toBe('pos-1')
       expect(pm.getPosition('pos-1')).toBeDefined()
@@ -371,7 +371,7 @@ describe('PositionMonitor', () => {
     it('removes a position on close', () => {
       pm.openPosition({
         positionId: 'pos-1', coin: 'BTC', side: 'long',
-        entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1',
+        entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1', leverage: 10,
       })
       pm.closePositionTracking('pos-1')
       expect(pm.getPosition('pos-1')).toBeNull()
@@ -380,11 +380,11 @@ describe('PositionMonitor', () => {
     it('getPositions returns all tracked', () => {
       pm.openPosition({
         positionId: 'pos-1', coin: 'BTC', side: 'long',
-        entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1',
+        entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1', leverage: 10,
       })
       pm.openPosition({
         positionId: 'pos-2', coin: 'ETH', side: 'short',
-        entryPrice: 2000, size: 5.0, slPrice: 2100, tpPrice: 1800, entryOrderId: 'ord-2',
+        entryPrice: 2000, size: 5.0, slPrice: 2100, tpPrice: 1800, entryOrderId: 'ord-2', leverage: 10,
       })
       expect(pm.getPositions().size).toBe(2)
     })
@@ -394,7 +394,7 @@ describe('PositionMonitor', () => {
     it('returns hold for small price move', async () => {
       pm.openPosition({
         positionId: 'pos-1', coin: 'BTC', side: 'long',
-        entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1',
+        entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1', leverage: 10,
       })
       const actions = await pm.monitorPosition('pos-1', 100.3)
       expect(actions).toHaveLength(1)
@@ -404,7 +404,7 @@ describe('PositionMonitor', () => {
     it('updates trailing state after each call', async () => {
       pm.openPosition({
         positionId: 'pos-1', coin: 'BTC', side: 'long',
-        entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1',
+        entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1', leverage: 10,
       })
       await pm.monitorPosition('pos-1', 102)
       const pos = pm.getPosition('pos-1')!
@@ -418,7 +418,7 @@ describe('PositionMonitor', () => {
 
       pm.openPosition({
         positionId: 'pos-1', coin: 'BTC', side: 'long',
-        entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1',
+        entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1', leverage: 10,
       })
 
       // Simulate trailing stop being active and hit
@@ -440,7 +440,7 @@ describe('PositionMonitor', () => {
     it('records partial close in partialClosesFired', async () => {
       pm.openPosition({
         positionId: 'pos-1', coin: 'BTC', side: 'long',
-        entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1',
+        entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1', leverage: 10,
       })
 
       // Price at 1R = 105
@@ -475,7 +475,7 @@ describe('PositionMonitor', () => {
 
       pm.openPosition({
         positionId: 'pos-1', coin: 'BTC', side: 'long',
-        entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1',
+        entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1', leverage: 10,
       })
 
       const actions = await pm.syncWithExchange()

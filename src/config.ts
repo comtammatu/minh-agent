@@ -343,6 +343,9 @@ export const MAX_LEVERAGE_WARN = 5.0
  */
 export const TARGET_MARGIN_PCT = 0.10
 
+/** Hyperliquid minimum order notional (USD). See exchange-service validation. */
+export const HL_MIN_ORDER_NOTIONAL_USD = 10
+
 /** Trailing stop config defaults. */
 export const TRAILING_STOP = {
   activationPct: 0.01,  // activate trailing after +1% profit
@@ -483,24 +486,45 @@ export interface WalletConfig {
   accountAddress: string
 }
 
+/** Flat env keys for per-strategy agent + main (alternative to STRATEGY_WALLETS JSON). */
+const STRATEGY_WALLET_FLAT_ENV = [
+  { id: 'layered', privateKeyEnv: 'PRIVATE_KEY_LAYERED', accountEnv: 'ACCOUNT_ADDRESS_LAYERED' },
+  { id: 'quant', privateKeyEnv: 'PRIVATE_KEY_QUANT', accountEnv: 'ACCOUNT_ADDRESS_QUANT' },
+  { id: 'smc-sd', privateKeyEnv: 'PRIVATE_KEY_SMC_SD', accountEnv: 'ACCOUNT_ADDRESS_SMC_SD' },
+] as const
+
+function assert0xAgentPrivateKey(label: string, value: unknown): string {
+  if (typeof value !== 'string' || !value.startsWith('0x')) {
+    throw new Error(`${label} must be a 0x-prefixed hex string`)
+  }
+  return value
+}
+
+function assert0xMainAddress(label: string, value: unknown): string {
+  if (typeof value !== 'string' || !value.startsWith('0x') || value.length !== 42) {
+    throw new Error(`${label} must be a valid 0x-prefixed Ethereum address (42 chars)`)
+  }
+  return value
+}
+
 /**
- * Parse STRATEGY_WALLETS JSON env var into a Map<strategyId, WalletConfig>.
+ * Parse STRATEGY_WALLETS JSON **or** flat per-strategy env vars into Map<strategyId, WalletConfig>.
  *
- * Expected format:
- * ```json
- * {
- *   "layered": { "privateKey": "0x...", "accountAddress": "0x..." },
- *   "quant":   { "privateKey": "0x...", "accountAddress": "0x..." }
- * }
- * ```
+ * **Precedence:** If `STRATEGY_WALLETS` is non-empty (after trim), only JSON is read.
+ * Otherwise `PRIVATE_KEY_LAYERED` / `ACCOUNT_ADDRESS_LAYERED`, `PRIVATE_KEY_QUANT` / …, `PRIVATE_KEY_SMC_SD` / …
+ * are used. For each strategy, set both agent key and main address, or neither (skip that strategy).
  *
- * Returns empty Map if env var is not set (single-wallet fallback mode).
- * Throws on malformed JSON or invalid wallet config entries.
+ * Returns empty Map if nothing configured (single-wallet fallback mode).
  */
 export function parseStrategyWallets(): Map<string, WalletConfig> {
   const raw = process.env.STRATEGY_WALLETS
-  if (!raw) return new Map()
+  if (raw !== undefined && raw.trim() !== '') {
+    return parseStrategyWalletsJson(raw)
+  }
+  return parseStrategyWalletsFlat()
+}
 
+function parseStrategyWalletsJson(raw: string): Map<string, WalletConfig> {
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
@@ -518,15 +542,31 @@ export function parseStrategyWallets(): Map<string, WalletConfig> {
       throw new Error(`STRATEGY_WALLETS["${strategyId}"] must be an object with privateKey and accountAddress`)
     }
     const { privateKey, accountAddress } = config as Record<string, unknown>
-    if (typeof privateKey !== 'string' || !privateKey.startsWith('0x')) {
-      throw new Error(`STRATEGY_WALLETS["${strategyId}"].privateKey must be a 0x-prefixed hex string`)
-    }
-    if (typeof accountAddress !== 'string' || !accountAddress.startsWith('0x') || accountAddress.length !== 42) {
-      throw new Error(`STRATEGY_WALLETS["${strategyId}"].accountAddress must be a valid 0x-prefixed Ethereum address (42 chars)`)
-    }
-    result.set(strategyId, { privateKey, accountAddress })
+    result.set(strategyId, {
+      privateKey: assert0xAgentPrivateKey(`STRATEGY_WALLETS["${strategyId}"].privateKey`, privateKey),
+      accountAddress: assert0xMainAddress(`STRATEGY_WALLETS["${strategyId}"].accountAddress`, accountAddress),
+    })
   }
 
+  return result
+}
+
+function parseStrategyWalletsFlat(): Map<string, WalletConfig> {
+  const result = new Map<string, WalletConfig>()
+  for (const { id, privateKeyEnv, accountEnv } of STRATEGY_WALLET_FLAT_ENV) {
+    const pk = process.env[privateKeyEnv]
+    const addr = process.env[accountEnv]
+    const hasPk = pk !== undefined && pk.trim() !== ''
+    const hasAddr = addr !== undefined && addr.trim() !== ''
+    if (!hasPk && !hasAddr) continue
+    if (!hasPk || !hasAddr) {
+      throw new Error(`Incomplete wallet env for strategy "${id}": set both ${privateKeyEnv} and ${accountEnv}`)
+    }
+    result.set(id, {
+      privateKey: assert0xAgentPrivateKey(privateKeyEnv, pk),
+      accountAddress: assert0xMainAddress(accountEnv, addr),
+    })
+  }
   return result
 }
 
@@ -535,8 +575,69 @@ export function parseStrategyWallets(): Map<string, WalletConfig> {
 /** Paper trade mode: simulate fills instead of calling HL exchange. */
 export const PAPER_TRADE = process.env.PAPER_TRADE === 'true'
 
+/** Runtime override from Telegram (null = use env {@link PAPER_TRADE}). */
+let paperTradeRuntimeOverride: boolean | null = null
+
+/** Effective paper mode: runtime override when set, otherwise env default. */
+export function getEffectivePaperTrade(): boolean {
+  return paperTradeRuntimeOverride !== null ? paperTradeRuntimeOverride : PAPER_TRADE
+}
+
+/**
+ * Set paper mode at runtime (Telegram). Pass `null` to clear override and follow env again.
+ * Switching live↔paper mid-session can desync open positions — use with care.
+ */
+export function setPaperTradeRuntimeOverride(value: boolean | null): void {
+  paperTradeRuntimeOverride = value
+}
+
+/** Current runtime override (null = follow env). Exposed for Telegram /status. */
+export function getPaperTradeRuntimeOverride(): boolean | null {
+  return paperTradeRuntimeOverride
+}
+
+/** Test helper: reset runtime paper override. */
+export function resetPaperTradeRuntimeOverrideForTests(): void {
+  paperTradeRuntimeOverride = null
+}
+
 /** Slippage applied to paper fills (0.05% = 5 bps). */
 export const PAPER_SLIPPAGE_PCT = 0.0005
+
+/**
+ * Default starting balance (USD) per paper wallet when env overrides are unset.
+ * Matches typical small-account dry run (3 × $100).
+ */
+export const PAPER_DEFAULT_BALANCE_PER_WALLET = 100
+
+/**
+ * Strategy IDs that get a separate simulated wallet in PAPER_TRADE (mirrors 3-wallet live).
+ * Env: `PAPER_BALANCE_LAYERED`, `PAPER_BALANCE_QUANT`, `PAPER_BALANCE_SMC_SD` (USD each).
+ * Unset → {@link PAPER_DEFAULT_BALANCE_PER_WALLET} each.
+ */
+export const PAPER_WALLET_STRATEGY_IDS = ['layered', 'quant', 'smc-sd'] as const
+export type PaperWalletStrategyId = (typeof PAPER_WALLET_STRATEGY_IDS)[number]
+
+const PAPER_BALANCE_ENV: Record<string, string> = {
+  layered: 'PAPER_BALANCE_LAYERED',
+  quant: 'PAPER_BALANCE_QUANT',
+  'smc-sd': 'PAPER_BALANCE_SMC_SD',
+}
+
+/**
+ * Initial USD balance for the paper wallet of a strategy (multi-wallet paper = real-money parity).
+ */
+export function getPaperInitialBalance(strategyId: string): number {
+  const envKey = PAPER_BALANCE_ENV[strategyId]
+  if (envKey) {
+    const raw = process.env[envKey]
+    if (raw !== undefined && raw.trim() !== '') {
+      const n = Number(raw)
+      if (Number.isFinite(n) && n > 0) return n
+    }
+  }
+  return PAPER_DEFAULT_BALANCE_PER_WALLET
+}
 
 // ─── Order Lifecycle (S6) ────────────────────────────────────────────────────
 
@@ -602,6 +703,13 @@ export const TELEGRAM_BOT = {
   maxBackoffMs: 30_000,
   /** /closeall confirmation timeout (seconds). User must /confirm within this window. */
   closeallConfirmTimeoutSec: 30,
+  /**
+   * IANA timezone for đầu ngày / cuối ngày reports (journal stats use local calendar day).
+   * Default UTC. Example: `Asia/Ho_Chi_Minh`.
+   */
+  reportTimezone: process.env.TELEGRAM_REPORT_TZ?.trim() || 'UTC',
+  /** Set `TELEGRAM_DAY_REPORTS=false` to disable scheduled morning/evening summaries. */
+  dayReportsEnabled: process.env.TELEGRAM_DAY_REPORTS !== 'false',
 } as const
 
 /** Health monitoring configuration. */

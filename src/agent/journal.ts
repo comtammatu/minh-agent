@@ -175,3 +175,44 @@ export async function getDailySummary(date: Date): Promise<DailySummary> {
     entryCount,
   }
 }
+
+/**
+ * Same as {@link getDailySummary} but for a calendar date in an IANA timezone (e.g. Asia/Ho_Chi_Minh).
+ * `dateYmd` must be `YYYY-MM-DD`. Used for Telegram đầu/cuối ngày reports.
+ */
+export async function getDailySummaryForLocalDate(dateYmd: string, timeZone: string): Promise<DailySummary> {
+  const exitRows = await sql<{
+    pnl: number
+  }[]>`
+    SELECT (details->>'pnl')::double precision AS pnl
+    FROM trade_journal
+    WHERE event_type = 'exit'
+      AND (ts AT TIME ZONE ${timeZone})::date = ${dateYmd}::date
+      AND details->>'pnl' IS NOT NULL
+  `
+
+  const countRows = await sql<{ cnt: string }[]>`
+    SELECT COUNT(*)::text AS cnt
+    FROM trade_journal
+    WHERE (ts AT TIME ZONE ${timeZone})::date = ${dateYmd}::date
+  `
+  const entryCount = Number(countRows[0]?.cnt ?? 0)
+
+  const pnls = exitRows.map(r => r.pnl)
+  const wins = pnls.filter(p => p > 0)
+  const losses = pnls.filter(p => p < 0)
+  const totalPnl = pnls.reduce((sum, p) => sum + p, 0)
+
+  return {
+    date: dateYmd,
+    totalTrades: pnls.length,
+    wins: wins.length,
+    losses: losses.length,
+    winRate: pnls.length > 0 ? wins.length / pnls.length : 0,
+    totalPnl,
+    avgPnl: pnls.length > 0 ? totalPnl / pnls.length : 0,
+    largestWin: wins.length > 0 ? Math.max(...wins) : 0,
+    largestLoss: losses.length > 0 ? Math.min(...losses) : 0,
+    entryCount,
+  }
+}

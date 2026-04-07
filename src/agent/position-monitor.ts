@@ -35,8 +35,8 @@ import {
 } from '../config.js'
 import { getExchangeService } from '../execution/exchange-service.js'
 import { log } from '../lib/logger.js'
-import { PAPER_TRADE, PAPER_SLIPPAGE_PCT } from '../config.js'
-import { getPaperTracker } from './paper-tracker.js'
+import { getEffectivePaperTrade, PAPER_SLIPPAGE_PCT } from '../config.js'
+import { getPaperTracker, getTotalPaperBalance } from './paper-tracker.js'
 
 // ─── Exchange Query (S10: real HL clearinghouseState) ──────────────────────
 
@@ -239,6 +239,7 @@ export class PositionMonitor {
     slPrice: number
     tpPrice: number
     entryOrderId: string
+    leverage: number
     strategyId?: string
   }): PositionState {
     const state: PositionState = {
@@ -251,6 +252,7 @@ export class PositionMonitor {
       slPrice: params.slPrice,
       tpPrice: params.tpPrice,
       entryOrderId: params.entryOrderId,
+      leverage: params.leverage,
       strategyId: params.strategyId ?? DEFAULT_STRATEGY,
       trailingState: null,
       partialClosesFired: [],
@@ -334,7 +336,7 @@ export class PositionMonitor {
         // Paper mode: compute P&L from tracker (entry recorded by OrderManager)
         let closePrice = 0
         let pnl = 0
-        if (PAPER_TRADE) {
+        if (getEffectivePaperTrade()) {
           // Use trailing stop price as close price for trail hits, SL/TP for those triggers
           const trailPrice = pos.trailingState?.currentStopPrice ?? 0
           const estimatedClose = trailPrice > 0
@@ -342,7 +344,7 @@ export class PositionMonitor {
             : pos.slPrice  // fallback to SL as close estimate
           const slippageDir = (pos.side === 'long' ? -1 : 1)  // close side gets adverse slippage
           closePrice = estimatedClose * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
-          const trade = getPaperTracker().recordExit(pos.entryOrderId, closePrice)
+          const trade = getPaperTracker(pos.strategyId).recordExit(pos.entryOrderId, closePrice)
           if (trade) pnl = trade.pnl
         }
 
@@ -411,8 +413,13 @@ export class PositionMonitor {
   async syncWithExchange(): Promise<MonitorAction[]> {
     // Update account equity for portfolio risk checks (even with 0 positions)
     try {
-      const accountState = await getExchangeService().getAccountState()
-      this.onEquityUpdate?.(accountState.effectiveBalance)
+      if (getEffectivePaperTrade()) {
+        // Paper: use simulated wallets — live HL balance would block portfolio logic incorrectly
+        this.onEquityUpdate?.(getTotalPaperBalance())
+      } else {
+        const accountState = await getExchangeService().getAccountState()
+        this.onEquityUpdate?.(accountState.effectiveBalance)
+      }
     } catch {
       // Non-fatal — equity update is best-effort
     }
@@ -420,7 +427,7 @@ export class PositionMonitor {
     if (this.positions.size === 0) return []
 
     // Paper mode: simulate SL/TP hits using current mark prices instead of exchange query
-    if (PAPER_TRADE) {
+    if (getEffectivePaperTrade()) {
       await this.checkPaperExits()
       return []
     }
@@ -492,7 +499,7 @@ export class PositionMonitor {
     }
 
     for (const { pos, reason, closePrice } of toClose) {
-      const trade = getPaperTracker().recordExit(pos.entryOrderId, closePrice)
+      const trade = getPaperTracker(pos.strategyId).recordExit(pos.entryOrderId, closePrice)
       const pnl = trade?.pnl ?? 0
       const pnlStr = pnl >= 0 ? `+${pnl.toFixed(2)}` : pnl.toFixed(2)
       log.info('position-monitor', `[PAPER] ${reason.toUpperCase()} | ${pos.coin} ${pos.side.toUpperCase()} | entry=${pos.entryPrice.toFixed(2)} close=${closePrice.toFixed(2)} | pnl=${pnlStr}`)

@@ -35,15 +35,20 @@ import {
   SL_IS_MARKET,
   TP_IS_MARKET,
   RETRY,
-  PAPER_TRADE,
+  getEffectivePaperTrade,
   PAPER_SLIPPAGE_PCT,
+  HL_MIN_ORDER_NOTIONAL_USD,
 } from '../config.js'
 import { getExchangeService, type ExchangeService } from '../execution/exchange-service.js'
 import type { ExchangePool } from '../execution/exchange-pool.js'
 import { log } from '../lib/logger.js'
 import { withRetry, isRetryableExchangeError } from '../lib/retry.js'
 import { getPaperTracker } from './paper-tracker.js'
-import { computePositionSize } from './exits.js'
+import {
+  clampPositionSizeForMaxLeverage,
+  computeEntryLeverageForTargetMargin,
+  computePositionSize,
+} from './exits.js'
 import { DEFAULT_RISK_PERCENT, SIMULATED_ACCOUNT, TARGET_MARGIN_PCT } from '../config.js'
 
 /** Default strategy ID for backward compatibility (single-strategy mode). */
@@ -272,7 +277,7 @@ export class OrderManager {
   /** Callback to dispatch events back to TradingAgent (with strategyId). */
   private dispatchToAgent: ((coin: string, event: AgentEvent, strategyId?: string) => void) | null = null
   /** Callback to register position with PositionMonitor on fill. */
-  private onPositionOpen: ((params: { positionId: string; coin: string; side: 'long' | 'short'; entryPrice: number; size: number; slPrice: number; tpPrice: number; entryOrderId: string; strategyId?: string }) => void) | null = null
+  private onPositionOpen: ((params: { positionId: string; coin: string; side: 'long' | 'short'; entryPrice: number; size: number; slPrice: number; tpPrice: number; entryOrderId: string; leverage: number; strategyId?: string }) => void) | null = null
   /** ExchangePool for per-strategy exchange routing (Sprint 4.5). */
   private exchangePool: ExchangePool | null = null
 
@@ -282,7 +287,7 @@ export class OrderManager {
   }
 
   /** Set callback to register positions with PositionMonitor on order fill. */
-  setPositionOpenCallback(fn: (params: { positionId: string; coin: string; side: 'long' | 'short'; entryPrice: number; size: number; slPrice: number; tpPrice: number; entryOrderId: string; strategyId?: string }) => void): void {
+  setPositionOpenCallback(fn: (params: { positionId: string; coin: string; side: 'long' | 'short'; entryPrice: number; size: number; slPrice: number; tpPrice: number; entryOrderId: string; leverage: number; strategyId?: string }) => void): void {
     this.onPositionOpen = fn
   }
 
@@ -291,9 +296,9 @@ export class OrderManager {
     this.exchangePool = pool
   }
 
-  /** Get ExchangeService for a strategy. Falls back to singleton if no pool. */
+  /** Get ExchangeService for a strategy. Falls back to singleton if no pool or pool init failed. */
   private getExchangeForStrategy(strategyId: string): ExchangeService {
-    if (this.exchangePool) {
+    if (this.exchangePool?.isInitialized()) {
       return this.exchangePool.get(strategyId)
     }
     return getExchangeService()
@@ -320,13 +325,61 @@ export class OrderManager {
       return null
     }
 
+    const svc = this.getExchangeForStrategy(strategyId)
+
     // Build order — compute position size if not provided (quant/smc-sd don't set it)
     let size = setup.patternData.positionSizeCoins as number ?? 0
     if (size <= 0 && entryPrice > 0 && slPrice > 0) {
-      const accountValue = PAPER_TRADE
-        ? getPaperTracker().getBalance()
-        : (getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT)
+      const accountValue = getEffectivePaperTrade()
+        ? getPaperTracker(strategyId).getBalance()
+        : (svc.getCachedAccountValue?.() || SIMULATED_ACCOUNT)
       size = computePositionSize(accountValue, DEFAULT_RISK_PERCENT, entryPrice, slPrice)
+    }
+
+    // Real-money + paper: cap notional so margin budget holds at HL max leverage (see clampPositionSizeForMaxLeverage)
+    if (entryPrice > 0 && size > 0) {
+      const accountValue = getEffectivePaperTrade()
+        ? getPaperTracker(strategyId).getBalance()
+        : (svc.getCachedAccountValue?.() || SIMULATED_ACCOUNT)
+      const maxLev = svc?.getMaxLeverage?.(coin)
+      const { sizeCoins: capped, wasCapped } = clampPositionSizeForMaxLeverage(
+        size,
+        entryPrice,
+        accountValue,
+        TARGET_MARGIN_PCT,
+        maxLev,
+      )
+      if (wasCapped && maxLev !== undefined) {
+        const maxN = accountValue * TARGET_MARGIN_PCT * maxLev
+        log.info(
+          'order-manager',
+          `Capped ${coin} size: maxLeverage=${maxLev}x limits notional to ≤ $${maxN.toFixed(2)} (margin budget ${(TARGET_MARGIN_PCT * 100).toFixed(0)}% equity)`,
+        )
+      }
+      size = capped
+      const notionalAfterRiskCap = size * entryPrice
+      const maxNotionalUsd =
+        maxLev !== undefined && maxLev > 0
+          ? accountValue * TARGET_MARGIN_PCT * maxLev
+          : Number.POSITIVE_INFINITY
+
+      // HL requires min notional; risk-sized position can be below $10 after leverage cap.
+      // Bump into available margin up to HL min — only skip if we cannot afford $10.
+      if (notionalAfterRiskCap < HL_MIN_ORDER_NOTIONAL_USD) {
+        const affordable = Math.min(HL_MIN_ORDER_NOTIONAL_USD, maxNotionalUsd)
+        if (affordable < HL_MIN_ORDER_NOTIONAL_USD) {
+          log.warn(
+            'order-manager',
+            `Skip ${coin}: max affordable notional $${affordable.toFixed(2)} < $${HL_MIN_ORDER_NOTIONAL_USD} HL minimum (equity=$${accountValue.toFixed(2)} maxLev=${maxLev ?? 'n/a'})`,
+          )
+          return null
+        }
+        size = affordable / entryPrice
+        log.info(
+          'order-manager',
+          `Bumped ${coin} entry to HL min notional $${affordable.toFixed(2)} (risk-sized $${notionalAfterRiskCap.toFixed(2)} after leverage cap)`,
+        )
+      }
     }
 
     const now = Date.now()
@@ -359,10 +412,9 @@ export class OrderManager {
     log.info('order-manager', `Order created: ${order.id} ${coin} ${side} @ ${entryPrice} strategy=${strategyId} [cloid=${cloid.slice(0, 10)}...]`)
 
     // Submit to exchange (or simulate in paper mode) — route to strategy-specific wallet
-    const svc = this.getExchangeForStrategy(strategyId)
 
     // Set leverage before entry: ensures margin = sizeUsd / leverage ≤ TARGET_MARGIN_PCT × account
-    if (!PAPER_TRADE && svc && entryPrice > 0) {
+    if (!getEffectivePaperTrade() && svc && entryPrice > 0) {
       const accountValue = svc.getCachedAccountValue() || SIMULATED_ACCOUNT
       const sizeUsd = order.size * entryPrice
       const targetMarginUsd = accountValue * TARGET_MARGIN_PCT
@@ -370,7 +422,7 @@ export class OrderManager {
       await svc.setLeverage(coin, requiredLeverage)
     }
 
-    const result = PAPER_TRADE
+    const result = getEffectivePaperTrade()
       ? paperSimulateFill(coin, side, entryPrice, order.size, cloid)
       : await submitToExchange(coin, side, order.type, entryPrice, order.size, cloid, svc)
 
@@ -383,10 +435,10 @@ export class OrderManager {
       log.info('order-manager', `Order submitted: ${order.id} exchangeId=${result.exchangeOrderId}`)
 
       // Paper mode: auto-fill immediately (no exchange WS to notify us)
-      if (PAPER_TRADE) {
+      if (getEffectivePaperTrade()) {
         const slippageDir = side === 'long' ? 1 : -1
         const paperFillPrice = entryPrice * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
-        getPaperTracker().recordEntry(order.id, coin, side, paperFillPrice, order.size)
+        getPaperTracker(strategyId).recordEntry(order.id, coin, side, paperFillPrice, order.size)
         await this.onOrderFilled(order.id, paperFillPrice, order.size)
       }
     } else {
@@ -439,6 +491,19 @@ export class OrderManager {
     // R9: Place SL + TP trigger orders on exchange
     await this.placeSLTP(order)
 
+    const svcForLev = this.getExchangeForStrategy(order.strategyId)
+    const accountValueForLev = getEffectivePaperTrade()
+      ? getPaperTracker(order.strategyId).getBalance()
+      : (svcForLev?.getCachedAccountValue() || SIMULATED_ACCOUNT)
+    const sizeUsd = fillPrice * fillSize
+    const maxLev = svcForLev?.getMaxLeverage?.(order.coin)
+    const leverage = computeEntryLeverageForTargetMargin(
+      sizeUsd,
+      accountValueForLev,
+      TARGET_MARGIN_PCT,
+      maxLev,
+    )
+
     // Register position with PositionMonitor for tracking (trail stop, partial close, TUI display)
     this.onPositionOpen?.({
       positionId,
@@ -449,6 +514,7 @@ export class OrderManager {
       slPrice: order.slPrice,
       tpPrice: order.tpPrice,
       entryOrderId: order.id,
+      leverage,
       strategyId: order.strategyId,
     })
 
@@ -517,7 +583,7 @@ export class OrderManager {
       exchangeOrderId: null,
       parentOrderId: entryOrder.id,
     }
-    const slResult = PAPER_TRADE
+    const slResult = getEffectivePaperTrade()
       ? paperSimulateTrigger(slTrigger)
       : await this.placeTriggerWithRetry(slTrigger, 'SL', entryOrder.coin, svc)
     if (slResult.success) {
@@ -540,7 +606,7 @@ export class OrderManager {
       exchangeOrderId: null,
       parentOrderId: entryOrder.id,
     }
-    const tpResult = PAPER_TRADE
+    const tpResult = getEffectivePaperTrade()
       ? paperSimulateTrigger(tpTrigger)
       : await this.placeTriggerWithRetry(tpTrigger, 'TP', entryOrder.coin, svc)
     if (tpResult.success) {
@@ -619,7 +685,7 @@ export class OrderManager {
     // Cancel on exchange if submitted (or simulate in paper mode) — route to strategy wallet
     if (order.exchangeOrderId) {
       const svc = this.getExchangeForStrategy(order.strategyId)
-      const result = PAPER_TRADE
+      const result = getEffectivePaperTrade()
         ? paperSimulateCancel(order.exchangeOrderId, order.coin)
         : await cancelOnExchange(order.exchangeOrderId, order.coin, svc)
       if (!result.success) {
@@ -659,7 +725,7 @@ export class OrderManager {
     slTrigger.triggerPrice = newSlPrice
 
     // Paper mode: just update in-memory, no exchange calls
-    if (PAPER_TRADE) {
+    if (getEffectivePaperTrade()) {
       log.info('order-manager', `[PAPER] SL updated: ${slTrigger.coin} ${oldPrice} → ${newSlPrice}`)
       return
     }
@@ -775,7 +841,7 @@ export class OrderManager {
     if (triggers) {
       for (const trigger of triggers) {
         if (trigger.exchangeOrderId) {
-          if (PAPER_TRADE) {
+          if (getEffectivePaperTrade()) {
             paperSimulateCancel(trigger.exchangeOrderId, trigger.coin)
           } else {
             await cancelOnExchange(trigger.exchangeOrderId, trigger.coin, svc)
@@ -790,11 +856,11 @@ export class OrderManager {
     const closeSize = entryOrder.fillSize > 0 ? entryOrder.fillSize : entryOrder.size
     const refPrice = entryOrder.fillPrice ?? entryOrder.price
     const cloid = generateCloid()
-    if (PAPER_TRADE) {
+    if (getEffectivePaperTrade()) {
       const slippageDir = closeSide === 'long' ? 1 : -1
       const closePrice = refPrice * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
       paperSimulateFill(entryOrder.coin, closeSide, closePrice, closeSize, cloid)
-      const trade = getPaperTracker().recordExit(entryOrder.id, closePrice)
+      const trade = getPaperTracker(entryOrder.strategyId).recordExit(entryOrder.id, closePrice)
       // Dispatch with real P&L so agent state machine + circuit breakers work
       if (trade && entryOrder.positionId) {
         this.dispatchToAgent?.(entryOrder.coin, {

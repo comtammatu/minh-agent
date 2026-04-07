@@ -13,14 +13,16 @@ import type {
   MarketRegime,
 } from '../types.js'
 import { appendCandle, getCandles } from '../feed/store.js'
-import { getStrategyRegistry } from './registry.js'
+import { getStrategyRegistry, type StrategyRegistry } from './registry.js'
 import { clearQuantState } from './strategies/quant/pipeline.js'
 import { computeExpiresAtBar, setupId } from './shared/invalidation.js'
 import { getOrCreateStats, resetPipelineStats } from './diagnostics.js'
 import {
   MIN_CANDLES_FOR_SCAN,
   INDICATOR_WINDOW,
+  TIMEFRAMES,
 } from '../config.js'
+import { log } from '../lib/logger.js'
 import { EventEmitter } from 'events'
 
 // ── Module-level state ──────────────────────────────────────────────────────
@@ -54,6 +56,67 @@ export interface StatusSnapshot {
 
 const statusState = new Map<string, StatusSnapshot>()
 
+/**
+ * Run all strategies on the last fully closed bar (idx = length - 2), same as WS path.
+ * Used after REST/PG backfill so bias/status/setups appear without waiting for the next TF close.
+ */
+function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry: StrategyRegistry): void {
+  const maxMin = Math.max(INDICATOR_WINDOW, ...registry.getAll().map(s => s.minCandles()))
+  const candles = getCandles(coin, interval, maxMin + 2)
+  if (candles.length < MIN_CANDLES_FOR_SCAN + 1) return
+
+  const idx = candles.length - 2
+  const signalResults = registry.runAll(coin, interval, candles, idx)
+
+  for (const { strategyId, signal } of signalResults) {
+    const id = setupId(coin, interval, signal.type, strategyId)
+    const setup: ActiveSetup = {
+      ...signal,
+      id,
+      coin,
+      interval,
+      strategyId,
+      detectedAt: Date.now(),
+      detectedAtBar: idx,
+      expiresAtBar: computeExpiresAtBar(signal.type, idx),
+    }
+    activeSetups.set(id, setup)
+    const stats = getOrCreateStats(strategyId)
+    stats.setupsTracked++
+    pipelineEmitter.emit('setup', setup)
+  }
+}
+
+/** Seed WS dedup map so the first live tick matches `prevTs === candle.t` for the current bar. */
+function seedLastCandleTsFromStore(coin: string, interval: CandleInterval): void {
+  const sk = `${coin}|${interval}`
+  const candles = getCandles(coin, interval, 2)
+  if (candles.length === 0) return
+  lastCandleTs.set(sk, candles[candles.length - 1].t)
+}
+
+/**
+ * After backfill: run one scan per coin/TF (except 1m) and seed lastCandleTs from store.
+ * Call only after StrategyRegistry is populated (and after agent subscribes if setups must be handled).
+ */
+export function bootstrapPipelineFromStore(coins: readonly string[]): void {
+  const registry = getStrategyRegistry()
+  if (registry.getAll().length === 0) {
+    log.warn('pipeline', 'bootstrapPipelineFromStore: no strategies registered — skipping')
+    return
+  }
+  for (const coin of coins) {
+    for (const tf of TIMEFRAMES) {
+      const interval = tf as CandleInterval
+      if (interval !== '1m') {
+        dispatchClosedBarScan(coin, interval, registry)
+      }
+      seedLastCandleTsFromStore(coin, interval)
+    }
+  }
+  log.info('pipeline', `Bootstrap scan + WS seed | ${coins.length} coin(s) × ${TIMEFRAMES.length} TF`)
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /** Called by WS subscription on every candle tick. Dispatches to all registered strategies. */
@@ -78,34 +141,7 @@ export function onCandleTick(
   // 1m: store candles for entry refinement only, skip signal scan
   if (interval === '1m') return
 
-  // Fan-out to all registered strategies via StrategyRegistry
-  const registry = getStrategyRegistry()
-  // Fetch enough candles for the most demanding strategy (+2 for closed-candle idx)
-  const maxMin = Math.max(INDICATOR_WINDOW, ...registry.getAll().map(s => s.minCandles()))
-  const candles = getCandles(coin, interval, maxMin + 2)
-  if (candles.length < MIN_CANDLES_FOR_SCAN + 1) return
-
-  const idx = candles.length - 2
-  const signalResults = registry.runAll(coin, interval, candles, idx)
-
-  // Handle modern strategies that return Signal directly (not legacy emit pattern)
-  for (const { strategyId, signal } of signalResults) {
-    const id = setupId(coin, interval, signal.type, strategyId)
-    const setup: ActiveSetup = {
-      ...signal,
-      id,
-      coin,
-      interval,
-      strategyId,
-      detectedAt: Date.now(),
-      detectedAtBar: idx,
-      expiresAtBar: computeExpiresAtBar(signal.type, idx),
-    }
-    activeSetups.set(id, setup)
-    const stats = getOrCreateStats(strategyId)
-    stats.setupsTracked++
-    pipelineEmitter.emit('setup', setup)
-  }
+  dispatchClosedBarScan(coin, interval, getStrategyRegistry())
 }
 
 /** Get current status snapshots for all coin/tf combinations. */

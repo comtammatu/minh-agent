@@ -11,9 +11,9 @@
  */
 
 import { log } from '../lib/logger.js'
-import { SIMULATED_ACCOUNT, PAPER_TRADE } from '../config.js'
+import { SIMULATED_ACCOUNT, getEffectivePaperTrade } from '../config.js'
 import { getExchangeService } from '../execution/exchange-service.js'
-import { getPaperTracker } from '../agent/paper-tracker.js'
+import { getTotalPaperBalance } from '../agent/paper-tracker.js'
 import { buildLiveMetrics } from './metrics.js'
 import {
   getClosedTrades,
@@ -51,9 +51,9 @@ export async function getLiveMetrics(): Promise<LiveMetrics> {
     getOpenPositionCount(),
   ])
 
-  // Paper mode: use PaperTracker balance; real mode: ExchangeService or fallback
-  const capital = PAPER_TRADE
-    ? getPaperTracker().getBalance()
+  // Paper mode: sum of per-strategy paper wallets (mirrors 3-wallet live)
+  const capital = getEffectivePaperTrade()
+    ? getTotalPaperBalance()
     : (getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT)
 
   return buildLiveMetrics({

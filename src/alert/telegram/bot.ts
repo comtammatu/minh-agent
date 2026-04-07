@@ -10,16 +10,27 @@
  * The polling loop is non-blocking: uses fetch with timeout, yields between iterations.
  */
 
-import { TELEGRAM, TELEGRAM_BOT } from '../../config.js'
+import { TELEGRAM, TELEGRAM_BOT, setPaperTradeRuntimeOverride } from '../../config.js'
 import { log } from '../../lib/logger.js'
-import { sendTelegramAlert } from './alerts.js'
-import { findCommand, registerBuiltinCommands, getCommands } from './commands.js'
+import { sendTelegramAlert, formatDailySummaryHtml } from './alerts.js'
+import {
+  findCommand,
+  registerBuiltinCommands,
+  getCommands,
+  executeCommandByName,
+  getMainMenuKeyboard,
+} from './commands.js'
+import { getDailySummaryForLocalDate } from '../../agent/journal.js'
+import { getPositionMonitor } from '../../agent/position-monitor.js'
 import type { TelegramUpdate, TelegramApiResponse } from './types.js'
 
 // ─── State ─────────────────────────────────────────────────────────────────
 
 let running = false
 let lastUpdateId = 0
+let dayReportInterval: ReturnType<typeof setInterval> | null = null
+let lastMorningReportForYmd: string | null = null
+let lastEveningReportForYmd: string | null = null
 
 type FetchFn = typeof globalThis.fetch
 
@@ -45,6 +56,47 @@ function resolveBotConfig(): BotConfig | null {
   return { botToken, chatId, apiBase: TELEGRAM.apiBase }
 }
 
+// ─── Bot API helpers ───────────────────────────────────────────────────────
+
+/** POST Telegram Bot API (JSON body). */
+async function postBotApi(
+  config: BotConfig,
+  method: string,
+  body: Record<string, unknown>,
+  fetchFn: FetchFn = globalThis.fetch,
+): Promise<boolean> {
+  const url = `${config.apiBase}/bot${config.botToken}/${method}`
+  try {
+    const res = await fetchFn(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(TELEGRAM.timeoutMs),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+/** Register slash commands shown in Telegram command menu. */
+async function registerBotCommands(config: BotConfig, fetchFn: FetchFn): Promise<void> {
+  const cmds = getCommands().map(c => ({
+    command: c.name,
+    description: c.description.length > 96 ? c.description.slice(0, 93) + '...' : c.description,
+  }))
+  const ok = await postBotApi(config, 'setMyCommands', { commands: cmds }, fetchFn)
+  if (ok) {
+    log.info('bot', `setMyCommands OK (${cmds.length} commands)`)
+  } else {
+    log.warn('bot', 'setMyCommands failed — check token / network')
+  }
+}
+
+async function answerCallbackQuery(config: BotConfig, queryId: string, fetchFn: FetchFn): Promise<void> {
+  await postBotApi(config, 'answerCallbackQuery', { callback_query_id: queryId }, fetchFn)
+}
+
 // ─── getUpdates ────────────────────────────────────────────────────────────
 
 /** Fetch updates from Telegram Bot API (long-polling). */
@@ -60,7 +112,7 @@ async function getUpdates(
     body: JSON.stringify({
       offset: lastUpdateId + 1,
       timeout: TELEGRAM_BOT.pollingTimeoutSec,
-      allowed_updates: ['message'],
+      allowed_updates: ['message', 'callback_query'],
     }),
     signal: AbortSignal.timeout(
       (TELEGRAM_BOT.pollingTimeoutSec + TELEGRAM_BOT.pollingExtraTimeoutSec) * 1000,
@@ -87,16 +139,149 @@ function parseCommand(text: string): { name: string; args: string } | null {
   const trimmed = text.trim()
   if (!trimmed.startsWith('/')) return null
 
-  // Handle "/command@BotName" format
   const firstSpace = trimmed.indexOf(' ')
   const cmdPart = firstSpace === -1 ? trimmed.slice(1) : trimmed.slice(1, firstSpace)
   const args = firstSpace === -1 ? '' : trimmed.slice(firstSpace + 1).trim()
 
-  // Strip @BotName suffix
   const atIdx = cmdPart.indexOf('@')
   const name = atIdx === -1 ? cmdPart : cmdPart.slice(0, atIdx)
 
   return { name: name.toLowerCase(), args }
+}
+
+function getYmdInTimeZone(d: Date, tz: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d)
+  const y = parts.find(p => p.type === 'year')?.value
+  const m = parts.find(p => p.type === 'month')?.value
+  const day = parts.find(p => p.type === 'day')?.value
+  return `${y}-${m}-${day}`
+}
+
+function getHourMinuteInTz(d: Date, tz: string): { h: number; m: number } {
+  const fmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: tz,
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+  })
+  const parts = fmt.formatToParts(d)
+  const ho = parts.find(p => p.type === 'hour')?.value
+  const mo = parts.find(p => p.type === 'minute')?.value
+  return { h: parseInt(ho ?? '0', 10), m: parseInt(mo ?? '0', 10) }
+}
+
+async function tickDayReports(config: BotConfig, fetchFn: FetchFn): Promise<void> {
+  const tz = TELEGRAM_BOT.reportTimezone
+  const now = new Date()
+  const todayYmd = getYmdInTimeZone(now, tz)
+  const yesterdayYmd = getYmdInTimeZone(new Date(now.getTime() - 86_400_000), tz)
+  const { h, m } = getHourMinuteInTz(now, tz)
+
+  if (h === 0 && m <= 3 && lastMorningReportForYmd !== todayYmd) {
+    lastMorningReportForYmd = todayYmd
+    try {
+      const summary = await getDailySummaryForLocalDate(yesterdayYmd, tz)
+      const posCount = getPositionMonitor().getPositions().size
+      const base = formatDailySummaryHtml('Đầu ngày — hôm qua', {
+        ...summary,
+        entryCount: summary.entryCount,
+      })
+      const html = `${base}\n\nOpen positions: <b>${posCount}</b>`
+      await sendTelegramAlert(html, fetchFn, { parseMode: 'HTML' })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.error('bot', `Morning report failed: ${msg}`)
+    }
+  }
+
+  if (h === 23 && m >= 55 && lastEveningReportForYmd !== todayYmd) {
+    lastEveningReportForYmd = todayYmd
+    try {
+      const summary = await getDailySummaryForLocalDate(todayYmd, tz)
+      const html = formatDailySummaryHtml('Cuối ngày — hôm nay', {
+        ...summary,
+        entryCount: summary.entryCount,
+      })
+      await sendTelegramAlert(html, fetchFn, { parseMode: 'HTML' })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.error('bot', `Evening report failed: ${msg}`)
+    }
+  }
+}
+
+function startDayReportScheduler(config: BotConfig, fetchFn: FetchFn): void {
+  if (!TELEGRAM_BOT.dayReportsEnabled) {
+    log.info('bot', 'Day reports disabled (TELEGRAM_DAY_REPORTS=false)')
+    return
+  }
+  if (dayReportInterval) return
+  dayReportInterval = setInterval(() => {
+    void tickDayReports(config, fetchFn)
+  }, 45_000)
+  log.info('bot', `Day report scheduler (${TELEGRAM_BOT.reportTimezone}, every 45s tick)`)
+}
+
+function stopDayReportScheduler(): void {
+  if (dayReportInterval) {
+    clearInterval(dayReportInterval)
+    dayReportInterval = null
+  }
+}
+
+/** Route callback_query (inline keyboard). */
+async function routeCallback(
+  update: TelegramUpdate,
+  config: BotConfig,
+  fetchFn: FetchFn = globalThis.fetch,
+): Promise<void> {
+  const cq = update.callback_query
+  if (!cq?.data || !cq.from) return
+
+  const chatId = cq.message?.chat.id
+  if (chatId !== config.chatId) {
+    log.warn('bot', `Unauthorized callback chat ${chatId} — dropping`)
+    return
+  }
+
+  await answerCallbackQuery(config, cq.id, fetchFn)
+
+  const data = cq.data.trim()
+  if (!data.startsWith('c:')) return
+
+  const rest = data.slice(2)
+  if (rest === 'paper_on') {
+    setPaperTradeRuntimeOverride(true)
+    await sendTelegramAlert('Paper trade: *ON* \\(runtime\\)\\.', fetchFn, { parseMode: 'MarkdownV2' })
+    return
+  }
+  if (rest === 'paper_off') {
+    setPaperTradeRuntimeOverride(false)
+    await sendTelegramAlert(
+      'Paper trade: *OFF* \\(live\\)\\. \\/paper reset để reset override\\.',
+      fetchFn,
+      { parseMode: 'MarkdownV2' },
+    )
+    return
+  }
+
+  try {
+    const reply = await executeCommandByName(rest, '', chatId)
+    const isMenu = rest === 'menu'
+    await sendTelegramAlert(reply, fetchFn, {
+      parseMode: isMenu ? 'HTML' : 'MarkdownV2',
+      replyMarkup: isMenu ? getMainMenuKeyboard() : undefined,
+    })
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err)
+    log.error('bot', `Callback c:${rest} failed: ${errMsg}`)
+    await sendTelegramAlert(`Command failed\\. Check logs\\.`, fetchFn)
+  }
 }
 
 /** Route a single update: auth check → parse command → execute handler → send reply. */
@@ -105,17 +290,21 @@ async function routeUpdate(
   config: BotConfig,
   fetchFn: FetchFn = globalThis.fetch,
 ): Promise<void> {
+  if (update.callback_query) {
+    await routeCallback(update, config, fetchFn)
+    return
+  }
+
   const msg = update.message
   if (!msg?.text) return
 
-  // U2: Chat ID whitelist — silent drop for unauthorized senders
   if (msg.chat.id !== config.chatId) {
     log.warn('bot', `Unauthorized chat ID ${msg.chat.id} from ${msg.from?.username ?? 'unknown'} — dropping`)
     return
   }
 
   const parsed = parseCommand(msg.text)
-  if (!parsed) return // Not a command — ignore
+  if (!parsed) return
 
   const cmd = findCommand(parsed.name)
   if (!cmd) {
@@ -128,7 +317,11 @@ async function routeUpdate(
 
   try {
     const reply = await cmd.handler(parsed.args, msg.chat.id)
-    await sendTelegramAlert(reply, fetchFn)
+    const isMenu = parsed.name === 'menu'
+    await sendTelegramAlert(reply, fetchFn, {
+      parseMode: isMenu ? 'HTML' : 'MarkdownV2',
+      replyMarkup: isMenu ? getMainMenuKeyboard() : undefined,
+    })
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err)
     log.error('bot', `Command /${parsed.name} failed: ${errMsg}`)
@@ -146,16 +339,17 @@ export async function startBot(fetchFn: FetchFn = globalThis.fetch): Promise<voi
     return
   }
 
-  // Register commands before starting
   registerBuiltinCommands()
 
   running = true
   lastUpdateId = 0
 
+  await registerBotCommands(config, fetchFn)
+  startDayReportScheduler(config, fetchFn)
+
   const cmdNames = getCommands().map(c => `/${c.name}`).join(', ')
   log.info('bot', `Telegram bot started (long-polling, ${getCommands().length} commands: ${cmdNames})`)
 
-  // Fire-and-forget polling loop — don't block startup
   pollLoop(config, fetchFn).catch(err => {
     const msg = err instanceof Error ? err.message : String(err)
     log.error('bot', `Polling loop crashed: ${msg}`)
@@ -180,7 +374,6 @@ async function pollLoop(config: BotConfig, fetchFn: FetchFn): Promise<void> {
       const errMsg = err instanceof Error ? err.message : String(err)
       log.error('bot', `getUpdates failed (${consecutiveErrors}x): ${errMsg}`)
 
-      // Exponential backoff: 1s, 2s, 4s, 8s, ... max 30s
       const backoff = Math.min(1000 * Math.pow(2, consecutiveErrors - 1), TELEGRAM_BOT.maxBackoffMs)
       await new Promise(r => setTimeout(r, backoff))
     }
@@ -191,6 +384,7 @@ async function pollLoop(config: BotConfig, fetchFn: FetchFn): Promise<void> {
 export function stopBot(): void {
   if (!running) return
   running = false
+  stopDayReportScheduler()
   log.info('bot', 'Telegram bot stopping')
 }
 
@@ -204,5 +398,10 @@ export const _test = {
   resetState: () => {
     running = false
     lastUpdateId = 0
+    stopDayReportScheduler()
+    lastMorningReportForYmd = null
+    lastEveningReportForYmd = null
   },
+  getYmdInTimeZone,
+  getHourMinuteInTz,
 }

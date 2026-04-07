@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import {
   escapeMarkdownV2,
+  escapeHtml,
   sendTelegramAlert,
   formatAlert,
   formatDailySummary,
@@ -83,6 +84,16 @@ describe('sendTelegramAlert', () => {
     expect(capturedBody.parse_mode).toBe('MarkdownV2')
   })
 
+  it('sends HTML when parseMode HTML is set', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    const mockFetch: typeof fetch = async (_input, init) => {
+      capturedBody = JSON.parse(init?.body as string)
+      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+    }
+    await sendTelegramAlert('<b>Hi</b>', mockFetch, { parseMode: 'HTML' })
+    expect(capturedBody.parse_mode).toBe('HTML')
+  })
+
   it('returns false and logs on HTTP error', async () => {
     const mockFetch: typeof fetch = async () => {
       return new Response('Bad Request', { status: 400 })
@@ -125,6 +136,14 @@ describe('sendTelegramAlert', () => {
   })
 })
 
+// ─── escapeHtml ─────────────────────────────────────────────────────────────
+
+describe('escapeHtml', () => {
+  it('escapes ampersand and angle brackets', () => {
+    expect(escapeHtml('a & b <tag>')).toBe('a &amp; b &lt;tag&gt;')
+  })
+})
+
 // ─── formatAlert ────────────────────────────────────────────────────────────
 
 describe('formatAlert', () => {
@@ -148,14 +167,32 @@ describe('formatAlert', () => {
       type: 'log_journal',
       eventType: 'signal',
       coin: 'BTC',
-      details: { grade: 'A', confidence: 0.85, setupId: 'BTC:1h:order-block:long' },
+      details: {
+        grade: 'A',
+        confidence: 0.85,
+        setupId: 'BTC:1h:order-block:long',
+        side: 'long',
+        interval: '1h',
+        entryPrice: 100_000,
+        slPrice: 99_000,
+        tpPrice: 103_000,
+        pattern: 'pin_bar',
+      },
     }
     const msg = formatAlert(action)
     expect(msg).not.toBeNull()
-    expect(msg).toContain('SETUP DETECTED')
-    expect(msg).toContain('BTC')
-    expect(msg).toContain('A')
-    expect(msg).toContain('85')
+    expect(msg!.parseMode).toBe('HTML')
+    expect(msg!.text).toContain('SETUP DETECTED')
+    expect(msg!.text).toContain('BTC')
+    expect(msg!.text).toContain('A')
+    expect(msg!.text).toContain('85')
+    expect(msg!.text).toContain('LONG')
+    expect(msg!.text).toContain('1h')
+    expect(msg!.text).toContain('pin_bar')
+    expect(msg!.text).toContain('100000.00')
+    expect(msg!.text).toContain('99000.00')
+    expect(msg!.text).toContain('103000.00')
+    expect(msg!.text).toContain('R:R')
   })
 
   it('formats signal alert for grade A+', () => {
@@ -167,9 +204,9 @@ describe('formatAlert', () => {
     }
     const msg = formatAlert(action)
     expect(msg).not.toBeNull()
-    expect(msg).toContain('SETUP DETECTED')
-    expect(msg).toContain('ETH')
-    expect(msg).toContain('A\\+')
+    expect(msg!.text).toContain('SETUP DETECTED')
+    expect(msg!.text).toContain('ETH')
+    expect(msg!.text).toContain('A+')
   })
 
   it('returns null for signal with grade B', () => {
@@ -203,10 +240,10 @@ describe('formatAlert', () => {
     }
     const msg = formatAlert(action)
     expect(msg).not.toBeNull()
-    expect(msg).toContain('ORDER FILLED')
-    expect(msg).toContain('BTC')
-    expect(msg).toContain('67500\\.1234')
-    expect(msg).toContain('long')
+    expect(msg!.text).toContain('POSITION OPEN')
+    expect(msg!.text).toContain('BTC')
+    expect(msg!.text).toContain('67500.1234')
+    expect(msg!.text).toContain('long')
   })
 
   it('formats enter alert for short side', () => {
@@ -218,8 +255,8 @@ describe('formatAlert', () => {
     }
     const msg = formatAlert(action)
     expect(msg).not.toBeNull()
-    expect(msg).toContain('🔴')
-    expect(msg).toContain('short')
+    expect(msg!.text).toContain('🔴')
+    expect(msg!.text).toContain('short')
   })
 
   // ── Exit ──
@@ -233,10 +270,11 @@ describe('formatAlert', () => {
     }
     const msg = formatAlert(action)
     expect(msg).not.toBeNull()
-    expect(msg).toContain('POSITION CLOSED')
-    expect(msg).toContain('✅')
-    expect(msg).toContain('\\+150\\.50')
-    expect(msg).toContain('tp\\_hit')
+    expect(msg!.text).toContain('POSITION CLOSED')
+    expect(msg!.text).toContain('✅')
+    expect(msg!.text).toContain('+150.50')
+    expect(msg!.text).toContain('tp_hit')
+    expect(msg!.text).toContain('Balance')
   })
 
   it('formats exit alert with negative PnL', () => {
@@ -248,8 +286,8 @@ describe('formatAlert', () => {
     }
     const msg = formatAlert(action)
     expect(msg).not.toBeNull()
-    expect(msg).toContain('❌')
-    expect(msg).toContain('\\-42\\.30')
+    expect(msg!.text).toContain('❌')
+    expect(msg!.text).toContain('-42.30')
   })
 
   // ── Circuit Break ──
@@ -263,9 +301,9 @@ describe('formatAlert', () => {
     }
     const msg = formatAlert(action)
     expect(msg).not.toBeNull()
-    expect(msg).toContain('CIRCUIT BREAKER TRIPPED')
-    expect(msg).toContain('daily\\_loss\\_limit')
-    expect(msg).toContain('\\-300\\.00')
+    expect(msg!.text).toContain('CIRCUIT BREAKER TRIPPED')
+    expect(msg!.text).toContain('daily_loss_limit')
+    expect(msg!.text).toContain('-300.00')
   })
 
   // ── Invalidate ──
@@ -279,9 +317,9 @@ describe('formatAlert', () => {
     }
     const msg = formatAlert(action)
     expect(msg).not.toBeNull()
-    expect(msg).toContain('PATTERN INVALIDATED')
-    expect(msg).toContain('zone\\-broken')
-    expect(msg).toContain('pos\\-123')
+    expect(msg!.text).toContain('PATTERN INVALIDATED')
+    expect(msg!.text).toContain('zone-broken')
+    expect(msg!.text).toContain('pos-123')
   })
 
   it('returns null for invalidate without position', () => {

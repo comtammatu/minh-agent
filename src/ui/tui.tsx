@@ -4,30 +4,38 @@
  * Layout:
  *   ┌─ Header Bar ──────────────────────────────────────────────┐
  *   ├─ Account ──────────┬─ Strategy ──┬─ System ──────────────┤
- *   ├─ Positions ─────────────────────────────────────────────  ┤
- *   ├─ Watchlist L ──────┬─ Watchlist R ────────────────────────┤
- *   ├─ Tape (Signal Log) ───────────────────────────────────────┤
+ *   ├─ Positions (½) │ Watchlist (½) — side-by-side tables ────┤
  *   └──────────────────────────────────────────────────────────-┘
  *
  * Data sources: all in-process singletons (agent, pipeline, health, positions, exchange).
- * Refresh: 3s interval. Tape: event-driven via appendSignal().
+ * Refresh: 1s interval.
  */
 
-import React, { useState, useEffect, useMemo, memo } from 'react'
+import React, { useState, useEffect, useMemo, memo, useRef } from 'react'
 import { render, Box, Text, useApp, useInput, useStdout } from 'ink'
-import type { AgentAction } from '../agent/types.js'
 import type { AgentSnapshot } from '../agent/types.js'
 import type { StatusSnapshot } from '../strategy/orchestrator.js'
-import { formatAction } from './terminal.js'
-import { PAPER_TRADE, WS_MAX_SUBSCRIPTIONS, TIMEFRAMES, MIN_CANDLES_FOR_SCAN } from '../config.js'
+import { getEffectivePaperTrade, WS_MAX_SUBSCRIPTIONS, TIMEFRAMES, MIN_CANDLES_FOR_SCAN, PAPER_WALLET_STRATEGY_IDS } from '../config.js'
 import { candleCount } from '../feed/store.js'
 import type { CandleInterval, ActiveSetup } from '../types.js'
 import type { InvalidationBridgeStats } from '../agent/invalidation-bridge.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export interface PaperStats {
+/** One simulated wallet in paper mode (matches a live strategy wallet). */
+export interface PaperWalletRow {
+  strategyId: string
   balance: number
+  tradeCount: number
+  wins: number
+  losses: number
+  winRate: number
+}
+
+export interface PaperStats {
+  /** Sum of per-strategy paper balances (cash, excludes open uPnL in this field) */
+  totalBalance: number
+  wallets: PaperWalletRow[]
   tradeCount: number
   wins: number
   losses: number
@@ -37,11 +45,13 @@ export interface PaperStats {
 export interface AssetPrice {
   markPrice: number
   funding: number
+  /** % move from today's 00:00 UTC open (1d candle `o`) to mark; null if no 1d data. */
+  dayChangePctUtc: number | null
 }
 
 export interface TuiDataSources {
   getAgentSnapshot: () => AgentSnapshot
-  getPositions: () => Map<string, { coin: string; side: 'long' | 'short'; currentSize: number; entryPrice: number; slPrice: number; tpPrice: number; strategyId: string }>
+  getPositions: () => Map<string, { coin: string; side: 'long' | 'short'; leverage: number; currentSize: number; entryPrice: number; slPrice: number; tpPrice: number; strategyId: string }>
   getStatus: () => StatusSnapshot[]
   getHealthReport: () => { overall: string; uptime: number; rssBytes: number; components: { feed: { status: string; consecutiveErrors: number }; db: { status: string; consecutiveErrors: number }; exchange: { status: string; consecutiveErrors: number } } }
   getAccountState: () => Promise<{ effectiveBalance: number; accountValue: number; spotUsdcBalance: number; totalMarginUsed: number; withdrawable: number }> | null
@@ -54,9 +64,8 @@ export interface TuiDataSources {
   getInvalidationStats: () => InvalidationBridgeStats
 }
 
-// ─── State (module-level for appendSignal + backfill progress) ─────────────
+// ─── State (module-level for backfill progress) ─────────────────────────────
 
-let signalListeners: Array<(line: string) => void> = []
 let backfillDoneListeners: Array<() => void> = []
 let inkInstance: ReturnType<typeof render> | null = null
 let _backfillDone = false
@@ -70,50 +79,223 @@ export function setBackfillDone(): void {
 // ─── Theme ──────────────────────────────────────────────────────────────────
 
 const BORDER_COLOR = 'gray'
+
+/** Short label for paper wallet rows (L/Q/S). */
+function paperWalletShortLabel(strategyId: string): string {
+  if (strategyId === 'layered') return 'L'
+  if (strategyId === 'quant') return 'Q'
+  if (strategyId === 'smc-sd') return 'S'
+  return strategyId.slice(0, 3)
+}
 const TITLE_COLOR = 'white'
 const ACCENT = 'cyan'
 const DIM = 'gray'
 
+/** Watchlist: space between columns (10 cols → 9 gaps). Budget subtracted before width math. */
+const WL_GAP = 1
+const WL_COL_GAPS = 9
+
+/** Positions: 8 columns → 7 explicit gap boxes (Ink marginRight is unreliable in flex rows). */
+const POS_GAP = 2
+const POS_COL_GAPS = 7
+
 /**
- * Split vertical space between Positions / Watchlist / Tape from terminal height.
- * - Tall terminals → more rows for Watchlist (scan surface), modest Positions.
- * - Tape stays capped so it never dominates.
+ * Row counts for Positions / Watchlist (side-by-side strip shares full remaining height).
  */
 function computeTuiLayout(termRows: number): {
   positionsRowsPerCol: number
   watchlistRowsPerCol: number
-  tapeLines: number
 } {
-  // Header + Account/Strategies/Buddy/System row (tallest column ~Buddy): conservative
-  const RESERVED_ABOVE = 16
-  // Three stacked panels each: title + top/bottom border ≈ +3 lines vs content
-  const PANEL_CHROME = 9
+  const RESERVED_TOP = 20 // header + Account / Strategies / Buddy / System row
+  const contentBudget = Math.max(12, termRows - RESERVED_TOP)
+  const innerLines = Math.max(3, contentBudget - 3)
 
-  const contentBudget = Math.max(10, termRows - RESERVED_ABOVE - PANEL_CHROME)
+  const positionsRowsPerCol = Math.max(3, Math.min(14, Math.floor(innerLines / 2)))
+  const watchlistRowsPerCol = Math.max(4, Math.min(32, Math.floor(innerLines / 2)))
 
-  let tapeLines = Math.max(3, Math.min(8, Math.round(contentBudget * 0.2)))
+  return { positionsRowsPerCol, watchlistRowsPerCol }
+}
 
-  const pair = contentBudget - tapeLines
-  let watchlistRowsPerCol = Math.max(4, Math.min(24, Math.round(pair * 0.58)))
-  let positionsRowsPerCol = Math.max(3, Math.min(10, Math.round(pair * 0.38)))
+/** Inner content width for one Panel in the left/right split (border + padding). */
+function computeHalfInnerWidth(termCols: number): number {
+  const half = Math.floor(termCols / 2)
+  return Math.max(22, half - 6)
+}
 
-  let total = positionsRowsPerCol + watchlistRowsPerCol + tapeLines
-  if (total > contentBudget) {
-    let over = total - contentBudget
-    const wShrink = Math.min(watchlistRowsPerCol - 4, over)
-    watchlistRowsPerCol -= wShrink
-    over -= wShrink
-    if (over > 0) {
-      const pShrink = Math.min(positionsRowsPerCol - 3, over)
-      positionsRowsPerCol -= pShrink
-      over -= pShrink
-    }
-    if (over > 0) {
-      tapeLines = Math.max(3, tapeLines - over)
-    }
+type PositionsColumnWidths = {
+  coin: number
+  lev: number
+  side: number
+  entry: number
+  sl: number
+  tp: number
+  upnl: number
+  strategy: number
+}
+
+type WatchlistColumnWidths = {
+  coin: number
+  grade: number
+  setups: number
+  price: number
+  dayPct: number
+  fund: number
+  tfCell: number
+}
+
+/** Fit integer column widths to `total` chars; `ideal` / `minimum` sums define scale. */
+function distributeColumnWidths(
+  total: number,
+  ideal: Record<string, number>,
+  minimum: Record<string, number>
+): Record<string, number> {
+  const keys = Object.keys(ideal)
+  const sumIdeal = keys.reduce((s, k) => s + ideal[k]!, 0)
+  const sumMin = keys.reduce((s, k) => s + minimum[k]!, 0)
+
+  if (total <= sumMin) {
+    return { ...minimum }
   }
 
-  return { positionsRowsPerCol, watchlistRowsPerCol, tapeLines }
+  const out: Record<string, number> = {}
+  if (total >= sumIdeal) {
+    let extra = total - sumIdeal
+    for (const k of keys) {
+      out[k] = ideal[k]!
+    }
+    const prio = [...keys].sort((a, b) => ideal[b]! - ideal[a]!)
+    let i = 0
+    while (extra > 0) {
+      out[prio[i % prio.length]!]!++
+      extra--
+      i++
+    }
+    return out
+  }
+
+  const t = (total - sumMin) / (sumIdeal - sumMin)
+  let allocated = 0
+  for (const k of keys) {
+    const span = ideal[k]! - minimum[k]!
+    out[k] = minimum[k]! + Math.floor(t * span)
+    allocated += out[k]!
+  }
+  let diff = total - allocated
+  const prio = [...keys].sort((a, b) => (ideal[b]! - minimum[b]!) - (ideal[a]! - minimum[a]!))
+  let pi = 0
+  while (diff > 0) {
+    out[prio[pi % prio.length]!]!++
+    diff--
+    pi++
+  }
+  while (diff < 0) {
+    const k = prio[pi % prio.length]!
+    if (out[k]! > minimum[k]!) {
+      out[k]!--
+      diff++
+    }
+    pi++
+    if (pi > 200) break
+  }
+  return out
+}
+
+const POS_COL_IDEAL: PositionsColumnWidths = {
+  /** "SIDE" is 4 chars — keep narrow so ENTRY does not float far right of L/S. */
+  coin: 12, lev: 4, side: 4, entry: 11, sl: 11, tp: 11, upnl: 10, strategy: 18,
+}
+const POS_COL_MIN: PositionsColumnWidths = {
+  coin: 6,
+  lev: 3,
+  side: 4,
+  entry: 6,
+  sl: 6,
+  tp: 6,
+  /** Room for flash arrow + signed PnL (e.g. ^+999.99). */
+  upnl: 8,
+  /** "STRATEGY" is 8 chars — below this, header is clipped. */
+  strategy: 8,
+}
+
+function buildPositionsColumnWidths(inner: number): PositionsColumnWidths {
+  const innerNet = Math.max(22, inner - POS_COL_GAPS * POS_GAP)
+  const flat = distributeColumnWidths(
+    innerNet,
+    { ...POS_COL_IDEAL },
+    { ...POS_COL_MIN }
+  ) as PositionsColumnWidths
+  let sum = Object.values(flat).reduce((a, b) => a + b, 0)
+  let rem = innerNet - sum
+  const grow: (keyof PositionsColumnWidths)[] = ['strategy', 'coin', 'entry', 'sl', 'tp', 'upnl', 'lev', 'side']
+  let gi = 0
+  while (rem > 0) {
+    flat[grow[gi % grow.length]!]!++
+    rem--
+    gi++
+  }
+  while (rem < 0) {
+    let done = false
+    for (const k of ['strategy', 'coin', 'entry', 'sl', 'tp', 'upnl', 'lev', 'side'] as const) {
+      if (flat[k]! > POS_COL_MIN[k]!) {
+        flat[k]!--
+        rem++
+        done = true
+        break
+      }
+    }
+    if (!done) break
+  }
+  return flat
+}
+
+function buildWatchlistColumnWidths(inner: number): WatchlistColumnWidths {
+  const innerNet = Math.max(22, inner - WL_COL_GAPS * WL_GAP)
+  const ideal = { coin: 12, grade: 5, setups: 5, price: 13, dayPct: 9, fund: 10, tfBlock: 40 }
+  const minimum = { coin: 6, grade: 3, setups: 2, price: 7, dayPct: 5, fund: 7, tfBlock: 16 }
+  const flat = distributeColumnWidths(innerNet, ideal, minimum)
+  let tfCell = Math.max(3, Math.floor(flat.tfBlock / 4))
+  const cols: WatchlistColumnWidths = {
+    coin: flat.coin,
+    grade: flat.grade,
+    setups: flat.setups,
+    price: flat.price,
+    dayPct: flat.dayPct,
+    fund: flat.fund,
+    tfCell,
+  }
+  let sum = cols.coin + cols.grade + cols.setups + cols.price + cols.dayPct + cols.fund + 4 * cols.tfCell
+  let rem = innerNet - sum
+  while (rem > 0) {
+    if (rem >= 4) {
+      cols.tfCell++
+      rem -= 4
+    } else {
+      cols.coin++
+      rem--
+    }
+  }
+  while (rem < 0) {
+    if (rem <= -4 && cols.tfCell > 3) {
+      cols.tfCell--
+      rem += 4
+    } else if (cols.coin > minimum.coin) {
+      cols.coin--
+      rem++
+    } else if (cols.price > minimum.price) {
+      cols.price--
+      rem++
+    } else if (cols.fund > minimum.fund) {
+      cols.fund--
+      rem++
+    } else if (cols.dayPct > minimum.dayPct) {
+      cols.dayPct--
+      rem++
+    } else if (cols.tfCell > 3) {
+      cols.tfCell--
+      rem += 4
+    } else break
+  }
+  return cols
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -141,6 +323,35 @@ function statusColor(status: string): 'green' | 'yellow' | 'red' {
 
 function timeNow(): string {
   return new Date().toISOString().slice(11, 19) // HH:mm:ss
+}
+
+function truncateStr(str: string, max: number): string {
+  if (str.length <= max) return str
+  if (max <= 1) return '\u2026'
+  return str.slice(0, max - 1) + '\u2026'
+}
+
+/**
+ * Ink 6 `<Text>` defaults to flexShrink:1 + wrap — table cells shift and break lines.
+ * Lock each column with Box width + truncate.
+ * Use `trailingGap` (empty Box) for column spacing — marginRight on flex children is easy to lose in Yoga/Ink.
+ */
+function TableCell({ w, children, marginRight = 0, trailingGap, ...textProps }: {
+  w: number
+  /** Watchlist still uses this; same effect as trailingGap when set. */
+  marginRight?: number
+  trailingGap?: number
+  children: React.ReactNode
+} & React.ComponentProps<typeof Text>) {
+  const gap = trailingGap ?? marginRight
+  return (
+    <>
+      <Box width={w} flexShrink={0}>
+        <Text wrap="truncate-end" {...textProps}>{children}</Text>
+      </Box>
+      {gap > 0 ? <Box width={gap} flexShrink={0} /> : null}
+    </>
+  )
 }
 
 // ─── Components ─────────────────────────────────────────────────────────────
@@ -176,8 +387,8 @@ function Panel({ title, children, width, height, minHeight, flexGrow, flexShrink
 // ─── Header ─────────────────────────────────────────────────────────────────
 
 const HeaderBar = memo(function HeaderBar({ snapshot, coinCount }: { snapshot: AgentSnapshot; coinCount: number }) {
-  const mode = PAPER_TRADE ? 'PAPER' : 'LIVE'
-  const modeColor = PAPER_TRADE ? 'yellow' : 'red'
+  const mode = getEffectivePaperTrade() ? 'PAPER' : 'LIVE'
+  const modeColor = getEffectivePaperTrade() ? 'yellow' : 'red'
   const paused = snapshot.global.globalPaused
   const uptime = uptimeStr(snapshot.global.uptime)
   const time = timeNow()
@@ -208,49 +419,209 @@ const HeaderBar = memo(function HeaderBar({ snapshot, coinCount }: { snapshot: A
 
 // ─── Account ────────────────────────────────────────────────────────────────
 
-const AccountPanel = memo(function AccountPanel({ account, dailyPnl, unrealizedPnl, paperStats }: {
+/** Per-strategy paper row: cash (realized) + uPnL allocated from open positions. */
+type PaperWalletBreakdownRow = {
+  strategyId: string
+  cash: number
+  unrealized: number
+  equity: number
+}
+
+/** Sum realized day P&L across the three paper wallets (orchestrator per-strategy globals). */
+function sumPaperStrategiesDailyPnl(strategyGlobals: AgentSnapshot['strategyGlobals'] | undefined): number {
+  if (!strategyGlobals) return 0
+  let s = 0
+  for (const id of PAPER_WALLET_STRATEGY_IDS) {
+    s += strategyGlobals[id]?.dailyPnl ?? 0
+  }
+  return s
+}
+
+const AccountPanel = memo(function AccountPanel({
+  account,
+  dailyPnlGlobal,
+  unrealizedPnl,
+  paperStats,
+  paperDerived,
+  paperWalletBreakdown,
+  strategyGlobals,
+  paperMarginByStrategy,
+}: {
   account: { effectiveBalance: number; accountValue: number; spotUsdcBalance: number; totalMarginUsed: number; withdrawable: number } | null
-  dailyPnl: number
+  /** Legacy single global (live / default strategy); paper ALL uses Σ strategyGlobals. */
+  dailyPnlGlobal: number
   unrealizedPnl: number
   paperStats: PaperStats | null
+  paperDerived: { marginUsed: number; available: number } | null
+  paperWalletBreakdown: PaperWalletBreakdownRow[] | null
+  strategyGlobals: AgentSnapshot['strategyGlobals'] | undefined
+  /** Open-position margin notional/leverage by strategyId (paper). */
+  paperMarginByStrategy: Map<string, number> | null
 }) {
-  const pnlColor = dailyPnl >= 0 ? 'green' : 'red'
-  const pnlSign = dailyPnl >= 0 ? '+' : ''
-  const uPnlColor = unrealizedPnl >= 0 ? 'green' : 'red'
-  const uPnlSign = unrealizedPnl >= 0 ? '+' : ''
+  const [accountPage, setAccountPage] = useState(0) // 0 ALL, 1..3 → PAPER_WALLET_STRATEGY_IDS[i-1]
 
-  const balance = paperStats?.balance ?? account?.effectiveBalance ?? null
-  const marginUsed = account?.totalMarginUsed ?? null
-  const available = account?.withdrawable ?? null
+  const isPaper = paperStats != null && paperWalletBreakdown != null && paperWalletBreakdown.length > 0
+
+  useInput((input) => {
+    if (!isPaper) return
+    const ch = input.toLowerCase()
+    if (ch === 'z') setAccountPage(p => (p - 1 + 4) % 4)
+    if (input === '/') setAccountPage(p => (p + 1) % 4)
+  })
+
+  const walletRowByStrategy = (sid: string): PaperWalletRow | undefined =>
+    paperStats?.wallets.find(w => w.strategyId === sid)
+
+  const totalEquity = paperStats != null
+    ? paperStats.totalBalance + unrealizedPnl
+    : (account?.effectiveBalance ?? null)
+
+  const portfolioMargin = paperStats != null && paperDerived != null
+    ? paperDerived.marginUsed
+    : (account?.totalMarginUsed ?? null)
+  const portfolioAvail = paperStats != null && paperDerived != null
+    ? paperDerived.available
+    : (account?.withdrawable ?? null)
+
+  const dailyAll = isPaper ? sumPaperStrategiesDailyPnl(strategyGlobals) : dailyPnlGlobal
+  const uAll = unrealizedPnl
+
+  const renderPagerFooter = () => {
+    if (!isPaper) return null
+    const labels: Array<{ key: string; idx: number }> = [
+      { key: 'ALL', idx: 0 },
+      { key: '1', idx: 1 },
+      { key: '2', idx: 2 },
+      { key: '3', idx: 3 },
+    ]
+    return (
+      <Box justifyContent="center" marginTop={1}>
+        <Text color={DIM}>Z </Text>
+        {labels.map((L, i) => (
+          <React.Fragment key={L.key}>
+            {i > 0 && <Text color={DIM}> | </Text>}
+            <Text bold={accountPage === L.idx} color={accountPage === L.idx ? ACCENT : DIM}>{L.key}</Text>
+          </React.Fragment>
+        ))}
+        <Text color={DIM}> /</Text>
+      </Box>
+    )
+  }
+
+  const pnlColor = (pnl: number): 'green' | 'red' => (pnl >= 0 ? 'green' : 'red')
+
+  // ── Live (non-paper): unchanged single view ──────────────────────────────
+  if (!isPaper) {
+    const pnlColorG = dailyPnlGlobal >= 0 ? 'green' : 'red'
+    const pnlSign = dailyPnlGlobal >= 0 ? '+' : ''
+    const uPnlColor = unrealizedPnl >= 0 ? 'green' : 'red'
+    const uPnlSign = unrealizedPnl >= 0 ? '+' : ''
+    const balance = account?.effectiveBalance ?? null
+    return (
+      <Panel title="Account" flexGrow={1}>
+        <Box justifyContent="space-between">
+          <Text>Balance</Text>
+          <Text bold>{balance != null ? `$${balance.toFixed(2)}` : '---'}</Text>
+        </Box>
+        <Box justifyContent="space-between">
+          <Text>Margin</Text>
+          <Text>{portfolioMargin != null ? `$${portfolioMargin.toFixed(2)}` : '---'}</Text>
+        </Box>
+        <Box justifyContent="space-between">
+          <Text>Available</Text>
+          <Text color="green">{portfolioAvail != null ? `$${portfolioAvail.toFixed(2)}` : '---'}</Text>
+        </Box>
+        <Box justifyContent="space-between">
+          <Text color={DIM}>Day P&L</Text>
+          <Text bold color={pnlColorG}>{pnlSign}${dailyPnlGlobal.toFixed(2)}</Text>
+        </Box>
+        <Box justifyContent="space-between">
+          <Text color={DIM}>Unreal.</Text>
+          <Text color={uPnlColor}>{uPnlSign}${unrealizedPnl.toFixed(2)}</Text>
+        </Box>
+      </Panel>
+    )
+  }
+
+  // ── Paper: paged ALL | 1 | 2 | 3 ───────────────────────────────────────
+  const pageIdx = accountPage === 0 ? -1 : accountPage - 1
+  const sid = pageIdx >= 0 ? PAPER_WALLET_STRATEGY_IDS[pageIdx] : undefined
+  const wBreak = sid ? paperWalletBreakdown!.find(w => w.strategyId === sid) : undefined
+  const wStats = sid ? walletRowByStrategy(sid) : null
+
+  const dailyShown = accountPage === 0
+    ? dailyAll
+    : (strategyGlobals?.[sid!]?.dailyPnl ?? 0)
+  const unrealShown = accountPage === 0 ? uAll : (wBreak?.unrealized ?? 0)
+  const equityShown = accountPage === 0
+    ? totalEquity
+    : (wBreak?.equity ?? paperStats!.wallets.find(w => w.strategyId === sid)?.balance ?? 0)
+
+  const marginShown = accountPage === 0
+    ? portfolioMargin
+    : (paperMarginByStrategy != null && sid != null
+      ? paperMarginByStrategy.get(sid) ?? 0
+      : null)
+  const availShown = accountPage === 0
+    ? portfolioAvail
+    : (wBreak != null && marginShown != null
+      ? Math.max(0, wBreak.equity - marginShown)
+      : null)
+
+  const dSign = dailyShown >= 0 ? '+' : ''
+  const uSign = unrealShown >= 0 ? '+' : ''
+
+  const title = accountPage === 0
+    ? 'Account'
+    : `Account ${paperWalletShortLabel(sid!)}`
 
   return (
-    <Panel title="Account" flexGrow={1}>
+    <Panel title={title} flexGrow={1}>
       <Box justifyContent="space-between">
-        <Text color={DIM}>Balance</Text>
-        <Text bold>{balance != null ? `$${balance.toFixed(2)}` : '---'}</Text>
+        <Text>Equity</Text>
+        <Text bold>{equityShown != null ? `$${equityShown.toFixed(2)}` : '---'}</Text>
       </Box>
       <Box justifyContent="space-between">
-        <Text color={DIM}>Margin</Text>
-        <Text>{marginUsed != null ? `$${marginUsed.toFixed(2)}` : '---'}</Text>
+        <Text>Margin</Text>
+        <Text>{marginShown != null ? `$${marginShown.toFixed(2)}` : '---'}</Text>
       </Box>
       <Box justifyContent="space-between">
-        <Text color={DIM}>Available</Text>
-        <Text color="green">{available != null ? `$${available.toFixed(2)}` : '---'}</Text>
+        <Text>Available</Text>
+        <Text color="green">{availShown != null ? `$${availShown.toFixed(2)}` : '---'}</Text>
       </Box>
       <Box justifyContent="space-between">
         <Text color={DIM}>Day P&L</Text>
-        <Text bold color={pnlColor}>{pnlSign}${dailyPnl.toFixed(2)}</Text>
+        <Text bold color={pnlColor(dailyShown)}>{dSign}${dailyShown.toFixed(2)}</Text>
       </Box>
       <Box justifyContent="space-between">
         <Text color={DIM}>Unreal.</Text>
-        <Text color={uPnlColor}>{uPnlSign}${unrealizedPnl.toFixed(2)}</Text>
+        <Text color={pnlColor(unrealShown)}>{uSign}${unrealShown.toFixed(2)}</Text>
       </Box>
-      {paperStats && (
-        <Box justifyContent="space-between">
-          <Text color={DIM}>Trades</Text>
-          <Text><Text color="green">{paperStats.wins}W</Text><Text color={DIM}>/</Text><Text color="red">{paperStats.losses}L</Text> <Text color={ACCENT}>{(paperStats.winRate * 100).toFixed(0)}%</Text></Text>
-        </Box>
-      )}
+      <Box justifyContent="space-between">
+        <Text color={DIM}>Trades</Text>
+        <Text>
+          {accountPage === 0 ? (
+            <>
+              <Text color="green">{paperStats!.wins}W</Text>
+              <Text color={DIM}>/</Text>
+              <Text color="red">{paperStats!.losses}L</Text>
+              <Text> </Text>
+              <Text color={ACCENT}>{(paperStats!.winRate * 100).toFixed(0)}%</Text>
+            </>
+          ) : wStats ? (
+            <>
+              <Text color="green">{wStats.wins}W</Text>
+              <Text color={DIM}>/</Text>
+              <Text color="red">{wStats.losses}L</Text>
+              <Text> </Text>
+              <Text color={ACCENT}>{(wStats.winRate * 100).toFixed(0)}%</Text>
+            </>
+          ) : (
+            <Text color={DIM}>—</Text>
+          )}
+        </Text>
+      </Box>
+      {renderPagerFooter()}
     </Panel>
   )
 })
@@ -292,18 +663,67 @@ const SystemPanel = memo(function SystemPanel({ report, subCount }: {
 
 // ─── Positions ──────────────────────────────────────────────────────────────
 
-const PositionsPanel = memo(function PositionsPanel({ positions, getAssetPrice, rowsPerCol }: {
-  positions: Array<{ coin: string; side: 'long' | 'short'; currentSize: number; entryPrice: number; slPrice: number; tpPrice: number; strategyId: string }>
+function positionsStrategyHeader(w: number): string {
+  const t = 'STRATEGY'
+  const s = w >= t.length ? t : t.slice(0, Math.max(1, w))
+  return s.padEnd(w)
+}
+
+const PositionRow = memo(function PositionRow({ p, PC, getAssetPrice, priceTick }: {
+  p: { coin: string; side: 'long' | 'short'; leverage: number; currentSize: number; entryPrice: number; slPrice: number; tpPrice: number; strategyId: string }
+  PC: { coin: number; lev: number; side: number; entry: number; sl: number; tp: number; upnl: number; strategy: number }
   getAssetPrice: (coin: string) => AssetPrice | null
-  /** Max rows rendered per column to prevent layout breakout. */
+  /** Bumps every UI tick so memo() re-renders when mark price changes (position `p` ref is stable). */
+  priceTick: number
+}) {
+  const asset = getAssetPrice(p.coin)
+  const upnl = asset
+    ? (asset.markPrice - p.entryPrice) * Math.abs(p.currentSize) * (p.side === 'long' ? 1 : -1)
+    : null
+  const upnlFlash = useFlashOnChange(upnl)
+  const upnlArrow = upnlFlash === 'up' ? '^' : upnlFlash === 'down' ? 'v' : ' '
+  const upnlBody = upnl != null
+    ? `${upnl >= 0 ? '+' : ''}${upnl.toFixed(2)}`
+    : '—'
+  const upnlStr = `${upnlArrow}${upnlBody}`.padStart(PC.upnl)
+  const upnlColor: 'green' | 'red' | undefined = upnl != null
+    ? (upnlFlash === 'up' ? 'green' : upnlFlash === 'down' ? 'red' : (upnl >= 0 ? 'green' : 'red'))
+    : undefined
+
+  const strat = truncateStr(p.strategyId, PC.strategy).padEnd(PC.strategy)
+  const levStr = `${p.leverage}x`.padEnd(PC.lev)
+
+  return (
+    <Box flexDirection="row" flexWrap="nowrap">
+      <TableCell w={PC.coin} trailingGap={POS_GAP} bold>{p.coin.padEnd(PC.coin)}</TableCell>
+      <TableCell w={PC.lev} trailingGap={POS_GAP} color={DIM}>{levStr}</TableCell>
+      <TableCell w={PC.side} trailingGap={POS_GAP} bold color={p.side === 'long' ? 'green' : 'red'}>
+        {p.side.slice(0, 1).toUpperCase().padEnd(PC.side)}
+      </TableCell>
+      <TableCell w={PC.entry} trailingGap={POS_GAP} color={ACCENT}>{formatUsd(p.entryPrice).padStart(PC.entry)}</TableCell>
+      <TableCell w={PC.sl} trailingGap={POS_GAP} color="red">{formatUsd(p.slPrice).padStart(PC.sl)}</TableCell>
+      <TableCell w={PC.tp} trailingGap={POS_GAP} color="green">{formatUsd(p.tpPrice).padStart(PC.tp)}</TableCell>
+      <TableCell w={PC.upnl} trailingGap={POS_GAP} {...(upnlColor != null ? { color: upnlColor } : {})}>{upnlStr}</TableCell>
+      <TableCell w={PC.strategy} color={DIM}>{strat}</TableCell>
+    </Box>
+  )
+})
+
+const PositionsPanel = memo(function PositionsPanel({ positions, getAssetPrice, rowsPerCol, pc, priceTick }: {
+  positions: Array<{ coin: string; side: 'long' | 'short'; leverage: number; currentSize: number; entryPrice: number; slPrice: number; tpPrice: number; strategyId: string }>
+  getAssetPrice: (coin: string) => AssetPrice | null
+  /** Max rows per page (single full-width table; was “per column” when split). */
   rowsPerCol: number
+  pc: PositionsColumnWidths
+  /** 1s UI clock — forces PositionRow to re-read mark for UPNL (memo + stable `p` ref). */
+  priceTick: number
 }) {
   const [page, setPage] = useState(0) // 0 = first page
   const total = positions.length
   const pageSize = Math.max(2, rowsPerCol * 2)
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
-  // [ = prev page, ] = next page (avoids conflict with Tape ↑↓)
+  // [ = prev page, ] = next page
   useInput((input) => {
     if (input === '[') setPage(p => Math.max(0, p - 1))
     if (input === ']') setPage(p => Math.min(p + 1, totalPages - 1))
@@ -312,69 +732,90 @@ const PositionsPanel = memo(function PositionsPanel({ positions, getAssetPrice, 
   // Clamp page when positions shrink (e.g. position closed)
   const clampedPage = Math.min(page, totalPages - 1)
 
+  const header = (
+    <Box flexDirection="row" flexWrap="nowrap">
+      <TableCell w={pc.coin} trailingGap={POS_GAP} color={DIM}>{'COIN'.padEnd(pc.coin)}</TableCell>
+      <TableCell w={pc.lev} trailingGap={POS_GAP} color={DIM}>{'LEV'.padEnd(pc.lev)}</TableCell>
+      <TableCell w={pc.side} trailingGap={POS_GAP} color={DIM}>{'SIDE'.padEnd(pc.side)}</TableCell>
+      <TableCell w={pc.entry} trailingGap={POS_GAP} color={DIM}>{'ENTRY'.padStart(pc.entry)}</TableCell>
+      <TableCell w={pc.sl} trailingGap={POS_GAP} color={DIM}>{'SL'.padStart(pc.sl)}</TableCell>
+      <TableCell w={pc.tp} trailingGap={POS_GAP} color={DIM}>{'TP'.padStart(pc.tp)}</TableCell>
+      <TableCell w={pc.upnl} trailingGap={POS_GAP} color={DIM}>{'UPNL'.padStart(pc.upnl)}</TableCell>
+      <TableCell w={pc.strategy} color={DIM}>{positionsStrategyHeader(pc.strategy)}</TableCell>
+    </Box>
+  )
+  const renderRow = (p: typeof positions[number]) => (
+    <PositionRow key={`${p.coin}-${p.strategyId}`} p={p} PC={pc} getAssetPrice={getAssetPrice} priceTick={priceTick} />
+  )
+  /** One full-width table shows up to `pageSize` rows (was 2× columns). */
+  const panelMinH = pageSize + 3
+
   if (total === 0) {
     return (
-      <Panel title="Positions">
-        <Text color={DIM}>No open positions</Text>
-      </Panel>
+      <Box flexGrow={1} flexShrink={1} width="100%" minHeight={0}>
+        <Panel title="Positions" flexGrow={1} minHeight={panelMinH} flexShrink={1}>
+          <Text color={DIM}>No open positions</Text>
+        </Panel>
+      </Box>
     )
   }
 
   const startIdx = clampedPage * pageSize
   const pagePositions = positions.slice(startIdx, startIdx + pageSize)
-  const mid = Math.min(rowsPerCol, Math.ceil(pagePositions.length / 2))
-  const left = pagePositions.slice(0, mid)
-  const right = pagePositions.slice(mid, mid + rowsPerCol)
 
   const pageInfo = totalPages > 1
     ? ` [/]  ${clampedPage + 1}/${totalPages}`
     : ''
-  const rangeEnd = Math.min(startIdx + pageSize, total)
+  const rangeEnd = Math.min(startIdx + pagePositions.length, total)
+  const title = `Positions ${startIdx + 1}-${rangeEnd} (${total})${pageInfo}`
 
-  const PC = { coin: 12, side: 6, entry: 10, sl: 10, tp: 10, upnl: 10 }
-  const header = (
-    <Box>
-      <Text color={DIM}>{'COIN'.padEnd(PC.coin)} {'SIDE'.padEnd(PC.side)} {'ENTRY'.padEnd(PC.entry)} {'SL'.padEnd(PC.sl)} {'TP'.padEnd(PC.tp)} {'UPNL'.padEnd(PC.upnl)} STRATEGY</Text>
-    </Box>
-  )
-  const renderRow = (p: typeof positions[number]) => {
-    const asset = getAssetPrice(p.coin)
-    const upnl = asset
-      ? (asset.markPrice - p.entryPrice) * Math.abs(p.currentSize) * (p.side === 'long' ? 1 : -1)
-      : null
-    const upnlStr = upnl != null
-      ? `${upnl >= 0 ? '+' : ''}${upnl.toFixed(2)}`
-      : '—'
-    return (
-      <Box key={`${p.coin}-${p.strategyId}`}>
-        <Text bold>{p.coin.padEnd(PC.coin)} </Text>
-        <Text bold color={p.side === 'long' ? 'green' : 'red'}>{p.side.slice(0, 1).toUpperCase().padEnd(PC.side)} </Text>
-        <Text color={ACCENT}>{formatPrice(p.entryPrice).padEnd(PC.entry)} </Text>
-        <Text color="red">{formatPrice(p.slPrice).padEnd(PC.sl)} </Text>
-        <Text color="green">{formatPrice(p.tpPrice).padEnd(PC.tp)} </Text>
-        <Text {...(upnl != null ? { color: upnl >= 0 ? 'green' as const : 'red' as const } : {})}>{upnlStr.padEnd(PC.upnl)} </Text>
-        <Text color={DIM}>{p.strategyId}</Text>
-      </Box>
-    )
-  }
-  const renderColumn = (rows: typeof positions, label: string) => (
-    <Panel title={label} width="50%" height={rowsPerCol + 3} flexShrink={0}>
-      {header}
-      {rows.map(renderRow)}
-    </Panel>
-  )
   return (
-    <Box>
-      {renderColumn(left, `Positions ${startIdx + 1}-${startIdx + mid} (${total})${pageInfo}`)}
-      {renderColumn(right, `Positions ${startIdx + mid + 1}-${rangeEnd}`)}
+    <Box flexGrow={1} width="100%">
+      <Panel title={title} flexGrow={1} minHeight={panelMinH} flexShrink={1}>
+        {header}
+        {pagePositions.map(renderRow)}
+      </Panel>
     </Box>
   )
 })
 
 // ─── Watchlist ───────────────────────────────────────────────────────────────
 
+/** Flash green / red for one tick when a numeric value changes (Bias TF style). */
+function useFlashOnChange(value: number | null | undefined): 'up' | 'down' | null {
+  const [flash, setFlash] = useState<'up' | 'down' | null>(null)
+  const prev = useRef<number | null>(null)
+  useEffect(() => {
+    if (value == null || typeof value !== 'number' || Number.isNaN(value)) {
+      prev.current = value ?? null
+      return
+    }
+    const p = prev.current
+    prev.current = value
+    if (p == null || Number.isNaN(p)) return
+    if (value > p) {
+      setFlash('up')
+      const t = setTimeout(() => setFlash(null), 700)
+      return () => clearTimeout(t)
+    }
+    if (value < p) {
+      setFlash('down')
+      const t = setTimeout(() => setFlash(null), 700)
+      return () => clearTimeout(t)
+    }
+  }, [value])
+  return flash
+}
+
 type TFSnapshot = { regime: string; bias: string }
-type CoinInfo = { grade: string; setups: number; tfs: Record<string, TFSnapshot>; price: number | null; funding: number | null }
+type CoinInfo = {
+  grade: string
+  setups: number
+  tfs: Record<string, TFSnapshot>
+  price: number | null
+  funding: number | null
+  dayChangePctUtc: number | null
+}
 
 const DISPLAY_TFS = ['15m', '1h', '4h', '1d'] as const
 
@@ -383,9 +824,21 @@ function aggregateCoins(statuses: StatusSnapshot[], getAssetPrice: (coin: string
   for (const s of statuses) {
     let info = byCoin.get(s.coin)
     if (!info) {
-      const asset = getAssetPrice(s.coin)
-      info = { grade: '\u2014', setups: 0, tfs: {}, price: asset?.markPrice ?? null, funding: asset?.funding ?? null }
+      info = {
+        grade: '\u2014',
+        setups: 0,
+        tfs: {},
+        price: null,
+        funding: null,
+        dayChangePctUtc: null,
+      }
       byCoin.set(s.coin, info)
+    }
+    const asset = getAssetPrice(s.coin)
+    if (asset) {
+      info.price = asset.markPrice
+      info.funding = asset.funding
+      info.dayChangePctUtc = asset.dayChangePctUtc
     }
     info.setups += s.activeCount
     if (s.confluenceGrade) {
@@ -415,10 +868,11 @@ function regimeColor(regime: string): 'green' | 'red' | 'yellow' {
   return 'yellow'
 }
 
+/** ASCII-only — Unicode ▲▼◆ can be “wide” in some terminals and breaks fixed-width columns. */
 function biasArrow(bias: string): string {
-  if (bias === 'long' || bias === 'bullish') return '\u25B2'  // ▲
-  if (bias === 'short' || bias === 'bearish') return '\u25BC' // ▼
-  return '\u25C6' // ◆
+  if (bias === 'long' || bias === 'bullish') return '^'
+  if (bias === 'short' || bias === 'bearish') return 'v'
+  return '*'
 }
 
 function biasColor(bias: string): 'green' | 'red' | undefined {
@@ -434,15 +888,40 @@ function gradeColor(grade: string): 'magenta' | 'green' | 'cyan' | undefined {
   return undefined
 }
 
-const COL = { coin: 12, grade: 5, setups: 5, price: 12, fund: 10, tfCell: 10 }
-const TF_HEADERS = DISPLAY_TFS.map(tf => tf.toUpperCase().padEnd(COL.tfCell)).join('')
-const COIN_HEADER = `${'COIN'.padEnd(COL.coin)} ${'GRD'.padEnd(COL.grade)} ${'#'.padEnd(COL.setups)} ${'PRICE'.padEnd(COL.price)} ${'FUND'.padEnd(COL.fund)} ${TF_HEADERS}`
+const WatchlistHeaderRow = memo(function WatchlistHeaderRow({ col }: { col: WatchlistColumnWidths }) {
+  return (
+    <Box flexDirection="row" flexWrap="nowrap">
+      <TableCell w={col.coin} marginRight={WL_GAP} color={DIM}>{'COIN'.padEnd(col.coin)}</TableCell>
+      <TableCell w={col.grade} marginRight={WL_GAP} color={DIM}>{'GRD'.padEnd(col.grade)}</TableCell>
+      <TableCell w={col.setups} marginRight={WL_GAP} color={DIM}>{'#'.padEnd(col.setups)}</TableCell>
+      <TableCell w={col.price} marginRight={WL_GAP} color={DIM}>{'PRICE'.padEnd(col.price)}</TableCell>
+      <TableCell w={col.dayPct} marginRight={WL_GAP} color={DIM}>{'24H%'.padStart(col.dayPct)}</TableCell>
+      <TableCell w={col.fund} marginRight={WL_GAP} color={DIM}>{'FUND'.padStart(col.fund)}</TableCell>
+      {DISPLAY_TFS.map((tf, i) => (
+        <TableCell key={tf} w={col.tfCell} marginRight={i < DISPLAY_TFS.length - 1 ? WL_GAP : 0} color={DIM}>{tf.toUpperCase().padStart(col.tfCell)}</TableCell>
+      ))}
+    </Box>
+  )
+})
 
-function tfCellText(snap: TFSnapshot | undefined): { label: string; color: 'green' | 'red' | 'yellow' | undefined } {
-  if (!snap) return { label: '\u2014'.padEnd(COL.tfCell), color: undefined }
+function formatDayPct(pct: number): string {
+  const sign = pct >= 0 ? '+' : ''
+  return `${sign}${pct.toFixed(2)}%`
+}
+
+function dayPctColor(pct: number): 'green' | 'red' | undefined {
+  if (pct > 0.0005) return 'green'
+  if (pct < -0.0005) return 'red'
+  return undefined
+}
+
+function tfCellText(snap: TFSnapshot | undefined, tfW: number): { label: string; color: 'green' | 'red' | 'yellow' | undefined } {
+  if (!snap) return { label: '\u2014'.padStart(tfW), color: undefined }
   const arrow = biasArrow(snap.bias)
   const r = regimeLabel(snap.regime)
-  return { label: `${arrow}${r}`.padEnd(COL.tfCell), color: biasColor(snap.bias) ?? regimeColor(snap.regime) }
+  const raw = `${arrow}${r}`
+  const label = raw.length <= tfW ? raw.padStart(tfW) : raw.slice(-tfW)
+  return { label, color: biasColor(snap.bias) ?? regimeColor(snap.regime) }
 }
 
 function formatPrice(price: number): string {
@@ -450,6 +929,10 @@ function formatPrice(price: number): string {
   const exp = Math.floor(Math.log10(price))
   const decimals = Math.max(0, Math.min(8, 4 - exp))
   return price.toFixed(decimals)
+}
+
+function formatUsd(price: number): string {
+  return `$${formatPrice(price)}`
 }
 
 function formatFunding(rate: number): string {
@@ -462,83 +945,108 @@ function fundingColor(rate: number): 'green' | 'red' | undefined {
   return undefined
 }
 
-function CoinRow({ coin, info }: { coin: string; info: CoinInfo | undefined }) {
+/** Left-aligned price + single blink column on the right (^/v/space). */
+function formatWatchlistPriceCell(priceCore: string, colWidth: number, priceArrow: string): string {
+  if (colWidth <= 1) return (priceCore + priceArrow).slice(0, colWidth)
+  const bodyW = colWidth - 1
+  const core = priceCore.length <= bodyW ? priceCore : priceCore.slice(0, bodyW)
+  return (core.padEnd(bodyW) + priceArrow).slice(0, colWidth)
+}
+
+const WatchlistCoinRow = memo(function WatchlistCoinRow({ coin, info, col, priceTick }: { coin: string; info: CoinInfo | undefined; col: WatchlistColumnWidths; priceTick: number }) {
+  const priceFlash = useFlashOnChange(info?.price ?? null)
   if (!info) {
-    const empty = DISPLAY_TFS.map(() => '\u2014'.padEnd(COL.tfCell)).join('')
     return (
-      <Box>
-        <Text color={DIM}>{coin.padEnd(COL.coin)} {'\u2014'.padEnd(COL.grade)} {'0'.padEnd(COL.setups)} {'\u2014'.padEnd(COL.price)} {'\u2014'.padEnd(COL.fund)} {empty}</Text>
+      <Box flexDirection="row" flexWrap="nowrap">
+        <TableCell w={col.coin} marginRight={WL_GAP} color={DIM}>{coin.padEnd(col.coin)}</TableCell>
+        <TableCell w={col.grade} marginRight={WL_GAP} color={DIM}>{'\u2014'.padEnd(col.grade)}</TableCell>
+        <TableCell w={col.setups} marginRight={WL_GAP} color={DIM}>{'0'.padEnd(col.setups)}</TableCell>
+        <TableCell w={col.price} marginRight={WL_GAP} color={DIM}>{formatWatchlistPriceCell('\u2014', col.price, ' ')}</TableCell>
+        <TableCell w={col.dayPct} marginRight={WL_GAP} color={DIM}>{'\u2014'.padStart(col.dayPct)}</TableCell>
+        <TableCell w={col.fund} marginRight={WL_GAP} color={DIM}>{'\u2014'.padStart(col.fund)}</TableCell>
+        {DISPLAY_TFS.map((tf, i) => (
+          <TableCell key={tf} w={col.tfCell} marginRight={i < DISPLAY_TFS.length - 1 ? WL_GAP : 0} color={DIM}>{'\u2014'.padStart(col.tfCell)}</TableCell>
+        ))}
       </Box>
     )
   }
 
-  const priceStr = info.price != null ? formatPrice(info.price).padEnd(COL.price) : '\u2014'.padEnd(COL.price)
-  const fundStr = info.funding != null ? formatFunding(info.funding).padEnd(COL.fund) : '\u2014'.padEnd(COL.fund)
+  const rawPrice = info.price
+  const priceCore = rawPrice != null ? formatUsd(rawPrice) : '\u2014'
+  const priceArrow = priceFlash === 'up' ? '^' : priceFlash === 'down' ? 'v' : ' '
+  const priceStr = formatWatchlistPriceCell(priceCore, col.price, priceArrow)
+  const priceColor: 'green' | 'red' | 'cyan' =
+    priceFlash === 'up' ? 'green' : priceFlash === 'down' ? 'red' : ACCENT
+
+  const dayStr =
+    info.dayChangePctUtc != null
+      ? formatDayPct(info.dayChangePctUtc).padStart(col.dayPct)
+      : '\u2014'.padStart(col.dayPct)
+  const dCol = dayPctColor(info.dayChangePctUtc ?? 0)
+
+  const fundStr = info.funding != null ? formatFunding(info.funding).padStart(col.fund) : '\u2014'.padStart(col.fund)
 
   return (
-    <Box>
-      <Text bold>{coin.padEnd(COL.coin)} </Text>
-      <Text bold={info.grade.startsWith('A')} {...(gradeColor(info.grade) != null ? { color: gradeColor(info.grade) } : {})}>{info.grade.padEnd(COL.grade)} </Text>
-      <Text>{String(info.setups).padEnd(COL.setups)} </Text>
-      <Text color={ACCENT}>{priceStr} </Text>
-      <Text {...(info.funding != null && fundingColor(info.funding) != null ? { color: fundingColor(info.funding) } : {})}>{fundStr} </Text>
-      {DISPLAY_TFS.map(tf => {
-        const { label, color } = tfCellText(info.tfs[tf])
-        return <Text key={tf} {...(color != null ? { color } : {})}>{label}</Text>
+    <Box flexDirection="row" flexWrap="nowrap">
+      <TableCell w={col.coin} marginRight={WL_GAP} bold>{coin.padEnd(col.coin)}</TableCell>
+      <TableCell
+        w={col.grade}
+        marginRight={WL_GAP}
+        bold={info.grade.startsWith('A')}
+        {...(gradeColor(info.grade) != null ? { color: gradeColor(info.grade) } : {})}
+      >
+        {info.grade.padEnd(col.grade)}
+      </TableCell>
+      <TableCell w={col.setups} marginRight={WL_GAP}>{String(info.setups).padEnd(col.setups)}</TableCell>
+      <TableCell w={col.price} marginRight={WL_GAP} color={priceColor}>{priceStr}</TableCell>
+      <TableCell w={col.dayPct} marginRight={WL_GAP} {...(dCol != null ? { color: dCol } : {})}>{dayStr}</TableCell>
+      <TableCell
+        w={col.fund}
+        marginRight={WL_GAP}
+        {...(info.funding != null && fundingColor(info.funding) != null ? { color: fundingColor(info.funding) } : {})}
+      >
+        {fundStr}
+      </TableCell>
+      {DISPLAY_TFS.map((tf, i) => {
+        const { label, color } = tfCellText(info.tfs[tf], col.tfCell)
+        return (
+          <TableCell key={tf} w={col.tfCell} marginRight={i < DISPLAY_TFS.length - 1 ? WL_GAP : 0} {...(color != null ? { color } : {})}>{label}</TableCell>
+        )
       })}
     </Box>
   )
-}
-
-const WatchlistColumn = memo(function WatchlistColumn({ title, coins, byCoin, rowsPerCol }: {
-  title: string
-  coins: string[]
-  byCoin: Map<string, CoinInfo>
-  rowsPerCol: number
-}) {
-  const visible = coins.slice(0, rowsPerCol)
-  const hidden = Math.max(0, coins.length - visible.length)
-  return (
-    <Panel title={title} width="50%" height={rowsPerCol + 3} flexShrink={0}>
-      <Box>
-        <Text color={DIM}>{COIN_HEADER}</Text>
-      </Box>
-      {visible.map((coin: string) => (
-        <CoinRow key={coin} coin={coin} info={byCoin.get(coin)} />
-      ))}
-      {hidden > 0 && <Text color={DIM}>… +{hidden} more</Text>}
-    </Panel>
-  )
 })
 
-const WatchlistPanel = memo(function WatchlistPanel({ statuses, trackedCoins, getAssetPrice, rowsPerCol }: {
+const WatchlistPanel = memo(function WatchlistPanel({ statuses, trackedCoins, getAssetPrice, rowsPerCol, col, priceTick }: {
   statuses: StatusSnapshot[]
   trackedCoins: string[]
   getAssetPrice: (coin: string) => AssetPrice | null
-  /** Max rows rendered per column to prevent layout breakout. */
+  /** Rows per “logical column”; one full-width page shows up to `2 × rowsPerCol` coins. */
   rowsPerCol: number
+  col: WatchlistColumnWidths
+  /** 1s UI clock — `statuses` ref can be stable; re-aggregate marks + bust row memo. */
+  priceTick: number
 }) {
-  const byCoin = useMemo(() => aggregateCoins(statuses, getAssetPrice), [statuses, getAssetPrice])
+  const byCoin = useMemo(() => aggregateCoins(statuses, getAssetPrice), [statuses, getAssetPrice, priceTick])
   const [page, setPage] = useState(0)
+
+  const pageSize = Math.max(2, rowsPerCol * 2)
+  const panelMinH = pageSize + 3
 
   if (trackedCoins.length === 0) {
     return (
-      <Box>
-        <Panel title="Watchlist" width="50%">
-          <Text color={DIM}> No coins tracked</Text>
-        </Panel>
-        <Panel title="Watchlist" width="50%">
+      <Box flexGrow={1} width="100%">
+        <Panel title="Watchlist" flexGrow={1} minHeight={Math.max(6, panelMinH)}>
           <Text color={DIM}> No coins tracked</Text>
         </Panel>
       </Box>
     )
   }
 
-  const pageSize = Math.max(2, rowsPerCol * 2)
   const total = trackedCoins.length
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
-  // { = prev page, } = next page (avoids conflict with Tape ↑↓ and Positions [ ])
+  // { = prev page, } = next page (avoids conflict with Positions [ ])
   useInput((input) => {
     if (input === '{') setPage(p => Math.max(0, p - 1))
     if (input === '}') setPage(p => Math.min(p + 1, totalPages - 1))
@@ -548,27 +1056,18 @@ const WatchlistPanel = memo(function WatchlistPanel({ statuses, trackedCoins, ge
   const startIdx = clampedPage * pageSize
   const pageCoins = trackedCoins.slice(startIdx, startIdx + pageSize)
 
-  const mid = Math.min(rowsPerCol, Math.ceil(pageCoins.length / 2))
-  const left = pageCoins.slice(0, mid)
-  const right = pageCoins.slice(mid, mid + rowsPerCol)
-
   const pageInfo = totalPages > 1 ? ` {}/  ${clampedPage + 1}/${totalPages}` : ''
-  const rangeEnd = Math.min(startIdx + pageSize, total)
+  const rangeEnd = Math.min(startIdx + pageCoins.length, total)
+  const title = `Watchlist ${startIdx + 1}-${rangeEnd} (${total})${pageInfo}`
 
   return (
-    <Box>
-      <WatchlistColumn
-        title={`Watchlist ${startIdx + 1}-${startIdx + mid} (${total})${pageInfo}`}
-        coins={left}
-        byCoin={byCoin}
-        rowsPerCol={rowsPerCol}
-      />
-      <WatchlistColumn
-        title={`Watchlist ${startIdx + mid + 1}-${rangeEnd}`}
-        coins={right}
-        byCoin={byCoin}
-        rowsPerCol={rowsPerCol}
-      />
+    <Box flexGrow={1} width="100%">
+      <Panel title={title} flexGrow={1} minHeight={panelMinH} flexShrink={1}>
+        <WatchlistHeaderRow col={col} />
+        {pageCoins.map((coin: string) => (
+          <WatchlistCoinRow key={coin} coin={coin} info={byCoin.get(coin)} col={col} priceTick={priceTick} />
+        ))}
+      </Panel>
     </Box>
   )
 })
@@ -841,49 +1340,6 @@ function BackfillPanel({ trackedCoins, termWidth }: { trackedCoins: string[]; te
   )
 }
 
-// ─── Tape (Signal Log) ─────────────────────────────────────────────────────
-
-const TAPE_PAGE_SIZE = 10
-
-const TapePanel = memo(function TapePanel({ signals, maxLines }: { signals: string[]; maxLines: number }) {
-  // page=0 → latest page, page=1 → one page back, etc.
-  const [page, setPage] = useState(0)
-  const total = signals.length
-  const totalPages = Math.max(1, Math.ceil(total / TAPE_PAGE_SIZE))
-
-  // ↑ = older page, ↓ = newer page (back to latest)
-  useInput((_input, key) => {
-    if (key.upArrow) setPage(p => Math.min(p + 1, totalPages - 1))
-    if (key.downArrow) setPage(p => Math.max(0, p - 1))
-  })
-
-  // Auto-reset to latest page when new signals arrive and user is already on latest
-  const prevTotal = React.useRef(total)
-  if (total !== prevTotal.current) {
-    if (page === 0) { /* stay on latest — slice will update automatically */ }
-    prevTotal.current = total
-  }
-
-  const endIdx = total - page * TAPE_PAGE_SIZE
-  const startIdx = Math.max(0, endIdx - TAPE_PAGE_SIZE)
-  const lines = signals.slice(startIdx, endIdx).slice(-Math.max(1, maxLines))
-
-  const displayedPage = totalPages - page // 1-based, ascending (1=oldest page)
-  const pageInfo = total > TAPE_PAGE_SIZE
-    ? ` ↑↓  ${displayedPage}/${totalPages}${page === 0 ? ' ▼' : ''}`
-    : ''
-
-  return (
-    <Panel title={`Tape${pageInfo}`} height={maxLines + 3} flexShrink={0} minHeight={6}>
-      {lines.length === 0 ? (
-        <Text color={DIM}>Waiting for signals...</Text>
-      ) : (
-        lines.map((line, i) => <Text key={startIdx + i}>{line}</Text>)
-      )}
-    </Panel>
-  )
-})
-
 // ─── Main App ───────────────────────────────────────────────────────────────
 
 function App({ sources }: { sources: TuiDataSources }) {
@@ -892,7 +1348,6 @@ function App({ sources }: { sources: TuiDataSources }) {
   const termRows = stdout?.rows ?? 40
   const termCols = stdout?.columns ?? 120
   const [tick, setTick] = useState(0)
-  const [signals, setSignals] = useState<string[]>([])
   const [account, setAccount] = useState<{ effectiveBalance: number; accountValue: number; spotUsdcBalance: number; totalMarginUsed: number; withdrawable: number } | null>(null)
   const [isBackfillDone, setIsBackfillDone] = useState(_backfillDone)
 
@@ -937,20 +1392,6 @@ function App({ sources }: { sources: TuiDataSources }) {
     return () => clearInterval(id)
   }, [isBackfillDone])
 
-  // Signal log listener
-  useEffect(() => {
-    const listener = (line: string) => {
-      setSignals(prev => {
-        const next = [...prev, line]
-        return next.length > 200 ? next.slice(-200) : next
-      })
-    }
-    signalListeners.push(listener)
-    return () => {
-      signalListeners = signalListeners.filter(l => l !== listener)
-    }
-  }, [])
-
   // All hooks MUST run before any conditional return (React rules of hooks)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const trackedCoins = useMemo(() => sources.getTrackedCoins(), [tick])
@@ -972,6 +1413,9 @@ function App({ sources }: { sources: TuiDataSources }) {
   const invStats = useMemo(() => sources.getInvalidationStats(), [tick])
 
   const layout = useMemo(() => computeTuiLayout(termRows), [termRows])
+  const halfInner = useMemo(() => computeHalfInnerWidth(termCols), [termCols])
+  const positionsColumnWidths = useMemo(() => buildPositionsColumnWidths(halfInner), [halfInner])
+  const watchlistColumnWidths = useMemo(() => buildWatchlistColumnWidths(halfInner), [halfInner])
 
   // Compute unrealized PnL from open positions + mark prices
   const unrealizedPnl = useMemo(() => {
@@ -985,6 +1429,61 @@ function App({ sources }: { sources: TuiDataSources }) {
     return total
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [positions, tick])
+
+  const paperDerived = useMemo(() => {
+    if (!paperStats) return null
+    let marginUsed = 0
+    for (const p of positions) {
+      const asset = sources.getAssetPrice(p.coin)
+      const mark = asset?.markPrice ?? p.entryPrice
+      const notional = Math.abs(p.currentSize) * mark
+      const lev = p.leverage > 0 ? p.leverage : 1
+      marginUsed += notional / lev
+    }
+    const equity = paperStats.totalBalance + unrealizedPnl
+    return { marginUsed, available: Math.max(0, equity - marginUsed) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paperStats, positions, unrealizedPnl, tick])
+
+  /** Allocate uPnL by strategy so per-wallet equity sums to total equity (when marks exist). */
+  const paperWalletBreakdown = useMemo((): PaperWalletBreakdownRow[] | null => {
+    if (!paperStats) return null
+    const uByStrat = new Map<string, number>()
+    for (const p of positions) {
+      const asset = sources.getAssetPrice(p.coin)
+      if (!asset) continue
+      const direction = p.side === 'long' ? 1 : -1
+      const u = (asset.markPrice - p.entryPrice) * Math.abs(p.currentSize) * direction
+      uByStrat.set(p.strategyId, (uByStrat.get(p.strategyId) ?? 0) + u)
+    }
+    return paperStats.wallets.map(w => {
+      const unreal = uByStrat.get(w.strategyId) ?? 0
+      return {
+        strategyId: w.strategyId,
+        cash: w.balance,
+        unrealized: unreal,
+        equity: w.balance + unreal,
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paperStats, positions, tick])
+
+  /** Paper: margin used per strategy (notional / leverage) for Account pages 1–3. */
+  const paperMarginByStrategy = useMemo((): Map<string, number> | null => {
+    if (!paperStats) return null
+    const m = new Map<string, number>()
+    for (const id of PAPER_WALLET_STRATEGY_IDS) m.set(id, 0)
+    for (const p of positions) {
+      const asset = sources.getAssetPrice(p.coin)
+      const mark = asset?.markPrice ?? p.entryPrice
+      const notional = Math.abs(p.currentSize) * mark
+      const lev = p.leverage > 0 ? p.leverage : 1
+      const mm = notional / lev
+      m.set(p.strategyId, (m.get(p.strategyId) ?? 0) + mm)
+    }
+    return m
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paperStats, positions, tick])
 
   // ── Backfill progress screen ──
   if (!isBackfillDone) {
@@ -1005,15 +1504,42 @@ function App({ sources }: { sources: TuiDataSources }) {
       <HeaderBar snapshot={snapshot} coinCount={trackedCoins.length} />
 
       <Box flexShrink={0}>
-        <AccountPanel account={account} dailyPnl={snapshot.global.dailyPnl} unrealizedPnl={unrealizedPnl} paperStats={paperStats} />
+        <AccountPanel
+          account={account}
+          dailyPnlGlobal={snapshot.global.dailyPnl}
+          unrealizedPnl={unrealizedPnl}
+          paperStats={paperStats}
+          paperDerived={paperDerived}
+          paperWalletBreakdown={paperWalletBreakdown}
+          strategyGlobals={snapshot.strategyGlobals}
+          paperMarginByStrategy={paperMarginByStrategy}
+        />
         <StrategyPanel snapshot={snapshot} activeSetups={activeSetups} invStats={invStats} />
-        <BuddyPanel mood={getBuddyMood(snapshot, positions.length, snapshot.global.dailyPnl, signals.length)} tick={tick} />
+        <BuddyPanel mood={getBuddyMood(snapshot, positions.length, snapshot.global.dailyPnl, activeSetups.length)} tick={tick} />
         <SystemPanel report={health} subCount={subCount} />
       </Box>
 
-      <PositionsPanel positions={positions} getAssetPrice={sources.getAssetPrice} rowsPerCol={layout.positionsRowsPerCol} />
-      <WatchlistPanel statuses={statuses} trackedCoins={trackedCoins} getAssetPrice={sources.getAssetPrice} rowsPerCol={layout.watchlistRowsPerCol} />
-      <TapePanel signals={signals} maxLines={layout.tapeLines} />
+      <Box flexDirection="row" flexGrow={1} minHeight={0} width="100%">
+        <Box flexGrow={1} flexBasis="50%" minWidth={0} width="50%" flexDirection="column">
+          <PositionsPanel
+            positions={positions}
+            getAssetPrice={sources.getAssetPrice}
+            rowsPerCol={layout.positionsRowsPerCol}
+            pc={positionsColumnWidths}
+            priceTick={tick}
+          />
+        </Box>
+        <Box flexGrow={1} flexBasis="50%" minWidth={0} width="50%" flexDirection="column">
+          <WatchlistPanel
+            statuses={statuses}
+            trackedCoins={trackedCoins}
+            getAssetPrice={sources.getAssetPrice}
+            rowsPerCol={layout.watchlistRowsPerCol}
+            col={watchlistColumnWidths}
+            priceTick={tick}
+          />
+        </Box>
+      </Box>
     </Box>
   )
 }
@@ -1029,39 +1555,10 @@ export function startTui(sources: TuiDataSources): void {
 }
 
 /**
- * Append a signal/action to the tape panel.
- * Only setup-related events: signal (SETUP), enter (FILLED), exit (CLOSED).
- * Skips SKIP and other noise.
- */
-export function appendSignal(action: AgentAction): void {
-  // Only pass through setup-relevant events
-  if (action.type === 'log_journal') {
-    const et = (action as { type: 'log_journal'; eventType: string }).eventType
-    if (et !== 'signal' && et !== 'enter' && et !== 'exit') return
-  }
-
-  const line = formatAction(action)
-  if (!line) return
-
-  // Strip ANSI codes — ink handles its own colors
-  const clean = line.replace(/\x1b\[[0-9;]*m/g, '')
-  for (const listener of signalListeners) {
-    listener(clean)
-  }
-}
-
-/**
  * No-op logger sink kept for API compatibility (index.ts calls setTuiSink(appendLog)).
- * All tape content goes through appendSignal (agent.onAction) which has structured
- * formatting. Raw logger output is suppressed to avoid noise and format inconsistency.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function appendLog(_msg: string): void {
-  // No-op: all trading-relevant events (SETUP, FILLED, CLOSED, circuit_break,
-  // error, pause, invalidate) are routed via appendSignal (agent.onAction).
-  // Routing raw logger output here causes operational noise (stale candle warnings,
-  // pipeline INFO spam) to flood the tape with inconsistent formatting.
-}
+export function appendLog(_msg: string): void {}
 
 /**
  * Stop the TUI and restore the terminal.
@@ -1071,7 +1568,6 @@ export function stopTui(): void {
     inkInstance.unmount()
     inkInstance = null
   }
-  signalListeners = []
   backfillDoneListeners = []
   _backfillDone = false
 }

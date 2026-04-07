@@ -14,8 +14,8 @@
  *   - V5: Feature flag via STRATEGY_WALLETS env — no env = single wallet mode
  */
 
-import { ExchangeService } from './exchange-service.js'
-import { parseStrategyWallets, type WalletConfig } from '../config.js'
+import { ExchangeService, getExchangeService } from './exchange-service.js'
+import { parseStrategyWallets, SIMULATED_ACCOUNT, type WalletConfig } from '../config.js'
 import { log } from '../lib/logger.js'
 
 export class ExchangePool {
@@ -28,11 +28,16 @@ export class ExchangePool {
   /** Wallet configs parsed from STRATEGY_WALLETS env. */
   private walletConfigs: Map<string, WalletConfig>
 
-  /** Whether init() has been called. */
+  /** Whether init() completed successfully. */
   private initialized = false
 
   constructor() {
     this.walletConfigs = parseStrategyWallets()
+  }
+
+  /** True after {@link init} succeeds. If false, {@link get} must not be called. */
+  isInitialized(): boolean {
+    return this.initialized
   }
 
   /**
@@ -120,4 +125,18 @@ export function getExchangePool(): ExchangePool {
 /** Reset ExchangePool (tests only). */
 export function resetExchangePool(): void {
   poolInstance = null
+}
+
+/**
+ * Cached effective balance (USD) for the main account used by a strategy's wallet.
+ * Routes through {@link ExchangePool.get} when the pool is initialized; otherwise
+ * falls back to the singleton {@link getExchangeService} (pre-init, tests, scripts).
+ */
+export function getCachedAccountValueForStrategy(strategyId: string): number {
+  try {
+    const svc = getExchangePool().get(strategyId)
+    return svc.getCachedAccountValue() || SIMULATED_ACCOUNT
+  } catch {
+    return getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT
+  }
 }

@@ -227,6 +227,8 @@ describe('End-to-end integration', () => {
       size: 0.1,
       slPrice: 49500,
       tpPrice: 51500,
+      entryOrderId: 'ord-1',
+      leverage: 10,
     })
 
     const positions = pm.getPositions()

@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'bun:test'
 import {
+  clampPositionSizeForMaxLeverage,
+  computeEntryLeverageForTargetMargin,
   computePositionSize,
   computePositionSizeDetailed,
   computeStructureStop,
@@ -58,6 +60,44 @@ describe('computePositionSize', () => {
 
   it('returns 0 when entry price is zero', () => {
     expect(computePositionSize(10_000, 0.01, 0, 98)).toBe(0)
+  })
+})
+
+// ─── clampPositionSizeForMaxLeverage ────────────────────────────────────────
+
+describe('clampPositionSizeForMaxLeverage', () => {
+  it('does not cap when notional fits margin budget at maxLev', () => {
+    // $1k equity, 10% margin budget → $100 margin target; maxLev 5 → max notional $500
+    const r = clampPositionSizeForMaxLeverage(1, 100, 1_000, 0.1, 5)
+    expect(r.wasCapped).toBe(false)
+    expect(r.sizeCoins).toBe(1)
+  })
+
+  it('caps when risk-based notional would need leverage above maxLev', () => {
+    // sizeUsd = 2 × 100 = $200; max notional at 5x = 1000 × 0.1 × 5 = $500 → no cap
+    // sizeUsd = 10 × 100 = $1000; max $500 → cap to 5 coins
+    const r = clampPositionSizeForMaxLeverage(10, 100, 1_000, 0.1, 5)
+    expect(r.wasCapped).toBe(true)
+    expect(r.sizeCoins).toBe(5)
+  })
+
+  it('no-op when maxLeverage unknown', () => {
+    const r = clampPositionSizeForMaxLeverage(100, 50, 1_000, 0.1, undefined)
+    expect(r.wasCapped).toBe(false)
+    expect(r.sizeCoins).toBe(100)
+  })
+})
+
+// ─── computeEntryLeverageForTargetMargin ────────────────────────────────────
+
+describe('computeEntryLeverageForTargetMargin', () => {
+  it('matches setLeverage: ceil(sizeUsd / (account × targetMarginPct)), min 1', () => {
+    // $1k account, 10% margin budget → $100 target margin; $500 notional → 5x
+    expect(computeEntryLeverageForTargetMargin(500, 1_000, 0.1, undefined)).toBe(5)
+  })
+
+  it('caps at maxLeverage', () => {
+    expect(computeEntryLeverageForTargetMargin(900, 1_000, 0.1, 5)).toBe(5)
   })
 })
 

@@ -48,7 +48,7 @@ export function handleIdle(
       nextState: 'ENTERING',
       actions: [
         { type: 'place_order', setup },
-        journalAction('signal', ctx.coin, { setupId: setup.id, grade, confidence: setup.confidence, side: setup.side }),
+        journalAction('signal', ctx.coin, buildSignalJournalDetails(setup, grade)),
       ],
     }
   }
@@ -89,7 +89,7 @@ export function handleWatching(
         nextState: 'WATCHING',
         actions: [
           { type: 'watch', setup },
-          journalAction('signal', ctx.coin, { setupId: setup.id, grade, confidence: setup.confidence, side: setup.side, replaced: ctx.activeSetup.id }),
+          journalAction('signal', ctx.coin, buildSignalJournalDetails(setup, grade, { replaced: ctx.activeSetup.id })),
         ],
       }
     }
@@ -313,6 +313,29 @@ export const handlers: Record<AgentState, (ctx: CoinContext, event: AgentEvent, 
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Journal payload for setup signals — Telegram + terminal show entry / SL / TP / side / TF. */
+function buildSignalJournalDetails(
+  setup: ActiveSetup,
+  grade: ConfluenceGrade,
+  extra?: { replaced?: string },
+): Record<string, unknown> {
+  const patternRaw = setup.patternData['pattern']
+  const pattern = typeof patternRaw === 'string' ? patternRaw : undefined
+  const base: Record<string, unknown> = {
+    setupId: setup.id,
+    grade,
+    confidence: setup.confidence,
+    side: setup.side,
+    interval: setup.interval,
+    entryPrice: setup.entryPrice,
+    slPrice: setup.slPrice,
+    tpPrice: setup.tpPrice,
+  }
+  if (pattern !== undefined) base.pattern = pattern
+  if (extra?.replaced !== undefined) base.replaced = extra.replaced
+  return base
+}
 
 function journalAction(eventType: string, coin: string, details: Record<string, unknown>): AgentAction {
   return { type: 'log_journal', eventType, coin, details }

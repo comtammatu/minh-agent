@@ -6,8 +6,10 @@
 export {
   sendTelegramAlert,
   escapeMarkdownV2,
+  escapeHtml,
   formatAlert,
   formatDailySummary,
+  formatDailySummaryHtml,
   checkTelegramConfig,
 } from './alerts.js'
 
@@ -15,7 +17,7 @@ export {
 export { startBot, stopBot } from './bot.js'
 
 // Commands (registry)
-export { registerCommand, getCommands, findCommand } from './commands.js'
+export { registerCommand, getCommands, findCommand, executeCommandByName, getMainMenuKeyboard } from './commands.js'
 
 // Types
 export type { CommandDef, CommandHandler, TelegramUpdate, TelegramMessage } from './types.js'
