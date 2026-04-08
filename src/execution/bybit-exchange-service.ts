@@ -48,20 +48,24 @@ export class BybitExchangeService {
   private cachedAccountValue: number = 0
 
   /**
-   * Initialize Bybit client from env vars.
-   * Must be called before any exchange operation.
+   * Optional constructor injection for per-strategy keys (used by ExchangePool).
+   * If provided, injected values take precedence over env vars in init().
+   */
+  constructor(
+    private readonly injectedApiKey?: string,
+    private readonly injectedApiSecret?: string,
+  ) {}
+
+  /**
+   * Initialize Bybit client.
+   * Reads from injected keys (constructor) or env vars (BYBIT_API_KEY / BYBIT_API_SECRET).
    * Safe to call multiple times (idempotent).
-   *
-   * Reads:
-   *   BYBIT_API_KEY    — required
-   *   BYBIT_API_SECRET — required
-   *   BYBIT_TESTNET    — optional; set to 'true' to use testnet
    */
   async init(): Promise<void> {
     if (this.initialized) return
 
-    const apiKey = process.env['BYBIT_API_KEY']
-    const apiSecret = process.env['BYBIT_API_SECRET']
+    const apiKey = this.injectedApiKey ?? process.env['BYBIT_API_KEY']
+    const apiSecret = this.injectedApiSecret ?? process.env['BYBIT_API_SECRET']
     if (!apiKey) {
       throw new Error('BYBIT_API_KEY env required for Bybit exchange operations')
     }

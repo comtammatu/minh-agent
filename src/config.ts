@@ -799,3 +799,30 @@ export const BYBIT_BACKFILL_CANDLE_COUNTS: Record<string, number> = {
 export const BYBIT_REST_BURST_TOKENS = 120
 /** Bybit rate limit: refill interval ms (1 token per 100ms = 10/s sustained). */
 export const BYBIT_REST_REFILL_MS = 100
+
+export interface BybitKeyConfig {
+  apiKey: string
+  apiSecret: string
+}
+
+/**
+ * Parse BYBIT_STRATEGY_KEYS env var.
+ * Format: "strategyId:apiKey:apiSecret,strategyId2:apiKey2:apiSecret2"
+ * The apiSecret may contain colons — everything after the second colon is the secret.
+ * Returns empty Map if env not set.
+ */
+export function parseBybitStrategyKeys(): Map<string, BybitKeyConfig> {
+  const raw = process.env['BYBIT_STRATEGY_KEYS']
+  if (!raw) return new Map()
+  const result = new Map<string, BybitKeyConfig>()
+  for (const entry of raw.split(',')) {
+    const parts = entry.trim().split(':')
+    if (parts.length < 3) continue
+    const [strategyId, apiKey, ...rest] = parts
+    const apiSecret = rest.join(':')  // secret may contain colons
+    if (strategyId && apiKey && apiSecret) {
+      result.set(strategyId, { apiKey, apiSecret })
+    }
+  }
+  return result
+}

@@ -239,12 +239,15 @@ describe('ExchangePool', () => {
     // Set shared wallet env for fallback
     process.env.PRIVATE_KEY = SHARED_PK
     delete process.env.ACCOUNT_ADDRESS
+    // Multi-exchange: default to HL for existing pool tests
+    process.env.ACTIVE_EXCHANGE = 'HL'
   })
 
   afterEach(() => {
     delete process.env.STRATEGY_WALLETS
     delete process.env.PRIVATE_KEY
     delete process.env.ACCOUNT_ADDRESS
+    delete process.env.ACTIVE_EXCHANGE
     deleteFlatWalletEnv()
   })
 
