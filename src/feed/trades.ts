@@ -91,6 +91,36 @@ export async function subscribeTrades(coin: string): Promise<void> {
   registerSubscription(sub)
 }
 
+// ── Exchange-agnostic write API (used by Bybit feed) ─────────────────────────
+
+/** Initialise delta state for a coin to zero (call before subscribing). */
+export function initDelta(coin: string): void {
+  deltaStore.set(coin, { delta: 0, cumDelta: 0, buyVol: 0, sellVol: 0, barTs: Date.now() })
+}
+
+/**
+ * Apply an incremental delta update from external feed (e.g. Bybit).
+ * Accumulates into running totals — same semantic as subscribeTrades handler.
+ */
+export function applyDeltaUpdate(coin: string, buyVol: number, sellVol: number): void {
+  const prev = deltaStore.get(coin) ?? { delta: 0, cumDelta: 0, buyVol: 0, sellVol: 0, barTs: Date.now() }
+  const newBuyVol = prev.buyVol + buyVol
+  const newSellVol = prev.sellVol + sellVol
+  const newDelta = newBuyVol - newSellVol
+  deltaStore.set(coin, {
+    delta: newDelta,
+    cumDelta: prev.cumDelta + (buyVol - sellVol),
+    buyVol: newBuyVol,
+    sellVol: newSellVol,
+    barTs: prev.barTs,
+  })
+}
+
+/** Remove delta state for a coin (used by Bybit unsubscribe). */
+export function removeDelta(coin: string): void {
+  deltaStore.delete(coin)
+}
+
 /** Unsubscribe trades stream for a specific coin and clear its delta state. */
 export async function unsubscribeTrades(coin: string): Promise<void> {
   const sub = tradeSubs.get(coin)

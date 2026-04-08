@@ -393,57 +393,63 @@ export class BybitExchangeService {
   async getPositions(): Promise<ExchangePositionSnapshot[]> {
     this.ensureInit()
 
+    // Phase 1: network call — throw on network/SDK error (so caller can skip reconciliation)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let resp: any
     try {
-      const resp = await this.client!.getPositionInfo({
+      resp = await this.client!.getPositionInfo({
         category: 'linear',
         settleCoin: 'USDT',
       })
-
-      if (resp.retCode !== 0) {
-        const errMsg = resp.retMsg ?? `Bybit getPositionInfo error code ${resp.retCode}`
-        log.error('bybit-exec', `getPositions failed: ${errMsg}`)
-        return []
-      }
-
-      const list = resp.result?.list ?? []
-
-      const snaps: ExchangePositionSnapshot[] = []
-      for (const pos of list) {
-        const size = parseFloat(pos.size)
-        // Bybit: side 'Buy' = long (positive), 'Sell' = short (negative)
-        const signedSize = pos.side === 'Buy' ? size : -size
-        if (signedSize === 0) continue
-
-        const levRaw = pos.leverage ? parseFloat(pos.leverage) : undefined
-        const liqPrice = pos.liqPrice && pos.liqPrice !== '' ? parseFloat(pos.liqPrice) : null
-
-        // Extract coin from symbol (e.g. 'BTCUSDT' → 'BTC')
-        const coin = pos.symbol.endsWith('USDT')
-          ? pos.symbol.slice(0, -4)
-          : pos.symbol
-
-        const snap: ExchangePositionSnapshot = {
-          coin,
-          size: signedSize,
-          entryPrice: parseFloat(pos.avgPrice),
-          unrealizedPnl: parseFloat(pos.unrealisedPnl),
-          liquidationPrice: liqPrice,
-        }
-        if (Number.isFinite(levRaw) && (levRaw ?? 0) > 0) snap.leverage = levRaw as number
-        const slRaw = pos.stopLoss ? parseFloat(pos.stopLoss) : NaN
-        const tpRaw = pos.takeProfit ? parseFloat(pos.takeProfit) : NaN
-        if (Number.isFinite(slRaw) && slRaw > 0) snap.slPrice = slRaw
-        if (Number.isFinite(tpRaw) && tpRaw > 0) snap.tpPrice = tpRaw
-        snaps.push(snap)
-      }
-      getHealthMonitor().recordSuccess('exchange')
-      return snaps
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       log.error('bybit-exec', `getPositions exception: ${msg}`)
       getHealthMonitor().recordError('exchange', msg)
-      return []
+      throw err
     }
+
+    // Phase 2: validate API response code — throw on API-level error
+    if (resp.retCode !== 0) {
+      const errMsg = resp.retMsg ?? `Bybit getPositionInfo error code ${resp.retCode}`
+      log.error('bybit-exec', `getPositions failed: ${errMsg}`)
+      getHealthMonitor().recordError('exchange', errMsg)
+      throw new Error(errMsg)
+    }
+
+    // Phase 3: parse positions
+    const list = resp.result?.list ?? []
+    const snaps: ExchangePositionSnapshot[] = []
+    for (const pos of list) {
+      const size = parseFloat(pos.size)
+      // Bybit: side 'Buy' = long (positive), 'Sell' = short (negative)
+      const signedSize = pos.side === 'Buy' ? size : -size
+      if (signedSize === 0) continue
+
+      const levRaw = pos.leverage ? parseFloat(pos.leverage) : undefined
+      const liqPrice = pos.liqPrice && pos.liqPrice !== '' ? parseFloat(pos.liqPrice) : null
+
+      // Extract coin from symbol (e.g. 'BTCUSDT' → 'BTC')
+      const coin = pos.symbol.endsWith('USDT')
+        ? pos.symbol.slice(0, -4)
+        : pos.symbol
+
+      const snap: ExchangePositionSnapshot = {
+        coin,
+        size: signedSize,
+        entryPrice: parseFloat(pos.avgPrice),
+        unrealizedPnl: parseFloat(pos.unrealisedPnl),
+        liquidationPrice: liqPrice,
+      }
+      if (Number.isFinite(levRaw) && (levRaw ?? 0) > 0) snap.leverage = levRaw as number
+      const slRaw = pos.stopLoss ? parseFloat(pos.stopLoss) : NaN
+      const tpRaw = pos.takeProfit ? parseFloat(pos.takeProfit) : NaN
+      if (Number.isFinite(slRaw) && slRaw > 0) snap.slPrice = slRaw
+      if (Number.isFinite(tpRaw) && tpRaw > 0) snap.tpPrice = tpRaw
+      snaps.push(snap)
+    }
+    getHealthMonitor().recordSuccess('exchange')
+    log.info('bybit-exec', `getPositions OK: ${snaps.length} open position(s)`)
+    return snaps
   }
 
   /**

@@ -73,6 +73,18 @@ export function removeFundingCoin(coin: string): void {
   fundingStore.delete(coin)
 }
 
+// ── Exchange-agnostic write API (used by Bybit feed) ─────────────────────────
+
+/** Write a funding snapshot from an external feed (e.g. Bybit ticker WS). */
+export function writeFunding(coin: string, snapshot: FundingSnapshot): void {
+  fundingStore.set(coin, [snapshot])
+}
+
+/** Remove funding state for a coin (used by Bybit unsubscribe). */
+export function removeFunding(coin: string): void {
+  fundingStore.delete(coin)
+}
+
 // ── Internal ─────────────────────────────────────────────────────────────────
 
 async function fetchFunding(coin: string): Promise<void> {

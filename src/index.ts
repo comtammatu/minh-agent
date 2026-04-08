@@ -46,6 +46,8 @@ import { HLFeed } from './feed/hl-feed.js'
 import { BybitFeed } from './feed/bybit/bybit-feed.js'
 import { makeBybitFetchRankedFn } from './feed/bybit/bybit-coin-selector.js'
 import { loadBybitFundingRates, getBybitFundingRate } from './feed/bybit/bybit-rest.js'
+import { subscribeBybitTrades, unsubscribeBybitTrades, closeAllBybitTrades } from './feed/bybit/bybit-trades.js'
+import { subscribeBybitTicker, unsubscribeBybitTicker, closeAllBybitTicker } from './feed/bybit/bybit-ticker.js'
 import { startFundingPolling, stopFundingPolling, addFundingCoin, removeFundingCoin } from './feed/funding.js'
 import { startOiFeed, stopOiFeed, addOiCoin, removeOiCoin } from './feed/asset-ctx.js'
 import { subscribeTrades, unsubscribeTrades } from './feed/trades.js'
@@ -111,10 +113,12 @@ let tuiLogStream: WriteStream | null = null
 /** Subscribe all WS feeds for a coin (candles × TFs + trades + orderbook). */
 async function subscribeCoin(coin: string): Promise<void> {
   await feed.subscribe([coin], onCandleTick)
-  // Trades and order-book feeds are HL-specific (use HL WS client).
   if (getActiveExchange() === 'HL') {
     await subscribeTrades(coin)
     await subscribeOrderBook(coin)
+  } else if (getActiveExchange() === 'BB') {
+    subscribeBybitTrades(coin)
+    subscribeBybitTicker(coin)
   }
 }
 
@@ -129,12 +133,14 @@ async function backfillCoin(coin: string): Promise<number> {
 /** Unsubscribe all feeds + clear all state for a coin. */
 async function unsubscribeCoin(coin: string): Promise<void> {
   await unsubscribeCandles(coin)
-  // Trades, order-book, funding, and OI feeds are HL-specific.
   if (getActiveExchange() === 'HL') {
     await unsubscribeTrades(coin)
     await unsubscribeOrderBook(coin)
     removeFundingCoin(coin)
     removeOiCoin(coin)
+  } else if (getActiveExchange() === 'BB') {
+    unsubscribeBybitTrades(coin)
+    unsubscribeBybitTicker(coin)
   }
   clearCoinData(coin)
   clearCoinState(coin)
@@ -717,6 +723,10 @@ async function cleanup(): Promise<void> {
   stopFundingPolling()
   await stopOiFeed()
   await feed.closeAll()
+  if (getActiveExchange() === 'BB') {
+    closeAllBybitTrades()
+    closeAllBybitTicker()
+  }
 }
 
 /** Run main() with exponential backoff reconnection on failure. */

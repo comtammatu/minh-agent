@@ -159,6 +159,22 @@ export function removeOiCoin(coin: string): void {
   oiStore.delete(coin)
 }
 
+// ── Exchange-agnostic write API (used by Bybit feed) ─────────────────────────
+
+/**
+ * Write an asset context snapshot from an external feed (e.g. Bybit ticker WS).
+ * Stores current + rotates previous for OI delta computation.
+ */
+export function writeAssetCtx(coin: string, snapshot: AssetCtxSnapshot): void {
+  const existing = oiStore.get(coin)
+  oiStore.set(coin, { current: snapshot, previous: existing?.current ?? null })
+}
+
+/** Remove asset context for a coin (used by Bybit unsubscribe). */
+export function removeAssetCtx(coin: string): void {
+  oiStore.delete(coin)
+}
+
 // ── Backward-compat aliases (used by index.ts) ──────────────────────────────
 
 /** @deprecated Use startOiFeed */

@@ -46,9 +46,10 @@ import { getOrderManager } from './order-manager.js'
 
 /**
  * Query exchange for current positions via ExchangeService.
- * Returns ExchangePositionSnapshot[] from HL clearinghouseState.
+ * Returns ExchangePositionSnapshot[] on success, null on API/network error.
+ * Callers must treat null as "skip reconciliation" to avoid false position closes.
  */
-export async function queryExchangePositions(): Promise<ExchangePositionSnapshot[]> {
+export async function queryExchangePositions(): Promise<ExchangePositionSnapshot[] | null> {
   try {
     if (getEffectivePaperTrade()) return []
 
@@ -73,7 +74,7 @@ export async function queryExchangePositions(): Promise<ExchangePositionSnapshot
     return out
   } catch (err) {
     log.error('position-monitor', `queryExchangePositions failed: ${err instanceof Error ? err.message : err}`)
-    return []
+    return null  // null = API error; caller skips reconciliation to avoid false position closes
   }
 }
 
@@ -222,6 +223,8 @@ export class PositionMonitor {
   private positions: Map<string, PositionState> = new Map()
   /** Exchange sync interval handle. */
   private syncInterval: ReturnType<typeof setInterval> | null = null
+  /** Guard against concurrent syncWithExchange calls (setInterval fires even if previous async call hasn't resolved). */
+  private syncInProgress = false
   /** Callback to dispatch events to TradingAgent (with strategyId). */
   private dispatchToAgent: ((coin: string, event: AgentEvent, strategyId?: string) => void) | null = null
   /** Callback to update SL on exchange via OrderManager (parentOrderId, newSlPrice). */
@@ -439,71 +442,83 @@ export class PositionMonitor {
    * Detects: liquidation, external close, missed fills.
    */
   async syncWithExchange(): Promise<MonitorAction[]> {
-    // Update account equity for portfolio risk checks (even with 0 positions)
+    if (this.syncInProgress) return []
+    this.syncInProgress = true
     try {
-      if (getEffectivePaperTrade()) {
-        // Paper: use simulated wallets — live HL balance would block portfolio logic incorrectly
-        this.onEquityUpdate?.(getTotalPaperBalance())
-      } else {
-        const pool = getExchangePool()
-        if (pool.isInitialized()) {
-          if (pool.isMultiWallet()) {
-            let sum = 0
-            const seen = new Set<PoolExchangeService>()
-            for (const sid of PAPER_WALLET_STRATEGY_IDS) {
-              const svc = pool.get(sid)
-              if (seen.has(svc)) continue
-              seen.add(svc)
-              const st = await svc.getAccountState()
-              sum += st.effectiveBalance
-            }
-            this.onEquityUpdate?.(sum)
-          } else {
-            const st = await pool.getShared().getAccountState()
-            this.onEquityUpdate?.(st.effectiveBalance)
-          }
+      // Update account equity for portfolio risk checks (even with 0 positions)
+      try {
+        if (getEffectivePaperTrade()) {
+          // Paper: use simulated wallets — live HL balance would block portfolio logic incorrectly
+          this.onEquityUpdate?.(getTotalPaperBalance())
         } else {
-          const accountState = await getExchangeService().getAccountState()
-          this.onEquityUpdate?.(accountState.effectiveBalance)
+          const pool = getExchangePool()
+          if (pool.isInitialized()) {
+            if (pool.isMultiWallet()) {
+              let sum = 0
+              const seen = new Set<PoolExchangeService>()
+              for (const sid of PAPER_WALLET_STRATEGY_IDS) {
+                const svc = pool.get(sid)
+                if (seen.has(svc)) continue
+                seen.add(svc)
+                const st = await svc.getAccountState()
+                sum += st.effectiveBalance
+              }
+              this.onEquityUpdate?.(sum)
+            } else {
+              const st = await pool.getShared().getAccountState()
+              this.onEquityUpdate?.(st.effectiveBalance)
+            }
+          } else {
+            const accountState = await getExchangeService().getAccountState()
+            this.onEquityUpdate?.(accountState.effectiveBalance)
+          }
+        }
+      } catch {
+        // Non-fatal — equity update is best-effort
+      }
+
+      // Live: detect entry fills that were not inline in placeOrder (e.g. limit) → onOrderFilled → SL/TP (R9)
+      if (!getEffectivePaperTrade()) {
+        await getOrderManager().syncSubmittedEntryFills()
+      }
+
+      if (this.positions.size === 0) return []
+
+      // Paper mode: simulate SL/TP hits using current mark prices instead of exchange query
+      if (getEffectivePaperTrade()) {
+        await this.checkPaperExits()
+        return []
+      }
+
+      const snapshots = await queryExchangePositions()
+      // null = API/network error — skip reconciliation to avoid false position closes
+      if (snapshots === null) {
+        log.warn('position-monitor', `getPositions API error — skipping reconciliation this cycle (${this.positions.size} position(s) still tracked)`)
+        return []
+      }
+
+      const actions = reconcilePositions(this.positions, snapshots)
+
+      for (const action of actions) {
+        const pos = this.positions.get(action.positionId)
+        if (pos) {
+          await this.executeAction(pos, action)
+          if (action.type === 'close') {
+            this.positions.delete(pos.positionId)
+          }
         }
       }
-    } catch {
-      // Non-fatal — equity update is best-effort
-    }
 
-    // Live: detect entry fills that were not inline in placeOrder (e.g. limit) → onOrderFilled → SL/TP (R9)
-    if (!getEffectivePaperTrade()) {
-      await getOrderManager().syncSubmittedEntryFills()
-    }
-
-    if (this.positions.size === 0) return []
-
-    // Paper mode: simulate SL/TP hits using current mark prices instead of exchange query
-    if (getEffectivePaperTrade()) {
-      await this.checkPaperExits()
-      return []
-    }
-
-    const snapshots = await queryExchangePositions()
-    const actions = reconcilePositions(this.positions, snapshots)
-
-    for (const action of actions) {
-      const pos = this.positions.get(action.positionId)
-      if (pos) {
-        await this.executeAction(pos, action)
-        if (action.type === 'close') {
-          this.positions.delete(pos.positionId)
-        }
+      // Update sync timestamps
+      const now = Date.now()
+      for (const [, pos] of this.positions) {
+        pos.lastSyncAt = now
       }
-    }
 
-    // Update sync timestamps
-    const now = Date.now()
-    for (const [, pos] of this.positions) {
-      pos.lastSyncAt = now
+      return actions
+    } finally {
+      this.syncInProgress = false
     }
-
-    return actions
   }
 
   // ── Paper SL/TP Simulation ────────────────────────────────────────────

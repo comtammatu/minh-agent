@@ -416,7 +416,7 @@ describe('BybitExchangeService', () => {
       expect(positions[0]!.coin).toBe('SOL')
     })
 
-    it('returns empty array on API error', async () => {
+    it('throws on API error (so caller can skip reconciliation)', async () => {
       mockGetPositionInfo = mock(() =>
         Promise.resolve({ retCode: 10001, retMsg: 'Internal error', result: { list: [] } }),
       )
@@ -425,8 +425,7 @@ describe('BybitExchangeService', () => {
       const svc = new BybitExchangeService()
       await svc.init()
 
-      const positions = await svc.getPositions()
-      expect(positions).toHaveLength(0)
+      await expect(svc.getPositions()).rejects.toThrow('Internal error')
     })
   })
 

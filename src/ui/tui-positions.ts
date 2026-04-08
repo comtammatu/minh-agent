@@ -67,11 +67,13 @@ export function mergeExchangeAndTrackedForTui(
     const match = findMatchingTracked(snap, tracked, consumed)
     if (match) {
       consumed.add(match.positionId)
+      // Exchange snapshot is source of truth for leverage; fall back to tracked if exchange omits it
+      const mergedLev = snap.leverage !== undefined && snap.leverage > 0 ? snap.leverage : (match.leverage > 0 ? match.leverage : 1)
       out.set(match.positionId, {
         rowKey: match.positionId,
         coin: snap.coin,
         side,
-        leverage: match.leverage > 0 ? match.leverage : lev,
+        leverage: mergedLev,
         currentSize: absSize,
         entryPrice: snap.entryPrice,
         slPrice: match.slPrice,

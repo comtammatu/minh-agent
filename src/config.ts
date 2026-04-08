@@ -256,12 +256,12 @@ export const WS_MAX_SUBSCRIPTIONS = 1_000
 
 /** Milliseconds per candle interval — used for gap-fill computation. */
 export const TIMEFRAME_MS: Record<CandleInterval, number> = {
-  '1m':  60_000,
-  '5m':  300_000,
+  '1m': 60_000,
+  '5m': 300_000,
   '15m': 900_000,
-  '1h':  3_600_000,
-  '4h':  14_400_000,
-  '1d':  86_400_000,
+  '1h': 3_600_000,
+  '4h': 14_400_000,
+  '1d': 86_400_000,
 } as const
 
 // ─── Circuit Breakers (S11) ────────────────────────────────────────────────
@@ -299,10 +299,10 @@ export const CORRELATION_GROUPS: Record<string, readonly string[]> = {
   'btc-ecosystem': ['BTC', 'STX', 'ORDI', 'SATS', 'RUNE'],
   'eth-ecosystem': ['ETH', 'OP', 'ARB', 'STRK', 'BLAST', 'SCROLL', 'ZK', 'TAIKO', 'LINEA'],
   'sol-ecosystem': ['SOL', 'JTO', 'JUP', 'PYTH', 'WIF', 'BONK', 'RAY', 'ORCA'],
-  'meme':          ['DOGE', 'SHIB', 'PEPE', 'WIF', 'BONK', 'FLOKI', 'MEME', 'MYRO', 'BRETT'],
-  'ai':            ['FET', 'AGIX', 'OCEAN', 'RENDER', 'TAO', 'AKT', 'AR', 'NEAR'],
-  'defi':          ['AAVE', 'UNI', 'MKR', 'CRV', 'COMP', 'DYDX', 'SNX', 'SUSHI'],
-  'l1':            ['AVAX', 'DOT', 'ATOM', 'ADA', 'NEAR', 'SUI', 'APT', 'SEI', 'TIA', 'INJ'],
+  'meme': ['DOGE', 'SHIB', 'PEPE', 'WIF', 'BONK', 'FLOKI', 'MEME', 'MYRO', 'BRETT'],
+  'ai': ['FET', 'AGIX', 'OCEAN', 'RENDER', 'TAO', 'AKT', 'AR', 'NEAR'],
+  'defi': ['AAVE', 'UNI', 'MKR', 'CRV', 'COMP', 'DYDX', 'SNX', 'SUSHI'],
+  'l1': ['AVAX', 'DOT', 'ATOM', 'ADA', 'NEAR', 'SUI', 'APT', 'SEI', 'TIA', 'INJ'],
 } as const
 
 // ─── Database (R15: single-process, sequential writes) ────────────────────

@@ -85,6 +85,20 @@ export async function unsubscribeOrderBook(coin: string): Promise<void> {
   lastBookTime.delete(coin)
 }
 
+// ── Exchange-agnostic write API (used by Bybit feed) ─────────────────────────
+
+/** Write a book snapshot from an external feed (e.g. Bybit ticker bid1/ask1). */
+export function writeBook(coin: string, snapshot: OrderBookSnapshot): void {
+  bookStore.set(coin, snapshot)
+  lastBookTime.set(coin, Date.now())
+}
+
+/** Remove book state for a coin (used by Bybit unsubscribe). */
+export function removeBook(coin: string): void {
+  bookStore.delete(coin)
+  lastBookTime.delete(coin)
+}
+
 /**
  * Check all book subscriptions for staleness.
  * Logs WARNING for any coin silent for > BOOK_STALENESS_MS.
