@@ -433,13 +433,22 @@ export class OrderManager {
 
     // Submit to exchange (or simulate in paper mode) — route to strategy-specific wallet
 
-    // Set leverage before entry: ensures margin = sizeUsd / leverage ≤ TARGET_MARGIN_PCT × account
+    // Set leverage before entry.
+    // BB (Cross Margin): always use max leverage — entire account acts as collateral,
+    //   setLeverage internally caps to the risk-tier max for the position size.
+    // HL (Isolated Margin): compute from TARGET_MARGIN_PCT to bound per-position margin.
     if (!getEffectivePaperTrade() && svc && entryPrice > 0) {
-      const accountValue = svc.getCachedAccountValue() || SIMULATED_ACCOUNT
       const sizeUsd = order.size * entryPrice
-      const targetMarginUsd = accountValue * TARGET_MARGIN_PCT
-      const requiredLeverage = sizeUsd / targetMarginUsd
-      await svc.setLeverage(coin, requiredLeverage, sizeUsd)
+      if (svc.exchangeId === 'BB') {
+        // Max leverage for cross margin — service caps at tier limit automatically
+        const maxLev = svc.getMaxLeverage(coin) ?? 100
+        await svc.setLeverage(coin, maxLev, sizeUsd)
+      } else {
+        const accountValue = svc.getCachedAccountValue() || SIMULATED_ACCOUNT
+        const targetMarginUsd = accountValue * TARGET_MARGIN_PCT
+        const requiredLeverage = sizeUsd / targetMarginUsd
+        await svc.setLeverage(coin, requiredLeverage, sizeUsd)
+      }
     }
 
     // Entry orders are limit by default (GTC). Market-style IoC entries are supported but not used by default.
@@ -868,6 +877,12 @@ export class OrderManager {
             orderId: '',
             reason: 'place_order_skipped',
           }, sid)
+        } else if (order.status === 'submitted' || order.status === 'partial') {
+          // Notify agent of submitted (resting limit) order so it can track pendingOrderId
+          // for cancel on timeout/invalidation. Skip for filled (paper/immediate live fill —
+          // agent already received order_filled) and rejected (agent already got order_rejected
+          // from inside placeOrder — dispatching order_submitted would corrupt pendingOrderId).
+          this.dispatchToAgent?.(setup.coin, { type: 'order_submitted', orderId: order.id }, sid)
         }
         break
       }

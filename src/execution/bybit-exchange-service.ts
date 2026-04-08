@@ -26,7 +26,14 @@ export interface BybitOrderParams {
   side: 'long' | 'short'
   type: 'market' | 'limit'
   price: number
+  /** Base coin quantity. For market orders, use sizeUsd instead if available. */
   size: number
+  /**
+   * Optional USDT notional value. When set on a market order, overrides size:
+   * service fetches current price and computes base qty rounded UP to nearest step.
+   * Ignored for limit orders (must pass exact base qty via size).
+   */
+  sizeUsd?: number
   reduceOnly: boolean
   slPrice?: number
   tpPrice?: number
@@ -50,6 +57,12 @@ export class BybitExchangeService {
 
   /** coin → maxLeverage from getInstrumentsInfo (loaded once at init). */
   private maxLeverageMap: Map<string, number> = new Map()
+
+  /** coin → qtyStep from lotSizeFilter (e.g. BTC → 0.001). */
+  private qtyStepMap: Map<string, number> = new Map()
+
+  /** coin → decimal places of qtyStep (e.g. 0.001 → 3). */
+  private stepDecimalsMap: Map<string, number> = new Map()
 
   /** coin → risk tiers sorted ascending by riskLimitValue (lazy-loaded per coin). */
   private riskTierCache: Map<string, Array<{ riskLimitValue: number; maxLeverage: number }>> = new Map()
@@ -89,6 +102,13 @@ export class BybitExchangeService {
         const coin = inst.symbol.endsWith('USDT') ? inst.symbol.slice(0, -4) : inst.symbol
         const maxLev = parseFloat(inst.leverageFilter.maxLeverage)
         if (Number.isFinite(maxLev) && maxLev > 0) this.maxLeverageMap.set(coin, maxLev)
+        const step = parseFloat(inst.lotSizeFilter.qtyStep)
+        if (Number.isFinite(step) && step > 0) {
+          this.qtyStepMap.set(coin, step)
+          // Count decimal places: e.g. "0.001" → 3
+          const decimals = (inst.lotSizeFilter.qtyStep.split('.')[1] ?? '').length
+          this.stepDecimalsMap.set(coin, decimals)
+        }
       }
       log.info('bybit-svc', `Loaded maxLeverage for ${this.maxLeverageMap.size} instruments`)
     } catch (err) {
@@ -117,9 +137,12 @@ export class BybitExchangeService {
    * Place a single order (market or limit) on Bybit linear perps.
    *
    * Market: timeInForce = 'IOC', side: 'Buy'/'Sell'
-   * Limit:  timeInForce = 'GTC'
+   *   - size is treated as USDT notional value (marketUnit='quoteCoin').
+   *   - Bybit fills the equivalent base qty at market price.
+   * Limit: timeInForce = 'GTC'
+   *   - size is base coin qty (as usual).
    *
-   * positionIdx: 0 = one-way mode (default for linear perpetuals).
+   * positionIdx: hedge mode — 1 = long side, 2 = short side.
    *
    * Maps from PlaceOrderParams (shared shape with HL ExchangeService).
    */
@@ -131,19 +154,44 @@ export class BybitExchangeService {
     const orderType = params.type === 'market' ? 'Market' : 'Limit'
     const timeInForce = params.type === 'market' ? 'IOC' : 'GTC'
 
+    // Hedge mode: long = positionIdx 1, short = positionIdx 2
+    const positionIdx = params.side === 'long' ? 1 : 2
+
     // Resolve optional SL/TP prices (BybitOrderParams supports inline SL/TP)
     const bbParams = params as BybitOrderParams
     const slPrice = bbParams.slPrice
     const tpPrice = bbParams.tpPrice
+
+    // Resolve base coin qty.
+    // For market orders with sizeUsd: fetch current price, round UP to nearest step.
+    // This ensures notional >= requested USDT value.
+    let baseQty = params.size
+    if (params.type === 'market' && bbParams.sizeUsd !== undefined && bbParams.sizeUsd > 0) {
+      try {
+        const tickerResp = await this.client!.getTickers({ category: 'linear', symbol })
+        const lastPrice = parseFloat(tickerResp.result?.list?.[0]?.lastPrice ?? '0')
+        if (lastPrice > 0) {
+          const step = this.qtyStepMap.get(params.coin) ?? 0.001
+          baseQty = Math.ceil(bbParams.sizeUsd / lastPrice / step) * step
+          // Round to avoid floating-point jitter
+          baseQty = parseFloat(baseQty.toFixed(this.stepDecimalsMap.get(params.coin) ?? 3))
+          log.info('bybit-exec', `sizeUsd=${bbParams.sizeUsd} → price=${lastPrice} → qty=${baseQty} ${params.coin}`)
+        } else {
+          log.warn('bybit-exec', `Could not resolve price for ${symbol}, falling back to size=${params.size}`)
+        }
+      } catch (err) {
+        log.warn('bybit-exec', `getTickers for qty conversion failed: ${err instanceof Error ? err.message : err}`)
+      }
+    }
 
     const submitParams: Parameters<RestClientV5['submitOrder']>[0] = {
       category: 'linear',
       symbol,
       side,
       orderType,
-      qty: String(params.size),
+      qty: String(baseQty),
       timeInForce,
-      positionIdx: 0,
+      positionIdx,
       reduceOnly: params.reduceOnly,
       ...(params.type === 'limit' ? { price: String(params.price) } : {}),
       ...(slPrice !== undefined ? { stopLoss: String(slPrice) } : {}),
@@ -161,13 +209,30 @@ export class BybitExchangeService {
       }
 
       const orderId = resp.result?.orderId ?? null
-      // Bybit market orders may fill immediately — orderId signals submitted
       log.info('bybit-exec', `placeOrder OK: ${symbol} ${side} orderId=${orderId}`)
+
+      // Market orders on Bybit fill immediately (IOC). Poll order history to get
+      // avgPrice + cumExecQty so the caller can trigger onOrderFilled → placeSLTP.
+      if (params.type === 'market' && orderId) {
+        const fillData = await this.pollOrderFill(symbol, orderId)
+        if (fillData) {
+          log.info('bybit-exec', `placeOrder filled: ${symbol} avgPx=${fillData.avgPx} sz=${fillData.totalSz}`)
+          return {
+            success: true,
+            oid: null,
+            avgPx: fillData.avgPx,
+            totalSz: fillData.totalSz,
+            status: 'filled',
+            error: null,
+          }
+        }
+        log.warn('bybit-exec', `placeOrder: could not confirm fill for ${orderId}, returning submitted`)
+      }
+
       return {
         success: true,
-        // Bybit orderId is a string; coerce to number (NaN if non-numeric) or keep null
-        oid: orderId ? (Number.isFinite(Number(orderId)) ? Number(orderId) : null) : null,
-        avgPx: null,   // not returned at submit time (poll trades for fill px)
+        oid: null,
+        avgPx: null,
         totalSz: null,
         status: 'submitted',
         error: null,
@@ -177,6 +242,42 @@ export class BybitExchangeService {
       log.error('bybit-exec', `placeOrder exception: ${msg}`)
       throw err
     }
+  }
+
+  /**
+   * Poll getOrderHistory for a specific orderId until filled or timeout.
+   * Bybit market orders (IOC) fill within milliseconds — polls up to 3 times with 300ms gap.
+   * Returns avgPx + totalSz on fill, null if not filled within timeout.
+   */
+  private async pollOrderFill(
+    symbol: string,
+    orderId: string,
+    maxAttempts = 3,
+    intervalMs = 300,
+  ): Promise<{ avgPx: number; totalSz: number } | null> {
+    for (let i = 0; i < maxAttempts; i++) {
+      if (i > 0) await new Promise(r => setTimeout(r, intervalMs))
+      try {
+        const resp = await this.client!.getHistoricOrders({
+          category: 'linear',
+          symbol,
+          orderId,
+        })
+        const order = resp.result?.list?.[0]
+        if (!order) continue
+        if (order.orderStatus === 'Filled') {
+          const avgPx = parseFloat(order.avgPrice)
+          const totalSz = parseFloat(order.cumExecQty)
+          if (Number.isFinite(avgPx) && avgPx > 0 && Number.isFinite(totalSz) && totalSz > 0) {
+            return { avgPx, totalSz }
+          }
+        }
+        // PartiallyFilled or still open — keep polling
+      } catch (err) {
+        log.warn('bybit-exec', `pollOrderFill attempt ${i + 1} failed: ${err instanceof Error ? err.message : err}`)
+      }
+    }
+    return null
   }
 
   // ── Cancel ─────────────────────────────────────────────────────────────────
@@ -516,13 +617,48 @@ export class BybitExchangeService {
   }
 
   /**
-   * Bybit does not support separate trigger (SL/TP) orders — SL/TP must be set
-   * inline via `stopLoss`/`takeProfit` params on `placeOrder` (BybitOrderParams).
-   * This stub warns and returns a failure so callers can handle gracefully.
+   * Set SL or TP on an open position via Bybit's setTradingStop API.
+   *
+   * Bybit does not support separate trigger orders — SL/TP are set directly
+   * on the position using setTradingStop. This method implements the IExchangeService
+   * placeTrigger interface so the order manager's placeSLTP flow works transparently.
+   *
+   * positionIdx: hedge mode — long=1, short=2.
+   * tpsl='sl' → sets stopLoss; tpsl='tp' → sets takeProfit.
    */
   async placeTrigger(params: PlaceTriggerParams): Promise<OrderResult> {
-    log.warn('bybit-svc', `placeTrigger not supported on Bybit — set slPrice/tpPrice inline on placeOrder (${params.coin} ${params.tpsl})`)
-    return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: 'placeTrigger not supported on Bybit — use placeOrder slPrice/tpPrice params' }
+    this.ensureInit()
+
+    const symbol = this.toSymbol(params.coin)
+    // Hedge mode: position side = params.side reversed (trigger closes the position)
+    // params.side is the close side, so the position side is the opposite.
+    const positionIdx = params.side === 'short' ? 1 : 2  // 'short' closes long pos (idx=1), 'long' closes short pos (idx=2)
+
+    const setParams: Parameters<RestClientV5['setTradingStop']>[0] = {
+      category: 'linear',
+      symbol,
+      positionIdx,
+      ...(params.tpsl === 'sl'
+        ? { stopLoss: String(params.triggerPrice), slTriggerBy: 'LastPrice' }
+        : { takeProfit: String(params.triggerPrice), tpTriggerBy: 'LastPrice' }),
+    }
+
+    try {
+      const resp = await this.client!.setTradingStop(setParams)
+
+      if (resp.retCode !== 0) {
+        const errMsg = resp.retMsg ?? `Bybit setTradingStop error ${resp.retCode}`
+        log.error('bybit-exec', `placeTrigger(${params.tpsl}) failed: ${errMsg} [${symbol}]`)
+        return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: errMsg }
+      }
+
+      log.info('bybit-exec', `placeTrigger(${params.tpsl}) OK: ${symbol} @ ${params.triggerPrice}`)
+      return { success: true, oid: null, avgPx: null, totalSz: null, status: 'submitted', error: null }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.error('bybit-exec', `placeTrigger exception: ${msg}`)
+      throw err
+    }
   }
 
   /**
