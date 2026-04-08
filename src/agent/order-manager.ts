@@ -27,6 +27,7 @@ import type {
   ExchangeOrderResult,
   AgentAction,
   AgentEvent,
+  ExchangePositionSnapshot,
 } from './types.js'
 import { sql } from '../db/connection.js'
 import {
@@ -102,6 +103,8 @@ export async function submitToExchange(
   size: number,
   cloid: string,
   svc?: IExchangeService,
+  slPrice?: number,
+  tpPrice?: number,
 ): Promise<ExchangeOrderResult> {
   try {
     const exchange = svc ?? getExchangeService()
@@ -113,6 +116,8 @@ export async function submitToExchange(
       size,
       reduceOnly: false,
       cloid,
+      slPrice,
+      tpPrice,
     })
     if (result.success) {
       // oid may be null for "waitingForFill"/"waitingForTrigger" — use status as fallback
@@ -456,9 +461,17 @@ export class OrderManager {
       ? computeMarketRefPrice(coin, side, entryPrice)
       : entryPrice
 
+    // BB: attach SL/TP inline at order submission — position is protected from first fill tick,
+    // eliminating the race window between fill detection and setTradingStop.
+    // HL: SL/TP are separate trigger orders placed after fill (see placeSLTP).
+    const inlineSlTp = !getEffectivePaperTrade() && svc?.exchangeId === 'BB'
     const result = getEffectivePaperTrade()
       ? paperSimulateFill(coin, side, entryPrice, order.size, cloid)
-      : await submitToExchange(coin, side, order.type, submitPrice, order.size, cloid, svc)
+      : await submitToExchange(
+          coin, side, order.type, submitPrice, order.size, cloid, svc,
+          inlineSlTp ? order.slPrice ?? undefined : undefined,
+          inlineSlTp ? order.tpPrice ?? undefined : undefined,
+        )
 
     if (result.success) {
       order.status = 'submitted'
@@ -604,6 +617,9 @@ export class OrderManager {
   /**
    * R9: After entry fill, place SL (trigger-market) + TP (trigger-market) on HL.
    * Exchange-managed safety — protected even if agent dies.
+   *
+   * BB: SL/TP were already attached inline at order submission — skip to avoid
+   * overriding the exchange-level protection with a redundant setTradingStop.
    */
   private async placeSLTP(entryOrder: Order): Promise<void> {
     if (!entryOrder.slPrice || !entryOrder.tpPrice) {
@@ -611,10 +627,14 @@ export class OrderManager {
       return
     }
 
+    const svc = this.getExchangeForStrategy(entryOrder.strategyId)
+    if (!getEffectivePaperTrade() && svc?.exchangeId === 'BB') {
+      log.info('order-manager', `SL/TP already set inline (BB): ${entryOrder.coin} sl=${entryOrder.slPrice} tp=${entryOrder.tpPrice}`)
+      return
+    }
+
     const closeSide: 'long' | 'short' = entryOrder.side === 'long' ? 'short' : 'long'
     const triggers: TriggerOrder[] = []
-    // Route SL/TP to strategy-specific exchange wallet
-    const svc = this.getExchangeForStrategy(entryOrder.strategyId)
 
     // SL: trigger-market (guaranteed fill on stop hit)
     const slTrigger: TriggerOrder = {
@@ -1014,6 +1034,62 @@ export class OrderManager {
       this.orders.set(order.id, order)
     }
     log.info('order-manager', `Loaded ${rows.length} active orders from DB`)
+  }
+
+  /**
+   * Restore open position tracking after restart (crash recovery).
+   *
+   * PositionMonitor state is in-memory and lost on restart. Without this, positions
+   * placed before restart appear as "ext" (no strategy) in the TUI because there is
+   * no tracked entry to match against the exchange snapshot.
+   *
+   * For each coin that still has an open position on the exchange, finds the most
+   * recent filled order in the DB and re-registers it with PositionMonitor via the
+   * onPositionOpen callback. Leverage is set to 0 so the TUI merge falls back to
+   * the exchange-reported leverage (match.leverage > 0 check in tui-positions.ts).
+   *
+   * Called once at startup, after setPositionOpenCallback is wired.
+   */
+  restoreOpenPositions(exchangeSnaps: ExchangePositionSnapshot[]): void {
+    // Build set of coins currently open on exchange
+    const openCoins = new Set<string>()
+    for (const snap of exchangeSnaps) {
+      if (snap.size !== 0) openCoins.add(snap.coin)
+    }
+    if (openCoins.size === 0) return
+
+    // For each open coin, find the most recent filled order in our cache
+    const latestByCoin = new Map<string, Order>()
+    for (const [, order] of this.orders) {
+      if (order.status !== 'filled') continue
+      if (!order.positionId || !order.fillPrice) continue
+      if (!openCoins.has(order.coin)) continue
+      const existing = latestByCoin.get(order.coin)
+      const orderTs = order.filledAt ?? order.updatedAt
+      const existingTs = existing ? (existing.filledAt ?? existing.updatedAt) : 0
+      if (!existing || orderTs > existingTs) latestByCoin.set(order.coin, order)
+    }
+
+    let restored = 0
+    for (const [, order] of latestByCoin) {
+      this.onPositionOpen?.({
+        positionId: order.positionId!,
+        coin: order.coin,
+        side: order.side,
+        entryPrice: order.fillPrice!,
+        size: order.size,  // fillSize not persisted; original size is close enough for trail/TUI
+        slPrice: order.slPrice ?? 0,
+        tpPrice: order.tpPrice ?? 0,
+        entryOrderId: order.id,
+        leverage: 0,  // unknown at restore time; TUI merge uses exchange value as fallback
+        strategyId: order.strategyId,
+      })
+      restored++
+    }
+
+    if (restored > 0) {
+      log.info('order-manager', `Restored ${restored} open position(s) into PositionMonitor after restart`)
+    }
   }
 }
 

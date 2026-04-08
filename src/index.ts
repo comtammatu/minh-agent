@@ -598,6 +598,17 @@ async function main(): Promise<void> {
   // OrderManager → PositionMonitor: register position on fill (enables TUI display + trail stop)
   om.setPositionOpenCallback(params => pm.openPosition(params))
 
+  // Crash recovery: re-register positions from DB-filled orders for coins still open on exchange.
+  // PositionMonitor state is in-memory — lost on restart → positions show as 'ext' without this.
+  if (!getEffectivePaperTrade()) {
+    try {
+      const openSnaps = await queryExchangePositions()
+      om.restoreOpenPositions(openSnaps)
+    } catch (err) {
+      log.warn('agent', `restoreOpenPositions failed (non-fatal): ${err instanceof Error ? err.message : err}`)
+    }
+  }
+
   // Agent → PositionMonitor (dispatch back with strategyId)
   pm.setAgentDispatch((coin, event, strategyId) => agent.dispatch(coin, event, strategyId))
 
@@ -620,6 +631,10 @@ async function main(): Promise<void> {
 
   // Start exchange sync heartbeat (R3: 10s interval)
   pm.startSync()
+
+  // Order fill timeout watchdog: release stuck ENTERING states when limit orders never fill.
+  // ORDER_FILL_TIMEOUT_MS = 5 min; check every 60s is sufficient.
+  activeIntervals.push(setInterval(() => void om.checkTimeouts(), 60_000))
 
   // Wire metrics service: refresh matviews after each trade close
   connectMetrics(agent)

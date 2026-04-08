@@ -59,6 +59,9 @@ export interface PlaceOrderParams {
   size: number         // in coin units (pre-formatting)
   reduceOnly: boolean
   cloid?: string       // 0x + 32 hex chars
+  /** Inline SL/TP — used by Bybit (set on submitOrder). Ignored by HL (uses separate placeTrigger). */
+  slPrice?: number
+  tpPrice?: number
 }
 
 export interface PlaceTriggerParams {

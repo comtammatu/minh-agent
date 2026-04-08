@@ -555,8 +555,11 @@ export class TradingAgent {
     const hasPlaceOrder = actions.some(a => a.type === 'place_order')
     if (!hasPlaceOrder || this.accountEquity <= 0) return actions
 
-    // Build current portfolio positions from IN_POSITION/ENTERING coins
+    // Build current portfolio positions from IN_POSITION/ENTERING coins.
+    // Exclude the current coin:strategy — ctx.state was already set to ENTERING before this check,
+    // so it would otherwise count against itself (off-by-one: effective max becomes max-1).
     const portfolioPositions = this.getPortfolioPositions()
+      .filter(p => !(p.coin === coin && p.strategyId === strategyId))
 
     // Estimate proposed notional from setup (use risk per trade × account as fallback)
     const placeAction = actions.find(a => a.type === 'place_order')

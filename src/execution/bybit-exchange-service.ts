@@ -18,6 +18,25 @@ import type { ExchangePositionSnapshot } from '../agent/types.js'
 import { getHealthMonitor } from '../agent/self-healing.js'
 import { log } from '../lib/logger.js'
 import type { AccountState, PlaceOrderParams, OrderResult, PlaceTriggerParams } from './exchange-service.js'
+import { BYBIT_EXEC_BURST_TOKENS, BYBIT_EXEC_REFILL_MS } from '../config.js'
+
+// ─── Execution Rate Limiter ───────────────────────────────────────────────────
+// Bybit trading endpoints: 10 req/s per UID. Burst=10, refill=100ms.
+// Prevents simultaneous order bursts (e.g. 20 signals firing at once → 429).
+let _execTokens = BYBIT_EXEC_BURST_TOKENS
+let _execLastRefill = Date.now()
+let _execNextSlot = 0
+
+async function acquireExec(): Promise<void> {
+  const now = Date.now()
+  _execTokens = Math.min(BYBIT_EXEC_BURST_TOKENS, _execTokens + (now - _execLastRefill) / BYBIT_EXEC_REFILL_MS)
+  _execLastRefill = now
+  if (_execTokens >= 1) { _execTokens -= 1; return }
+  if (now >= _execNextSlot) { _execNextSlot = now + BYBIT_EXEC_REFILL_MS; return }
+  const waitUntil = _execNextSlot
+  _execNextSlot = waitUntil + BYBIT_EXEC_REFILL_MS
+  await new Promise(r => setTimeout(r, waitUntil - now))
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -165,6 +184,7 @@ export class BybitExchangeService {
     // Resolve base coin qty.
     // For market orders with sizeUsd: fetch current price, round UP to nearest step.
     // This ensures notional >= requested USDT value.
+    // For market orders with raw size: round UP to nearest step (preserve risk sizing).
     // For limit orders: round DOWN to nearest qtyStep (Bybit rejects non-multiples of step).
     let baseQty = params.size
     if (params.type === 'market' && bbParams.sizeUsd !== undefined && bbParams.sizeUsd > 0) {
@@ -183,10 +203,16 @@ export class BybitExchangeService {
       } catch (err) {
         log.warn('bybit-exec', `getTickers for qty conversion failed: ${err instanceof Error ? err.message : err}`)
       }
-    } else if (params.type === 'limit') {
+    } else {
+      // Both market (raw size) and limit orders must align to qtyStep.
+      // Market: ceil (never go below risk-sized qty).
+      // Limit: floor (don't overshoot the requested qty).
       const step = this.qtyStepMap.get(params.coin) ?? 0.001
-      baseQty = Math.floor(baseQty / step) * step
-      baseQty = parseFloat(baseQty.toFixed(this.stepDecimalsMap.get(params.coin) ?? 3))
+      const decimals = this.stepDecimalsMap.get(params.coin) ?? 3
+      baseQty = params.type === 'market'
+        ? Math.ceil(baseQty / step) * step
+        : Math.floor(baseQty / step) * step
+      baseQty = parseFloat(baseQty.toFixed(decimals))
     }
 
     const submitParams: Parameters<RestClientV5['submitOrder']>[0] = {
@@ -205,6 +231,7 @@ export class BybitExchangeService {
     }
 
     try {
+      await acquireExec()
       const resp = await this.client!.submitOrder(submitParams)
 
       if (resp.retCode !== 0) {
@@ -298,6 +325,7 @@ export class BybitExchangeService {
     const symbol = this.toSymbol(coin)
 
     try {
+      await acquireExec()
       const resp = await this.client!.cancelOrder({
         category: 'linear',
         symbol,
@@ -330,6 +358,7 @@ export class BybitExchangeService {
     const symbol = this.toSymbol(coin)
 
     try {
+      await acquireExec()
       const resp = await this.client!.cancelOrder({
         category: 'linear',
         symbol,
@@ -564,6 +593,7 @@ export class BybitExchangeService {
       : Math.max(1, Math.ceil(leverage))
 
     try {
+      await acquireExec()
       const resp = await this.client!.setLeverage({
         category: 'linear',
         symbol,
@@ -649,6 +679,7 @@ export class BybitExchangeService {
     }
 
     try {
+      await acquireExec()
       const resp = await this.client!.setTradingStop(setParams)
 
       if (resp.retCode !== 0) {
@@ -693,11 +724,31 @@ export class BybitExchangeService {
   }
 
   /**
-   * Aggregate fill size + VWAP for an entry order by cloid.
-   * Not yet implemented — returns null so caller falls back to entry price estimate.
-   * TODO: implement via Bybit trade history filtered by orderLinkId.
+   * Aggregate fill size + VWAP for an entry order by cloid (orderLinkId in Bybit).
+   *
+   * Queries getHistoricOrders filtered by orderLinkId to detect resting limit fills.
+   * Returns data for Filled or PartiallyFilled orders; null if not yet filled or on error.
+   * Called by syncSubmittedEntryFills() (~10s interval) to trigger onOrderFilled → placeSLTP.
    */
-  async getFillAggregateByCloid(_cloid: string, _coin: string): Promise<{ avgPx: number; totalSz: number } | null> {
-    return null
+  async getFillAggregateByCloid(cloid: string, coin: string): Promise<{ avgPx: number; totalSz: number } | null> {
+    this.ensureInit()
+    const symbol = this.toSymbol(coin)
+    try {
+      const resp = await this.client!.getHistoricOrders({
+        category: 'linear',
+        symbol,
+        orderLinkId: cloid,
+      })
+      const order = resp.result?.list?.[0]
+      if (!order) return null
+      if (order.orderStatus !== 'Filled' && order.orderStatus !== 'PartiallyFilled') return null
+      const avgPx = parseFloat(order.avgPrice)
+      const totalSz = parseFloat(order.cumExecQty)
+      if (!Number.isFinite(avgPx) || avgPx <= 0 || !Number.isFinite(totalSz) || totalSz <= 0) return null
+      return { avgPx, totalSz }
+    } catch (err) {
+      log.warn('bybit-exec', `getFillAggregateByCloid failed: ${err instanceof Error ? err.message : err}`)
+      return null
+    }
   }
 }
