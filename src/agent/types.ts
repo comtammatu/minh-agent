@@ -94,6 +94,7 @@ export interface TransitionResult {
 export type AgentEvent =
   | { type: 'setup_detected'; setup: ActiveSetup }
   | { type: 'setup_invalidated'; setupId: string; reason: string }
+  | { type: 'order_submitted'; orderId: string }
   | { type: 'order_filled'; orderId: string; fillPrice: number; positionId: string }
   | { type: 'order_rejected'; orderId: string; reason: string }
   | { type: 'order_timeout'; orderId: string }

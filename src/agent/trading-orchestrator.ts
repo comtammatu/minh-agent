@@ -172,9 +172,11 @@ export class TradingAgent {
       }
     }
 
-    // Apply side-effect context updates
+    // Apply event-driven context updates (once per dispatch — must run even when filteredActions is empty)
+    this.applyEventContext(ctx, event)
+    // Apply action-driven context updates
     for (const action of filteredActions) {
-      this.applyContextUpdate(ctx, action, event)
+      this.applyActionContext(ctx, action)
     }
 
     // Emit actions for orchestrator (S6/S7)
@@ -487,9 +489,10 @@ export class TradingAgent {
     return ctx
   }
 
-  private applyContextUpdate(ctx: CoinContext, action: AgentAction, event: AgentEvent): void {
-    if (action.type === 'watch' || action.type === 'place_order') {
-      ctx.activeSetup = action.setup
+  /** Apply event-driven context mutations. Called once per dispatch, regardless of action count. */
+  private applyEventContext(ctx: CoinContext, event: AgentEvent): void {
+    if (event.type === 'order_submitted') {
+      ctx.pendingOrderId = event.orderId
     }
 
     if (event.type === 'order_filled') {
@@ -529,6 +532,13 @@ export class TradingAgent {
       ctx.pauseReason = null
       ctx.pauseUntil = null
       ctx.activeSetup = null
+    }
+  }
+
+  /** Apply action-driven context mutations. Called once per emitted action. */
+  private applyActionContext(ctx: CoinContext, action: AgentAction): void {
+    if (action.type === 'watch' || action.type === 'place_order') {
+      ctx.activeSetup = action.setup
     }
   }
 

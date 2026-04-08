@@ -170,10 +170,15 @@ export interface CoinSelector {
  * Create a CoinSelector instance.
  * @param getActiveSetupCoins — injected function that returns coins with active setups
  * @param onRefresh — optional callback when refresh completes (for subscribe/unsubscribe wiring)
+ * @param fetchRankedFn — optional override for fetching ranked coins (e.g., Bybit tickers API).
+ *   When provided, HIP-3 fetching is skipped entirely. Use for non-HL exchanges.
+ * @param topLimit — max coins to track from the ranked list. Defaults to TOP_COINS_LIMIT.
  */
 export function createCoinSelector(
   getActiveSetupCoins: () => string[],
   onRefresh?: (result: RefreshResult) => void | Promise<void>,
+  fetchRankedFn?: () => Promise<string[]>,
+  topLimit: number = TOP_COINS_LIMIT,
 ): CoinSelector {
   let topCoins: string[] = []
   let hip3Coins: string[] = []
@@ -189,11 +194,20 @@ export function createCoinSelector(
   }
 
   async function refresh(skipCallback = false): Promise<RefreshResult> {
-    // Fetch native perps + HIP-3 in parallel
-    const [newRanked, newHip3Ranked] = await Promise.all([
-      fetchRankedCoins(),
-      HIP3_DEXES.length > 0 ? fetchHip3RankedCoins() : Promise.resolve([]),
-    ])
+    let newRanked: string[]
+    let newHip3Ranked: string[]
+
+    if (fetchRankedFn) {
+      // Exchange-specific coin list (e.g., Bybit static coins) — HIP-3 not applicable
+      newRanked = await fetchRankedFn()
+      newHip3Ranked = []
+    } else {
+      // Default: fetch native perps + HIP-3 from HL in parallel
+      ;[newRanked, newHip3Ranked] = await Promise.all([
+        fetchRankedCoins(),
+        HIP3_DEXES.length > 0 ? fetchHip3RankedCoins() : Promise.resolve([]),
+      ])
+    }
 
     // If native fetch failed (empty), keep current list
     if (newRanked.length === 0 && topCoins.length > 0) {
@@ -203,7 +217,7 @@ export function createCoinSelector(
 
     rankedCoins = newRanked
     hip3RankedCoins = newHip3Ranked
-    const newTop = newRanked.slice(0, TOP_COINS_LIMIT)
+    const newTop = newRanked.slice(0, topLimit)
     const newHip3 = newHip3Ranked.slice(0, HIP3_TOP_COINS_LIMIT)
 
     // Compute diff across both lists
@@ -274,7 +288,7 @@ export function createCoinSelector(
     const failedNative = failedCoins.filter(c => !c.includes(':'))
     if (failedNative.length > 0) {
       topCoins = topCoins.filter(c => !failedSet.has(c))
-      const slotsToFill = TOP_COINS_LIMIT - topCoins.length
+      const slotsToFill = topLimit - topCoins.length
       for (const candidate of rankedCoins) {
         if (replacements.length >= slotsToFill) break
         if (currentSet.has(candidate)) continue

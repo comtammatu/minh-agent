@@ -49,8 +49,10 @@ export interface IExchangeService {
   /** Get max leverage for a coin. Returns undefined if unknown. */
   getMaxLeverage(coin: string): number | undefined
 
-  /** Set cross leverage for a coin before placing an entry order. */
-  setLeverage(coin: string, leverage: number): Promise<void>
+  /** Set cross leverage for a coin before placing an entry order.
+   *  sizeUsd: notional value of the position — used to select the correct risk tier on exchanges
+   *  that have tiered leverage limits (e.g. Bybit). HL ignores this parameter. */
+  setLeverage(coin: string, leverage: number, sizeUsd?: number): Promise<void>
 
   /** Place a single entry order (market or limit). */
   placeOrder(params: PlaceOrderParams): Promise<OrderResult>

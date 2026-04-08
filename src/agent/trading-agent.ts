@@ -174,17 +174,18 @@ export function handleEntering(
     }
   }
 
-  // Tick: check order timeout
-  if (event.type === 'tick' && ctx.pendingOrderId) {
+  // Tick: check order timeout — fires regardless of pendingOrderId to unblock stuck ENTERING
+  if (event.type === 'tick') {
     const age = Date.now() - ctx.stateEnteredAt
     if (age > ORDER_TIMEOUT_MS) {
-      return {
-        nextState: 'IDLE',
-        actions: [
-          { type: 'cancel_order', orderId: ctx.pendingOrderId, reason: 'timeout' },
-          journalAction('skip', ctx.coin, { orderId: ctx.pendingOrderId, reason: 'Order timeout' }),
-        ],
+      const actions: AgentAction[] = [
+        journalAction('skip', ctx.coin, { orderId: ctx.pendingOrderId, reason: 'Order timeout' }),
+      ]
+      if (ctx.pendingOrderId) {
+        // Cancel on exchange only if we have an order ID (live limit order)
+        actions.unshift({ type: 'cancel_order', orderId: ctx.pendingOrderId, reason: 'timeout' })
       }
+      return { nextState: 'IDLE', actions }
     }
   }
 

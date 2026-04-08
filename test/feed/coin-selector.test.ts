@@ -292,6 +292,45 @@ describe('CoinSelector', () => {
   })
 })
 
+// ── CoinSelector with custom fetchRankedFn (BB mode) ────────────────────────
+
+describe('CoinSelector with fetchRankedFn (BB mode)', () => {
+  it('uses provided fetchRankedFn instead of HL API', async () => {
+    const staticCoins = ['BTC', 'ETH', 'SOL']
+    const fetchRankedFn = async () => staticCoins
+    const selector = createCoinSelector(() => [], undefined, fetchRankedFn)
+    await selector.refresh()
+    expect(selector.getTopCoins()).toEqual(staticCoins)
+  })
+
+  it('skips HIP-3 when fetchRankedFn is provided', async () => {
+    const selector = createCoinSelector(() => [], undefined, async () => ['BTC'])
+    await selector.refresh()
+    expect(selector.getHip3Coins()).toEqual([])
+  })
+
+  it('does not call HL API (mockResponse) when fetchRankedFn is provided', async () => {
+    // Set mockResponse to error — if HL API is called, result would be empty
+    mockResponse = new Error('Should not be called')
+    const selector = createCoinSelector(() => [], undefined, async () => ['BTC', 'ETH'])
+    await selector.refresh()
+    // coins come from fetchRankedFn, not HL API
+    expect(selector.getTopCoins()).toEqual(['BTC', 'ETH'])
+  })
+
+  it('refresh diff works with fetchRankedFn', async () => {
+    let coins = ['BTC', 'ETH']
+    const selector = createCoinSelector(() => [], undefined, async () => coins)
+    await selector.refresh()
+    expect(selector.getTopCoins()).toEqual(['BTC', 'ETH'])
+
+    coins = ['BTC', 'SOL']
+    const result = await selector.refresh()
+    expect(result.added).toEqual(['SOL'])
+    expect(result.dropped).toEqual(['ETH'])
+  })
+})
+
 // ── getActiveSetupCoins (pipeline export) ───────────────────────────────────
 
 describe('getActiveSetupCoins', () => {

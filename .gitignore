@@ -5,3 +5,4 @@ node_modules/
 *.local
 bun.lockb.bak
 .DS_Store
+.gstack/

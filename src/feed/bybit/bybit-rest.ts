@@ -40,10 +40,11 @@ export async function loadBybitFundingRates(): Promise<void> {
       log.warn('bybit-funding', `getTickers failed: retCode=${resp.retCode} ${resp.retMsg}`)
       return
     }
+    fundingRates.clear()
     let count = 0
     for (const ticker of resp.result?.list ?? []) {
       if (!ticker.symbol.endsWith('USDT')) continue
-      const coin = ticker.symbol.slice(0, -4)
+      const coin = ticker.symbol.slice(0, -'USDT'.length)
       const rate = parseFloat(ticker.fundingRate ?? '')
       if (Number.isFinite(rate)) {
         fundingRates.set(coin, rate)

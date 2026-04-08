@@ -506,100 +506,6 @@ export const PORTFOLIO_RISK = {
 
 // ─── Strategy Wallets (Sprint 4.5 S4) ────────────────────────────────────────
 
-/**
- * Per-strategy wallet configuration.
- * Each strategy can have its own agent wallet for signing orders.
- */
-export interface WalletConfig {
-  /** Agent wallet private key (0x-prefixed hex). */
-  privateKey: string
-  /** Main account address that the agent wallet trades on behalf of. */
-  accountAddress: string
-}
-
-/** Flat env keys for per-strategy agent + main (alternative to STRATEGY_WALLETS JSON). */
-const STRATEGY_WALLET_FLAT_ENV = [
-  { id: 'layered', privateKeyEnv: 'PRIVATE_KEY_LAYERED', accountEnv: 'ACCOUNT_ADDRESS_LAYERED' },
-  { id: 'quant', privateKeyEnv: 'PRIVATE_KEY_QUANT', accountEnv: 'ACCOUNT_ADDRESS_QUANT' },
-  { id: 'smc-sd', privateKeyEnv: 'PRIVATE_KEY_SMC_SD', accountEnv: 'ACCOUNT_ADDRESS_SMC_SD' },
-] as const
-
-function assert0xAgentPrivateKey(label: string, value: unknown): string {
-  if (typeof value !== 'string' || !value.startsWith('0x')) {
-    throw new Error(`${label} must be a 0x-prefixed hex string`)
-  }
-  return value
-}
-
-function assert0xMainAddress(label: string, value: unknown): string {
-  if (typeof value !== 'string' || !value.startsWith('0x') || value.length !== 42) {
-    throw new Error(`${label} must be a valid 0x-prefixed Ethereum address (42 chars)`)
-  }
-  return value
-}
-
-/**
- * Parse STRATEGY_WALLETS JSON **or** flat per-strategy env vars into Map<strategyId, WalletConfig>.
- *
- * **Precedence:** If `STRATEGY_WALLETS` is non-empty (after trim), only JSON is read.
- * Otherwise `PRIVATE_KEY_LAYERED` / `ACCOUNT_ADDRESS_LAYERED`, `PRIVATE_KEY_QUANT` / …, `PRIVATE_KEY_SMC_SD` / …
- * are used. For each strategy, set both agent key and main address, or neither (skip that strategy).
- *
- * Returns empty Map if nothing configured (single-wallet fallback mode).
- */
-export function parseStrategyWallets(): Map<string, WalletConfig> {
-  const raw = process.env.STRATEGY_WALLETS
-  if (raw !== undefined && raw.trim() !== '') {
-    return parseStrategyWalletsJson(raw)
-  }
-  return parseStrategyWalletsFlat()
-}
-
-function parseStrategyWalletsJson(raw: string): Map<string, WalletConfig> {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    throw new Error('STRATEGY_WALLETS env var is not valid JSON')
-  }
-
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error('STRATEGY_WALLETS must be a JSON object { strategyId: { privateKey, accountAddress } }')
-  }
-
-  const result = new Map<string, WalletConfig>()
-  for (const [strategyId, config] of Object.entries(parsed as Record<string, unknown>)) {
-    if (typeof config !== 'object' || config === null || Array.isArray(config)) {
-      throw new Error(`STRATEGY_WALLETS["${strategyId}"] must be an object with privateKey and accountAddress`)
-    }
-    const { privateKey, accountAddress } = config as Record<string, unknown>
-    result.set(strategyId, {
-      privateKey: assert0xAgentPrivateKey(`STRATEGY_WALLETS["${strategyId}"].privateKey`, privateKey),
-      accountAddress: assert0xMainAddress(`STRATEGY_WALLETS["${strategyId}"].accountAddress`, accountAddress),
-    })
-  }
-
-  return result
-}
-
-function parseStrategyWalletsFlat(): Map<string, WalletConfig> {
-  const result = new Map<string, WalletConfig>()
-  for (const { id, privateKeyEnv, accountEnv } of STRATEGY_WALLET_FLAT_ENV) {
-    const pk = process.env[privateKeyEnv]
-    const addr = process.env[accountEnv]
-    const hasPk = pk !== undefined && pk.trim() !== ''
-    const hasAddr = addr !== undefined && addr.trim() !== ''
-    if (!hasPk && !hasAddr) continue
-    if (!hasPk || !hasAddr) {
-      throw new Error(`Incomplete wallet env for strategy "${id}": set both ${privateKeyEnv} and ${accountEnv}`)
-    }
-    result.set(id, {
-      privateKey: assert0xAgentPrivateKey(privateKeyEnv, pk),
-      accountAddress: assert0xMainAddress(accountEnv, addr),
-    })
-  }
-  return result
-}
 
 // ─── Paper Trade Mode ─────────────────────────────────────────────────────────
 
@@ -806,37 +712,23 @@ export const BYBIT_REST_BURST_TOKENS = 120
 /** Bybit rate limit: refill interval ms (1 token per 100ms = 10/s sustained). */
 export const BYBIT_REST_REFILL_MS = 100
 
-export interface BybitKeyConfig {
-  apiKey: string
-  apiSecret: string
-}
+/** Bybit funding rate refresh interval ms. Funding settles every 8h — 4h refresh is sufficient. */
+export const BYBIT_FUNDING_REFRESH_MS = 4 * 60 * 60 * 1000
 
-/**
- * Parse BYBIT_STRATEGY_KEYS env var.
- * Format: "strategyId:apiKey:apiSecret,strategyId2:apiKey2:apiSecret2"
- * The apiSecret may contain colons — everything after the second colon is the secret.
- * Returns empty Map if env not set.
- */
-export function parseBybitStrategyKeys(): Map<string, BybitKeyConfig> {
-  const raw = process.env['BYBIT_STRATEGY_KEYS']
-  if (!raw) return new Map()
-  const result = new Map<string, BybitKeyConfig>()
-  for (const entry of raw.split(',')) {
-    const parts = entry.trim().split(':')
-    if (parts.length < 3) continue
-    const [strategyId, apiKey, ...rest] = parts
-    const apiSecret = rest.join(':')  // secret may contain colons
-    if (strategyId && apiKey && apiSecret) {
-      result.set(strategyId, { apiKey, apiSecret })
-    }
-  }
-  return result
-}
 
 // ── Exchange coin registry ─────────────────────────────────────────────────
 
 /**
- * Static coin list for Bybit (linear perps available on Bybit but not on HL).
+ * Number of top Bybit coins by OI to track (dynamic selection via tickers API).
+ * Higher than HL native (20) — Bybit rate limits are ~30x more permissive.
+ */
+export const BYBIT_TOP_COINS_LIMIT = 50
+
+/** Minimum 24h turnover (USDT) to qualify for Bybit coin tracking. */
+export const BYBIT_MIN_24H_VOLUME = 1_000_000
+
+/**
+ * Fallback static coin list for Bybit — used only if dynamic fetch fails at startup.
  * HL coins are dynamic (fetchTopCoins by OI at runtime) — no static list needed.
  */
 export const BYBIT_STATIC_COINS: string[] = [
@@ -850,7 +742,7 @@ export const COMMON_COINS: string[] = [
 ]
 
 /**
- * Get default coin list for an exchange.
+ * Get fallback coin list for an exchange (used when dynamic fetch fails at startup).
  * HL: returns empty (populated at runtime by fetchTopCoins).
  * BB: returns BYBIT_STATIC_COINS.
  */

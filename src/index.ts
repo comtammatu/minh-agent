@@ -34,9 +34,9 @@ import {
   BACKFILL_REPLACEMENT_ROUNDS,
   getEffectivePaperTrade,
   MIN_CANDLES_FOR_SCAN,
-  PAPER_WALLET_STRATEGY_IDS,
   getActiveExchange,
   BYBIT_TOP_COINS_LIMIT,
+  BYBIT_FUNDING_REFRESH_MS,
 } from './config.js'
 import { probeCoins } from './feed/rest.js'
 import { setCandles, clearCoinData, setOnPersist, candleCount, dayChangePctFromUtcDayOpen, getCandles } from './feed/store.js'
@@ -76,9 +76,10 @@ import {
   computeGapStart,
   shouldGapFill,
 } from './db/candle-repo.js'
+import { createWriteStream, type WriteStream } from 'fs'
 import { log, setTuiSink, clearTuiSink } from './lib/logger.js'
 import { getHealthMonitor } from './agent/self-healing.js'
-import { startTui, stopTui, appendLog, setBackfillDone, type TuiDataSources, type PaperStats } from './ui/tui.jsx'
+import { startTui, stopTui, setBackfillDone, type TuiDataSources, type PaperStats } from './ui/tui.jsx'
 import { getPaperWalletSummaries, getTotalPaperBalance } from './agent/paper-tracker.js'
 import { getLatestAssetCtx } from './feed/asset-ctx.js'
 import { getPipelineEmitter } from './strategy/orchestrator.js'
@@ -101,6 +102,9 @@ import type { CandleInterval } from './types.js'
 // Initialised inside main() after exchange selection.
 // Module-level so coin lifecycle helpers can reference it without prop-drilling.
 let feed: IExchangeFeed
+
+// ── TUI log file sink — captures all log output while TUI runs ───────────────
+let tuiLogStream: WriteStream | null = null
 
 // ── Coin Lifecycle Helpers ──────────────────────────────────────────────────
 
@@ -235,18 +239,10 @@ async function refreshLiveAccountStatesForTui(): Promise<void> {
     if (!pool.isInitialized()) return
 
     const m = new Map<string, AccountState>()
-    if (pool.isMultiWallet()) {
-      for (const sid of PAPER_WALLET_STRATEGY_IDS) {
-        const st = await pool.get(sid).getAccountState()
-        m.set(sid, st)
-      }
-      liveAccountStatesByStrategyCache = m
-    } else {
-      // Single shared HL account: do not cache one snapshot under every strategy id — that made the TUI
-      // treat full account equity/margin as belonging to each tab. Leave cache empty so Account uses
-      // `buildLiveWalletBreakdown()` (margin-share split) for tabs 1–3.
-      liveAccountStatesByStrategyCache = null
-    }
+    // Single shared account: do not cache one snapshot under every strategy id — that made the TUI
+    // treat full account equity/margin as belonging to each tab. Leave cache empty so Account uses
+    // `buildLiveWalletBreakdown()` (margin-share split) for tabs 1–3.
+    liveAccountStatesByStrategyCache = null
   } catch {
     // Keep previous cache on HL errors
   }
@@ -409,7 +405,8 @@ async function main(): Promise<void> {
     getLiveStrategyWalletStats: () => liveStrategyWalletStatsCache,
     getLiveAccountStatesByStrategy: () => liveAccountStatesByStrategyCache,
   }
-  setTuiSink(appendLog)
+  tuiLogStream = createWriteStream('./minh.log', { flags: 'a' })
+  setTuiSink(msg => { tuiLogStream!.write(msg + '\n') })
   startTui(tuiSources)
 
   // 3. Load candles from PG → memory
@@ -521,7 +518,7 @@ async function main(): Promise<void> {
     // Load Bybit funding rates once (public endpoint, no auth).
     // Funding settles every 8h — refresh every 4h is sufficient.
     await loadBybitFundingRates()
-    activeIntervals.push(setInterval(() => void loadBybitFundingRates(), 4 * 60 * 60 * 1000))
+    activeIntervals.push(setInterval(() => void loadBybitFundingRates(), BYBIT_FUNDING_REFRESH_MS))
   }
 
   // 7. ARMED readiness gate
@@ -569,9 +566,6 @@ async function main(): Promise<void> {
       log.info('startup', 'POS   | no open positions')
     }
 
-    if (pool.isMultiWallet()) {
-      log.info('startup', `POOL  | Multi-wallet mode: ${pool.getStrategyIds().join(', ')}`)
-    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     log.warn('startup', `ACCT  | Could not fetch account info: ${msg}`)
@@ -597,16 +591,9 @@ async function main(): Promise<void> {
   // Load active orders from DB (crash recovery R1)
   await om.loadActiveOrders()
 
-  // Agent ← Pipeline (setup events)
-  agent.subscribeToPipeline(getPipelineEmitter())
-
-  // InvalidationBridge ← Pipeline (invalidation events) → Agent
-  bridge.connect(getPipelineEmitter(), agent)
-
-  // One scan per coin/TF from backfilled store so bias/TUI/strategies are live immediately
-  bootstrapPipelineFromStore(coins)
-
   // Agent → OrderManager (bidirectional) — dispatch includes strategyId (Sprint 4.5)
+  // MUST be wired BEFORE subscribeToPipeline + bootstrapPipelineFromStore so that
+  // place_order actions emitted during bootstrap are handled (not lost).
   agent.onAction(action => om.handleAction(action))
   om.setAgentDispatch((coin, event, strategyId) => agent.dispatch(coin, event, strategyId))
 
@@ -640,6 +627,7 @@ async function main(): Promise<void> {
   connectMetrics(agent)
 
   // Telegram trade alerts (HTML) — fire-and-forget
+  // MUST be wired BEFORE bootstrapPipelineFromStore so bootstrap signals reach Telegram.
   agent.onAction(action => {
     const msg = formatAlert(action)
     if (msg) void sendTelegramAlert(msg.text, globalThis.fetch, { parseMode: msg.parseMode })
@@ -647,6 +635,16 @@ async function main(): Promise<void> {
 
   // Start Telegram bot (long-polling command interface)
   await startBot()
+
+  // Agent ← Pipeline (setup events)
+  // Subscribed AFTER all agent.onAction handlers are wired so bootstrap actions are not lost.
+  agent.subscribeToPipeline(getPipelineEmitter())
+
+  // InvalidationBridge ← Pipeline (invalidation events) → Agent
+  bridge.connect(getPipelineEmitter(), agent)
+
+  // One scan per coin/TF from backfilled store so bias/TUI/strategies are live immediately
+  bootstrapPipelineFromStore(coins)
 
   log.info('agent', `Agent wired: ${strategyIds.length} strategies + exchange pool + order manager + position monitor + invalidation bridge + Telegram bot`)
 
@@ -695,6 +693,8 @@ async function main(): Promise<void> {
 /** Clean up intervals, WS connections, refresh loop, polling, agent sync, TUI, and DB before reconnect. */
 async function cleanup(): Promise<void> {
   clearTuiSink()
+  tuiLogStream?.end()
+  tuiLogStream = null
   stopTui()
   selector.stopRefreshLoop()
   getPositionMonitor().stopSync()

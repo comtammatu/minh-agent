@@ -1251,15 +1251,15 @@ const StrategyPanel = memo(function StrategyPanel({ snapshot, activeSetups, invS
 
 type BuddyMood = 'idle' | 'scanning' | 'signal' | 'profit' | 'loss' | 'paused' | 'alert'
 
-function getBuddyMood(snapshot: AgentSnapshot, positions: number, dailyPnl: number, signalCount: number): BuddyMood {
+function getBuddyMood(snapshot: AgentSnapshot, positions: number, dailyPnl: number): BuddyMood {
   if (snapshot.global.globalPaused) return 'paused'
   if (dailyPnl < -50) return 'loss'
   if (dailyPnl > 50) return 'profit'
   if (positions > 0) return 'alert'
-  if (signalCount > 0) return 'signal'
-
-  const activeCount = Object.values(snapshot.coins).filter(c => c.state !== 'IDLE').length
-  if (activeCount > 0) return 'scanning'
+  const coins = Object.values(snapshot.coins)
+  // [SIGNAL] = agent actually placing an order (ENTERING state), not just pipeline detections
+  if (coins.some(c => c.state === 'ENTERING')) return 'signal'
+  if (coins.some(c => c.state !== 'IDLE')) return 'scanning'
   return 'idle'
 }
 
@@ -1667,7 +1667,7 @@ function App({ sources }: { sources: TuiDataSources }) {
           liveAccountByStrategy={liveAccountStates}
         />
         <StrategyPanel snapshot={snapshot} activeSetups={activeSetups} invStats={invStats} />
-        <BuddyPanel mood={getBuddyMood(snapshot, positions.length, snapshot.global.dailyPnl, activeSetups.length)} tick={tick} />
+        <BuddyPanel mood={getBuddyMood(snapshot, positions.length, snapshot.global.dailyPnl)} tick={tick} />
         <SystemPanel report={health} subCount={subCount} />
       </Box>
 
