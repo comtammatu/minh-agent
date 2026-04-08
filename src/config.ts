@@ -722,7 +722,7 @@ export const BYBIT_FUNDING_REFRESH_MS = 4 * 60 * 60 * 1000
  * Number of top Bybit coins by OI to track (dynamic selection via tickers API).
  * Higher than HL native (20) — Bybit rate limits are ~30x more permissive.
  */
-export const BYBIT_TOP_COINS_LIMIT = 50
+export const BYBIT_TOP_COINS_LIMIT = 80
 
 /** Minimum 24h turnover (USDT) to qualify for Bybit coin tracking. */
 export const BYBIT_MIN_24H_VOLUME = 1_000_000

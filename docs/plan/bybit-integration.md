@@ -1,7 +1,9 @@
 # Bybit Exchange Integration
 
-> **Trạng thái:** Kế hoạch — chưa triển khai
+> **Trạng thái:** MVP đã triển khai (Sprint 4.5 S12 — 2026-04-08)
 > **Ngày lập:** 2026-04-08
+>
+> **Ghi chú:** Kế hoạch ban đầu mô tả refactor cấu trúc `exchanges/` directory — **không thực hiện**. Thay vào đó, S12 triển khai Bybit theo cấu trúc hiện có (`src/feed/bybit/`, `src/execution/bybit-exchange-service.ts`) để giữ blast radius nhỏ nhất. Xem phần **Thực tế triển khai** cuối tài liệu.
 
 ## Mục tiêu
 
@@ -473,3 +475,62 @@ interface BacktestConfig {
 - **Bybit testnet**: endpoint `https://api-testnet.bybit.com` khi `BYBIT_TESTNET=true`.
 - **Rate limit private**: 10 req/s per API key cho trading endpoints — rate limiter riêng cho private calls.
 - **Import discipline**: không bao giờ `import` từ `exchanges/hyperliquid/` trong `exchanges/bybit/` và ngược lại. Chỉ qua `exchanges/shared/`.
+
+---
+
+## Thực tế triển khai (Sprint 4.5 S12 — 2026-04-08)
+
+Kế hoạch gốc (refactor `exchanges/` directories) **không thực hiện** trong S12. Thay vào đó triển khai MVP với blast radius tối thiểu.
+
+### Quyết định kiến trúc (so với kế hoạch)
+
+| Hạng mục | Kế hoạch | Thực tế |
+|----------|----------|---------|
+| Cấu trúc thư mục | Refactor sang `src/exchanges/hyperliquid/` + `src/exchanges/bybit/` | Giữ nguyên `src/feed/bybit/` + `src/execution/bybit-exchange-service.ts` |
+| ExchangePool | Multi-wallet: `Map<strategyId, ExchangeService>` | **Single shared wallet**: 1 instance cho tất cả strategies (đơn giản hóa từ S4) |
+| Store key | `exchange:coin\|interval` | Giữ nguyên `coin\|interval` — tất cả feed đổ vào shared store |
+| ActiveExchange | `BYBIT_ENABLED=true` cạnh HL | **Mutual exclusive**: `ACTIVE_EXCHANGE=HL` hoặc `BB` (1 exchange per process) |
+| Backtest Bybit | Hedge mode simulation + commission | Chưa triển khai (deferred) |
+
+### Files đã tạo (S12)
+
+| File | Mô tả |
+|------|-------|
+| `src/execution/bybit-exchange-service.ts` | BybitExchangeService — placeOrder, cancelOrder, getPositions, getAccountState, setLeverage |
+| `src/feed/bybit/bybit-feed.ts` | BybitFeed — backfill + WS subscribe, implements IExchangeFeed |
+| `src/feed/bybit/bybit-rest.ts` | REST backfill + funding rate cache (loadBybitFundingRates) |
+| `src/feed/bybit/bybit-ws.ts` | WS kline stream (`confirm=true` gate, ping keepalive) |
+| `src/feed/bybit/bybit-coin-selector.ts` | Top N linear perps từ getTickers theo volume |
+| `src/feed/bybit/bybit-rate-limiter.ts` | Token bucket 120 burst, 10/s sustained |
+| `src/feed/exchange-feed.ts` | `IExchangeFeed` interface (shared contract cho HL + Bybit) |
+
+### Files đã sửa (S12)
+
+| File | Thay đổi |
+|------|---------|
+| `src/execution/exchange-pool.ts` | Simplified: ExchangePool là single shared wallet (remove per-strategy multi-wallet). `BB` mode → `BybitExchangeService`. `HL` mode → `ExchangeService` |
+| `src/config.ts` | Thêm `BYBIT_*` constants, `getActiveExchange()`, `BYBIT_FUNDING_REFRESH_MS` |
+| `src/agent/types.ts` | Thêm `order_submitted` AgentEvent type (pendingOrderId tracking) |
+| `src/agent/trading-orchestrator.ts` | Fix critical bug: tách `applyEventContext` (once per dispatch) vs `applyActionContext` (per action) |
+| `src/feed/coin-selector.ts` | `createCoinSelector()` factory — routes HL vs BB |
+| `src/index.ts` | BB mode startup: BybitFeed, funding rate refresh loop, single-wallet cleanup |
+
+### Bugs fixed trong S12 (phát hiện qua /review + /cso)
+
+1. **`applyContextUpdate` chạy trong action loop** — `order_submitted` event sinh `actions: []` → loop không chạy → `ctx.pendingOrderId` không bao giờ được set → live orders không bị cancel khi setup invalidated. Fix: tách thành `applyEventContext()` (once per dispatch) + `applyActionContext()` (per action).
+2. **Stale funding rate cache** — `loadBybitFundingRates` không clear map trước khi refresh → coins delisted tích lũy mãi. Fix: `fundingRates.clear()` trước vòng lặp.
+3. **Magic number** — `ticker.symbol.slice(0, -4)` → `slice(0, -'USDT'.length)`. `4 * 60 * 60 * 1000` → `BYBIT_FUNDING_REFRESH_MS`.
+4. **Dead code** — `isMultiWallet()` always returns `false` nhưng 3 branches trong `index.ts` vẫn check → đã xóa.
+
+### Known gaps (deferred)
+
+- Bybit không có dead man's switch — cần implement cancel-all-orders trong `cleanup()` + SIGTERM handler (xem /cso finding #1)
+- `modifyTrigger` không được implement trên Bybit (trail stop = no-op)
+- `getFillAggregateByCloid` không được implement (fill price estimate only)
+- Stale multi-account env vars trong `.env.example` (`PRIVATE_KEY_LAYERED`, `STRATEGY_WALLETS`, `BYBIT_STRATEGY_KEYS`) — cần cleanup
+
+### Test coverage (1148 pass sau S12)
+
+- `test/feed/bybit/` — bybit-rest, bybit-ws, bybit-feed tests
+- `test/feed/bybit/bybit-coin-selector.test.ts` — coin selector ranking
+- `test/execution/bybit-exchange-service.test.ts` — placeOrder, cancelOrder, getAccountState

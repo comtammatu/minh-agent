@@ -672,3 +672,49 @@ All logged in detail above. Key choices: fan-out registry (V1), coin:strategyId 
 
 ### Next
 Sprint 5: ADVISE (gated on >= 100 closed trades). Sprint 6-7: Memory layers.
+
+---
+
+## Sprint 4.5 S12 — Bybit Integration MVP (2026-04-08)
+
+### Architecture Decisions
+
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| E31 | ExchangePool architecture | **Single shared wallet** (remove per-strategy multi-wallet) | Original S4 plan had `Map<strategyId, ExchangeService>`. Simplified to 1 shared instance: less moving parts, no cross-strategy isolation needed at exchange level. `STRATEGY_WALLETS` env removed from config — single `PRIVATE_KEY` / `BYBIT_API_KEY` per process |
+| E32 | Bybit file structure | **`src/feed/bybit/` + `src/execution/bybit-exchange-service.ts`** (no `exchanges/` refactor) | Bybit integration plan proposed moving ALL files to `src/exchanges/hyperliquid/` + `src/exchanges/bybit/`. Rejected: blast radius too large, no clear value for single-exchange-per-process model. Kept existing structure |
+| E33 | applyContextUpdate vs applyEventContext | **Tách thành 2 methods**: `applyEventContext(event)` + `applyActionContext(action)` | Critical bug: `applyContextUpdate` chạy trong `for (action of filteredActions)` loop → `order_submitted` event returns `actions: []` → loop never runs → `ctx.pendingOrderId` never set → live orders orphaned. Fix: event context mutations run once per dispatch regardless of action count |
+| E34 | ACTIVE_EXCHANGE model | **Mutual exclusive per process** (`ACTIVE_EXCHANGE=HL` or `BB`) | Considered running HL + Bybit simultaneously in one process. Rejected: doubles WS connections, doubles feed memory, complicates coin-selector (different coin universes). Separate process per exchange is cleaner |
+| E35 | Funding rate refresh | **`BYBIT_FUNDING_REFRESH_MS` constant** in config.ts | Magic number `4 * 60 * 60 * 1000` inline in index.ts. Named constant follows CLAUDE.md "no magic numbers" rule |
+| E36 | Bybit dead man's switch | **No-op `scheduleCancel()`** with warning + TODO | HL has native scheduleCancel endpoint. Bybit has no equivalent. Current no-op logs warning. Known gap: cleanup() should cancel open orders on exit (deferred to S13 or dedicated safety sprint) |
+
+### Session Log
+
+### S12 — Bybit Integration MVP (2026-04-08)
+
+**Files created:**
+- `src/execution/bybit-exchange-service.ts`: BybitExchangeService — placeOrder (hedge mode, inline SL/TP), cancelOrder, cancelByCloid, getPositions, getAccountState, setLeverage (risk-tier aware), getWalletAddress (masked prefix only)
+- `src/feed/bybit/bybit-feed.ts`: BybitFeed — implements IExchangeFeed, handles backfill + WS kline (confirm=true gate)
+- `src/feed/bybit/bybit-rest.ts`: fetchBybitCandles, fetchBybitCandlesBatched, backfillBybitCoins, loadBybitFundingRates (module-level cache)
+- `src/feed/bybit/bybit-ws.ts`: Bybit kline WS stream, ping keepalive 20s, confirm=true filter
+- `src/feed/bybit/bybit-coin-selector.ts`: makeBybitFetchRankedFn — top N by 24h volume from getTickers
+- `src/feed/bybit/bybit-rate-limiter.ts`: Token bucket, 120 burst / 10 per second sustained
+- `src/feed/exchange-feed.ts`: IExchangeFeed interface (backfillCoins + subscribeCandles + closeAll + checkStaleness)
+
+**Files modified:**
+- `src/execution/exchange-pool.ts`: Simplified to single shared wallet. BB mode → BybitExchangeService. Removed `Map<strategyId>`, `WalletConfig`, `parseStrategyWallets()`. `isMultiWallet()` always false.
+- `src/config.ts`: BYBIT_TOP_COINS_LIMIT, BYBIT_BACKFILL_*, BYBIT_INTERVAL_MAP, BYBIT_REST_*, getActiveExchange(), BYBIT_FUNDING_REFRESH_MS
+- `src/agent/types.ts`: `order_submitted` event with `orderId: string | null` (tracks pendingOrderId in ENTERING state)
+- `src/agent/trading-orchestrator.ts`: Split applyContextUpdate → applyEventContext (once per dispatch) + applyActionContext (per action). Critical pendingOrderId bug fix.
+- `src/feed/coin-selector.ts`: createCoinSelector() factory routing HL vs BB
+- `src/index.ts`: BB mode startup path, funding rate refresh loop (BYBIT_FUNDING_REFRESH_MS), removed dead isMultiWallet() branches
+
+**Bugs found + fixed (via /review + /cso):**
+1. `pendingOrderId` never set for `order_submitted` (critical — live orders could not be cancelled on invalidation)
+2. Stale funding rate cache (delisted coins accumulated forever)
+3. Magic numbers (`-4` slice, `4 * 60 * 60 * 1000`)
+4. Dead `isMultiWallet()` branches in index.ts
+
+**Tests:** 1148 pass, 0 fail. +76 new tests vs S11 (1072→1148).
+
+**Security audit (CSO):** 1 MEDIUM finding — Bybit orders not cancelled on process exit (scheduleCancel no-op, cleanup() has no cancelAll). Deferred. Report: `.gstack/security-reports/2026-04-08-162000.json`.

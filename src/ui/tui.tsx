@@ -16,13 +16,7 @@ import { render, Box, Text, useApp, useInput, useStdout } from 'ink'
 import type { AgentSnapshot } from '../agent/types.js'
 import type { StatusSnapshot } from '../strategy/orchestrator.js'
 import { getEffectivePaperTrade, WS_MAX_SUBSCRIPTIONS, TIMEFRAMES, MIN_CANDLES_FOR_SCAN, PAPER_WALLET_STRATEGY_IDS } from '../config.js'
-import {
-  buildLiveWalletBreakdown,
-  normalizeStrategyId,
-  type LiveStrategyWalletRow,
-  type LiveStrategyWalletStats,
-  type LiveWalletBreakdownRow,
-} from './live-account-stats.js'
+import { normalizeStrategyId, type LiveStrategyWalletStats } from './live-account-stats.js'
 import { candleCount } from '../feed/store.js'
 import type { CandleInterval, ActiveSetup } from '../types.js'
 import type { InvalidationBridgeStats } from '../agent/invalidation-bridge.js'
@@ -105,13 +99,6 @@ export function setBackfillDone(): void {
 
 const BORDER_COLOR = 'gray'
 
-/** Short label for paper wallet rows (L/Q/S). */
-function paperWalletShortLabel(strategyId: string): string {
-  if (strategyId === 'layered') return 'L'
-  if (strategyId === 'quant') return 'Q'
-  if (strategyId === 'smc-sd') return 'S'
-  return strategyId.slice(0, 3)
-}
 const TITLE_COLOR = 'white'
 const ACCENT = 'cyan'
 const DIM = 'gray'
@@ -451,14 +438,6 @@ const HeaderBar = memo(function HeaderBar({ snapshot, coinCount }: { snapshot: A
  * - **Margin**: Collateral locked in open positions (`totalMarginUsed`, or notional/leverage estimate).
  * - **Available**: Free collateral ≈ Equity − Margin (see `liveFreeMarginUsd`). Not HL `withdrawable` (often $0 while in perps).
  */
-
-/** Per-strategy paper row: cash (realized) + uPnL allocated from open positions. */
-type PaperWalletBreakdownRow = {
-  strategyId: string
-  cash: number
-  unrealized: number
-  equity: number
-}
 
 /** Sum realized day P&L across the three strategy wallets (paper + live multi-strategy). */
 function sumStrategiesDailyPnl(strategyGlobals: AgentSnapshot['strategyGlobals'] | undefined): number {
