@@ -375,7 +375,7 @@ export const HL_MIN_ORDER_NOTIONAL_USD = 10
  * - long (buy): mid × (1 + buffer)
  * - short (sell): mid × (1 - buffer)
  */
-export const MARKET_ORDER_SLIPPAGE_PCT = 0.002  // 0.2%
+export const MARKET_ORDER_SLIPPAGE_PCT = 0.01  // 1%
 
 /** Trailing stop config defaults. */
 export const TRAILING_STOP = {
@@ -681,8 +681,8 @@ export const MAX_ORDERS_PER_COIN = 1
 /** SL trigger order type: market (guaranteed fill on stop). */
 export const SL_IS_MARKET = true
 
-/** TP trigger order type: limit (better fill price on target). */
-export const TP_IS_MARKET = false
+/** TP trigger order type: market (guaranteed fill on target hit). */
+export const TP_IS_MARKET = true
 
 // ─── Position Monitor (S7) ────────────────────────────────────────────────
 

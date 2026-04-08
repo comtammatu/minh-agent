@@ -12,6 +12,7 @@ import { info } from './rest.js'
 import { getWsClient, registerSubscription, removeSubscription } from './ws.js'
 import { acquire } from './rate-limiter.js'
 import { MARK_ORACLE_DIVERGENCE_THRESHOLD, HIP3_DEXES } from '../config.js'
+import { fetchAllPerpDexNames, fetchMetaAndAssetCtxs } from './perp-info.js'
 import { log } from '../lib/logger.js'
 import type { AssetCtxSnapshot } from '../types.js'
 import type { ISubscription } from '@nktkas/hyperliquid'
@@ -72,20 +73,23 @@ export async function startOiFeed(coins: string[]): Promise<void> {
   const meta = await info.meta()
   dexCoinNames.set('', meta.universe.map(a => a.name))
 
-  // Fetch HIP-3 coin names for each configured DEX
-  for (const dex of HIP3_DEXES) {
+  // Fetch builder-deployed perp DEX names (HIP-3 etc), then load their universe names.
+  // If HIP3_DEXES is configured, it acts as an allowlist to limit extra REST calls.
+  let dexs: string[] = []
+  try {
+    dexs = (await fetchAllPerpDexNames()).filter(d => d !== '')
+  } catch (err) {
+    log.warn('asset-ctx', `Failed to load perpDexs list: ${err instanceof Error ? err.message : err}`)
+    dexs = []
+  }
+
+  const allow = HIP3_DEXES.length > 0 ? new Set(HIP3_DEXES) : null
+  const selected = allow ? dexs.filter(d => allow.has(d)) : dexs
+  for (const dex of selected) {
     try {
-      await acquire()
-      const res = await fetch('https://api.hyperliquid.xyz/info', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'metaAndAssetCtxs', dex }),
-      })
-      if (res.ok) {
-        const [hip3Meta] = (await res.json()) as [{ universe: { name: string }[] }, unknown]
-        dexCoinNames.set(dex, hip3Meta.universe.map(a => a.name))
-        log.info('asset-ctx', `HIP-3 dex "${dex}": loaded ${hip3Meta.universe.length} coin names`)
-      }
+      const [hip3Meta] = await fetchMetaAndAssetCtxs(dex)
+      dexCoinNames.set(dex, hip3Meta.universe.map(a => a.name))
+      log.info('asset-ctx', `Perp dex "${dex}": loaded ${hip3Meta.universe.length} coin names`)
     } catch (err) {
       log.warn('asset-ctx', `Failed to load HIP-3 names for dex "${dex}": ${err instanceof Error ? err.message : err}`)
     }

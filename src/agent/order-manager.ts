@@ -118,7 +118,7 @@ export async function submitToExchange(
       // oid may be null for "waitingForFill"/"waitingForTrigger" — use status as fallback
       const exchangeId = result.oid !== null ? String(result.oid) : result.status
       const out: ExchangeOrderResult = { success: true, exchangeOrderId: exchangeId, error: null }
-      // Market (and some IOC) entries return `filled` inline — required so live mode runs onOrderFilled → SL/TP (R9).
+      // Some entries may return `filled` inline — required so live mode runs onOrderFilled → SL/TP (R9).
       if (result.status === 'filled' && result.avgPx !== null && result.totalSz !== null) {
         out.fillPrice = result.avgPx
         out.fillSize = result.totalSz
@@ -167,7 +167,7 @@ export async function cancelOnExchange(
 
 /**
  * Place trigger order (SL/TP) on exchange via ExchangeService.
- * R9: SL = trigger-market (isMarket=true), TP = trigger-limit (isMarket=false).
+ * R9: SL = trigger-market (isMarket=true), TP = trigger-market (isMarket=true).
  */
 export async function placeTriggerOnExchange(
   trigger: TriggerOrder,
@@ -408,7 +408,7 @@ export class OrderManager {
       id: randomUUID(),
       coin,
       side,
-      type: 'market',  // default to market for entry
+      type: 'limit',  // default to limit for entry (GTC)
       price: entryPrice,
       size,
       status: 'pending',
@@ -442,8 +442,7 @@ export class OrderManager {
       await svc.setLeverage(coin, requiredLeverage)
     }
 
-    // HL market orders (FrontendMarket) need a fresh reference price.
-    // Use latest L2 mid (+ buffer) when available to prevent IOC "not able to match" rejects.
+    // Entry orders are limit by default (GTC). Market-style IoC entries are supported but not used by default.
     const submitPrice = order.type === 'market'
       ? computeMarketRefPrice(coin, side, entryPrice)
       : entryPrice
@@ -594,7 +593,7 @@ export class OrderManager {
   // ── SL/TP Trigger Orders (R9) ──────────────────────────────────────────
 
   /**
-   * R9: After entry fill, place SL (trigger-market) + TP (trigger-limit) on HL.
+   * R9: After entry fill, place SL (trigger-market) + TP (trigger-market) on HL.
    * Exchange-managed safety — protected even if agent dies.
    */
   private async placeSLTP(entryOrder: Order): Promise<void> {
@@ -631,7 +630,7 @@ export class OrderManager {
     }
     triggers.push(slTrigger)
 
-    // TP: trigger-limit (better fill price on target)
+    // TP: trigger-market (guaranteed fill on target hit)
     const tpTrigger: TriggerOrder = {
       type: 'tp',
       coin: entryOrder.coin,

@@ -12,6 +12,24 @@ import { describe, it, expect, beforeEach, mock } from 'bun:test'
 
 // ── Mock setup ────────────────────────────────────────────────────────────
 
+// Mock global fetch for raw /info calls (perp-info.ts)
+const originalFetch = globalThis.fetch
+beforeEach(() => {
+  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = init?.body ? JSON.parse(String(init.body)) as { type?: string } : {}
+    if (body.type === 'allMids') {
+      return new Response(JSON.stringify({ BTC: '50000', ETH: '3000' }), { status: 200 })
+    }
+    // Default: return empty payload for unrecognized calls
+    return new Response(JSON.stringify({}), { status: 200 })
+  }
+})
+
+// Restore original fetch after tests (best effort)
+process.on('exit', () => {
+  globalThis.fetch = originalFetch
+})
+
 // Mock viem/accounts
 mock.module('viem/accounts', () => ({
   privateKeyToAccount: (key: string) => ({
@@ -262,7 +280,7 @@ describe('ExchangeService', () => {
       expect(call.orders[0]!.a).toBe(0) // BTC asset ID
       expect(call.orders[0]!.b).toBe(true) // isBuy = long
       expect(call.orders[0]!.r).toBe(false) // not reduce-only
-      expect(call.orders[0]!.t).toEqual({ limit: { tif: 'FrontendMarket' } }) // market order
+      expect(call.orders[0]!.t).toEqual({ limit: { tif: 'Ioc' } }) // market (IoC) order
       expect(call.grouping).toBe('na')
     })
 

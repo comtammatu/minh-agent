@@ -20,6 +20,7 @@ import {
   HIP3_MIN_24H_VOLUME,
 } from '../config.js'
 import { log } from '../lib/logger.js'
+import { fetchMetaAndAssetCtxs } from './perp-info.js'
 
 /**
  * Fetch all qualifying coins from HL ranked by open interest (descending).
@@ -108,17 +109,7 @@ export async function fetchHip3RankedCoins(
 
   for (const dex of dexes) {
     try {
-      await acquire()
-      const res = await fetch('https://api.hyperliquid.xyz/info', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'metaAndAssetCtxs', dex }),
-      })
-      if (!res.ok) {
-        log.warn('coin-sel', `HIP-3 ${dex}: HTTP ${res.status}`)
-        continue
-      }
-      const [meta, ctxs] = (await res.json()) as [MetaAndCtxsResponse, AssetCtx[]]
+      const [meta, ctxs] = await fetchMetaAndAssetCtxs(dex) as unknown as [MetaAndCtxsResponse, AssetCtx[]]
 
       for (let i = 0; i < meta.universe.length; i++) {
         const asset = meta.universe[i]!

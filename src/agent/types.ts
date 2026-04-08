@@ -142,7 +142,7 @@ export interface TriggerOrder {
   side: 'long' | 'short'  // close side (opposite of position)
   triggerPrice: number
   size: number
-  isMarket: boolean        // SL = trigger-market, TP = trigger-limit
+  isMarket: boolean        // trigger-market closes at market on trigger
   cloid: string
   exchangeOrderId: string | null
   parentOrderId: string    // links to entry order

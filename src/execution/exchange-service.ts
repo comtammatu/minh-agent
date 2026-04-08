@@ -42,7 +42,9 @@ import { acquire } from '../feed/rate-limiter.js'
 import { log } from '../lib/logger.js'
 import { withRetry, isRetryableExchangeError, is503 } from '../lib/retry.js'
 import { getHealthMonitor } from '../agent/self-healing.js'
-import { RETRY, HL_MIN_ORDER_NOTIONAL_USD, type WalletConfig } from '../config.js'
+import { MARKET_ORDER_SLIPPAGE_PCT, RETRY, HL_MIN_ORDER_NOTIONAL_USD, type WalletConfig } from '../config.js'
+import { getLatestBook } from '../feed/orderbook.js'
+import { fetchAllMids } from '../feed/perp-info.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -252,7 +254,7 @@ export class ExchangeService {
   /**
    * Place a single entry order (market or limit).
    *
-   * Market orders use tif "FrontendMarket" (IOC-like, fills immediately or cancels).
+ * Market orders are simulated via an aggressive limit with tif "Ioc" (Immediate-or-Cancel).
    * Limit orders use tif "Gtc" (rests on book until filled/cancelled).
    */
   async placeOrder(params: PlaceOrderParams): Promise<OrderResult> {
@@ -264,7 +266,6 @@ export class ExchangeService {
     }
 
     const szDecimals = this.converter!.getSzDecimals(params.coin) ?? 0
-    const priceStr = formatPrice(params.price, szDecimals)
     const sizeStr = formatSize(params.size, szDecimals)
 
     // Validate minimum order value (HL)
@@ -274,7 +275,12 @@ export class ExchangeService {
     }
 
     const isBuy = params.side === 'long'
-    const tif = params.type === 'market' ? 'FrontendMarket' as const : 'Gtc' as const
+    const tif = params.type === 'market' ? 'Ioc' as const : 'Gtc' as const
+
+    const refPrice = params.type === 'market'
+      ? await this.getAggressiveIocPrice(params.coin, params.side, params.price)
+      : params.price
+    const priceStr = formatPrice(refPrice, szDecimals)
 
     log.info('exchange-service', `Placing ${params.type} ${params.side} ${params.coin}: price=${priceStr} size=${sizeStr} [asset=${assetId}]`)
 
@@ -315,11 +321,41 @@ export class ExchangeService {
     return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: msg }
   }
 
+  private async getAggressiveIocPrice(coin: string, side: 'long' | 'short', fallbackPrice: number): Promise<number> {
+    // 1) Prefer REST allMids (fresh mid snapshot)
+    try {
+      const mids = await fetchAllMids('')
+      const midStr = mids[coin]
+      const mid = midStr ? parseFloat(midStr) : NaN
+      if (Number.isFinite(mid) && mid > 0) {
+        const slip = MARKET_ORDER_SLIPPAGE_PCT
+        return side === 'long' ? mid * (1 + slip) : mid * (1 - slip)
+      }
+    } catch {
+      // Fall through
+    }
+
+    // 2) Fallback to latest L2 book mid
+    const book = getLatestBook(coin)
+    const bestBid = book?.bids?.[0]?.[0]
+    const bestAsk = book?.asks?.[0]?.[0]
+    const mid = (typeof bestBid === 'number' && typeof bestAsk === 'number' && bestBid > 0 && bestAsk > 0)
+      ? (bestBid + bestAsk) / 2
+      : null
+    if (mid !== null) {
+      const slip = MARKET_ORDER_SLIPPAGE_PCT
+      return side === 'long' ? mid * (1 + slip) : mid * (1 - slip)
+    }
+
+    // 3) Last resort: use caller-provided reference price
+    return fallbackPrice
+  }
+
   /**
    * Place a trigger order (SL or TP) on exchange.
    * Uses grouping "normalTpsl" — fixed size, doesn't adjust with position.
    *
-   * R9: SL = trigger-market (isMarket=true), TP = trigger-limit (isMarket=false).
+   * R9: SL = trigger-market (isMarket=true), TP = trigger-market (isMarket=true).
    */
   async placeTrigger(params: PlaceTriggerParams): Promise<OrderResult> {
     this.ensureInit()
@@ -331,6 +367,10 @@ export class ExchangeService {
 
     const szDecimals = this.converter!.getSzDecimals(params.coin) ?? 0
     const triggerPxStr = formatPrice(params.triggerPrice, szDecimals)
+    const limitPx = params.isMarket
+      ? this.getAggressiveLimitPriceFromTriggerPx(params.side, params.triggerPrice)
+      : params.triggerPrice
+    const limitPxStr = formatPrice(limitPx, szDecimals)
     const sizeStr = formatSize(params.size, szDecimals)
     const isBuy = params.side === 'long'
 
@@ -343,7 +383,9 @@ export class ExchangeService {
         orders: [{
           a: assetId,
           b: isBuy,
-          p: triggerPxStr,
+          // HL trigger orders still require `p` (limitPx). For trigger-market, use
+          // an aggressive price derived from triggerPx ± buffer to avoid "IOC not able to match".
+          p: limitPxStr,
           s: sizeStr,
           r: true,  // trigger orders are always reduce-only
           t: {
@@ -377,6 +419,19 @@ export class ExchangeService {
     log.error('exchange-service', `Trigger failed after ${retryResult.attempts} attempts: ${msg}`)
     health.recordError('exchange', msg)
     return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: msg }
+  }
+
+  /**
+   * For trigger-market orders, HL still expects an associated limit price `p`.
+   * We set it aggressively around the trigger price so that when the trigger fires
+   * the resulting order crosses the book immediately:
+   * - buy: triggerPx × (1 + buffer)
+   * - sell: triggerPx × (1 - buffer)
+   */
+  private getAggressiveLimitPriceFromTriggerPx(side: 'long' | 'short', triggerPx: number): number {
+    const slip = MARKET_ORDER_SLIPPAGE_PCT
+    if (!Number.isFinite(triggerPx) || triggerPx <= 0) return triggerPx
+    return side === 'long' ? triggerPx * (1 + slip) : triggerPx * (1 - slip)
   }
 
   // ── Cancel ────────────────────────────────────────────────────────────────

@@ -216,7 +216,7 @@ describe('OrderManager', () => {
 
       const tp = triggers.find(t => t.type === 'tp')!
       expect(tp.triggerPrice).toBe(52000)
-      expect(tp.isMarket).toBe(false)  // R9: TP = trigger-limit
+      expect(tp.isMarket).toBe(true)   // TP = trigger-market
       expect(tp.side).toBe('short')
 
       // Agent receives order_filled event
@@ -438,7 +438,7 @@ describe('Paper Trade Simulation', () => {
         side: 'long',
         triggerPrice: 3500,
         size: 1.0,
-        isMarket: false,
+        isMarket: true,
         cloid: generateCloid(),
         exchangeOrderId: null,
         parentOrderId: 'test-order-id',
