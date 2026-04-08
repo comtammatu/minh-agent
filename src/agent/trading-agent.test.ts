@@ -37,6 +37,7 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
     expiresAtBar: 100,
     confluenceGrade: 'B',
     confluenceCount: 4,
+    exchange: 'HL',
     ...overrides,
   }
 }

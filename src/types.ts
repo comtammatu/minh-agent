@@ -61,6 +61,8 @@ export interface ActiveSetup extends Signal {
   expiresAtBar: number    // bar index when detected + TTL
   /** Strategy that generated this setup (Sprint 4.5). Omitted = 'layered' for backward compat. */
   strategyId?: string
+  /** Exchange this signal came from — used by OrderManager to route to correct executor. */
+  exchange: ExchangeId
 }
 
 // ─── Market structure ─────────────────────────────────────────────────────────

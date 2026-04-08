@@ -81,6 +81,7 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
       minRR: 2,
       stopMethod: 'structure',
     },
+    exchange: 'HL',
     ...overrides,
   }
 }

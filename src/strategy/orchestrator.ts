@@ -21,6 +21,7 @@ import {
   MIN_CANDLES_FOR_SCAN,
   INDICATOR_WINDOW,
   TIMEFRAMES,
+  getActiveExchange,
 } from '../config.js'
 import { log } from '../lib/logger.js'
 import { EventEmitter } from 'events'
@@ -62,6 +63,7 @@ const statusState = new Map<string, StatusSnapshot>()
  */
 function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry: StrategyRegistry): void {
   const maxMin = Math.max(INDICATOR_WINDOW, ...registry.getAll().map(s => s.minCandles()))
+  const activeExchange = getActiveExchange()
   const candles = getCandles(coin, interval, maxMin + 2)
   if (candles.length < MIN_CANDLES_FOR_SCAN + 1) return
 
@@ -79,6 +81,7 @@ function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry:
       detectedAt: Date.now(),
       detectedAtBar: idx,
       expiresAtBar: computeExpiresAtBar(signal.type, idx),
+      exchange: activeExchange,
     }
     activeSetups.set(id, setup)
     const stats = getOrCreateStats(strategyId)
