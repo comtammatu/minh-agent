@@ -36,19 +36,21 @@ import {
   MIN_CANDLES_FOR_SCAN,
   PAPER_WALLET_STRATEGY_IDS,
   getActiveExchange,
+  BYBIT_TOP_COINS_LIMIT,
 } from './config.js'
 import { probeCoins } from './feed/rest.js'
-import { setCandles, clearCoinData, setOnPersist, candleCount, dayChangePctFromUtcDayOpen } from './feed/store.js'
+import { setCandles, clearCoinData, setOnPersist, candleCount, dayChangePctFromUtcDayOpen, getCandles } from './feed/store.js'
 import { unsubscribeCandles, getSubscriptionCount } from './feed/ws.js'
 import type { IExchangeFeed } from './feed/exchange-feed.js'
 import { HLFeed } from './feed/hl-feed.js'
 import { BybitFeed } from './feed/bybit/bybit-feed.js'
+import { makeBybitFetchRankedFn } from './feed/bybit/bybit-coin-selector.js'
 import { startFundingPolling, stopFundingPolling, addFundingCoin, removeFundingCoin } from './feed/funding.js'
 import { startOiFeed, stopOiFeed, addOiCoin, removeOiCoin } from './feed/asset-ctx.js'
 import { subscribeTrades, unsubscribeTrades } from './feed/trades.js'
 import { subscribeOrderBook, unsubscribeOrderBook, checkBookStaleness } from './feed/orderbook.js'
 import { createCoinSelector } from './feed/coin-selector.js'
-import type { RefreshResult } from './feed/coin-selector.js'
+import type { RefreshResult, CoinSelector } from './feed/coin-selector.js'
 import {
   onCandleTick,
   getStatus,
@@ -104,8 +106,11 @@ let feed: IExchangeFeed
 /** Subscribe all WS feeds for a coin (candles × TFs + trades + orderbook). */
 async function subscribeCoin(coin: string): Promise<void> {
   await feed.subscribe([coin], onCandleTick)
-  await subscribeTrades(coin)
-  await subscribeOrderBook(coin)
+  // Trades and order-book feeds are HL-specific (use HL WS client).
+  if (getActiveExchange() === 'HL') {
+    await subscribeTrades(coin)
+    await subscribeOrderBook(coin)
+  }
 }
 
 /** Backfill a single coin (used during mid-run coin additions). */
@@ -119,10 +124,13 @@ async function backfillCoin(coin: string): Promise<number> {
 /** Unsubscribe all feeds + clear all state for a coin. */
 async function unsubscribeCoin(coin: string): Promise<void> {
   await unsubscribeCandles(coin)
-  await unsubscribeTrades(coin)
-  await unsubscribeOrderBook(coin)
-  removeFundingCoin(coin)
-  removeOiCoin(coin)
+  // Trades, order-book, funding, and OI feeds are HL-specific.
+  if (getActiveExchange() === 'HL') {
+    await unsubscribeTrades(coin)
+    await unsubscribeOrderBook(coin)
+    removeFundingCoin(coin)
+    removeOiCoin(coin)
+  }
   clearCoinData(coin)
   clearCoinState(coin)
 }
@@ -136,8 +144,10 @@ async function onCoinsRefreshed(result: RefreshResult): Promise<void> {
     await subscribeCoin(coin)
     await backfillCoin(coin)
     bootstrapPipelineFromStore([coin])
-    await addFundingCoin(coin)
-    addOiCoin(coin)
+    if (getActiveExchange() === 'HL') {
+      await addFundingCoin(coin)
+      addOiCoin(coin)
+    }
   }
 
   // Unsubscribe dropped coins (no active setup — already filtered by CoinSelector)
@@ -147,8 +157,8 @@ async function onCoinsRefreshed(result: RefreshResult): Promise<void> {
   }
 }
 
-// Module-level selector — accessible from cleanup()
-const selector = createCoinSelector(getActiveSetupCoins, onCoinsRefreshed)
+// Module-level selector — initialized in main() with exchange-aware fetch fn, used by cleanup()
+let selector: CoinSelector
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
@@ -274,6 +284,13 @@ async function main(): Promise<void> {
   const activeExchange = getActiveExchange()
   feed = activeExchange === 'HL' ? new HLFeed() : new BybitFeed()
 
+  // Initialize selector with exchange-aware fetch function and top-coin limit.
+  // BB: dynamic fetch from Bybit tickers API (top 50 by OI), no HIP-3.
+  // HL: default behavior (fetchRankedCoins from HL API + HIP-3, top 20).
+  const fetchRankedFn = activeExchange === 'BB' ? makeBybitFetchRankedFn() : undefined
+  const topLimit = activeExchange === 'BB' ? BYBIT_TOP_COINS_LIMIT : undefined
+  selector = createCoinSelector(getActiveSetupCoins, onCoinsRefreshed, fetchRankedFn, topLimit)
+
   // Banner — logged before TUI starts, so these safely go to console
   const modeTag = getEffectivePaperTrade() ? 'PAPER' : 'LIVE'
   log.info('startup', `Minh (明) v2.0.0 — Autonomous Trading Agent [${modeTag}]`)
@@ -300,21 +317,23 @@ async function main(): Promise<void> {
   const nativeCount = coins.length - hip3Count
   log.info('startup', `COINS | ${coins.length} coins selected (${nativeCount} native + ${hip3Count} HIP-3)`)
 
-  // 1b. Probe all coins with a quick 1m candle fetch — drop unavailable coins early
-  const { valid: validCoins, failed: probeFailed } = await probeCoins(coins)
-  if (probeFailed.length > 0) {
-    const replacements = selector.replaceFailed(probeFailed)
-    if (replacements.length > 0) {
-      // Probe replacements too
-      const { valid: replValid, failed: replFailed } = await probeCoins(replacements)
-      if (replFailed.length > 0) {
-        selector.replaceFailed(replFailed)
+  // 1b. Probe all coins with a quick 1m candle fetch — drop unavailable coins early.
+  //     Skip for BB: probeCoins uses HL REST; static Bybit coins are well-known and don't need probing.
+  if (activeExchange === 'HL') {
+    const { valid: validCoins, failed: probeFailed } = await probeCoins(coins)
+    if (probeFailed.length > 0) {
+      const replacements = selector.replaceFailed(probeFailed)
+      if (replacements.length > 0) {
+        // Probe replacements too
+        const { valid: replValid, failed: replFailed } = await probeCoins(replacements)
+        if (replFailed.length > 0) {
+          selector.replaceFailed(replFailed)
+        }
+        validCoins.push(...replValid)
       }
-      validCoins.push(...replValid)
+      coins = selector.getTrackedCoins()
+      log.info('startup', `COINS | after probe: ${coins.length} coins (${probeFailed.length} replaced)`)
     }
-    coins = selector.getTrackedCoins()
-    const newHip3 = selector.getHip3Coins().length
-    log.info('startup', `COINS | after probe: ${coins.length} coins (${probeFailed.length} replaced)`)
   }
 
   // 2. WS subscribe FIRST — capture real-time candles immediately
@@ -358,6 +377,17 @@ async function main(): Promise<void> {
       }
     },
     getAssetPrice: (coin: string) => {
+      if (activeExchange === 'BB') {
+        // BB has no separate mark-price feed — use last 1m candle close as price proxy.
+        const candles = getCandles(coin, '1m', 1)
+        if (candles.length === 0) return null
+        const last = candles[candles.length - 1]!
+        return {
+          markPrice: last.c,
+          funding: 0,  // TODO: implement Bybit funding feed
+          dayChangePctUtc: dayChangePctFromUtcDayOpen(coin, last.c),
+        }
+      }
       const ctx = getLatestAssetCtx(coin)
       if (!ctx) return null
       return {
@@ -483,8 +513,10 @@ async function main(): Promise<void> {
       })
   })
 
-  // 6. Start funding + OI polling for all coins (independent — run in parallel)
-  await Promise.all([startFundingPolling(coins), startOiFeed(coins)])
+  // 6. Start funding + OI polling — HL only (asset-ctx + funding use HL WS/REST)
+  if (activeExchange === 'HL') {
+    await Promise.all([startFundingPolling(coins), startOiFeed(coins)])
+  }
 
   // 7. ARMED readiness gate
   const fullyReady = coins.filter(c => (tfReady.get(c) ?? 0) === TIMEFRAMES.length).length
@@ -512,10 +544,11 @@ async function main(): Promise<void> {
     const acctAddr = svc.getAccountAddress()
     const addrShort = `${acctAddr.slice(0, 6)}…${acctAddr.slice(-4)}`
 
+    const exchangeName = activeExchange === 'BB' ? 'Bybit' : 'Hyperliquid'
     if (getEffectivePaperTrade()) {
       log.info('startup', 'MODE  | PAPER TRADE — orders are SIMULATED, no real exchange calls')
     } else {
-      log.info('startup', 'MODE  | LIVE TRADING — real orders on Hyperliquid')
+      log.info('startup', `MODE  | LIVE TRADING — real orders on ${exchangeName}`)
     }
     log.info('startup', `ACCT  | ${addrShort} | balance: $${account.effectiveBalance.toFixed(2)} (perp: $${account.accountValue.toFixed(2)} + spot: $${account.spotUsdcBalance.toFixed(2)}) | margin: $${account.totalMarginUsed.toFixed(2)} | free: $${account.withdrawable.toFixed(2)}`)
 
@@ -582,6 +615,11 @@ async function main(): Promise<void> {
 
   // PositionMonitor price getter: used in paper mode to simulate SL/TP hits every 10s
   pm.setPriceGetter((coin) => {
+    if (activeExchange === 'BB') {
+      const candles = getCandles(coin, '1m', 1)
+      const last = candles[candles.length - 1]
+      return last?.c ?? null
+    }
     const ctx = getLatestAssetCtx(coin)
     return ctx?.markPrice ?? null
   })
@@ -636,10 +674,10 @@ async function main(): Promise<void> {
   void refreshLiveTuiCaches()
   activeIntervals.push(setInterval(() => void refreshLiveTuiCaches(), 10_000))
 
-  // 12. Staleness watchdog (candles + order book)
+  // 12. Staleness watchdog (candles + order book — book only on HL)
   activeIntervals.push(setInterval(() => {
     feed.checkStaleness()
-    checkBookStaleness()
+    if (activeExchange === 'HL') checkBookStaleness()
   }, STALENESS_CHECK_INTERVAL_MS))
 
   // Keep alive — resolve when WS dies (detected via staleness or thrown error)

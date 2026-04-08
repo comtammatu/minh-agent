@@ -45,7 +45,7 @@ import { acquire } from '../feed/rate-limiter.js'
 import { log } from '../lib/logger.js'
 import { withRetry, isRetryableExchangeError, is503 } from '../lib/retry.js'
 import { getHealthMonitor } from '../agent/self-healing.js'
-import { MARKET_ORDER_SLIPPAGE_PCT, RETRY, HL_MIN_ORDER_NOTIONAL_USD, type WalletConfig } from '../config.js'
+import { MARKET_ORDER_SLIPPAGE_PCT, RETRY, HL_MIN_ORDER_NOTIONAL_USD } from '../config.js'
 import { getLatestBook } from '../feed/orderbook.js'
 import { fetchAllMids } from '../feed/perp-info.js'
 
@@ -115,17 +115,8 @@ export class HLExchangeService {
   /** Whether the service has been initialized. */
   private initialized = false
 
-  /** Optional wallet config injected via constructor (per-strategy wallet mode). */
-  private walletConfig: WalletConfig | undefined
-
-  /**
-   * @param walletConfig Optional per-strategy wallet config (E25: constructor injection).
-   *   If provided, init() uses these credentials instead of env vars.
-   *   If omitted, falls back to PRIVATE_KEY / ACCOUNT_ADDRESS env vars (backward compat).
-   */
-  constructor(walletConfig?: WalletConfig) {
+  constructor() {
     this.transport = new HttpTransport()
-    this.walletConfig = walletConfig
   }
 
   /**
@@ -133,12 +124,12 @@ export class HLExchangeService {
    * Must be called before any exchange operation.
    * Safe to call multiple times (idempotent).
    *
-   * Uses injected WalletConfig if provided, otherwise falls back to env vars.
+   * Reads PRIVATE_KEY and ACCOUNT_ADDRESS from env vars.
    */
   async init(): Promise<void> {
     if (this.initialized) return
 
-    const privateKey = this.walletConfig?.privateKey ?? process.env.PRIVATE_KEY
+    const privateKey = process.env.PRIVATE_KEY
     if (!privateKey) {
       throw new Error('PRIVATE_KEY env var is required for exchange operations')
     }
@@ -151,8 +142,7 @@ export class HLExchangeService {
     const wallet = privateKeyToAccount(privateKey as `0x${string}`)
     this.walletAddress = wallet.address
 
-    // Resolve account address: injected config > env var > derived from PK
-    const accountAddr = this.walletConfig?.accountAddress ?? process.env.ACCOUNT_ADDRESS
+    const accountAddr = process.env.ACCOUNT_ADDRESS
     if (accountAddr) {
       if (!accountAddr.startsWith('0x') || accountAddr.length !== 42) {
         throw new Error('ACCOUNT_ADDRESS must be a valid 0x-prefixed Ethereum address (42 chars)')
@@ -233,7 +223,7 @@ export class HLExchangeService {
    * Ensures margin used = sizeUsd / leverage ≤ targetMarginUsd.
    * leverage must be integer ≥ 1.
    */
-  async setLeverage(coin: string, leverage: number): Promise<void> {
+  async setLeverage(coin: string, leverage: number, _sizeUsd?: number): Promise<void> {
     this.ensureInit()
     const assetId = this.converter!.getAssetId(coin)
     if (assetId === undefined) {
@@ -667,20 +657,24 @@ export class HLExchangeService {
     const retryResult = await withRetry(async () => {
       await acquire()
       const state = await info.clearinghouseState({ user: this.accountAddress as `0x${string}` })
-      return state.assetPositions.map(ap => {
+      const snaps: ExchangePositionSnapshot[] = []
+      for (const ap of state.assetPositions) {
         const pos = ap.position
         const szi = parseFloat(pos.szi)
+        if (szi === 0) continue
         const levRaw = pos.leverage as { value?: number } | undefined
         const leverage = typeof levRaw?.value === 'number' && levRaw.value > 0 ? levRaw.value : undefined
-        return {
+        const snap: ExchangePositionSnapshot = {
           coin: pos.coin,
           size: szi,
           entryPrice: parseFloat(pos.entryPx),
           unrealizedPnl: parseFloat(pos.unrealizedPnl),
           liquidationPrice: pos.liquidationPx ? parseFloat(pos.liquidationPx) : null,
-          leverage,
         }
-      }).filter(p => p.size !== 0)
+        if (leverage !== undefined) snap.leverage = leverage
+        snaps.push(snap)
+      }
+      return snaps
     }, {
       maxAttempts: RETRY.exchangeMaxAttempts,
       initialDelayMs: RETRY.initialDelayMs,

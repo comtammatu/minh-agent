@@ -16,7 +16,7 @@
 import { RestClientV5 } from 'bybit-api'
 import type { ExchangePositionSnapshot } from '../agent/types.js'
 import { log } from '../lib/logger.js'
-import type { AccountState, PlaceOrderParams, OrderResult } from './exchange-service.js'
+import type { AccountState, PlaceOrderParams, OrderResult, PlaceTriggerParams } from './exchange-service.js'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -47,25 +47,22 @@ export class BybitExchangeService {
   /** Cached account value for pipeline risk-filter compatibility. */
   private cachedAccountValue: number = 0
 
-  /**
-   * Optional constructor injection for per-strategy keys (used by ExchangePool).
-   * If provided, injected values take precedence over env vars in init().
-   */
-  constructor(
-    private readonly injectedApiKey?: string,
-    private readonly injectedApiSecret?: string,
-  ) {}
+  /** coin → maxLeverage from getInstrumentsInfo (loaded once at init). */
+  private maxLeverageMap: Map<string, number> = new Map()
+
+  /** coin → risk tiers sorted ascending by riskLimitValue (lazy-loaded per coin). */
+  private riskTierCache: Map<string, Array<{ riskLimitValue: number; maxLeverage: number }>> = new Map()
 
   /**
    * Initialize Bybit client.
-   * Reads from injected keys (constructor) or env vars (BYBIT_API_KEY / BYBIT_API_SECRET).
+   * Reads BYBIT_API_KEY / BYBIT_API_SECRET from env.
    * Safe to call multiple times (idempotent).
    */
   async init(): Promise<void> {
     if (this.initialized) return
 
-    const apiKey = this.injectedApiKey ?? process.env['BYBIT_API_KEY']
-    const apiSecret = this.injectedApiSecret ?? process.env['BYBIT_API_SECRET']
+    const apiKey = process.env['BYBIT_API_KEY']
+    const apiSecret = process.env['BYBIT_API_SECRET']
     if (!apiKey) {
       throw new Error('BYBIT_API_KEY env required for Bybit exchange operations')
     }
@@ -83,6 +80,19 @@ export class BybitExchangeService {
       secret: this.apiSecret,
       testnet: this.testnet,
     })
+
+    // Load maxLeverage per coin from getInstrumentsInfo (non-fatal)
+    try {
+      const instrResp = await this.client.getInstrumentsInfo({ category: 'linear' })
+      for (const inst of instrResp.result?.list ?? []) {
+        const coin = inst.symbol.endsWith('USDT') ? inst.symbol.slice(0, -4) : inst.symbol
+        const maxLev = parseFloat(inst.leverageFilter.maxLeverage)
+        if (Number.isFinite(maxLev) && maxLev > 0) this.maxLeverageMap.set(coin, maxLev)
+      }
+      log.info('bybit-svc', `Loaded maxLeverage for ${this.maxLeverageMap.size} instruments`)
+    } catch (err) {
+      log.warn('bybit-svc', `Failed to load maxLeverage data: ${err instanceof Error ? err.message : err}`)
+    }
 
     this.initialized = true
     log.info('bybit-svc', `BybitExchangeService initialized (testnet=${this.testnet})`)
@@ -260,31 +270,32 @@ export class BybitExchangeService {
 
       const list = resp.result?.list ?? []
 
-      return list
-        .map(pos => {
-          const size = parseFloat(pos.size)
-          // Bybit: side 'Buy' = long (positive), 'Sell' = short (negative)
-          const signedSize = pos.side === 'Buy' ? size : -size
-          if (signedSize === 0) return null
+      const snaps: ExchangePositionSnapshot[] = []
+      for (const pos of list) {
+        const size = parseFloat(pos.size)
+        // Bybit: side 'Buy' = long (positive), 'Sell' = short (negative)
+        const signedSize = pos.side === 'Buy' ? size : -size
+        if (signedSize === 0) continue
 
-          const leverage = pos.leverage ? parseFloat(pos.leverage) : undefined
-          const liqPrice = pos.liqPrice && pos.liqPrice !== '' ? parseFloat(pos.liqPrice) : null
+        const levRaw = pos.leverage ? parseFloat(pos.leverage) : undefined
+        const liqPrice = pos.liqPrice && pos.liqPrice !== '' ? parseFloat(pos.liqPrice) : null
 
-          // Extract coin from symbol (e.g. 'BTCUSDT' → 'BTC')
-          const coin = pos.symbol.endsWith('USDT')
-            ? pos.symbol.slice(0, -4)
-            : pos.symbol
+        // Extract coin from symbol (e.g. 'BTCUSDT' → 'BTC')
+        const coin = pos.symbol.endsWith('USDT')
+          ? pos.symbol.slice(0, -4)
+          : pos.symbol
 
-          return {
-            coin,
-            size: signedSize,
-            entryPrice: parseFloat(pos.avgPrice),
-            unrealizedPnl: parseFloat(pos.unrealisedPnl),
-            liquidationPrice: liqPrice,
-            leverage: Number.isFinite(leverage) && (leverage ?? 0) > 0 ? leverage : undefined,
-          } satisfies ExchangePositionSnapshot
-        })
-        .filter((p): p is ExchangePositionSnapshot => p !== null)
+        const snap: ExchangePositionSnapshot = {
+          coin,
+          size: signedSize,
+          entryPrice: parseFloat(pos.avgPrice),
+          unrealizedPnl: parseFloat(pos.unrealisedPnl),
+          liquidationPrice: liqPrice,
+        }
+        if (Number.isFinite(levRaw) && (levRaw ?? 0) > 0) snap.leverage = levRaw as number
+        snaps.push(snap)
+      }
+      return snaps
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       log.error('bybit-exec', `getPositions exception: ${msg}`)
@@ -376,18 +387,171 @@ export class BybitExchangeService {
     log.warn('bybit-svc', 'scheduleCancel not supported on Bybit — use heartbeat cancellation instead')
   }
 
+  /** Get max leverage for a coin (from getInstrumentsInfo). Returns undefined if unknown. */
+  getMaxLeverage(coin: string): number | undefined {
+    return this.maxLeverageMap.get(coin)
+  }
+
   /**
-   * Set leverage for a coin. Bybit supports setting leverage via setLeverage endpoint,
-   * but the BybitExchangeService delegates leverage control to order params (positionIdx=0).
-   * This is a no-op stub — set leverage via Bybit UI or extend this method if needed.
+   * Load and cache risk tiers for a coin (lazy, called once per coin).
+   * Tiers are sorted ascending by riskLimitValue so callers can use find().
    */
-  setLeverage(_coin: string, _leverage: number): Promise<void> {
-    log.warn('bybit-svc', 'setLeverage not yet implemented — configure leverage in Bybit UI or extend this method')
-    return Promise.resolve()
+  private async loadRiskTiers(coin: string): Promise<Array<{ riskLimitValue: number; maxLeverage: number }>> {
+    if (this.riskTierCache.has(coin)) return this.riskTierCache.get(coin)!
+
+    const symbol = this.toSymbol(coin)
+    try {
+      const resp = await this.client!.getRiskLimit({ category: 'linear', symbol })
+      const tiers = (resp.result?.list ?? [])
+        .map(t => ({
+          riskLimitValue: parseFloat(t.riskLimitValue),
+          maxLeverage: parseFloat(t.maxLeverage),
+        }))
+        .filter(t => Number.isFinite(t.riskLimitValue) && Number.isFinite(t.maxLeverage))
+        .sort((a, b) => a.riskLimitValue - b.riskLimitValue)
+
+      this.riskTierCache.set(coin, tiers)
+      log.info('bybit-svc', `Loaded ${tiers.length} risk tiers for ${symbol}`)
+      return tiers
+    } catch (err) {
+      log.warn('bybit-svc', `loadRiskTiers failed for ${symbol}: ${err instanceof Error ? err.message : err}`)
+      return []
+    }
+  }
+
+  /**
+   * Set cross leverage for a coin before placing an entry order.
+   *
+   * If sizeUsd is provided, selects the appropriate risk tier for the position size
+   * and caps leverage at tier.maxLeverage (not just leverageFilter.maxLeverage).
+   * Falls back to leverageFilter.maxLeverage if risk tiers unavailable.
+   * Non-fatal: order still proceeds if setLeverage fails.
+   */
+  async setLeverage(coin: string, leverage: number, sizeUsd?: number): Promise<void> {
+    this.ensureInit()
+
+    const symbol = this.toSymbol(coin)
+
+    // Resolve effective maxLeverage: prefer risk-tier cap over flat leverageFilter cap
+    let effectiveMaxLev = this.maxLeverageMap.get(coin)
+
+    if (sizeUsd !== undefined && sizeUsd > 0) {
+      const tiers = await this.loadRiskTiers(coin)
+      if (tiers.length > 0) {
+        // First tier where position fits (sizeUsd ≤ tier.riskLimitValue)
+        const lastTier = tiers[tiers.length - 1]!
+        const tier = tiers.find(t => sizeUsd <= t.riskLimitValue) ?? lastTier
+        if (tier === lastTier && sizeUsd > tier.riskLimitValue) {
+          log.warn('bybit-svc', `setLeverage: ${symbol} sizeUsd=${sizeUsd.toFixed(0)} exceeds all risk tiers (max=${tier.riskLimitValue}), using lowest leverage ${tier.maxLeverage}x`)
+        }
+        effectiveMaxLev = tier.maxLeverage
+      }
+    }
+
+    const lev = effectiveMaxLev !== undefined
+      ? Math.min(Math.max(1, Math.ceil(leverage)), effectiveMaxLev)
+      : Math.max(1, Math.ceil(leverage))
+
+    try {
+      const resp = await this.client!.setLeverage({
+        category: 'linear',
+        symbol,
+        buyLeverage: String(lev),
+        sellLeverage: String(lev),
+      })
+
+      if (resp.retCode !== 0) {
+        // retCode 110043 = leverage not modified (already set) — treat as OK
+        if (resp.retCode === 110043) {
+          log.info('bybit-svc', `setLeverage: ${symbol} already at ${lev}x`)
+          return
+        }
+        log.warn('bybit-svc', `setLeverage failed: ${resp.retMsg} [${symbol}]`)
+        return
+      }
+
+      log.info('bybit-svc', `setLeverage: ${symbol} → ${lev}x${effectiveMaxLev !== undefined ? ` (tierMax=${effectiveMaxLev}x)` : ''}`)
+    } catch (err) {
+      log.warn('bybit-svc', `setLeverage exception: ${err instanceof Error ? err.message : err}`)
+    }
   }
 
   /** Reload symbols (no-op: Bybit uses coin+USDT naming, no lookup needed). */
   reloadSymbols(): Promise<void> {
     return Promise.resolve()
+  }
+
+  // ── IExchangeService identity / symbol methods ─────────────────────────────
+
+  /** Wallet address (signing key). Bybit uses API key — return masked prefix. */
+  getWalletAddress(): string {
+    if (!this.initialized || !this.apiKey) return 'BYBIT'
+    return `BYBIT:${this.apiKey.slice(0, 8)}`
+  }
+
+  /** Account address (same as wallet for Bybit — no separate agent wallet concept). */
+  getAccountAddress(): string {
+    return this.getWalletAddress()
+  }
+
+  /**
+   * Bybit does not use integer asset IDs — always returns undefined.
+   * Callers must handle undefined and not pass it to HL-specific logic.
+   */
+  getAssetId(_coin: string): number | undefined {
+    return undefined
+  }
+
+  /**
+   * Bybit size decimals vary by symbol; always returns undefined here.
+   * Size precision must be queried from the instruments_info endpoint if needed.
+   */
+  getSzDecimals(_coin: string): number | undefined {
+    return undefined
+  }
+
+  /**
+   * Bybit does not support separate trigger (SL/TP) orders — SL/TP must be set
+   * inline via `stopLoss`/`takeProfit` params on `placeOrder` (BybitOrderParams).
+   * This stub warns and returns a failure so callers can handle gracefully.
+   */
+  async placeTrigger(params: PlaceTriggerParams): Promise<OrderResult> {
+    log.warn('bybit-svc', `placeTrigger not supported on Bybit — set slPrice/tpPrice inline on placeOrder (${params.coin} ${params.tpsl})`)
+    return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: 'placeTrigger not supported on Bybit — use placeOrder slPrice/tpPrice params' }
+  }
+
+  /**
+   * Cancel order by numeric oid. Delegates to cancelOrder (converts oid to string).
+   * Bybit order IDs are strings; numeric oid from HL-style flow is coerced.
+   */
+  async cancelByOid(coin: string, oid: number): Promise<OrderResult> {
+    return this.cancelOrder(coin, String(oid))
+  }
+
+  /**
+   * Modify trigger order (trail stop SL update).
+   * Not yet implemented for Bybit — logs warning and returns failure.
+   * TODO: implement via Bybit amendOrder with updated stopLoss.
+   */
+  async modifyTrigger(
+    _coin: string,
+    _oid: number,
+    _side: 'long' | 'short',
+    _newTriggerPrice: number,
+    _size: number,
+    _isMarket: boolean,
+    _tpsl: 'tp' | 'sl',
+  ): Promise<OrderResult> {
+    log.warn('bybit-svc', 'modifyTrigger not yet implemented on Bybit — trail stop updates are no-ops')
+    return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: 'modifyTrigger not yet implemented on Bybit' }
+  }
+
+  /**
+   * Aggregate fill size + VWAP for an entry order by cloid.
+   * Not yet implemented — returns null so caller falls back to entry price estimate.
+   * TODO: implement via Bybit trade history filtered by orderLinkId.
+   */
+  async getFillAggregateByCloid(_cloid: string, _coin: string): Promise<{ avgPx: number; totalSz: number } | null> {
+    return null
   }
 }

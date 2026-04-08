@@ -41,7 +41,7 @@ import {
   MARKET_ORDER_SLIPPAGE_PCT,
 } from '../config.js'
 import { getExchangeService, type ExchangeService } from '../execution/exchange-service.js'
-import type { ExchangePool } from '../execution/exchange-pool.js'
+import type { ExchangePool, IExchangeService } from '../execution/exchange-pool.js'
 import { getLatestBook } from '../feed/orderbook.js'
 import { log } from '../lib/logger.js'
 import { withRetry, isRetryableExchangeError } from '../lib/retry.js'
@@ -101,7 +101,7 @@ export async function submitToExchange(
   price: number,
   size: number,
   cloid: string,
-  svc?: ExchangeService,
+  svc?: IExchangeService,
 ): Promise<ExchangeOrderResult> {
   try {
     const exchange = svc ?? getExchangeService()
@@ -139,7 +139,7 @@ export async function submitToExchange(
 export async function cancelOnExchange(
   exchangeOrderId: string,
   coin?: string,
-  svc?: ExchangeService,
+  svc?: IExchangeService,
 ): Promise<ExchangeOrderResult> {
   try {
     const exchange = svc ?? getExchangeService()
@@ -171,7 +171,7 @@ export async function cancelOnExchange(
  */
 export async function placeTriggerOnExchange(
   trigger: TriggerOrder,
-  svc?: ExchangeService,
+  svc?: IExchangeService,
 ): Promise<ExchangeOrderResult> {
   try {
     const exchange = svc ?? getExchangeService()
@@ -339,8 +339,8 @@ export class OrderManager {
     this.exchangePool = pool
   }
 
-  /** Get ExchangeService for a strategy. Falls back to singleton if no pool or pool init failed. */
-  private getExchangeForStrategy(strategyId: string, exchange?: ExchangeId): ExchangeService {
+  /** Get exchange service for a strategy. Falls back to HL singleton if no pool or pool init failed. */
+  private getExchangeForStrategy(strategyId: string, exchange?: ExchangeId): IExchangeService {
     if (this.exchangePool?.isInitialized()) {
       return this.exchangePool.get(strategyId, exchange)
     }
@@ -439,7 +439,7 @@ export class OrderManager {
       const sizeUsd = order.size * entryPrice
       const targetMarginUsd = accountValue * TARGET_MARGIN_PCT
       const requiredLeverage = sizeUsd / targetMarginUsd
-      await svc.setLeverage(coin, requiredLeverage)
+      await svc.setLeverage(coin, requiredLeverage, sizeUsd)
     }
 
     // Entry orders are limit by default (GTC). Market-style IoC entries are supported but not used by default.
@@ -664,7 +664,7 @@ export class OrderManager {
     trigger: TriggerOrder,
     label: string,
     coin: string,
-    exchangeSvc?: ExchangeService,
+    exchangeSvc?: IExchangeService,
   ): Promise<ExchangeOrderResult> {
     const retryResult = await withRetry(
       async () => {

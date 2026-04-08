@@ -36,7 +36,7 @@ import {
 } from '../config.js'
 import { getHLExchangeService as getExchangeService } from '../execution/hl-exchange-service.js'
 import type { IExchangeService as ExchangeService } from '../execution/exchange-service.js'
-import { getExchangePool } from '../execution/exchange-pool.js'
+import { getExchangePool, type IExchangeService as PoolExchangeService } from '../execution/exchange-pool.js'
 import { log } from '../lib/logger.js'
 import { getEffectivePaperTrade, PAPER_SLIPPAGE_PCT } from '../config.js'
 import { getPaperTracker, getTotalPaperBalance } from './paper-tracker.js'
@@ -449,7 +449,7 @@ export class PositionMonitor {
         if (pool.isInitialized()) {
           if (pool.isMultiWallet()) {
             let sum = 0
-            const seen = new Set<ExchangeService>()
+            const seen = new Set<PoolExchangeService>()
             for (const sid of PAPER_WALLET_STRATEGY_IDS) {
               const svc = pool.get(sid)
               if (seen.has(svc)) continue
