@@ -239,9 +239,7 @@ async function refreshLiveAccountStatesForTui(): Promise<void> {
     if (!pool.isInitialized()) return
 
     const m = new Map<string, AccountState>()
-    // Single shared account: do not cache one snapshot under every strategy id — that made the TUI
-    // treat full account equity/margin as belonging to each tab. Leave cache empty so Account uses
-    // `buildLiveWalletBreakdown()` (margin-share split) for tabs 1–3.
+    // Single shared account: leave cache null so Account panel uses the shared account state directly.
     liveAccountStatesByStrategyCache = null
   } catch {
     // Keep previous cache on HL errors

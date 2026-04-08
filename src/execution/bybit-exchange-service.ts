@@ -165,6 +165,7 @@ export class BybitExchangeService {
     // Resolve base coin qty.
     // For market orders with sizeUsd: fetch current price, round UP to nearest step.
     // This ensures notional >= requested USDT value.
+    // For limit orders: round DOWN to nearest qtyStep (Bybit rejects non-multiples of step).
     let baseQty = params.size
     if (params.type === 'market' && bbParams.sizeUsd !== undefined && bbParams.sizeUsd > 0) {
       try {
@@ -182,6 +183,10 @@ export class BybitExchangeService {
       } catch (err) {
         log.warn('bybit-exec', `getTickers for qty conversion failed: ${err instanceof Error ? err.message : err}`)
       }
+    } else if (params.type === 'limit') {
+      const step = this.qtyStepMap.get(params.coin) ?? 0.001
+      baseQty = Math.floor(baseQty / step) * step
+      baseQty = parseFloat(baseQty.toFixed(this.stepDecimalsMap.get(params.coin) ?? 3))
     }
 
     const submitParams: Parameters<RestClientV5['submitOrder']>[0] = {
