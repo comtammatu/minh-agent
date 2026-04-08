@@ -52,7 +52,7 @@ export interface PaperStats {
 
 export interface AssetPrice {
   markPrice: number
-  funding: number
+  funding: number | null
   /** % move from today's 00:00 UTC open (1d candle `o`) to mark; null if no 1d data. */
   dayChangePctUtc: number | null
 }

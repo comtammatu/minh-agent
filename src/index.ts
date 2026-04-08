@@ -384,7 +384,7 @@ async function main(): Promise<void> {
         const last = candles[candles.length - 1]!
         return {
           markPrice: last.c,
-          funding: 0,  // TODO: implement Bybit funding feed
+          funding: null,  // Bybit funding feed not yet implemented
           dayChangePctUtc: dayChangePctFromUtcDayOpen(coin, last.c),
         }
       }
