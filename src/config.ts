@@ -136,7 +136,7 @@ export const SMC_BREAK_LOOKBACK = 20
 export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = ['4h']
 
 /** Minimum bars between signals on same coin/interval (dedup). */
-export const SMC_DEDUP_BARS = 5
+export const SMC_DEDUP_BARS = 10
 
 // ─── Layered Pipeline Config ─────────────────────────────────────────────────
 
@@ -470,11 +470,17 @@ export const QUANT_EMA_SLOW = 200
 /** RSI period. */
 export const QUANT_RSI_PERIOD = 14
 
-/** RSI oversold threshold — buy signal in uptrend. Relaxed for crypto volatility on higher TFs. */
-export const QUANT_RSI_OVERSOLD = 35
+/** RSI oversold threshold — buy signal in uptrend. */
+export const QUANT_RSI_OVERSOLD = 30
 
-/** RSI overbought threshold — sell signal in downtrend. Relaxed for crypto volatility on higher TFs. */
-export const QUANT_RSI_OVERBOUGHT = 65
+/** RSI overbought threshold — sell signal in downtrend. */
+export const QUANT_RSI_OVERBOUGHT = 70
+
+/** Minimum fractional gap between EMA50 and EMA200 to confirm trend (chop filter). */
+export const QUANT_MIN_EMA_SEPARATION_PCT = 0.005
+
+/** Minimum bars between Quant signals on same coin/interval (cooldown dedup). */
+export const QUANT_DEDUP_BARS = 5
 
 /** ATR multiplier for stop loss distance. */
 export const QUANT_ATR_SL_MULT = 2.0

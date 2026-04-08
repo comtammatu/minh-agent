@@ -69,9 +69,10 @@ export class SmcSdStrategy implements IStrategy {
     const currentPrice = candles[idx]!.c
     const pd = premiumDiscount(swingHigh, swingLow, currentPrice)
 
-    // Premium/discount: soft filter — penalize confidence instead of hard reject
+    // Premium/discount: hard reject — do not trade against the P/D zone
     const pdMisaligned = (side === 'long' && pd === 'premium')
                       || (side === 'short' && pd === 'discount')
+    if (pdMisaligned) return null
 
     // ── 3. ZONES ───────────────────────────────────────────────────────────
     const { demandZones, supplyZones } = compileKeyZones(candles, idx)
@@ -99,28 +100,31 @@ export class SmcSdStrategy implements IStrategy {
     const bestZone = zones[bestZoneIdx]!
 
     // ── 5. BOUNCE detection ────────────────────────────────────────────────
+    // Require actual wick interaction with the zone — nearZone alone is insufficient.
     let isBounce = false
     if (side === 'long') {
-      // Wick rejection: dipped into zone but closed above zone top
-      // OR bullish close at/near zone
-      // OR through-zone sweep + recovery
-      isBounce = (candle.l <= bestZone.top && candle.c > bestZone.top)
-              || (candle.c > candle.o && proximity.nearZone)
-              || proximity.throughZone
+      // Wick entered zone and closed above (clean rejection)
+      const wickRejection = candle.l <= bestZone.top && candle.c > bestZone.top
+      // Wick touched inside zone with bullish close (wickTouch from isAtZone)
+      const wickTouchBullish = proximity.wickTouch && candle.c > candle.o
+      // Through-zone sweep with recovery (strongest signal)
+      isBounce = wickRejection || wickTouchBullish || proximity.throughZone
     } else {
-      isBounce = (candle.h >= bestZone.bottom && candle.c < bestZone.bottom)
-              || (candle.c < candle.o && proximity.nearZone)
-              || proximity.throughZone
+      // Wick entered zone and closed below (clean rejection)
+      const wickRejection = candle.h >= bestZone.bottom && candle.c < bestZone.bottom
+      // Wick touched inside zone with bearish close
+      const wickTouchBearish = proximity.wickTouch && candle.c < candle.o
+      // False breakout above zone with recovery
+      isBounce = wickRejection || wickTouchBearish || proximity.throughZone
     }
     if (!isBounce) return null
 
     // ── 6. CONFIDENCE ──────────────────────────────────────────────────────
     let confidence = 0.50
     if (recentBreak.kind === 'choch') confidence += 0.10
-    if (pdMisaligned) {
-      confidence -= 0.10  // penalty for trading against P/D zone
-    } else if ((side === 'long' && pd === 'discount') || (side === 'short' && pd === 'premium')) {
-      confidence += 0.05  // bonus for aligned P/D
+    // P/D aligned bonus (misaligned already hard-rejected above)
+    if ((side === 'long' && pd === 'discount') || (side === 'short' && pd === 'premium')) {
+      confidence += 0.05
     }
     if (proximity.throughZone) confidence += 0.05
     if (bestZone.strength > 0.6) confidence += 0.05

@@ -17,7 +17,7 @@
  */
 
 import type { Candle, CandleInterval, ActiveSetup, SignalSide } from '../../../types.js'
-import { ema, rsi, atr } from '../../../indicators/core.js'
+import { ema, rsi, atr, detectRegime } from '../../../indicators/core.js'
 import { getPipelineEmitter, getActiveSetupsMap } from '../../orchestrator.js'
 import { getOrCreateStats } from '../../diagnostics.js'
 import { computeExpiresAtBar, setupId } from '../../shared/invalidation.js'
@@ -29,6 +29,8 @@ import {
   QUANT_RSI_OVERBOUGHT,
   QUANT_ATR_SL_MULT,
   QUANT_ATR_TP_MULT,
+  QUANT_MIN_EMA_SEPARATION_PCT,
+  QUANT_DEDUP_BARS,
   getActiveExchange,
 } from '../../../config.js'
 import { log } from '../../../lib/logger.js'
@@ -63,6 +65,10 @@ export function runQuantPipeline(
 
   if (isNaN(ema50) || isNaN(ema200) || isNaN(rsiVal) || isNaN(atrVal) || atrVal <= 0) return
 
+  // EMA separation filter: reject choppy markets where EMAs are too close
+  const emaGap = Math.abs(ema50 - ema200) / ema200
+  if (emaGap < QUANT_MIN_EMA_SEPARATION_PCT) return
+
   // Determine trend regime
   const bullish = ema50 > ema200
   const bearish = ema50 < ema200
@@ -77,6 +83,14 @@ export function runQuantPipeline(
 
   if (!side) return
 
+  // Regime filter: only block VOLATILE (spiky ATR spike = unreliable entries).
+  // Counter-trend is intentional here — RSI pullback in an EMA uptrend is locally BEAR
+  // by SMA definition, so applying counter penalty would kill every valid pullback signal.
+  const regime = detectRegime(candles, idx)
+  if (regime === 'VOLATILE') return
+
+  const confidence = 0.6
+
   stats.passL1Bias++
   stats.passL2Structure++
   stats.passL3Zones++
@@ -85,9 +99,10 @@ export function runQuantPipeline(
   stats.passRisk++
   stats.passRegime++
 
-  // Dedup: one signal per coin per bar
+  // Dedup: cooldown of N bars per coin|interval
   const dedupKey = `${coin}|${interval}`
-  if (lastSignalBar.get(dedupKey) === idx) return
+  const lastBar = lastSignalBar.get(dedupKey)
+  if (lastBar !== undefined && idx - lastBar <= QUANT_DEDUP_BARS) return
   lastSignalBar.set(dedupKey, idx)
 
   const close = candles[idx]!.c
@@ -107,7 +122,7 @@ export function runQuantPipeline(
     interval,
     type: 'ema-rsi',
     side,
-    confidence: 0.6,
+    confidence: Math.min(confidence, 1),
     entryPrice,
     slPrice,
     tpPrice,
@@ -133,9 +148,9 @@ export function runQuantPipeline(
   const rr = isNaN(rrRaw) ? 0 : rrRaw
   log.info('pipeline',
     `⚡ SETUP | ${coin} ${interval.toUpperCase()} [${activeExchange}] | ${side.toUpperCase()} ema-rsi | ` +
-    `B (3/7) | conf:${setup.confidence.toFixed(2)} | ` +
+    `B (3/7) | conf:${setup.confidence.toFixed(2)} regime:${regime} | ` +
     `entry:${entryPrice.toFixed(2)} sl:${slPrice.toFixed(2)} tp:${tpPrice.toFixed(2)} | R:R 1:${rr.toFixed(2)} | ` +
-    `ema50:${ema50.toFixed(2)} ema200:${ema200.toFixed(2)} rsi:${rsiVal.toFixed(1)} | ` +
+    `ema50:${ema50.toFixed(2)} ema200:${ema200.toFixed(2)} rsi:${rsiVal.toFixed(1)} gap:${(emaGap*100).toFixed(2)}% | ` +
     `ttl:${setup.expiresAtBar - setup.detectedAtBar}bars | [quant]`,
   )
 

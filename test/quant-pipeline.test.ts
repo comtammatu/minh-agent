@@ -41,14 +41,14 @@ function generateCandles(
     let price: number
 
     if (i < count - 20) {
-      // Main trend: gradual move
+      // Main trend: strong move to ensure EMA50 > EMA200 separation > 0.5%
       const trendFactor = trend === 'up' ? 1 : -1
-      price = basePrice + trendFactor * (i * 10)
+      price = basePrice + trendFactor * (i * 50)
       // Add small oscillation
       price += Math.sin(i * 0.3) * 50
     } else {
       // Last 20 bars: create RSI condition
-      const trendPrice = basePrice + (trend === 'up' ? 1 : -1) * ((count - 20) * 10)
+      const trendPrice = basePrice + (trend === 'up' ? 1 : -1) * ((count - 20) * 50)
       const barsFromEnd = count - i
 
       if (endCondition === 'oversold') {
