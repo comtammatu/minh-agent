@@ -77,6 +77,16 @@ function getClient(): WebsocketClient {
       }
     })
 
+    // Re-subscribe all active topics after a reconnection.
+    // bybit-api auto-reconnects internally but does NOT replay subscriptions —
+    // without this handler, all candle streams silently die after a WS drop.
+    wsClient.on('open', () => {
+      const topics = [...topicCallbacks.keys()]
+      if (topics.length === 0) return
+      log.info('bybit-ws', `WS reconnected — re-subscribing ${topics.length} topics`)
+      wsClient!.subscribeV5(topics, 'linear')
+    })
+
     // bybit-api v4: 'error' is deprecated; use 'exception' for error handling
     wsClient.on('exception', (err: unknown) => {
       log.error('bybit-ws', `WebSocket exception: ${err instanceof Error ? err.message : String(err)}`)

@@ -162,6 +162,13 @@ export async function cancelOnExchange(
       return { success: result.success, exchangeOrderId: null, error: result.error }
     }
 
+    // Bybit path: orderId is UUID-format string (e.g. "be411c88-...") returned by submitOrder.
+    // Route through cancelByOrderId which dispatches correctly per exchange type.
+    if (coin) {
+      const result = await exchange.cancelByOrderId(coin, exchangeOrderId)
+      return { success: result.success, exchangeOrderId: null, error: result.error }
+    }
+
     log.warn('order-manager', `cancelOnExchange: cannot cancel without valid oid or cloid+coin (id=${exchangeOrderId})`)
     return { success: false, exchangeOrderId: null, error: 'Missing coin for cancel' }
   } catch (err) {

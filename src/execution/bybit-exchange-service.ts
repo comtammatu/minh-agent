@@ -83,6 +83,9 @@ export class BybitExchangeService {
   /** coin → decimal places of qtyStep (e.g. 0.001 → 3). */
   private stepDecimalsMap: Map<string, number> = new Map()
 
+  /** coin → minOrderQty from lotSizeFilter (e.g. XRP → 1). */
+  private minOrderQtyMap: Map<string, number> = new Map()
+
   /** coin → risk tiers sorted ascending by riskLimitValue (lazy-loaded per coin). */
   private riskTierCache: Map<string, Array<{ riskLimitValue: number; maxLeverage: number }>> = new Map()
 
@@ -127,6 +130,10 @@ export class BybitExchangeService {
           // Count decimal places: e.g. "0.001" → 3
           const decimals = (inst.lotSizeFilter.qtyStep.split('.')[1] ?? '').length
           this.stepDecimalsMap.set(coin, decimals)
+        }
+        const minQty = parseFloat(inst.lotSizeFilter.minOrderQty)
+        if (Number.isFinite(minQty) && minQty > 0) {
+          this.minOrderQtyMap.set(coin, minQty)
         }
       }
       log.info('bybit-svc', `Loaded maxLeverage for ${this.maxLeverageMap.size} instruments`)
@@ -213,6 +220,15 @@ export class BybitExchangeService {
         ? Math.ceil(baseQty / step) * step
         : Math.floor(baseQty / step) * step
       baseQty = parseFloat(baseQty.toFixed(decimals))
+    }
+
+    // Guard: reject before sending if qty is below exchange minimum.
+    // Prevents "Qty invalid" rejection from Bybit for coins with high minOrderQty.
+    const minOrderQty = this.minOrderQtyMap.get(params.coin)
+    if (minOrderQty !== undefined && baseQty < minOrderQty) {
+      const errMsg = `qty=${baseQty} below minOrderQty=${minOrderQty} for ${params.coin}`
+      log.warn('bybit-exec', `placeOrder skipped: ${errMsg}`)
+      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Qty below minimum: ${errMsg}` }
     }
 
     const submitParams: Parameters<RestClientV5['submitOrder']>[0] = {
@@ -346,6 +362,11 @@ export class BybitExchangeService {
       log.error('bybit-exec', `cancelOrder exception: ${msg}`)
       throw err
     }
+  }
+
+  /** Cancel order by exchange order ID string — satisfies IExchangeService.cancelByOrderId. */
+  async cancelByOrderId(coin: string, orderId: string): Promise<OrderResult> {
+    return this.cancelOrder(coin, orderId)
   }
 
   /**

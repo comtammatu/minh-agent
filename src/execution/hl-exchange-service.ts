@@ -524,6 +524,13 @@ export class HLExchangeService {
     return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: msg }
   }
 
+  /** Cancel order by exchange order ID string — satisfies IExchangeService.cancelByOrderId. */
+  async cancelByOrderId(coin: string, orderId: string): Promise<OrderResult> {
+    const oid = parseInt(orderId, 10)
+    if (!isNaN(oid)) return this.cancelByOid(coin, oid)
+    return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Cannot parse HL oid from: ${orderId}` }
+  }
+
   // ── Modify (trail stop SL updates) ────────────────────────────────────────
 
   /**

@@ -66,6 +66,9 @@ export interface IExchangeService {
   /** Cancel order by cloid. */
   cancelByCloid(coin: string, cloid: string): Promise<OrderResult>
 
+  /** Cancel order by exchange order ID string (Bybit UUID or HL oid as string). */
+  cancelByOrderId(coin: string, orderId: string): Promise<OrderResult>
+
   /** Modify an existing trigger order (trail stop SL update). */
   modifyTrigger(
     coin: string,
