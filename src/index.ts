@@ -45,6 +45,7 @@ import type { IExchangeFeed } from './feed/exchange-feed.js'
 import { HLFeed } from './feed/hl-feed.js'
 import { BybitFeed } from './feed/bybit/bybit-feed.js'
 import { makeBybitFetchRankedFn } from './feed/bybit/bybit-coin-selector.js'
+import { loadBybitFundingRates, getBybitFundingRate } from './feed/bybit/bybit-rest.js'
 import { startFundingPolling, stopFundingPolling, addFundingCoin, removeFundingCoin } from './feed/funding.js'
 import { startOiFeed, stopOiFeed, addOiCoin, removeOiCoin } from './feed/asset-ctx.js'
 import { subscribeTrades, unsubscribeTrades } from './feed/trades.js'
@@ -384,7 +385,7 @@ async function main(): Promise<void> {
         const last = candles[candles.length - 1]!
         return {
           markPrice: last.c,
-          funding: null,  // Bybit funding feed not yet implemented
+          funding: getBybitFundingRate(coin),
           dayChangePctUtc: dayChangePctFromUtcDayOpen(coin, last.c),
         }
       }
@@ -516,6 +517,11 @@ async function main(): Promise<void> {
   // 6. Start funding + OI polling — HL only (asset-ctx + funding use HL WS/REST)
   if (activeExchange === 'HL') {
     await Promise.all([startFundingPolling(coins), startOiFeed(coins)])
+  } else if (activeExchange === 'BB') {
+    // Load Bybit funding rates once (public endpoint, no auth).
+    // Funding settles every 8h — refresh every 4h is sufficient.
+    await loadBybitFundingRates()
+    activeIntervals.push(setInterval(() => void loadBybitFundingRates(), 4 * 60 * 60 * 1000))
   }
 
   // 7. ARMED readiness gate

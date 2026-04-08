@@ -18,6 +18,45 @@ import { log } from '../../lib/logger.js'
 
 const client = new RestClientV5({ testnet: false })
 
+// ─── Funding Rate Cache ───────────────────────────────────────────────────────
+
+/** coin → current funding rate (from getTickers). Updated by loadBybitFundingRates(). */
+const fundingRates: Map<string, number> = new Map()
+
+/** Get the cached funding rate for a coin. Returns null if not yet loaded. */
+export function getBybitFundingRate(coin: string): number | null {
+  return fundingRates.get(coin) ?? null
+}
+
+/**
+ * Fetch all linear USDT-perp funding rates from Bybit getTickers (public endpoint).
+ * Single call — no auth required. Updates the module-level cache.
+ * Call once at startup and refresh every ~4h (funding settles every 8h).
+ */
+export async function loadBybitFundingRates(): Promise<void> {
+  try {
+    const resp = await client.getTickers({ category: 'linear' })
+    if (resp.retCode !== 0) {
+      log.warn('bybit-funding', `getTickers failed: retCode=${resp.retCode} ${resp.retMsg}`)
+      return
+    }
+    let count = 0
+    for (const ticker of resp.result?.list ?? []) {
+      if (!ticker.symbol.endsWith('USDT')) continue
+      const coin = ticker.symbol.slice(0, -4)
+      const rate = parseFloat(ticker.fundingRate ?? '')
+      if (Number.isFinite(rate)) {
+        fundingRates.set(coin, rate)
+        count++
+      }
+    }
+    log.info('bybit-funding', `Loaded funding rates for ${count} coins`)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    log.warn('bybit-funding', `loadBybitFundingRates error: ${msg}`)
+  }
+}
+
 /** Convert coin name to Bybit linear perp symbol (e.g. BTC → BTCUSDT). */
 function toSymbol(coin: string): string {
   return `${coin}USDT`
