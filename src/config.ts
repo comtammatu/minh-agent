@@ -785,14 +785,20 @@ export const BYBIT_INTERVAL_MAP: Record<CandleInterval, string> = {
 /** Max candles per single Bybit REST request. */
 export const BYBIT_BACKFILL_BATCH_SIZE = 1000
 
-/** Total candles to fetch per TF during Bybit backfill. */
+/**
+ * Total candles to fetch per TF during Bybit backfill.
+ * Matches HL counts — BYBIT_BACKFILL_BATCH_SIZE=1000 is per-request,
+ * the batch walker makes multiple requests to reach these totals.
+ * Small TFs: 500 (recent data sufficient for entry refinement).
+ * Large TFs: 5000 (full history needed for regime/structure detection).
+ */
 export const BYBIT_BACKFILL_CANDLE_COUNTS: Record<string, number> = {
   '1m': 500,
   '5m': 500,
-  '15m': 1000,
-  '1h': 1000,
-  '4h': 1000,
-  '1d': 1000,
+  '15m': 5000,
+  '1h': 5000,
+  '4h': 5000,
+  '1d': 5000,
 }
 
 /** Bybit rate limit: token bucket. 120 req/10s burst. */
