@@ -134,6 +134,7 @@ export interface Order {
   fillSize: number       // filled so far (for partials)
   strategyId: string     // strategy that placed this order (Sprint 4.5)
   positionId: string | null  // set at fill time — links order to position
+  exchange: string       // 'HL' | 'BB' — exchange this order was placed on
 }
 
 /** SL/TP trigger order placed on exchange after entry fill (R9). */

@@ -51,7 +51,7 @@ import {
   computeEntryLeverageForTargetMargin,
   computePositionSize,
 } from './exits.js'
-import { DEFAULT_RISK_PERCENT, SIMULATED_ACCOUNT, TARGET_MARGIN_PCT } from '../config.js'
+import { DEFAULT_RISK_PERCENT, SIMULATED_ACCOUNT, TARGET_MARGIN_PCT, getActiveExchange } from '../config.js'
 
 /** Default strategy ID for backward compatibility (single-strategy mode). */
 const DEFAULT_STRATEGY = 'layered'
@@ -237,13 +237,13 @@ export function paperSimulateTrigger(trigger: TriggerOrder): ExchangeOrderResult
 /** Insert a new order into the database. */
 async function insertOrder(order: Order): Promise<void> {
   await sql`
-    INSERT INTO orders (id, coin, side, type, price, size, status, setup_id, sl_price, tp_price, exchange_order_id, created_at, updated_at, fill_price, filled_at, strategy_id, position_id)
+    INSERT INTO orders (id, coin, side, type, price, size, status, setup_id, sl_price, tp_price, exchange_order_id, created_at, updated_at, fill_price, filled_at, strategy_id, position_id, exchange)
     VALUES (
       ${order.id}, ${order.coin}, ${order.side}, ${order.type}, ${order.price},
       ${order.size}, ${order.status}, ${order.setupId}, ${order.slPrice}, ${order.tpPrice},
       ${order.exchangeOrderId}, ${new Date(order.createdAt)}, ${new Date(order.updatedAt)},
       ${order.fillPrice}, ${order.filledAt ? new Date(order.filledAt) : null},
-      ${order.strategyId}, ${order.positionId}
+      ${order.strategyId}, ${order.positionId}, ${order.exchange}
     )
   `
 }
@@ -312,6 +312,7 @@ function rowToOrder(row: Record<string, unknown>): Order {
     fillSize: 0,  // TODO: add fill_size column in S10 migration
     strategyId: (row.strategy_id as string) ?? DEFAULT_STRATEGY,
     positionId: (row.position_id as string) ?? null,
+    exchange: (row.exchange as string) ?? 'HL',
   }
 }
 
@@ -429,6 +430,7 @@ export class OrderManager {
       fillSize: 0,
       strategyId,
       positionId: null,
+      exchange: setup.exchange ?? 'HL',
     }
 
     // Persist pending
@@ -1026,14 +1028,17 @@ export class OrderManager {
 
   /** Load active orders from DB into cache (startup recovery). */
   async loadActiveOrders(): Promise<void> {
+    const exchange = getActiveExchange()
     const rows = await sql`
-      SELECT * FROM orders WHERE status IN ('pending', 'submitted', 'partial', 'filled')
+      SELECT * FROM orders
+      WHERE status IN ('pending', 'submitted', 'partial', 'filled')
+        AND exchange = ${exchange}
     `
     for (const row of rows) {
       const order = rowToOrder(row)
       this.orders.set(order.id, order)
     }
-    log.info('order-manager', `Loaded ${rows.length} active orders from DB`)
+    log.info('order-manager', `Loaded ${rows.length} active orders from DB [exchange=${exchange}]`)
   }
 
   /**
