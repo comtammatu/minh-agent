@@ -98,3 +98,5 @@ export {
   resetHLExchangeService,
   resetHLExchangeService as resetExchangeService,
 } from './hl-exchange-service.js'
+
+export { BybitExchangeService } from './bybit-exchange-service.js'

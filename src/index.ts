@@ -35,10 +35,12 @@ import {
   getEffectivePaperTrade,
   MIN_CANDLES_FOR_SCAN,
   PAPER_WALLET_STRATEGY_IDS,
+  getActiveExchange,
 } from './config.js'
-import { backfillAllCoins, fetchCandles, fetchCandlesBatched, probeCoins } from './feed/rest.js'
-import { setCandles, clearCoinData, setOnPersist, appendCandle, candleCount, dayChangePctFromUtcDayOpen } from './feed/store.js'
-import { subscribeCandles, unsubscribeCandles, closeAll, checkStaleness, getSubscriptionCount } from './feed/ws.js'
+import { probeCoins } from './feed/rest.js'
+import { setCandles, clearCoinData, setOnPersist, candleCount, dayChangePctFromUtcDayOpen } from './feed/store.js'
+import { unsubscribeCandles, getSubscriptionCount } from './feed/ws.js'
+import { HLFeed } from './feed/hl-feed.js'
 import { startFundingPolling, stopFundingPolling, addFundingCoin, removeFundingCoin } from './feed/funding.js'
 import { startOiFeed, stopOiFeed, addOiCoin, removeOiCoin } from './feed/asset-ctx.js'
 import { subscribeTrades, unsubscribeTrades } from './feed/trades.js'
@@ -89,20 +91,24 @@ import type { CandleInterval } from './types.js'
 
 // ── Banner (logged inside main() before TUI starts) ────────────────────────
 
+// ── Feed instance — set once at startup ──────────────────────────────────────
+
+// Initialised inside main() after getActiveExchange() guard.
+// Module-level so coin lifecycle helpers can reference it without prop-drilling.
+let feed: HLFeed
+
 // ── Coin Lifecycle Helpers ──────────────────────────────────────────────────
 
 /** Subscribe all WS feeds for a coin (candles × TFs + trades + orderbook). */
 async function subscribeCoin(coin: string): Promise<void> {
-  for (const tf of TIMEFRAMES) {
-    await subscribeCandles(coin, tf as CandleInterval, onCandleTick)
-  }
+  await feed.subscribe([coin], onCandleTick)
   await subscribeTrades(coin)
   await subscribeOrderBook(coin)
 }
 
 /** Backfill a single coin (used during mid-run coin additions). */
 async function backfillCoin(coin: string): Promise<number> {
-  const results = await backfillAllCoins([coin], (c, interval, candles) => {
+  const results = await feed.backfill([coin], (c, interval, candles) => {
     setCandles(c, interval, candles)
   })
   return results[0]?.readyTFs ?? 0
@@ -263,6 +269,13 @@ async function refreshLiveTuiCaches(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  // Guard: only HL is implemented — BB feed comes in a future sprint
+  const activeExchange = getActiveExchange()
+  if (activeExchange !== 'HL') {
+    throw new Error(`Exchange "${activeExchange}" feed not yet implemented. Use ACTIVE_EXCHANGE=HL.`)
+  }
+  feed = new HLFeed()
+
   // Banner — logged before TUI starts, so these safely go to console
   const modeTag = getEffectivePaperTrade() ? 'PAPER' : 'LIVE'
   log.info('startup', `Minh (明) v2.0.0 — Autonomous Trading Agent [${modeTag}]`)
@@ -397,7 +410,7 @@ async function main(): Promise<void> {
   }
 
   // 4. Gap-fill + full backfill via REST (batched, skips coin/TFs already sufficient)
-  const backfillResults = await backfillAllCoins(
+  const backfillResults = await feed.backfill(
     coins,
     (coin, interval, candles) => {
       setCandles(coin, interval, candles)
@@ -405,7 +418,6 @@ async function main(): Promise<void> {
         log.error('persist', `bulk upsert failed ${coin}|${interval}: ${err instanceof Error ? err.message : String(err)}`)
       })
     },
-    undefined, // concurrency — use default
     (coin, interval) => candleCount(coin, interval) >= MIN_CANDLES_FOR_SCAN,
   )
   const tfReady = new Map<string, number>()
@@ -439,7 +451,7 @@ async function main(): Promise<void> {
     for (const rc of replacements) {
       await subscribeCoin(rc)
     }
-    const replResults = await backfillAllCoins(replacements, (coin, interval, candles) => {
+    const replResults = await feed.backfill(replacements, (coin, interval, candles) => {
       setCandles(coin, interval, candles)
       bulkUpsertCandles(coin, interval, candles).catch(err => {
         log.error('persist', `bulk upsert failed ${coin}|${interval}: ${err instanceof Error ? err.message : String(err)}`)
@@ -628,7 +640,7 @@ async function main(): Promise<void> {
 
   // 12. Staleness watchdog (candles + order book)
   activeIntervals.push(setInterval(() => {
-    checkStaleness()
+    feed.checkStaleness()
     checkBookStaleness()
   }, STALENESS_CHECK_INTERVAL_MS))
 
@@ -649,7 +661,7 @@ async function cleanup(): Promise<void> {
   activeIntervals.length = 0
   stopFundingPolling()
   await stopOiFeed()
-  await closeAll()
+  await feed.closeAll()
 }
 
 /** Run main() with exponential backoff reconnection on failure. */
