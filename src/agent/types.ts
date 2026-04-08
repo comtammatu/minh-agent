@@ -153,6 +153,9 @@ export interface ExchangeOrderResult {
   success: boolean
   exchangeOrderId: string | null
   error: string | null
+  /** Set when HL returns immediate fill (e.g. market IOC) in the place-order response. */
+  fillPrice?: number
+  fillSize?: number
 }
 
 // ─── Position Monitor (S7) ──────────────────────────────────────────────────
@@ -196,6 +199,10 @@ export interface ExchangePositionSnapshot {
   entryPrice: number
   unrealizedPnl: number
   liquidationPrice: number | null
+  /** Cross/isolated leverage from HL `position.leverage.value` when present. */
+  leverage?: number
+  /** When set (multi-wallet), reconciliation matches this row to {@link PositionState.strategyId}. */
+  strategyId?: string
 }
 
 // ─── Trade Journal (S9) ─────────────────────────────────────────────────────

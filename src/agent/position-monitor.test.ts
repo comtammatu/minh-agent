@@ -13,7 +13,12 @@ import {
   resetPositionMonitor,
 } from './position-monitor.js'
 import type { PositionState, ExchangePositionSnapshot, MonitorAction } from './types.js'
-import { TRAILING_STOP, PARTIAL_CLOSE } from '../config.js'
+import {
+  TRAILING_STOP,
+  PARTIAL_CLOSE,
+  resetPaperTradeRuntimeOverrideForTests,
+  setPaperTradeRuntimeOverride,
+} from '../config.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -27,7 +32,9 @@ function makePosition(overrides: Partial<PositionState> = {}): PositionState {
     originalSize: 1.0,
     slPrice: 95,      // 5% SL
     tpPrice: 110,     // 10% TP
-    entryOrderId: 'ord-1', leverage: 10,
+    entryOrderId: 'ord-1',
+    leverage: 10,
+    strategyId: 'layered',
     trailingState: null,
     partialClosesFired: [],
     lastSyncAt: Date.now(),
@@ -336,6 +343,27 @@ describe('reconcilePositions', () => {
     }
   })
 
+  it('matches exchange row by strategyId when snapshots are tagged (multi-wallet)', () => {
+    const tracked = new Map<string, PositionState>()
+    tracked.set('pos-q', makePosition({ positionId: 'pos-q', coin: 'BTC', strategyId: 'quant' }))
+    // Exchange has BTC for layered only — quant position missing on its account
+    const snaps: ExchangePositionSnapshot[] = [{
+      coin: 'BTC',
+      size: 1.0,
+      entryPrice: 100,
+      unrealizedPnl: 0,
+      liquidationPrice: null,
+      strategyId: 'layered',
+    }]
+    const actions = reconcilePositions(tracked, snaps)
+    expect(actions).toHaveLength(1)
+    expect(actions[0]!.type).toBe('close')
+    if (actions[0]!.type === 'close') {
+      expect(actions[0]!.positionId).toBe('pos-q')
+      expect(actions[0]!.reason).toBe('exchange_position_not_found')
+    }
+  })
+
   it('returns empty for no tracked positions', () => {
     const tracked = new Map<string, PositionState>()
     const actions = reconcilePositions(tracked, [])
@@ -462,12 +490,17 @@ describe('PositionMonitor', () => {
   })
 
   describe('syncWithExchange', () => {
+    afterEach(() => {
+      resetPaperTradeRuntimeOverrideForTests()
+    })
+
     it('returns empty when no positions tracked', async () => {
       const actions = await pm.syncWithExchange()
       expect(actions).toHaveLength(0)
     })
 
     it('skips reconciliation in paper mode (no false closes)', async () => {
+      setPaperTradeRuntimeOverride(true)
       // In paper mode, syncWithExchange must NOT close paper positions via exchange reconciliation.
       // Real positions only exist in PositionMonitor, not on HL — reconciliation would falsely close them.
       let dispatched: { coin: string; event: unknown } | null = null

@@ -140,7 +140,22 @@ describe('handleWatching', () => {
     const weaker = makeSetup({ confluenceGrade: 'C', confidence: 0.5 })
     const result = handleWatching(ctx, { type: 'setup_detected', setup: weaker }, makeGlobal())
     expect(result.nextState).toBe('WATCHING')
-    expect(result.actions).toHaveLength(0)
+    const skip = result.actions.find(
+      a => a.type === 'log_journal' && a.eventType === 'skip',
+    ) as { details?: { reason?: string } } | undefined
+    expect(skip?.details?.reason).toMatch(/Grade C below B/)
+  })
+
+  it('stays WATCHING with skip when new setup is not higher confidence', () => {
+    const setup = makeSetup({ confidence: 0.7, id: 'active-id' })
+    const ctx = makeCoinCtx({ state: 'WATCHING', activeSetup: setup })
+    const sameConf = makeSetup({ confluenceGrade: 'A', confidence: 0.7, id: 'new-id' })
+    const result = handleWatching(ctx, { type: 'setup_detected', setup: sameConf }, makeGlobal())
+    expect(result.nextState).toBe('WATCHING')
+    const skip = result.actions.find(
+      a => a.type === 'log_journal' && a.eventType === 'skip',
+    ) as { details?: { reason?: string } } | undefined
+    expect(skip?.details?.reason).toMatch(/not above active/)
   })
 
   it('upgrades setup on higher confidence', () => {
@@ -352,6 +367,10 @@ describe('handlePaused', () => {
     const setup = makeSetup({ confluenceGrade: 'A+' })
     const result = handlePaused(ctx, { type: 'setup_detected', setup }, makeGlobal())
     expect(result.nextState).toBe('PAUSED')
+    const skip = result.actions.find(
+      a => a.type === 'log_journal' && a.eventType === 'skip',
+    ) as { details?: { reason?: string } } | undefined
+    expect(skip?.details?.reason).toMatch(/paused \(manual\)/)
   })
 })
 

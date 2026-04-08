@@ -31,12 +31,15 @@ import type { TrailingStopState } from './exits.js'
 import type { SignalSide } from '../types.js'
 import {
   EXCHANGE_SYNC_INTERVAL_MS,
+  PAPER_WALLET_STRATEGY_IDS,
   TRAIL_UPDATE_THRESHOLD,
 } from '../config.js'
-import { getExchangeService } from '../execution/exchange-service.js'
+import { getExchangeService, type ExchangeService } from '../execution/exchange-service.js'
+import { getExchangePool } from '../execution/exchange-pool.js'
 import { log } from '../lib/logger.js'
 import { getEffectivePaperTrade, PAPER_SLIPPAGE_PCT } from '../config.js'
 import { getPaperTracker, getTotalPaperBalance } from './paper-tracker.js'
+import { getOrderManager } from './order-manager.js'
 
 // ─── Exchange Query (S10: real HL clearinghouseState) ──────────────────────
 
@@ -46,7 +49,27 @@ import { getPaperTracker, getTotalPaperBalance } from './paper-tracker.js'
  */
 export async function queryExchangePositions(): Promise<ExchangePositionSnapshot[]> {
   try {
-    return await getExchangeService().getPositions()
+    if (getEffectivePaperTrade()) return []
+
+    const pool = getExchangePool()
+    if (!pool.isInitialized()) {
+      return await getExchangeService().getPositions()
+    }
+
+    // Single shared HL account: one clearinghouse query (snapshots have no strategyId).
+    if (!pool.isMultiWallet()) {
+      return await pool.getShared().getPositions()
+    }
+
+    // One main account per strategy: query each wallet and tag rows for reconciliation.
+    const out: ExchangePositionSnapshot[] = []
+    for (const sid of PAPER_WALLET_STRATEGY_IDS) {
+      const snaps = await pool.get(sid).getPositions()
+      for (const s of snaps) {
+        out.push({ ...s, strategyId: sid })
+      }
+    }
+    return out
   } catch (err) {
     log.error('position-monitor', `queryExchangePositions failed: ${err instanceof Error ? err.message : err}`)
     return []
@@ -157,8 +180,12 @@ export function reconcilePositions(
   const exchangeCoins = new Set(exchangeSnapshots.map(s => s.coin))
 
   for (const [, pos] of tracked) {
-    // Check if exchange still has this position
-    const snap = exchangeSnapshots.find(s => s.coin === pos.coin)
+    // Match by coin; when HL rows are tagged (multi-wallet), require strategyId too.
+    const snap = exchangeSnapshots.find(s => {
+      if (s.coin !== pos.coin) return false
+      if (s.strategyId !== undefined && s.strategyId !== pos.strategyId) return false
+      return true
+    })
 
     if (!snap || snap.size === 0) {
       // Position gone on exchange — liquidation or external close
@@ -417,11 +444,35 @@ export class PositionMonitor {
         // Paper: use simulated wallets — live HL balance would block portfolio logic incorrectly
         this.onEquityUpdate?.(getTotalPaperBalance())
       } else {
-        const accountState = await getExchangeService().getAccountState()
-        this.onEquityUpdate?.(accountState.effectiveBalance)
+        const pool = getExchangePool()
+        if (pool.isInitialized()) {
+          if (pool.isMultiWallet()) {
+            let sum = 0
+            const seen = new Set<ExchangeService>()
+            for (const sid of PAPER_WALLET_STRATEGY_IDS) {
+              const svc = pool.get(sid)
+              if (seen.has(svc)) continue
+              seen.add(svc)
+              const st = await svc.getAccountState()
+              sum += st.effectiveBalance
+            }
+            this.onEquityUpdate?.(sum)
+          } else {
+            const st = await pool.getShared().getAccountState()
+            this.onEquityUpdate?.(st.effectiveBalance)
+          }
+        } else {
+          const accountState = await getExchangeService().getAccountState()
+          this.onEquityUpdate?.(accountState.effectiveBalance)
+        }
       }
     } catch {
       // Non-fatal — equity update is best-effort
+    }
+
+    // Live: detect entry fills that were not inline in placeOrder (e.g. limit) → onOrderFilled → SL/TP (R9)
+    if (!getEffectivePaperTrade()) {
+      await getOrderManager().syncSubmittedEntryFills()
     }
 
     if (this.positions.size === 0) return []

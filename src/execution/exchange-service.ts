@@ -610,12 +610,15 @@ export class ExchangeService {
       return state.assetPositions.map(ap => {
         const pos = ap.position
         const szi = parseFloat(pos.szi)
+        const levRaw = pos.leverage as { value?: number } | undefined
+        const leverage = typeof levRaw?.value === 'number' && levRaw.value > 0 ? levRaw.value : undefined
         return {
           coin: pos.coin,
           size: szi,
           entryPrice: parseFloat(pos.entryPx),
           unrealizedPnl: parseFloat(pos.unrealizedPnl),
           liquidationPrice: pos.liquidationPx ? parseFloat(pos.liquidationPx) : null,
+          leverage,
         }
       }).filter(p => p.size !== 0)
     }, {
@@ -637,6 +640,37 @@ export class ExchangeService {
     log.error('exchange-service', `getPositions failed after ${retryResult.attempts} attempts: ${msg}`)
     health.recordError('exchange', msg)
     return []
+  }
+
+  /**
+   * Aggregate executed size and VWAP for an entry order by cloid (userFills).
+   * Used when the order rested before filling so {@link placeOrder} did not return inline `filled`.
+   */
+  async getFillAggregateByCloid(cloid: string, coin: string): Promise<{ avgPx: number; totalSz: number } | null> {
+    this.ensureInit()
+    try {
+      await acquire()
+      const fills = await info.userFills({
+        user: this.accountAddress as `0x${string}`,
+        aggregateByTime: false,
+      })
+      const matching = fills.filter(f => f.cloid === cloid && f.coin === coin)
+      if (matching.length === 0) return null
+      let totalSz = 0
+      let notional = 0
+      for (const f of matching) {
+        const sz = Math.abs(parseFloat(f.sz))
+        const px = parseFloat(f.px)
+        if (sz <= 0 || !Number.isFinite(px)) continue
+        totalSz += sz
+        notional += sz * px
+      }
+      if (totalSz <= 0) return null
+      return { avgPx: notional / totalSz, totalSz }
+    } catch (err) {
+      log.warn('exchange-service', `getFillAggregateByCloid failed: ${err instanceof Error ? err.message : err}`)
+      return null
+    }
   }
 
   // ── Response Parsing ──────────────────────────────────────────────────────

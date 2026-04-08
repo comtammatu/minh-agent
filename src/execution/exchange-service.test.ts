@@ -530,6 +530,7 @@ describe('ExchangeService', () => {
       expect(positions[0]!.entryPrice).toBe(50000)
       expect(positions[0]!.unrealizedPnl).toBe(500)
       expect(positions[0]!.liquidationPrice).toBe(45000)
+      expect(positions[0]!.leverage).toBe(5)
     })
 
     it('should filter out closed positions (size = 0)', async () => {

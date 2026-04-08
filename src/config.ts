@@ -168,10 +168,32 @@ export const SIMULATED_ACCOUNT = 10_000
 
 // ─── Risk Management (S10) ──────────────────────────────────────────────────
 
+/**
+ * Fraction of account equity at risk per position (e.g. 0.02 = 2%).
+ * Env: `RISK_PER_POSITION` — decimal between 0 and 1. Unset → 0.02.
+ */
+function parseRiskPerPositionFraction(): number {
+  const raw = process.env.RISK_PER_POSITION
+  const fallback = 0.02
+  if (raw === undefined || raw.trim() === '') return fallback
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0 || n > 1) {
+    throw new Error(
+      'RISK_PER_POSITION must be a decimal fraction between 0 and 1 (e.g. 0.02 for 2% of account per position).'
+    )
+  }
+  return n
+}
+
+const RISK_PER_POSITION_FRACTION = parseRiskPerPositionFraction()
+
+/** Same as {@link RISK_PER_POSITION_FRACTION} — used for sizing and portfolio estimates. */
+export const DEFAULT_RISK_PERCENT = RISK_PER_POSITION_FRACTION
+
 /** Risk limits for position sizing and drawdown protection. */
 export const RISK = {
-  /** Max risk per trade as fraction of account (1%). */
-  maxRiskPerTrade: 0.01,
+  /** Max risk per trade as fraction of account (see env `RISK_PER_POSITION`). */
+  maxRiskPerTrade: RISK_PER_POSITION_FRACTION,
   /** Max concurrent open positions. */
   maxConcurrentPositions: 3,
   /** Max daily loss as fraction of account (3%) → PAUSE agent. */
@@ -315,9 +337,6 @@ export const ZONE_RISK = {
 
 // ─── Exit Strategy (Section 12) ─────────────────────────────────────────────
 
-/** Default risk per trade as fraction of account (2%). Capped to limit max drawdown. */
-export const DEFAULT_RISK_PERCENT = 0.02
-
 /** ATR stop multipliers by trade style. */
 export const ATR_STOP_MULTIPLIER = {
   tight: 1.0,     // scalping / day trade
@@ -345,6 +364,18 @@ export const TARGET_MARGIN_PCT = 0.10
 
 /** Hyperliquid minimum order notional (USD). See exchange-service validation. */
 export const HL_MIN_ORDER_NOTIONAL_USD = 10
+
+/**
+ * Market order slippage buffer used when submitting HL "FrontendMarket" (IOC-like) orders.
+ *
+ * HL market orders are encoded as aggressive limits with a reference price; if the reference
+ * price is stale (e.g. derived from candles) the order can be rejected with
+ * "IOC not able to match". We mitigate by taking the latest L2 mid (if available) and
+ * applying a small buffer:
+ * - long (buy): mid × (1 + buffer)
+ * - short (sell): mid × (1 - buffer)
+ */
+export const MARKET_ORDER_SLIPPAGE_PCT = 0.002  // 0.2%
 
 /** Trailing stop config defaults. */
 export const TRAILING_STOP = {

@@ -28,6 +28,8 @@ mock.module('../db/connection.js', () => {
 // Mock ExchangeService — all operations succeed
 mock.module('../execution/exchange-service.js', () => ({
   getExchangeService: () => ({
+    getCachedAccountValue: () => 10_000,
+    setLeverage: () => Promise.resolve(),
     placeOrder: () => Promise.resolve({
       success: true, oid: 12345, avgPx: 50000, totalSz: 0.1, status: 'filled', error: null,
     }),
@@ -44,6 +46,7 @@ mock.module('../execution/exchange-service.js', () => ({
       success: true, oid: 67890, avgPx: null, totalSz: null, status: 'modified', error: null,
     }),
     getPositions: () => Promise.resolve([]),
+    getFillAggregateByCloid: () => Promise.resolve(null),
   }),
 }))
 

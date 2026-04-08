@@ -18,6 +18,9 @@ import { ExchangeService, getExchangeService } from './exchange-service.js'
 import { parseStrategyWallets, SIMULATED_ACCOUNT, type WalletConfig } from '../config.js'
 import { log } from '../lib/logger.js'
 
+/** Order used when creating multi-wallet instances and when picking shared fallback without PRIVATE_KEY env. */
+const MULTI_WALLET_STRATEGY_ORDER = ['layered', 'quant', 'smc-sd'] as const
+
 export class ExchangePool {
   /** Per-strategy ExchangeService instances. */
   private instances = new Map<string, ExchangeService>()
@@ -59,15 +62,35 @@ export class ExchangePool {
       // Multi-wallet mode: per-strategy instances
       log.info('exchange-pool', `Multi-wallet mode: ${this.walletConfigs.size} strategy wallets configured`)
 
-      // Also create a shared fallback from env (for unknown strategyIds)
-      this.shared = new ExchangeService()
-      await this.shared.init()
-
+      const seen = new Set<string>()
+      for (const strategyId of MULTI_WALLET_STRATEGY_ORDER) {
+        const config = this.walletConfigs.get(strategyId)
+        if (!config) continue
+        const svc = new ExchangeService(config)
+        await svc.init()
+        this.instances.set(strategyId, svc)
+        seen.add(strategyId)
+        log.info('exchange-pool', `Initialized wallet for strategy "${strategyId}": ${svc.getWalletAddress().slice(0, 6)}...${svc.getWalletAddress().slice(-4)}`)
+      }
       for (const [strategyId, config] of this.walletConfigs) {
+        if (seen.has(strategyId)) continue
         const svc = new ExchangeService(config)
         await svc.init()
         this.instances.set(strategyId, svc)
         log.info('exchange-pool', `Initialized wallet for strategy "${strategyId}": ${svc.getWalletAddress().slice(0, 6)}...${svc.getWalletAddress().slice(-4)}`)
+      }
+
+      const envPk = process.env.PRIVATE_KEY?.trim()
+      if (envPk) {
+        // Optional: separate signing key for unknown strategyIds / startup getShared() (often same as layered)
+        this.shared = new ExchangeService()
+        await this.shared.init()
+      } else {
+        this.shared = this.pickSharedFromStrategyInstances()
+        log.info(
+          'exchange-pool',
+          `Shared fallback: reusing strategy wallet (${this.shared.getWalletAddress().slice(0, 6)}...) — set PRIVATE_KEY if you want a distinct fallback`,
+        )
       }
     }
 
@@ -107,6 +130,22 @@ export class ExchangePool {
   /** Whether the pool is in multi-wallet mode. */
   isMultiWallet(): boolean {
     return this.walletConfigs.size > 0
+  }
+
+  /**
+   * When PRIVATE_KEY is unset, unknown strategyIds route to the first configured wallet
+   * in {@link MULTI_WALLET_STRATEGY_ORDER}, else the first entry in the map.
+   */
+  private pickSharedFromStrategyInstances(): ExchangeService {
+    for (const id of MULTI_WALLET_STRATEGY_ORDER) {
+      const inst = this.instances.get(id)
+      if (inst) return inst
+    }
+    const first = this.instances.values().next().value as ExchangeService | undefined
+    if (!first) {
+      throw new Error('ExchangePool multi-wallet mode: no strategy wallet instances created')
+    }
+    return first
   }
 }
 

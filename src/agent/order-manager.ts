@@ -38,9 +38,11 @@ import {
   getEffectivePaperTrade,
   PAPER_SLIPPAGE_PCT,
   HL_MIN_ORDER_NOTIONAL_USD,
+  MARKET_ORDER_SLIPPAGE_PCT,
 } from '../config.js'
 import { getExchangeService, type ExchangeService } from '../execution/exchange-service.js'
 import type { ExchangePool } from '../execution/exchange-pool.js'
+import { getLatestBook } from '../feed/orderbook.js'
 import { log } from '../lib/logger.js'
 import { withRetry, isRetryableExchangeError } from '../lib/retry.js'
 import { getPaperTracker } from './paper-tracker.js'
@@ -56,6 +58,26 @@ const DEFAULT_STRATEGY = 'layered'
 /** `orders.id` is UUID — reject malformed strings before querying to avoid PostgreSQL ERROR logs. */
 function isValidOrderUuid(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+}
+
+function clampPositiveFinite(n: number, fallback: number): number {
+  return Number.isFinite(n) && n > 0 ? n : fallback
+}
+
+/**
+ * HL "market" is an IOC-like aggressive limit that requires a reference price.
+ * Use latest L2 mid when available to avoid stale-candle price rejects.
+ */
+function computeMarketRefPrice(coin: string, side: 'long' | 'short', fallbackPrice: number): number {
+  const book = getLatestBook(coin)
+  const bestBid = book?.bids?.[0]?.[0]
+  const bestAsk = book?.asks?.[0]?.[0]
+  const mid = (typeof bestBid === 'number' && typeof bestAsk === 'number' && bestBid > 0 && bestAsk > 0)
+    ? (bestBid + bestAsk) / 2
+    : null
+  const base = clampPositiveFinite(mid ?? fallbackPrice, fallbackPrice)
+  const slip = MARKET_ORDER_SLIPPAGE_PCT
+  return side === 'long' ? base * (1 + slip) : base * (1 - slip)
 }
 
 // ─── Cloid Generation ───────────────────────────────────────────────────────
@@ -95,7 +117,13 @@ export async function submitToExchange(
     if (result.success) {
       // oid may be null for "waitingForFill"/"waitingForTrigger" — use status as fallback
       const exchangeId = result.oid !== null ? String(result.oid) : result.status
-      return { success: true, exchangeOrderId: exchangeId, error: null }
+      const out: ExchangeOrderResult = { success: true, exchangeOrderId: exchangeId, error: null }
+      // Market (and some IOC) entries return `filled` inline — required so live mode runs onOrderFilled → SL/TP (R9).
+      if (result.status === 'filled' && result.avgPx !== null && result.totalSz !== null) {
+        out.fillPrice = result.avgPx
+        out.fillSize = result.totalSz
+      }
+      return out
     }
     return { success: false, exchangeOrderId: null, error: result.error }
   } catch (err) {
@@ -414,9 +442,15 @@ export class OrderManager {
       await svc.setLeverage(coin, requiredLeverage)
     }
 
+    // HL market orders (FrontendMarket) need a fresh reference price.
+    // Use latest L2 mid (+ buffer) when available to prevent IOC "not able to match" rejects.
+    const submitPrice = order.type === 'market'
+      ? computeMarketRefPrice(coin, side, entryPrice)
+      : entryPrice
+
     const result = getEffectivePaperTrade()
       ? paperSimulateFill(coin, side, entryPrice, order.size, cloid)
-      : await submitToExchange(coin, side, order.type, entryPrice, order.size, cloid, svc)
+      : await submitToExchange(coin, side, order.type, submitPrice, order.size, cloid, svc)
 
     if (result.success) {
       order.status = 'submitted'
@@ -432,6 +466,13 @@ export class OrderManager {
         const paperFillPrice = entryPrice * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
         getPaperTracker(strategyId).recordEntry(order.id, coin, side, paperFillPrice, order.size)
         await this.onOrderFilled(order.id, paperFillPrice, order.size)
+      } else if (
+        result.fillPrice !== undefined &&
+        result.fillSize !== undefined &&
+        result.fillSize > 0
+      ) {
+        // Live: HL often returns immediate fill for market entry — same tick must place SL/TP (R9).
+        await this.onOrderFilled(order.id, result.fillPrice, result.fillSize)
       }
     } else {
       order.status = 'rejected'
@@ -528,6 +569,10 @@ export class OrderManager {
     const order = this.orders.get(orderId) ?? await getOrderById(orderId)
     if (!order) {
       log.error('order-manager', `Partial fill for unknown order: ${orderId}`)
+      return
+    }
+
+    if (order.status === 'filled' || order.status === 'cancelled' || order.status === 'rejected') {
       return
     }
 
@@ -770,6 +815,28 @@ export class OrderManager {
    * Check all pending/submitted orders for timeout.
    * Called periodically by agent tick.
    */
+  /**
+   * Live: discover fills for entry orders that did not return inline `filled` (e.g. limit resting).
+   * Called from PositionMonitor exchange sync (~10s). Immediate market fills are handled in {@link placeOrder}.
+   */
+  async syncSubmittedEntryFills(): Promise<void> {
+    if (getEffectivePaperTrade()) return
+    for (const [, order] of this.orders) {
+      if (order.status !== 'submitted' && order.status !== 'partial') continue
+      const svc = this.getExchangeForStrategy(order.strategyId)
+      const fill = await svc.getFillAggregateByCloid(order.cloid, order.coin)
+      if (!fill || fill.totalSz <= 0) continue
+
+      const eps = 1e-12
+      if (fill.totalSz + eps < order.size) {
+        await this.onPartialFill(order.id, fill.totalSz, fill.avgPx)
+      } else {
+        const sz = Math.min(fill.totalSz, order.size)
+        await this.onOrderFilled(order.id, fill.avgPx, sz)
+      }
+    }
+  }
+
   async checkTimeouts(): Promise<void> {
     const now = Date.now()
     for (const [, order] of this.orders) {
@@ -875,7 +942,8 @@ export class OrderManager {
         }, entryOrder.strategyId)
       }
     } else {
-      await submitToExchange(entryOrder.coin, closeSide, 'market', refPrice, closeSize, cloid, svc)
+      const closeRef = computeMarketRefPrice(entryOrder.coin, closeSide, refPrice)
+      await submitToExchange(entryOrder.coin, closeSide, 'market', closeRef, closeSize, cloid, svc)
     }
 
     log.info('order-manager', `Position close submitted: ${entryOrder.coin} reason=${reason}`)

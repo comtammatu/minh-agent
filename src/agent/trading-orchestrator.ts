@@ -117,7 +117,8 @@ export class TradingAgent {
       const openCoins = this.getOpenPositionCoins()
       const check = shouldBlockCorrelatedEntry(setup.coin, openCoins)
       if (check.blocked) {
-        log.info('agent', `${setup.coin.padEnd(8)} BLOCKED correlation guard: ${check.reason}`)
+        const strategyTag = strategyId !== DEFAULT_STRATEGY ? ` [${strategyId}]` : ''
+        log.info('agent', `${setup.coin.padEnd(8)} SKIP correlation guard: ${check.reason}${strategyTag}`)
         this.emitter.emit('action', journalAction('skip', setup.coin, {
           reason: check.reason,
           setupId: setup.id,
@@ -141,6 +142,7 @@ export class TradingAgent {
     const prevState = ctx.state
     const handler = handlers[ctx.state]
     const result = handler(ctx, event, global)
+    const strategyTag = strategyId !== DEFAULT_STRATEGY ? ` [${strategyId}]` : ''
 
     // Apply transition
     if (result.nextState !== prevState) {
@@ -149,17 +151,9 @@ export class TradingAgent {
       const setup = ctx.activeSetup ?? (event.type === 'setup_detected' ? event.setup : null)
       const detail = setup ? ` | ${setup.type} ${setup.side}` : ''
       const reason = event.type === 'setup_invalidated' ? ` | reason: ${event.reason}` : ''
-      const strategyTag = strategyId !== DEFAULT_STRATEGY ? ` [${strategyId}]` : ''
       log.info('agent', `${coin.padEnd(8)} ${prevState} → ${result.nextState}${detail}${reason}${strategyTag}`)
     }
     ctx.state = result.nextState
-
-    // Log skip/block actions
-    for (const action of result.actions) {
-      if (action.type === 'log_journal' && action.eventType === 'skip') {
-        log.info('agent', `${coin.padEnd(8)} SKIP ${action.details?.reason ?? ''}`)
-      }
-    }
 
     // Portfolio risk check: block place_order if over-exposed (S6)
     const filteredActions = this.filterByPortfolioRisk(result.actions, coin, strategyId, ctx)
@@ -167,6 +161,15 @@ export class TradingAgent {
       // place_order was blocked — stay IDLE when entry was direct from IDLE (no watch/activeSetup)
       ctx.state = prevState === 'IDLE' ? 'IDLE' : prevState
       result.nextState = ctx.state
+    }
+
+    // Log every skip journal (including portfolio-blocked and handler-emitted skips)
+    for (const action of filteredActions) {
+      if (action.type === 'log_journal' && action.eventType === 'skip') {
+        const r = action.details?.reason
+        const reason = typeof r === 'string' && r.length > 0 ? r : '(reason missing)'
+        log.info('agent', `${coin.padEnd(8)} SKIP ${reason}${strategyTag}`)
+      }
     }
 
     // Apply side-effect context updates
@@ -559,10 +562,7 @@ export class TradingAgent {
     })
 
     if (!check.allowed) {
-      const strategyTag = strategyId !== DEFAULT_STRATEGY ? ` [${strategyId}]` : ''
-      log.info('agent', `${coin.padEnd(8)} PORTFOLIO BLOCKED ${check.reason}${strategyTag}`)
-
-      // Replace place_order with skip journal entry, keep other actions
+      // Replace place_order with skip journal entry, keep other actions (dispatch logs SKIP line)
       return [
         ...actions.filter(a => a.type !== 'place_order'),
         journalAction('skip', coin, {

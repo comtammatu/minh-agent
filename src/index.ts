@@ -34,6 +34,7 @@ import {
   BACKFILL_REPLACEMENT_ROUNDS,
   getEffectivePaperTrade,
   MIN_CANDLES_FOR_SCAN,
+  PAPER_WALLET_STRATEGY_IDS,
 } from './config.js'
 import { backfillAllCoins, fetchCandles, fetchCandlesBatched, probeCoins } from './feed/rest.js'
 import { setCandles, clearCoinData, setOnPersist, appendCandle, candleCount, dayChangePctFromUtcDayOpen } from './feed/store.js'
@@ -54,6 +55,12 @@ import {
 } from './strategy/orchestrator.js'
 import { sql, closeDb } from './db/connection.js'
 import { runMigrations } from './db/migrate.js'
+import { getStrategyClosedStatsByStrategy } from './analytics/metrics-repo.js'
+import { buildLiveStrategyWalletStats, type LiveStrategyWalletStats } from './ui/live-account-stats.js'
+import { mergeExchangeAndTrackedForTui } from './ui/tui-positions.js'
+import type { ExchangePositionSnapshot } from './agent/types.js'
+import type { AccountState } from './execution/exchange-service.js'
+import { getExchangePool, type ExchangePool } from './execution/exchange-pool.js'
 import {
   upsertCandle,
   bulkUpsertCandles,
@@ -70,11 +77,10 @@ import { getLatestAssetCtx } from './feed/asset-ctx.js'
 import { getPipelineEmitter } from './strategy/orchestrator.js'
 import { getAgent } from './agent/trading-agent.js'
 import { getOrderManager } from './agent/order-manager.js'
-import { getPositionMonitor } from './agent/position-monitor.js'
+import { getPositionMonitor, queryExchangePositions } from './agent/position-monitor.js'
 import { getInvalidationBridge } from './agent/invalidation-bridge.js'
 import { startBot, stopBot, formatAlert, sendTelegramAlert } from './alert/telegram/index.js'
 import { connectToAgent as connectMetrics } from './analytics/metrics-service.js'
-import { getExchangePool } from './execution/exchange-pool.js'
 import { getStrategyRegistry } from './strategy/registry.js'
 import { LayeredStrategyAdapter } from './strategy/strategies/layered/index.js'
 import { QuantStrategyAdapter } from './strategy/strategies/quant/index.js'
@@ -140,6 +146,121 @@ const selector = createCoinSelector(getActiveSetupCoins, onCoinsRefreshed)
 
 // Track intervals so we can clear them before reconnect
 const activeIntervals: ReturnType<typeof setInterval>[] = []
+
+/** TUI live Account: closed-trade stats per strategy (refreshed from DB). */
+let liveStrategyWalletStatsCache: LiveStrategyWalletStats | null = null
+
+/** TUI live: last {@link AccountState} per strategy from HL (one query per main account). */
+let liveAccountStatesByStrategyCache: Map<string, AccountState> | null = null
+
+/**
+ * TUI live: last HL clearinghouse snapshot (refreshed ~10s). {@link PositionMonitor} is merged
+ * synchronously on each TUI read so bot-opened positions appear immediately — caching the merged
+ * Map caused empty maps to mask fresh tracked positions until the next refresh.
+ */
+let liveTuiExchangePositionsCache: ExchangePositionSnapshot[] | null = null
+
+async function refreshLiveStrategyWalletStatsCache(): Promise<void> {
+  if (getEffectivePaperTrade()) {
+    liveStrategyWalletStatsCache = null
+    return
+  }
+  try {
+    const rows = await getStrategyClosedStatsByStrategy()
+    liveStrategyWalletStatsCache = buildLiveStrategyWalletStats(rows)
+  } catch {
+    // Transient DB errors: keep previous cache
+  }
+}
+
+function aggregateAccountStatesForTui(pool: ExchangePool, m: Map<string, AccountState>): AccountState {
+  if (m.size === 0) {
+    throw new Error('aggregateAccountStatesForTui: empty map')
+  }
+  if (!pool.isMultiWallet()) {
+    const st = m.get('layered') ?? Array.from(m.values())[0]
+    if (!st) throw new Error('aggregateAccountStatesForTui: no entry')
+    return st
+  }
+  let accountValue = 0
+  let totalNtlPos = 0
+  let totalMarginUsed = 0
+  let withdrawable = 0
+  let spotUsdcBalance = 0
+  let effectiveBalance = 0
+  for (const st of m.values()) {
+    accountValue += st.accountValue
+    totalNtlPos += st.totalNtlPos
+    totalMarginUsed += st.totalMarginUsed
+    withdrawable += st.withdrawable
+    spotUsdcBalance += st.spotUsdcBalance
+    effectiveBalance += st.effectiveBalance
+  }
+  return {
+    accountValue,
+    totalNtlPos,
+    totalMarginUsed,
+    withdrawable,
+    spotUsdcBalance,
+    effectiveBalance,
+  }
+}
+
+async function refreshLiveAccountStatesForTui(): Promise<void> {
+  if (getEffectivePaperTrade()) {
+    liveAccountStatesByStrategyCache = null
+    return
+  }
+  try {
+    const pool = getExchangePool()
+    if (!pool.isInitialized()) return
+
+    const m = new Map<string, AccountState>()
+    if (pool.isMultiWallet()) {
+      for (const sid of PAPER_WALLET_STRATEGY_IDS) {
+        const st = await pool.get(sid).getAccountState()
+        m.set(sid, st)
+      }
+      liveAccountStatesByStrategyCache = m
+    } else {
+      // Single shared HL account: do not cache one snapshot under every strategy id — that made the TUI
+      // treat full account equity/margin as belonging to each tab. Leave cache empty so Account uses
+      // `buildLiveWalletBreakdown()` (margin-share split) for tabs 1–3.
+      liveAccountStatesByStrategyCache = null
+    }
+  } catch {
+    // Keep previous cache on HL errors
+  }
+}
+
+async function refreshLiveTuiPositionsCache(): Promise<void> {
+  if (getEffectivePaperTrade()) {
+    liveTuiExchangePositionsCache = null
+    return
+  }
+  try {
+    const pool = getExchangePool()
+    if (!pool.isInitialized()) {
+      liveTuiExchangePositionsCache = null
+      return
+    }
+    liveTuiExchangePositionsCache = await queryExchangePositions()
+  } catch {
+    // Transient HL errors: keep previous exchange snapshot
+  }
+}
+
+async function refreshLiveTuiCaches(): Promise<void> {
+  if (getEffectivePaperTrade()) {
+    liveStrategyWalletStatsCache = null
+    liveAccountStatesByStrategyCache = null
+    liveTuiExchangePositionsCache = null
+    return
+  }
+  await refreshLiveStrategyWalletStatsCache()
+  await refreshLiveAccountStatesForTui()
+  await refreshLiveTuiPositionsCache()
+}
 
 async function main(): Promise<void> {
   // Banner — logged before TUI starts, so these safely go to console
@@ -243,6 +364,8 @@ async function main(): Promise<void> {
       actions: {},
       byStrategy: {},
     }),
+    getLiveStrategyWalletStats: () => liveStrategyWalletStatsCache,
+    getLiveAccountStatesByStrategy: () => liveAccountStatesByStrategyCache,
   }
   setTuiSink(appendLog)
   startTui(tuiSources)
@@ -478,16 +601,30 @@ async function main(): Promise<void> {
 
   // 11. Upgrade TUI data sources — agent + health now initialized
   tuiSources.getAgentSnapshot = () => agent.getSnapshot()
-  tuiSources.getPositions = () => pm.getPositions()
+  tuiSources.getPositions = () => {
+    if (getEffectivePaperTrade()) return pm.getPositions()
+    const exchangeSnap = liveTuiExchangePositionsCache
+    if (exchangeSnap === null) return pm.getPositions()
+    return mergeExchangeAndTrackedForTui(pm.getPositions(), exchangeSnap)
+  }
   tuiSources.getHealthReport = () => health.getReport()
-  tuiSources.getAccountState = () => {
+  tuiSources.getAccountState = async () => {
     try {
-      return pool.getShared().getAccountState()
+      const p = getExchangePool()
+      if (!p.isInitialized()) return null
+      if (liveAccountStatesByStrategyCache && liveAccountStatesByStrategyCache.size > 0) {
+        return aggregateAccountStatesForTui(p, liveAccountStatesByStrategyCache)
+      }
+      return await p.getShared().getAccountState()
     } catch {
       return null
     }
   }
+  tuiSources.getLiveAccountStatesByStrategy = () => liveAccountStatesByStrategyCache
   tuiSources.getInvalidationStats = () => getInvalidationBridge().getStats()
+
+  void refreshLiveTuiCaches()
+  activeIntervals.push(setInterval(() => void refreshLiveTuiCaches(), 10_000))
 
   // 12. Staleness watchdog (candles + order book)
   activeIntervals.push(setInterval(() => {

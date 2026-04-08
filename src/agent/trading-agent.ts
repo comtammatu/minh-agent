@@ -81,7 +81,14 @@ export function handleWatching(
     const { setup } = event
     const grade = setup.confluenceGrade ?? 'C'
     if (!MIN_GRADE_FOR_WATCH.has(grade)) {
-      return { nextState: 'WATCHING', actions: [] }
+      return {
+        nextState: 'WATCHING',
+        actions: [journalAction('skip', ctx.coin, {
+          reason: `Grade ${grade} below B — keep watching active setup`,
+          setupId: setup.id,
+          activeSetupId: ctx.activeSetup.id,
+        })],
+      }
     }
     // Higher confidence → upgrade
     if (setup.confidence > ctx.activeSetup.confidence) {
@@ -93,7 +100,16 @@ export function handleWatching(
         ],
       }
     }
-    return { nextState: 'WATCHING', actions: [] }
+    const newPct = Math.round(setup.confidence * 100)
+    const curPct = Math.round(ctx.activeSetup.confidence * 100)
+    return {
+      nextState: 'WATCHING',
+      actions: [journalAction('skip', ctx.coin, {
+        reason: `New setup conf ${newPct}% not above active ${curPct}% — no upgrade`,
+        setupId: setup.id,
+        activeSetupId: ctx.activeSetup.id,
+      })],
+    }
   }
 
   // Entry trigger confirmed — place order
@@ -190,6 +206,18 @@ export function handleEntering(
     return { nextState: 'PAUSED', actions }
   }
 
+  if (event.type === 'setup_detected') {
+    const { setup } = event
+    return {
+      nextState: 'ENTERING',
+      actions: [journalAction('skip', ctx.coin, {
+        reason: `Order pending — ignored new setup until fill/cancel`,
+        setupId: setup.id,
+        pendingOrderId: ctx.pendingOrderId,
+      })],
+    }
+  }
+
   return { nextState: 'ENTERING', actions: [] }
 }
 
@@ -281,6 +309,18 @@ export function handlePaused(
   event: AgentEvent,
   _global: GlobalContext,
 ): TransitionResult {
+  if (event.type === 'setup_detected') {
+    const { setup } = event
+    const why = ctx.pauseReason ?? 'unknown'
+    return {
+      nextState: 'PAUSED',
+      actions: [journalAction('skip', ctx.coin, {
+        reason: `Agent paused (${why}) — setup ignored`,
+        setupId: setup.id,
+      })],
+    }
+  }
+
   if (event.type === 'resume') {
     return {
       nextState: 'IDLE',

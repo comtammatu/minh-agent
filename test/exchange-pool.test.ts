@@ -106,6 +106,7 @@ describe('parseStrategyWallets', () => {
 
   it('should return empty Map when env not set', () => {
     delete process.env.STRATEGY_WALLETS
+    deleteFlatWalletEnv()
     const result = parseStrategyWallets()
     expect(result.size).toBe(0)
   })
@@ -329,6 +330,21 @@ describe('ExchangePool', () => {
 
       expect(unknown).toBe(shared)
       expect(unknown.getWalletAddress()).toBe('0x1111111111111111111111111111111111111111')
+    })
+
+    it('should init without PRIVATE_KEY env when strategy wallets are set (shared reuses layered)', async () => {
+      delete process.env.PRIVATE_KEY
+      delete process.env.ACCOUNT_ADDRESS
+      const pool = new ExchangePool()
+      await pool.init()
+
+      const layered = pool.get('layered')
+      const shared = pool.getShared()
+      const unknown = pool.get('future-strategy')
+
+      expect(shared).toBe(layered)
+      expect(unknown).toBe(layered)
+      expect(layered.getWalletAddress()).toBe('0x2222222222222222222222222222222222222222')
     })
 
     it('should report multi-wallet mode', async () => {
