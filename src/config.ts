@@ -826,3 +826,32 @@ export function parseBybitStrategyKeys(): Map<string, BybitKeyConfig> {
   }
   return result
 }
+
+// ── Exchange coin registry ─────────────────────────────────────────────────
+
+/**
+ * Static coin list for Bybit (linear perps available on Bybit but not on HL).
+ * HL coins are dynamic (fetchTopCoins by OI at runtime) — no static list needed.
+ */
+export const BYBIT_STATIC_COINS: string[] = [
+  'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'LINK', 'DOT',
+  'MATIC', 'UNI', 'ATOM', 'LTC', 'BCH', 'FIL', 'NEAR', 'APT', 'ARB', 'OP',
+]
+
+/** Coins available on both HL and Bybit (for cross-exchange comparison). */
+export const COMMON_COINS: string[] = [
+  'BTC', 'ETH', 'SOL', 'AVAX', 'LINK', 'DOT', 'UNI', 'ATOM', 'APT', 'ARB',
+]
+
+/**
+ * Get default coin list for an exchange.
+ * HL: returns empty (populated at runtime by fetchTopCoins).
+ * BB: returns BYBIT_STATIC_COINS.
+ */
+export function getDefaultCoins(exchange: ExchangeId): string[] {
+  if (exchange === 'BB') return BYBIT_STATIC_COINS
+  return []
+}
+
+/** Max concurrent REST backfill requests for Bybit. */
+export const BYBIT_BACKFILL_CONCURRENCY = 3
