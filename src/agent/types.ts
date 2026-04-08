@@ -8,7 +8,7 @@
  *   - Actions are discriminated unions — orchestrator executes them in S6/S7
  */
 
-import type { ActiveSetup, ConfluenceGrade } from '../types.js'
+import type { ActiveSetup, ConfluenceGrade, ExchangeId } from '../types.js'
 
 // ─── Agent States ────────────────────────────────────────────────────────────
 
@@ -226,6 +226,7 @@ export interface JournalEntry {
   coin: string | null
   details: Record<string, unknown>
   agentState: string | null
+  exchange: ExchangeId
 }
 
 /** Filter for querying journal entries. */
@@ -235,6 +236,7 @@ export interface JournalFilter {
   since?: Date
   until?: Date
   limit?: number
+  exchange?: ExchangeId
 }
 
 /** Aggregated daily summary. */

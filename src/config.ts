@@ -1,4 +1,4 @@
-import type { CandleInterval } from './types.js'
+import type { CandleInterval, ExchangeId } from './types.js'
 
 /** Fallback coins if fetchTopCoins fails at startup (should not normally be used). */
 export const FALLBACK_COINS = ['BTC', 'ETH', 'SOL', 'HYPE', 'TAO'] as const
@@ -756,3 +756,108 @@ export const HEALTH = {
   /** Staleness threshold for DB writes (ms). */
   dbStaleMs: 60_000,
 } as const
+
+// ── Multi-exchange ─────────────────────────────────────────────────────────
+
+/**
+ * Returns the active exchange from ACTIVE_EXCHANGE env.
+ * Throws at startup if not set or invalid — no silent defaults.
+ */
+export function getActiveExchange(): ExchangeId {
+  const raw = process.env['ACTIVE_EXCHANGE']
+  if (!raw) throw new Error('ACTIVE_EXCHANGE env is required. Set to HL or BB.')
+  if (raw !== 'HL' && raw !== 'BB') throw new Error(`Unknown ACTIVE_EXCHANGE: "${raw}". Valid values: HL, BB`)
+  return raw
+}
+
+// ── Bybit-specific config ──────────────────────────────────────────────────
+
+/** Bybit candle interval format (maps CandleInterval → Bybit API string). */
+export const BYBIT_INTERVAL_MAP: Record<CandleInterval, string> = {
+  '1m': '1',
+  '5m': '5',
+  '15m': '15',
+  '1h': '60',
+  '4h': '240',
+  '1d': 'D',
+}
+
+/** Max candles per single Bybit REST request. */
+export const BYBIT_BACKFILL_BATCH_SIZE = 1000
+
+/**
+ * Total candles to fetch per TF during Bybit backfill.
+ * Matches HL counts — BYBIT_BACKFILL_BATCH_SIZE=1000 is per-request,
+ * the batch walker makes multiple requests to reach these totals.
+ * Small TFs: 500 (recent data sufficient for entry refinement).
+ * Large TFs: 5000 (full history needed for regime/structure detection).
+ */
+export const BYBIT_BACKFILL_CANDLE_COUNTS: Record<string, number> = {
+  '1m': 500,
+  '5m': 500,
+  '15m': 5000,
+  '1h': 5000,
+  '4h': 5000,
+  '1d': 5000,
+}
+
+/** Bybit rate limit: token bucket. 120 req/10s burst. */
+export const BYBIT_REST_BURST_TOKENS = 120
+/** Bybit rate limit: refill interval ms (1 token per 100ms = 10/s sustained). */
+export const BYBIT_REST_REFILL_MS = 100
+
+export interface BybitKeyConfig {
+  apiKey: string
+  apiSecret: string
+}
+
+/**
+ * Parse BYBIT_STRATEGY_KEYS env var.
+ * Format: "strategyId:apiKey:apiSecret,strategyId2:apiKey2:apiSecret2"
+ * The apiSecret may contain colons — everything after the second colon is the secret.
+ * Returns empty Map if env not set.
+ */
+export function parseBybitStrategyKeys(): Map<string, BybitKeyConfig> {
+  const raw = process.env['BYBIT_STRATEGY_KEYS']
+  if (!raw) return new Map()
+  const result = new Map<string, BybitKeyConfig>()
+  for (const entry of raw.split(',')) {
+    const parts = entry.trim().split(':')
+    if (parts.length < 3) continue
+    const [strategyId, apiKey, ...rest] = parts
+    const apiSecret = rest.join(':')  // secret may contain colons
+    if (strategyId && apiKey && apiSecret) {
+      result.set(strategyId, { apiKey, apiSecret })
+    }
+  }
+  return result
+}
+
+// ── Exchange coin registry ─────────────────────────────────────────────────
+
+/**
+ * Static coin list for Bybit (linear perps available on Bybit but not on HL).
+ * HL coins are dynamic (fetchTopCoins by OI at runtime) — no static list needed.
+ */
+export const BYBIT_STATIC_COINS: string[] = [
+  'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'LINK', 'DOT',
+  'MATIC', 'UNI', 'ATOM', 'LTC', 'BCH', 'FIL', 'NEAR', 'APT', 'ARB', 'OP',
+]
+
+/** Coins available on both HL and Bybit (for cross-exchange comparison). */
+export const COMMON_COINS: string[] = [
+  'BTC', 'ETH', 'SOL', 'AVAX', 'LINK', 'DOT', 'UNI', 'ATOM', 'APT', 'ARB',
+]
+
+/**
+ * Get default coin list for an exchange.
+ * HL: returns empty (populated at runtime by fetchTopCoins).
+ * BB: returns BYBIT_STATIC_COINS.
+ */
+export function getDefaultCoins(exchange: ExchangeId): string[] {
+  if (exchange === 'BB') return BYBIT_STATIC_COINS
+  return []
+}
+
+/** Max concurrent REST backfill requests for Bybit. */
+export const BYBIT_BACKFILL_CONCURRENCY = 3

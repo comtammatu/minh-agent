@@ -85,6 +85,7 @@ beforeEach(() => {
   clearPipelineState()
   clearQuantState()
   emittedSetups = []
+  process.env['ACTIVE_EXCHANGE'] = 'HL'
 
   const emitter = getPipelineEmitter()
   emitter.removeAllListeners('setup')

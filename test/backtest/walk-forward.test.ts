@@ -26,6 +26,7 @@ import { QuantStrategyAdapter } from '../../src/strategy/strategies/quant/index.
 
 // Register strategies before any test runs
 beforeAll(() => {
+  process.env['ACTIVE_EXCHANGE'] = 'HL'
   resetStrategyRegistry()
   const reg = getStrategyRegistry()
   reg.register(new LayeredStrategyAdapter())

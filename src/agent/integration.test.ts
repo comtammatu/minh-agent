@@ -26,8 +26,8 @@ mock.module('../db/connection.js', () => {
 })
 
 // Mock ExchangeService — all operations succeed
-mock.module('../execution/exchange-service.js', () => ({
-  getExchangeService: () => ({
+mock.module('../execution/hl-exchange-service.js', () => ({
+  getHLExchangeService: () => ({
     getCachedAccountValue: () => 10_000,
     setLeverage: () => Promise.resolve(),
     placeOrder: () => Promise.resolve({
@@ -81,6 +81,7 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
       minRR: 2,
       stopMethod: 'structure',
     },
+    exchange: 'HL',
     ...overrides,
   }
 }

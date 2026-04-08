@@ -29,6 +29,7 @@ import {
   QUANT_RSI_OVERBOUGHT,
   QUANT_ATR_SL_MULT,
   QUANT_ATR_TP_MULT,
+  getActiveExchange,
 } from '../../../config.js'
 
 // ── Dedup: track last signal bar per coin to avoid duplicates ────────────────
@@ -97,6 +98,7 @@ export function runQuantPipeline(
   const tpPrice = side === 'long' ? close + tpDistance : close - tpDistance
 
   const id = setupId(coin, interval, 'ema-rsi', 'quant')
+  const activeExchange = getActiveExchange()
 
   const setup: ActiveSetup = {
     id,
@@ -120,6 +122,7 @@ export function runQuantPipeline(
     detectedAtBar: idx,
     expiresAtBar: computeExpiresAtBar('ema-rsi', idx),
     strategyId: 'quant',
+    exchange: activeExchange,
   }
 
   getActiveSetupsMap().set(id, setup)

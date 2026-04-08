@@ -19,7 +19,7 @@
  */
 
 import { randomUUID } from 'crypto'
-import type { ActiveSetup } from '../types.js'
+import type { ActiveSetup, ExchangeId } from '../types.js'
 import type {
   Order,
   OrderStatus,
@@ -340,9 +340,9 @@ export class OrderManager {
   }
 
   /** Get ExchangeService for a strategy. Falls back to singleton if no pool or pool init failed. */
-  private getExchangeForStrategy(strategyId: string): ExchangeService {
+  private getExchangeForStrategy(strategyId: string, exchange?: ExchangeId): ExchangeService {
     if (this.exchangePool?.isInitialized()) {
-      return this.exchangePool.get(strategyId)
+      return this.exchangePool.get(strategyId, exchange)
     }
     return getExchangeService()
   }
@@ -371,7 +371,7 @@ export class OrderManager {
       return null
     }
 
-    const svc = this.getExchangeForStrategy(strategyId)
+    const svc = this.getExchangeForStrategy(strategyId, setup.exchange)
 
     // Build order — compute position size if not provided (quant/smc-sd don't set it)
     let size = setup.patternData.positionSizeCoins as number ?? 0

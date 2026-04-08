@@ -7,7 +7,7 @@
  * Keeps this module pure (no direct DB import). Tests run without DB.
  */
 
-import type { Candle, CandleInterval } from '../types.js'
+import type { Candle, CandleInterval, ExchangeId } from '../types.js'
 import { INDICATOR_WINDOW, MAX_IN_MEMORY_CANDLES_BY_INTERVAL, MIN_CANDLES_FOR_SCAN } from '../config.js'
 
 const store = new Map<string, Candle[]>()
@@ -25,8 +25,8 @@ export function clearOnPersist(): void {
   onPersist = null
 }
 
-function key(coin: string, interval: CandleInterval): string {
-  return `${coin}|${interval}`
+function key(coin: string, interval: CandleInterval, exchange: ExchangeId = 'HL'): string {
+  return `${exchange}:${coin}|${interval}`
 }
 
 function maxInMemoryCandles(interval: CandleInterval): number {
@@ -43,8 +43,8 @@ function trim(arr: Candle[], cap: number): Candle[] {
 }
 
 /** Upsert a candle by timestamp. Overwrites existing entry with same t. */
-export function appendCandle(coin: string, interval: CandleInterval, candle: Candle): void {
-  const k = key(coin, interval)
+export function appendCandle(coin: string, interval: CandleInterval, candle: Candle, exchange: ExchangeId = 'HL'): void {
+  const k = key(coin, interval, exchange)
   const cap = maxInMemoryCandles(interval)
   const arr = store.get(k) ?? []
 
@@ -83,30 +83,30 @@ export function appendCandle(coin: string, interval: CandleInterval, candle: Can
 }
 
 /** Set entire candle array for a coin/interval (replaces on backfill). */
-export function setCandles(coin: string, interval: CandleInterval, candles: Candle[]): void {
+export function setCandles(coin: string, interval: CandleInterval, candles: Candle[], exchange: ExchangeId = 'HL'): void {
   const sorted = [...candles].sort((a, b) => a.t - b.t)
   const cap = maxInMemoryCandles(interval)
-  store.set(key(coin, interval), trim(sorted, cap))
+  store.set(key(coin, interval, exchange), trim(sorted, cap))
 }
 
 /** Get last N candles for a coin/interval. Returns empty array if not found. */
-export function getCandles(coin: string, interval: CandleInterval, count: number): Candle[] {
-  const arr = store.get(key(coin, interval))
+export function getCandles(coin: string, interval: CandleInterval, count: number, exchange: ExchangeId = 'HL'): Candle[] {
+  const arr = store.get(key(coin, interval, exchange))
   if (!arr) return []
   return arr.slice(-count)
 }
 
 /** Get total candle count for a coin/interval. */
-export function candleCount(coin: string, interval: CandleInterval): number {
-  return store.get(key(coin, interval))?.length ?? 0
+export function candleCount(coin: string, interval: CandleInterval, exchange: ExchangeId = 'HL'): number {
+  return store.get(key(coin, interval, exchange))?.length ?? 0
 }
 
 /**
  * % change from the current daily candle open (00:00 UTC bar) to mark price.
  * Uses the latest 1d candle's `o` as the session open vs Hyperliquid's UTC day alignment.
  */
-export function dayChangePctFromUtcDayOpen(coin: string, markPrice: number): number | null {
-  const candles = getCandles(coin, '1d', 1)
+export function dayChangePctFromUtcDayOpen(coin: string, markPrice: number, exchange: ExchangeId = 'HL'): number | null {
+  const candles = getCandles(coin, '1d', 1, exchange)
   if (candles.length === 0) return null
   const dayOpen = candles[candles.length - 1]!.o
   if (dayOpen <= 0 || !Number.isFinite(dayOpen) || !Number.isFinite(markPrice)) return null
@@ -114,9 +114,9 @@ export function dayChangePctFromUtcDayOpen(coin: string, markPrice: number): num
 }
 
 /** Clear all candle data for a specific coin (all timeframes). */
-export function clearCoinData(coin: string): void {
+export function clearCoinData(coin: string, exchange: ExchangeId = 'HL'): void {
   for (const k of store.keys()) {
-    if (k.startsWith(`${coin}|`)) store.delete(k)
+    if (k.startsWith(`${exchange}:${coin}|`)) store.delete(k)
   }
 }
 

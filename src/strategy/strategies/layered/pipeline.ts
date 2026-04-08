@@ -43,6 +43,7 @@ import {
   MIN_TP1_RR,
   PATTERN_TTL_BARS,
   getEffectivePaperTrade,
+  getActiveExchange,
 } from '../../../config.js'
 import { getCachedAccountValueForStrategy } from '../../../execution/exchange-pool.js'
 import { getPaperTracker } from '../../../agent/paper-tracker.js'
@@ -257,6 +258,7 @@ export function runPipeline(
     detectedAt: Date.now(),
     detectedAtBar: idx,
     expiresAtBar: computeExpiresAtBar(signal.type, idx),
+    exchange: getActiveExchange(),
   }
 
   activeSetups.set(id, setup)

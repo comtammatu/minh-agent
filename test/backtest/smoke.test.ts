@@ -58,6 +58,7 @@ function generateCandles(count: number, startPrice: number, startTime: number): 
 
 // Register strategies before any test runs
 beforeAll(() => {
+  process.env['ACTIVE_EXCHANGE'] = 'HL'
   resetStrategyRegistry()
   const reg = getStrategyRegistry()
   reg.register(new LayeredStrategyAdapter())

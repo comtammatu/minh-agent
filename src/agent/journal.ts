@@ -13,6 +13,7 @@ import { sql } from '../db/connection.js'
 import { log } from '../lib/logger.js'
 import type {
   AgentAction,
+  ExchangeId,
   JournalEntry,
   JournalFilter,
   DailySummary,
@@ -29,11 +30,12 @@ export async function logJournalEntry(
   details: Record<string, unknown>,
   agentState?: string | null,
   strategyId?: string | null,
+  exchange: ExchangeId = 'HL',
 ): Promise<void> {
   try {
     await sql`
-      INSERT INTO trade_journal (event_type, coin, details, agent_state, strategy_id)
-      VALUES (${eventType}, ${coin}, ${sql.json(details)}, ${agentState ?? null}, ${strategyId ?? 'layered'})
+      INSERT INTO trade_journal (event_type, coin, details, agent_state, strategy_id, exchange)
+      VALUES (${eventType}, ${coin}, ${sql.json(details)}, ${agentState ?? null}, ${strategyId ?? 'layered'}, ${exchange})
     `
   } catch (err) {
     log.error('journal', `Failed to write entry: ${eventType} ${coin ?? ''} — ${(err as Error).message}`)
@@ -60,60 +62,73 @@ export function handleJournalAction(action: AgentAction, agentState?: string): v
  */
 export async function getJournalEntries(filter: JournalFilter = {}): Promise<JournalEntry[]> {
   const limit = Math.min(Math.max(1, filter.limit ?? 50), 500)
-  const { coin, eventType, since, until } = filter
+  const { coin, eventType, since, until, exchange } = filter
 
   type Row = {
     id: number; ts: Date; event_type: string
-    coin: string | null; details: Record<string, unknown>; agent_state: string | null
+    coin: string | null; details: Record<string, unknown>
+    agent_state: string | null; exchange: string
   }
 
   let rows: Row[]
 
   if (coin && eventType) {
     rows = await sql<Row[]>`
-      SELECT id, ts, event_type, coin, details, agent_state FROM trade_journal
+      SELECT id, ts, event_type, coin, details, agent_state, exchange FROM trade_journal
       WHERE coin = ${coin} AND event_type = ${eventType}
       ${since ? sql`AND ts >= ${since}` : sql``}
       ${until ? sql`AND ts <= ${until}` : sql``}
+      ${exchange ? sql`AND exchange = ${exchange}` : sql``}
       ORDER BY ts DESC LIMIT ${limit}
     `
   } else if (coin) {
     rows = await sql<Row[]>`
-      SELECT id, ts, event_type, coin, details, agent_state FROM trade_journal
+      SELECT id, ts, event_type, coin, details, agent_state, exchange FROM trade_journal
       WHERE coin = ${coin}
       ${since ? sql`AND ts >= ${since}` : sql``}
       ${until ? sql`AND ts <= ${until}` : sql``}
+      ${exchange ? sql`AND exchange = ${exchange}` : sql``}
       ORDER BY ts DESC LIMIT ${limit}
     `
   } else if (eventType) {
     rows = await sql<Row[]>`
-      SELECT id, ts, event_type, coin, details, agent_state FROM trade_journal
+      SELECT id, ts, event_type, coin, details, agent_state, exchange FROM trade_journal
       WHERE event_type = ${eventType}
       ${since ? sql`AND ts >= ${since}` : sql``}
       ${until ? sql`AND ts <= ${until}` : sql``}
+      ${exchange ? sql`AND exchange = ${exchange}` : sql``}
       ORDER BY ts DESC LIMIT ${limit}
     `
   } else if (since && until) {
     rows = await sql<Row[]>`
-      SELECT id, ts, event_type, coin, details, agent_state FROM trade_journal
+      SELECT id, ts, event_type, coin, details, agent_state, exchange FROM trade_journal
       WHERE ts >= ${since} AND ts <= ${until}
+      ${exchange ? sql`AND exchange = ${exchange}` : sql``}
       ORDER BY ts DESC LIMIT ${limit}
     `
   } else if (since) {
     rows = await sql<Row[]>`
-      SELECT id, ts, event_type, coin, details, agent_state FROM trade_journal
+      SELECT id, ts, event_type, coin, details, agent_state, exchange FROM trade_journal
       WHERE ts >= ${since}
+      ${exchange ? sql`AND exchange = ${exchange}` : sql``}
       ORDER BY ts DESC LIMIT ${limit}
     `
   } else if (until) {
     rows = await sql<Row[]>`
-      SELECT id, ts, event_type, coin, details, agent_state FROM trade_journal
+      SELECT id, ts, event_type, coin, details, agent_state, exchange FROM trade_journal
       WHERE ts <= ${until}
+      ${exchange ? sql`AND exchange = ${exchange}` : sql``}
+      ORDER BY ts DESC LIMIT ${limit}
+    `
+  } else if (exchange) {
+    rows = await sql<Row[]>`
+      SELECT id, ts, event_type, coin, details, agent_state, exchange FROM trade_journal
+      WHERE exchange = ${exchange}
       ORDER BY ts DESC LIMIT ${limit}
     `
   } else {
     rows = await sql<Row[]>`
-      SELECT id, ts, event_type, coin, details, agent_state FROM trade_journal
+      SELECT id, ts, event_type, coin, details, agent_state, exchange FROM trade_journal
       ORDER BY ts DESC LIMIT ${limit}
     `
   }
@@ -125,6 +140,7 @@ export async function getJournalEntries(filter: JournalFilter = {}): Promise<Jou
     coin: r.coin,
     details: r.details,
     agentState: r.agent_state,
+    exchange: (r.exchange ?? 'HL') as ExchangeId,
   }))
 }
 

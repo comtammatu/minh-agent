@@ -12,6 +12,9 @@ export interface Candle {
 
 export type CandleInterval = '1m' | '5m' | '15m' | '1h' | '4h' | '1d'
 
+/** Supported exchange identifiers. */
+export type ExchangeId = 'HL' | 'BB'
+
 // ─── Regimes & bias ───────────────────────────────────────────────────────────
 
 export type MarketRegime = 'BULL' | 'BEAR' | 'SIDEWAYS' | 'VOLATILE'
@@ -58,6 +61,8 @@ export interface ActiveSetup extends Signal {
   expiresAtBar: number    // bar index when detected + TTL
   /** Strategy that generated this setup (Sprint 4.5). Omitted = 'layered' for backward compat. */
   strategyId?: string
+  /** Exchange this signal came from — used by OrderManager to route to correct executor. */
+  exchange: ExchangeId
 }
 
 // ─── Market structure ─────────────────────────────────────────────────────────

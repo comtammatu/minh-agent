@@ -67,6 +67,7 @@ function buildTrendUpCandles(count: number): Candle[] {
 beforeEach(() => {
   clearPipelineState()
   clearStore()
+  process.env['ACTIVE_EXCHANGE'] = 'HL'
 })
 
 // ── Closed-candle gate ───────────────────────────────────────────────────────
