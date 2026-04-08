@@ -15,6 +15,7 @@
 
 import { RestClientV5 } from 'bybit-api'
 import type { ExchangePositionSnapshot } from '../agent/types.js'
+import { getHealthMonitor } from '../agent/self-healing.js'
 import { log } from '../lib/logger.js'
 import type { AccountState, PlaceOrderParams, OrderResult, PlaceTriggerParams } from './exchange-service.js'
 
@@ -295,10 +296,12 @@ export class BybitExchangeService {
         if (Number.isFinite(levRaw) && (levRaw ?? 0) > 0) snap.leverage = levRaw as number
         snaps.push(snap)
       }
+      getHealthMonitor().recordSuccess('exchange')
       return snaps
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       log.error('bybit-exec', `getPositions exception: ${msg}`)
+      getHealthMonitor().recordError('exchange', msg)
       return []
     }
   }
@@ -364,10 +367,12 @@ export class BybitExchangeService {
 
       this.cachedAccountValue = state.effectiveBalance
       log.info('bybit-exec', `getAccountState OK: equity=${accountValue.toFixed(2)}`)
+      getHealthMonitor().recordSuccess('exchange')
       return state
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       log.error('bybit-exec', `getAccountState exception: ${msg}`)
+      getHealthMonitor().recordError('exchange', msg)
       throw err
     }
   }
