@@ -19,7 +19,7 @@
  */
 
 import { randomUUID } from 'crypto'
-import type { ActiveSetup } from '../types.js'
+import type { ActiveSetup, ExchangeId } from '../types.js'
 import type {
   Order,
   OrderStatus,
@@ -40,8 +40,7 @@ import {
   HL_MIN_ORDER_NOTIONAL_USD,
   MARKET_ORDER_SLIPPAGE_PCT,
 } from '../config.js'
-import { getHLExchangeService as getExchangeService } from '../execution/hl-exchange-service.js'
-import type { IExchangeService as ExchangeService } from '../execution/exchange-service.js'
+import { getExchangeService, type ExchangeService } from '../execution/exchange-service.js'
 import type { ExchangePool } from '../execution/exchange-pool.js'
 import { getLatestBook } from '../feed/orderbook.js'
 import { log } from '../lib/logger.js'
@@ -341,9 +340,9 @@ export class OrderManager {
   }
 
   /** Get ExchangeService for a strategy. Falls back to singleton if no pool or pool init failed. */
-  private getExchangeForStrategy(strategyId: string): ExchangeService {
+  private getExchangeForStrategy(strategyId: string, exchange?: ExchangeId): ExchangeService {
     if (this.exchangePool?.isInitialized()) {
-      return this.exchangePool.get(strategyId)
+      return this.exchangePool.get(strategyId, exchange)
     }
     return getExchangeService()
   }
@@ -372,7 +371,7 @@ export class OrderManager {
       return null
     }
 
-    const svc = this.getExchangeForStrategy(strategyId)
+    const svc = this.getExchangeForStrategy(strategyId, setup.exchange)
 
     // Build order — compute position size if not provided (quant/smc-sd don't set it)
     let size = setup.patternData.positionSizeCoins as number ?? 0

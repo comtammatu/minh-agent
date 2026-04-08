@@ -40,7 +40,9 @@ import {
 import { probeCoins } from './feed/rest.js'
 import { setCandles, clearCoinData, setOnPersist, candleCount, dayChangePctFromUtcDayOpen } from './feed/store.js'
 import { unsubscribeCandles, getSubscriptionCount } from './feed/ws.js'
+import type { IExchangeFeed } from './feed/exchange-feed.js'
 import { HLFeed } from './feed/hl-feed.js'
+import { BybitFeed } from './feed/bybit/bybit-feed.js'
 import { startFundingPolling, stopFundingPolling, addFundingCoin, removeFundingCoin } from './feed/funding.js'
 import { startOiFeed, stopOiFeed, addOiCoin, removeOiCoin } from './feed/asset-ctx.js'
 import { subscribeTrades, unsubscribeTrades } from './feed/trades.js'
@@ -93,9 +95,9 @@ import type { CandleInterval } from './types.js'
 
 // ── Feed instance — set once at startup ──────────────────────────────────────
 
-// Initialised inside main() after getActiveExchange() guard.
+// Initialised inside main() after exchange selection.
 // Module-level so coin lifecycle helpers can reference it without prop-drilling.
-let feed: HLFeed
+let feed: IExchangeFeed
 
 // ── Coin Lifecycle Helpers ──────────────────────────────────────────────────
 
@@ -269,12 +271,8 @@ async function refreshLiveTuiCaches(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  // Guard: only HL is implemented — BB feed comes in a future sprint
   const activeExchange = getActiveExchange()
-  if (activeExchange !== 'HL') {
-    throw new Error(`Exchange "${activeExchange}" feed not yet implemented. Use ACTIVE_EXCHANGE=HL.`)
-  }
-  feed = new HLFeed()
+  feed = activeExchange === 'HL' ? new HLFeed() : new BybitFeed()
 
   // Banner — logged before TUI starts, so these safely go to console
   const modeTag = getEffectivePaperTrade() ? 'PAPER' : 'LIVE'
