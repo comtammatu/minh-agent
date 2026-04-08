@@ -104,9 +104,8 @@ export function computePositionSize(
  * Cap coin size so that, at the exchange's max leverage for this asset, initial margin
  * does not exceed `accountValue × targetMarginPct`.
  *
- * `OrderManager` sets leverage to `ceil(sizeUsd / (account × targetMarginPct))` (capped
- * by HL max leverage). When the cap binds, margin = sizeUsd / maxLev can exceed the
- * intended budget → insufficient margin. Reducing notional fixes that.
+ * Used in tests and optional tooling — **not** applied in `OrderManager.placeOrder`
+ * (live/paper entries use pure risk-based size; HL enforces margin / max leverage).
  *
  * @returns Adjusted size in coin units; `wasCapped` if risk-based size was reduced.
  */

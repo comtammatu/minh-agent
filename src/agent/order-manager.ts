@@ -45,7 +45,6 @@ import { log } from '../lib/logger.js'
 import { withRetry, isRetryableExchangeError } from '../lib/retry.js'
 import { getPaperTracker } from './paper-tracker.js'
 import {
-  clampPositionSizeForMaxLeverage,
   computeEntryLeverageForTargetMargin,
   computePositionSize,
 } from './exits.js'
@@ -355,48 +354,14 @@ export class OrderManager {
       size = computePositionSize(accountValue, DEFAULT_RISK_PERCENT, entryPrice, slPrice)
     }
 
-    // Real-money + paper: cap notional so margin budget holds at HL max leverage (see clampPositionSizeForMaxLeverage)
+    // HL minimum notional only — no notional cap vs margin×maxLeverage (real-money + paper).
     if (entryPrice > 0 && size > 0) {
-      const accountValue = getEffectivePaperTrade()
-        ? getPaperTracker(strategyId).getBalance()
-        : (svc.getCachedAccountValue?.() || SIMULATED_ACCOUNT)
-      const maxLev = svc?.getMaxLeverage?.(coin)
-      const { sizeCoins: capped, wasCapped } = clampPositionSizeForMaxLeverage(
-        size,
-        entryPrice,
-        accountValue,
-        TARGET_MARGIN_PCT,
-        maxLev,
-      )
-      if (wasCapped && maxLev !== undefined) {
-        const maxN = accountValue * TARGET_MARGIN_PCT * maxLev
+      const notional = size * entryPrice
+      if (notional < HL_MIN_ORDER_NOTIONAL_USD) {
+        size = HL_MIN_ORDER_NOTIONAL_USD / entryPrice
         log.info(
           'order-manager',
-          `Capped ${coin} size: maxLeverage=${maxLev}x limits notional to ≤ $${maxN.toFixed(2)} (margin budget ${(TARGET_MARGIN_PCT * 100).toFixed(0)}% equity)`,
-        )
-      }
-      size = capped
-      const notionalAfterRiskCap = size * entryPrice
-      const maxNotionalUsd =
-        maxLev !== undefined && maxLev > 0
-          ? accountValue * TARGET_MARGIN_PCT * maxLev
-          : Number.POSITIVE_INFINITY
-
-      // HL requires min notional; risk-sized position can be below $10 after leverage cap.
-      // Bump into available margin up to HL min — only skip if we cannot afford $10.
-      if (notionalAfterRiskCap < HL_MIN_ORDER_NOTIONAL_USD) {
-        const affordable = Math.min(HL_MIN_ORDER_NOTIONAL_USD, maxNotionalUsd)
-        if (affordable < HL_MIN_ORDER_NOTIONAL_USD) {
-          log.warn(
-            'order-manager',
-            `Skip ${coin}: max affordable notional $${affordable.toFixed(2)} < $${HL_MIN_ORDER_NOTIONAL_USD} HL minimum (equity=$${accountValue.toFixed(2)} maxLev=${maxLev ?? 'n/a'})`,
-          )
-          return null
-        }
-        size = affordable / entryPrice
-        log.info(
-          'order-manager',
-          `Bumped ${coin} entry to HL min notional $${affordable.toFixed(2)} (risk-sized $${notionalAfterRiskCap.toFixed(2)} after leverage cap)`,
+          `Bumped ${coin} entry to HL min notional $${HL_MIN_ORDER_NOTIONAL_USD} (risk-sized notional was $${notional.toFixed(2)})`,
         )
       }
     }

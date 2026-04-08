@@ -337,9 +337,9 @@ export const MAX_LEVERAGE_WARN = 5.0
 
 /**
  * Target margin per position as fraction of account equity (default 10%).
- * Used to compute setLeverage before order placement.
+ * Used to compute setLeverage before order placement (HL may cap leverage at asset max).
  * leverage = ceil(sizeUsd / (accountValue × TARGET_MARGIN_PCT))
- * Example: $10k account, 10% margin → each position uses ≤$1k margin → up to ~10 concurrent positions.
+ * Position **size** is not reduced to fit this budget — risk-based sizing only.
  */
 export const TARGET_MARGIN_PCT = 0.10
 
