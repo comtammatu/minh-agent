@@ -264,6 +264,7 @@ export class BybitExchangeService {
       return {
         success: true,
         oid: null,
+        rawOrderId: orderId ?? undefined,
         avgPx: null,
         totalSz: null,
         status: 'submitted',
@@ -429,6 +430,10 @@ export class BybitExchangeService {
           liquidationPrice: liqPrice,
         }
         if (Number.isFinite(levRaw) && (levRaw ?? 0) > 0) snap.leverage = levRaw as number
+        const slRaw = pos.stopLoss ? parseFloat(pos.stopLoss) : NaN
+        const tpRaw = pos.takeProfit ? parseFloat(pos.takeProfit) : NaN
+        if (Number.isFinite(slRaw) && slRaw > 0) snap.slPrice = slRaw
+        if (Number.isFinite(tpRaw) && tpRaw > 0) snap.tpPrice = tpRaw
         snaps.push(snap)
       }
       getHealthMonitor().recordSuccess('exchange')

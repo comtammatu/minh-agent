@@ -58,6 +58,8 @@ function getClient(): WebsocketClient {
       if (!cb) return
 
       for (const candleData of data.data) {
+        // Only forward confirmed (closed) candles — same semantic as HL WS
+        if (!candleData.confirm) continue
         try {
           const candle: Candle = {
             t: candleData.start,
@@ -85,7 +87,7 @@ function getClient(): WebsocketClient {
 
 /**
  * Subscribe to Bybit kline stream for coin/interval.
- * Calls onCandle on every tick (both open and closed bars).
+ * Calls onCandle only on confirmed (closed) bars — same semantic as HL WS.
  * Topic format: kline.{bybitInterval}.{COIN}USDT
  */
 export async function subscribeBybitCandles(

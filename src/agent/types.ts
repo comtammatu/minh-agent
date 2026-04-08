@@ -205,6 +205,10 @@ export interface ExchangePositionSnapshot {
   leverage?: number
   /** When set (multi-wallet), reconciliation matches this row to {@link PositionState.strategyId}. */
   strategyId?: string
+  /** Stop-loss price set on the exchange (Bybit: stopLoss field). */
+  slPrice?: number
+  /** Take-profit price set on the exchange (Bybit: takeProfit field). */
+  tpPrice?: number
 }
 
 // ─── Trade Journal (S9) ─────────────────────────────────────────────────────

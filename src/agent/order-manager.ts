@@ -120,8 +120,8 @@ export async function submitToExchange(
       tpPrice,
     })
     if (result.success) {
-      // oid may be null for "waitingForFill"/"waitingForTrigger" — use status as fallback
-      const exchangeId = result.oid !== null ? String(result.oid) : result.status
+      // Prefer rawOrderId (Bybit UUID) > oid (HL numeric) > status fallback
+      const exchangeId = result.rawOrderId ?? (result.oid !== null ? String(result.oid) : result.status)
       const out: ExchangeOrderResult = { success: true, exchangeOrderId: exchangeId, error: null }
       // Some entries may return `filled` inline — required so live mode runs onOrderFilled → SL/TP (R9).
       if (result.status === 'filled' && result.avgPx !== null && result.totalSz !== null) {
@@ -752,11 +752,16 @@ export class OrderManager {
     // Cancel on exchange if submitted (or simulate in paper mode) — route to strategy wallet
     if (order.exchangeOrderId) {
       const svc = this.getExchangeForStrategy(order.strategyId)
-      const result = getEffectivePaperTrade()
+      let cancelResult = getEffectivePaperTrade()
         ? paperSimulateCancel(order.exchangeOrderId, order.coin)
         : await cancelOnExchange(order.exchangeOrderId, order.coin, svc)
-      if (!result.success) {
-        log.error('order-manager', `Exchange cancel failed for ${orderId}: ${result.error}`)
+      // Fallback: cancel by cloid when exchangeOrderId is invalid (e.g. Bybit stored "submitted")
+      if (!cancelResult.success && order.cloid && !getEffectivePaperTrade()) {
+        log.info('order-manager', `Retrying cancel by cloid for ${orderId}`)
+        cancelResult = await svc.cancelByCloid(order.coin, order.cloid)
+      }
+      if (!cancelResult.success) {
+        log.error('order-manager', `Exchange cancel failed for ${orderId}: ${cancelResult.error}`)
         // Still mark cancelled in DB — reconciliation will catch discrepancies
       }
     }

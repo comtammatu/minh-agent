@@ -21,6 +21,7 @@ import {
   MIN_CANDLES_FOR_SCAN,
   INDICATOR_WINDOW,
   TIMEFRAMES,
+  SIGNAL_TIMEFRAMES,
   getActiveExchange,
 } from '../config.js'
 import { log } from '../lib/logger.js'
@@ -111,7 +112,7 @@ export function bootstrapPipelineFromStore(coins: readonly string[]): void {
   for (const coin of coins) {
     for (const tf of TIMEFRAMES) {
       const interval = tf as CandleInterval
-      if (interval !== '1m') {
+      if ((SIGNAL_TIMEFRAMES as readonly string[]).includes(interval)) {
         dispatchClosedBarScan(coin, interval, registry)
       }
       seedLastCandleTsFromStore(coin, interval)
@@ -141,8 +142,8 @@ export function onCandleTick(
   // First tick for this coin/tf — no previous closed candle yet
   if (prevTs === undefined) return
 
-  // 1m: store candles for entry refinement only, skip signal scan
-  if (interval === '1m') return
+  // Non-signal TFs: store candles only (e.g. 1m for entry refinement / price proxy)
+  if (!(SIGNAL_TIMEFRAMES as readonly string[]).includes(interval)) return
 
   dispatchClosedBarScan(coin, interval, getStrategyRegistry())
 }

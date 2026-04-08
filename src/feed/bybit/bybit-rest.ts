@@ -219,9 +219,12 @@ export async function fetchBybitCandlesBatched(
       break
     }
 
-    all.push(...candles)
+    if (candles.length === 0) {
+      if (all.length > 0) break // reached start of available history
+      continue                  // coin not yet listed at this historical window — skip ahead
+    }
 
-    if (candles.length === 0) break // no more data
+    all.push(...candles)
   }
 
   // Deduplicate by timestamp (batches may overlap at boundaries)

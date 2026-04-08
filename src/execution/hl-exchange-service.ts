@@ -84,6 +84,8 @@ export interface OrderResult {
   /** Status string for trigger orders */
   status: string | null
   error: string | null
+  /** String-based exchange order ID (e.g. Bybit UUID). Used when oid is null. */
+  rawOrderId?: string
 }
 
 export interface AccountState {
