@@ -862,8 +862,11 @@ export class OrderManager {
       const fill = await svc.getFillAggregateByCloid(order.cloid, order.coin)
       if (!fill || fill.totalSz <= 0) continue
 
+      // isFilled=true means the exchange confirms the order is fully done (e.g. Bybit
+      // orderStatus='Filled'). Use it to avoid a false-partial when Bybit rounds the
+      // submitted qty down to szDecimals and fills that smaller-but-exact amount.
       const eps = 1e-12
-      if (fill.totalSz + eps < order.size) {
+      if (!fill.isFilled && fill.totalSz + eps < order.size) {
         await this.onPartialFill(order.id, fill.totalSz, fill.avgPx)
       } else {
         const sz = Math.min(fill.totalSz, order.size)

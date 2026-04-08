@@ -86,8 +86,11 @@ export interface IExchangeService {
   /** Query open positions. */
   getPositions(): Promise<ExchangePositionSnapshot[]>
 
-  /** Aggregate fill size + VWAP for an entry order by cloid. */
-  getFillAggregateByCloid(cloid: string, coin: string): Promise<{ avgPx: number; totalSz: number } | null>
+  /** Aggregate fill size + VWAP for an entry order by cloid.
+   * `isFilled` is true when the exchange confirms the order is fully filled
+   * (e.g. Bybit orderStatus='Filled'). When absent/false, caller falls back to
+   * size comparison (suitable for HL which aggregates individual fill events). */
+  getFillAggregateByCloid(cloid: string, coin: string): Promise<{ avgPx: number; totalSz: number; isFilled?: boolean } | null>
 }
 
 // ─── Re-exports ─────────────────────────────────────────────────────────────

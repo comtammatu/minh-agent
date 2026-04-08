@@ -735,7 +735,7 @@ export class BybitExchangeService {
    * Returns data for Filled or PartiallyFilled orders; null if not yet filled or on error.
    * Called by syncSubmittedEntryFills() (~10s interval) to trigger onOrderFilled → placeSLTP.
    */
-  async getFillAggregateByCloid(cloid: string, coin: string): Promise<{ avgPx: number; totalSz: number } | null> {
+  async getFillAggregateByCloid(cloid: string, coin: string): Promise<{ avgPx: number; totalSz: number; isFilled?: boolean } | null> {
     this.ensureInit()
     const symbol = this.toSymbol(coin)
     try {
@@ -750,7 +750,7 @@ export class BybitExchangeService {
       const avgPx = parseFloat(order.avgPrice)
       const totalSz = parseFloat(order.cumExecQty)
       if (!Number.isFinite(avgPx) || avgPx <= 0 || !Number.isFinite(totalSz) || totalSz <= 0) return null
-      return { avgPx, totalSz }
+      return { avgPx, totalSz, isFilled: order.orderStatus === 'Filled' }
     } catch (err) {
       log.warn('bybit-exec', `getFillAggregateByCloid failed: ${err instanceof Error ? err.message : err}`)
       return null
