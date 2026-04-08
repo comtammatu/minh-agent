@@ -1,4 +1,4 @@
-import type { CandleInterval } from './types.js'
+import type { CandleInterval, ExchangeId } from './types.js'
 
 /** Fallback coins if fetchTopCoins fails at startup (should not normally be used). */
 export const FALLBACK_COINS = ['BTC', 'ETH', 'SOL', 'HYPE', 'TAO'] as const
@@ -756,3 +756,46 @@ export const HEALTH = {
   /** Staleness threshold for DB writes (ms). */
   dbStaleMs: 60_000,
 } as const
+
+// ── Multi-exchange ─────────────────────────────────────────────────────────
+
+/**
+ * Returns the active exchange from ACTIVE_EXCHANGE env.
+ * Throws at startup if not set or invalid — no silent defaults.
+ */
+export function getActiveExchange(): ExchangeId {
+  const raw = process.env['ACTIVE_EXCHANGE']
+  if (!raw) throw new Error('ACTIVE_EXCHANGE env is required. Set to HL or BB.')
+  if (raw !== 'HL' && raw !== 'BB') throw new Error(`Unknown ACTIVE_EXCHANGE: "${raw}". Valid values: HL, BB`)
+  return raw
+}
+
+// ── Bybit-specific config ──────────────────────────────────────────────────
+
+/** Bybit candle interval format (maps CandleInterval → Bybit API string). */
+export const BYBIT_INTERVAL_MAP: Record<CandleInterval, string> = {
+  '1m': '1',
+  '5m': '5',
+  '15m': '15',
+  '1h': '60',
+  '4h': '240',
+  '1d': 'D',
+}
+
+/** Max candles per single Bybit REST request. */
+export const BYBIT_BACKFILL_BATCH_SIZE = 1000
+
+/** Total candles to fetch per TF during Bybit backfill. */
+export const BYBIT_BACKFILL_CANDLE_COUNTS: Record<string, number> = {
+  '1m': 500,
+  '5m': 500,
+  '15m': 1000,
+  '1h': 1000,
+  '4h': 1000,
+  '1d': 1000,
+}
+
+/** Bybit rate limit: token bucket. 120 req/10s burst. */
+export const BYBIT_REST_BURST_TOKENS = 120
+/** Bybit rate limit: refill interval ms (1 token per 100ms = 10/s sustained). */
+export const BYBIT_REST_REFILL_MS = 100

@@ -14,7 +14,7 @@
  *   - V5: Feature flag via STRATEGY_WALLETS env — no env = single wallet mode
  */
 
-import { ExchangeService, getExchangeService } from './exchange-service.js'
+import { HLExchangeService as ExchangeService, getHLExchangeService as getExchangeService } from './hl-exchange-service.js'
 import { parseStrategyWallets, SIMULATED_ACCOUNT, type WalletConfig } from '../config.js'
 import { log } from '../lib/logger.js'
 

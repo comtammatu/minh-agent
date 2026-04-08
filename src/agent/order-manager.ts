@@ -40,7 +40,8 @@ import {
   HL_MIN_ORDER_NOTIONAL_USD,
   MARKET_ORDER_SLIPPAGE_PCT,
 } from '../config.js'
-import { getExchangeService, type ExchangeService } from '../execution/exchange-service.js'
+import { getHLExchangeService as getExchangeService } from '../execution/hl-exchange-service.js'
+import type { IExchangeService as ExchangeService } from '../execution/exchange-service.js'
 import type { ExchangePool } from '../execution/exchange-pool.js'
 import { getLatestBook } from '../feed/orderbook.js'
 import { log } from '../lib/logger.js'

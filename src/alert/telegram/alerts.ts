@@ -21,7 +21,7 @@ import { log } from '../../lib/logger.js'
 import type { AgentAction } from '../../agent/types.js'
 import { getPositionMonitor } from '../../agent/position-monitor.js'
 import { getTotalPaperBalance } from '../../agent/paper-tracker.js'
-import { getExchangeService } from '../../execution/exchange-service.js'
+import { getHLExchangeService as getExchangeService } from '../../execution/hl-exchange-service.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

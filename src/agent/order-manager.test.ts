@@ -29,8 +29,8 @@ let mockOrderSuccess = true
 let mockCancelSuccess = true
 let mockTriggerSuccess = true
 
-mock.module('../execution/exchange-service.js', () => ({
-  getExchangeService: () => ({
+mock.module('../execution/hl-exchange-service.js', () => ({
+  getHLExchangeService: () => ({
     getCachedAccountValue: () => 10_000,
     setLeverage: () => Promise.resolve(),
     placeOrder: () => Promise.resolve(

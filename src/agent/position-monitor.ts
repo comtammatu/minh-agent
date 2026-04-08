@@ -34,7 +34,8 @@ import {
   PAPER_WALLET_STRATEGY_IDS,
   TRAIL_UPDATE_THRESHOLD,
 } from '../config.js'
-import { getExchangeService, type ExchangeService } from '../execution/exchange-service.js'
+import { getHLExchangeService as getExchangeService } from '../execution/hl-exchange-service.js'
+import type { IExchangeService as ExchangeService } from '../execution/exchange-service.js'
 import { getExchangePool } from '../execution/exchange-pool.js'
 import { log } from '../lib/logger.js'
 import { getEffectivePaperTrade, PAPER_SLIPPAGE_PCT } from '../config.js'

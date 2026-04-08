@@ -12,7 +12,7 @@
 
 import { log } from '../lib/logger.js'
 import { SIMULATED_ACCOUNT, getEffectivePaperTrade } from '../config.js'
-import { getExchangeService } from '../execution/exchange-service.js'
+import { getHLExchangeService as getExchangeService } from '../execution/hl-exchange-service.js'
 import { getTotalPaperBalance } from '../agent/paper-tracker.js'
 import { buildLiveMetrics } from './metrics.js'
 import {
