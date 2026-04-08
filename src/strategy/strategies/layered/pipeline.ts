@@ -358,10 +358,10 @@ function logSetup(
   const boostStr = boostParts.length > 0 ? boostParts.join(' ') + ' | ' : ''
 
   log.info('pipeline',
-    `⚡ SETUP | ${coin} ${interval.toUpperCase()} | ${setup.side.toUpperCase()} ${setup.type} at ${setup.zoneOrigin ?? 'zone'} | ` +
+    `⚡ SETUP | ${coin} ${interval.toUpperCase()} [${setup.exchange}] | ${setup.side.toUpperCase()} ${setup.type} at ${setup.zoneOrigin ?? 'zone'} | ` +
     `${confluence.grade} (${confluence.count}/7) | conf:${setup.confidence.toFixed(2)} | ${regimeTag} | ` +
     `entry:${fmt(setup.entryPrice)} sl:${fmt(setup.slPrice)} tp:${fmt(setup.tpPrice)} | R:R 1:${rr.toFixed(2)} | bias:${biasSource} | ` +
-    `${boostStr}trigger:${pattern ?? setup.type} | risk:${risk.suggestedSize}`,
+    `ttl:${setup.expiresAtBar - setup.detectedAtBar}bars | ${boostStr}trigger:${pattern ?? setup.type} | risk:${risk.suggestedSize} | [${setup.strategyId ?? 'layered'}]`,
   )
 
   playAlertIfQualified(confluence.grade)

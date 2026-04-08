@@ -134,6 +134,7 @@ export interface Order {
   fillSize: number       // filled so far (for partials)
   strategyId: string     // strategy that placed this order (Sprint 4.5)
   positionId: string | null  // set at fill time — links order to position
+  exchange: string       // 'HL' | 'BB' — exchange this order was placed on
 }
 
 /** SL/TP trigger order placed on exchange after entry fill (R9). */
@@ -204,6 +205,10 @@ export interface ExchangePositionSnapshot {
   leverage?: number
   /** When set (multi-wallet), reconciliation matches this row to {@link PositionState.strategyId}. */
   strategyId?: string
+  /** Stop-loss price set on the exchange (Bybit: stopLoss field). */
+  slPrice?: number
+  /** Take-profit price set on the exchange (Bybit: takeProfit field). */
+  tpPrice?: number
 }
 
 // ─── Trade Journal (S9) ─────────────────────────────────────────────────────

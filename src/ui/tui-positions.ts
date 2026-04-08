@@ -91,8 +91,8 @@ export function mergeExchangeAndTrackedForTui(
       leverage: lev,
       currentSize: absSize,
       entryPrice: snap.entryPrice,
-      slPrice: 0,
-      tpPrice: 0,
+      slPrice: snap.slPrice ?? 0,
+      tpPrice: snap.tpPrice ?? 0,
       strategyId: sid,
       exchangeOnly: true,
     })

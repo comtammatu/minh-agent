@@ -59,6 +59,9 @@ export interface PlaceOrderParams {
   size: number         // in coin units (pre-formatting)
   reduceOnly: boolean
   cloid?: string       // 0x + 32 hex chars
+  /** Inline SL/TP — used by Bybit (set on submitOrder). Ignored by HL (uses separate placeTrigger). */
+  slPrice?: number
+  tpPrice?: number
 }
 
 export interface PlaceTriggerParams {
@@ -81,6 +84,8 @@ export interface OrderResult {
   /** Status string for trigger orders */
   status: string | null
   error: string | null
+  /** String-based exchange order ID (e.g. Bybit UUID). Used when oid is null. */
+  rawOrderId?: string
 }
 
 export interface AccountState {

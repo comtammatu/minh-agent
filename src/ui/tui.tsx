@@ -214,11 +214,11 @@ function distributeColumnWidths(
 
 const POS_COL_IDEAL: PositionsColumnWidths = {
   /** "SIDE" is 4 chars — keep narrow so ENTRY does not float far right of L/S. */
-  coin: 12, lev: 4, side: 4, entry: 11, sl: 11, tp: 11, upnl: 10, strategy: 18,
+  coin: 8, lev: 6, side: 4, entry: 12, sl: 12, tp: 12, upnl: 10, strategy: 12,
 }
 const POS_COL_MIN: PositionsColumnWidths = {
   coin: 6,
-  lev: 3,
+  lev: 4,
   side: 4,
   entry: 6,
   sl: 6,
@@ -1474,7 +1474,7 @@ export function startTui(sources: TuiDataSources): void {
  * No-op logger sink kept for API compatibility (index.ts calls setTuiSink(appendLog)).
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function appendLog(_msg: string): void {}
+export function appendLog(_msg: string): void { }
 
 /**
  * Stop the TUI and restore the terminal.

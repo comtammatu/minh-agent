@@ -21,6 +21,7 @@ import {
   MIN_CANDLES_FOR_SCAN,
   INDICATOR_WINDOW,
   TIMEFRAMES,
+  SIGNAL_TIMEFRAMES,
   getActiveExchange,
 } from '../config.js'
 import { log } from '../lib/logger.js'
@@ -87,7 +88,24 @@ function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry:
     const stats = getOrCreateStats(strategyId)
     stats.setupsTracked++
     pipelineEmitter.emit('setup', setup)
+
+    const rrRaw = Math.abs(signal.tpPrice - signal.entryPrice) / Math.abs(signal.entryPrice - signal.slPrice)
+    const rr = isNaN(rrRaw) ? 0 : rrRaw
+    const grade = signal.confluenceGrade ?? 'C'
+    const count = signal.confluenceCount ?? 0
+    const regime = signal.patternData['regime'] as string | undefined
+    const zoneOrigin = signal.patternData['zoneOrigin'] as string | undefined
+    log.info('pipeline',
+      `⚡ SETUP | ${coin} ${interval.toUpperCase()} [${activeExchange}] | ${signal.side.toUpperCase()} ${signal.type}${zoneOrigin ? ` at ${zoneOrigin}` : ''} | ` +
+      `${grade} (${count}/7) | conf:${signal.confidence.toFixed(2)}${regime ? ` | ${regime}` : ''} | ` +
+      `entry:${fmtP(signal.entryPrice)} sl:${fmtP(signal.slPrice)} tp:${fmtP(signal.tpPrice)} | R:R 1:${rr.toFixed(2)} | ` +
+      `ttl:${setup.expiresAtBar - setup.detectedAtBar}bars | [${strategyId}]`,
+    )
   }
+}
+
+function fmtP(n: number): string {
+  return n >= 1000 ? n.toFixed(0) : n >= 10 ? n.toFixed(2) : n.toFixed(4)
 }
 
 /** Seed WS dedup map so the first live tick matches `prevTs === candle.t` for the current bar. */
@@ -111,7 +129,7 @@ export function bootstrapPipelineFromStore(coins: readonly string[]): void {
   for (const coin of coins) {
     for (const tf of TIMEFRAMES) {
       const interval = tf as CandleInterval
-      if (interval !== '1m') {
+      if ((SIGNAL_TIMEFRAMES as readonly string[]).includes(interval)) {
         dispatchClosedBarScan(coin, interval, registry)
       }
       seedLastCandleTsFromStore(coin, interval)
@@ -141,8 +159,8 @@ export function onCandleTick(
   // First tick for this coin/tf — no previous closed candle yet
   if (prevTs === undefined) return
 
-  // 1m: store candles for entry refinement only, skip signal scan
-  if (interval === '1m') return
+  // Non-signal TFs: store candles only (e.g. 1m for entry refinement / price proxy)
+  if (!(SIGNAL_TIMEFRAMES as readonly string[]).includes(interval)) return
 
   dispatchClosedBarScan(coin, interval, getStrategyRegistry())
 }

@@ -27,6 +27,7 @@ import type {
   ExchangeOrderResult,
   AgentAction,
   AgentEvent,
+  ExchangePositionSnapshot,
 } from './types.js'
 import { sql } from '../db/connection.js'
 import {
@@ -50,7 +51,7 @@ import {
   computeEntryLeverageForTargetMargin,
   computePositionSize,
 } from './exits.js'
-import { DEFAULT_RISK_PERCENT, SIMULATED_ACCOUNT, TARGET_MARGIN_PCT } from '../config.js'
+import { DEFAULT_RISK_PERCENT, SIMULATED_ACCOUNT, TARGET_MARGIN_PCT, getActiveExchange } from '../config.js'
 
 /** Default strategy ID for backward compatibility (single-strategy mode). */
 const DEFAULT_STRATEGY = 'layered'
@@ -102,6 +103,8 @@ export async function submitToExchange(
   size: number,
   cloid: string,
   svc?: IExchangeService,
+  slPrice?: number,
+  tpPrice?: number,
 ): Promise<ExchangeOrderResult> {
   try {
     const exchange = svc ?? getExchangeService()
@@ -113,10 +116,12 @@ export async function submitToExchange(
       size,
       reduceOnly: false,
       cloid,
+      slPrice,
+      tpPrice,
     })
     if (result.success) {
-      // oid may be null for "waitingForFill"/"waitingForTrigger" — use status as fallback
-      const exchangeId = result.oid !== null ? String(result.oid) : result.status
+      // Prefer rawOrderId (Bybit UUID) > oid (HL numeric) > status fallback
+      const exchangeId = result.rawOrderId ?? (result.oid !== null ? String(result.oid) : result.status)
       const out: ExchangeOrderResult = { success: true, exchangeOrderId: exchangeId, error: null }
       // Some entries may return `filled` inline — required so live mode runs onOrderFilled → SL/TP (R9).
       if (result.status === 'filled' && result.avgPx !== null && result.totalSz !== null) {
@@ -232,13 +237,13 @@ export function paperSimulateTrigger(trigger: TriggerOrder): ExchangeOrderResult
 /** Insert a new order into the database. */
 async function insertOrder(order: Order): Promise<void> {
   await sql`
-    INSERT INTO orders (id, coin, side, type, price, size, status, setup_id, sl_price, tp_price, exchange_order_id, created_at, updated_at, fill_price, filled_at, strategy_id, position_id)
+    INSERT INTO orders (id, coin, side, type, price, size, status, setup_id, sl_price, tp_price, exchange_order_id, created_at, updated_at, fill_price, filled_at, strategy_id, position_id, exchange)
     VALUES (
       ${order.id}, ${order.coin}, ${order.side}, ${order.type}, ${order.price},
       ${order.size}, ${order.status}, ${order.setupId}, ${order.slPrice}, ${order.tpPrice},
       ${order.exchangeOrderId}, ${new Date(order.createdAt)}, ${new Date(order.updatedAt)},
       ${order.fillPrice}, ${order.filledAt ? new Date(order.filledAt) : null},
-      ${order.strategyId}, ${order.positionId}
+      ${order.strategyId}, ${order.positionId}, ${order.exchange}
     )
   `
 }
@@ -307,6 +312,7 @@ function rowToOrder(row: Record<string, unknown>): Order {
     fillSize: 0,  // TODO: add fill_size column in S10 migration
     strategyId: (row.strategy_id as string) ?? DEFAULT_STRATEGY,
     positionId: (row.position_id as string) ?? null,
+    exchange: (row.exchange as string) ?? 'HL',
   }
 }
 
@@ -424,6 +430,7 @@ export class OrderManager {
       fillSize: 0,
       strategyId,
       positionId: null,
+      exchange: setup.exchange ?? 'HL',
     }
 
     // Persist pending
@@ -456,9 +463,17 @@ export class OrderManager {
       ? computeMarketRefPrice(coin, side, entryPrice)
       : entryPrice
 
+    // BB: attach SL/TP inline at order submission — position is protected from first fill tick,
+    // eliminating the race window between fill detection and setTradingStop.
+    // HL: SL/TP are separate trigger orders placed after fill (see placeSLTP).
+    const inlineSlTp = !getEffectivePaperTrade() && svc?.exchangeId === 'BB'
     const result = getEffectivePaperTrade()
       ? paperSimulateFill(coin, side, entryPrice, order.size, cloid)
-      : await submitToExchange(coin, side, order.type, submitPrice, order.size, cloid, svc)
+      : await submitToExchange(
+          coin, side, order.type, submitPrice, order.size, cloid, svc,
+          inlineSlTp ? order.slPrice ?? undefined : undefined,
+          inlineSlTp ? order.tpPrice ?? undefined : undefined,
+        )
 
     if (result.success) {
       order.status = 'submitted'
@@ -604,6 +619,9 @@ export class OrderManager {
   /**
    * R9: After entry fill, place SL (trigger-market) + TP (trigger-market) on HL.
    * Exchange-managed safety — protected even if agent dies.
+   *
+   * BB: SL/TP were already attached inline at order submission — skip to avoid
+   * overriding the exchange-level protection with a redundant setTradingStop.
    */
   private async placeSLTP(entryOrder: Order): Promise<void> {
     if (!entryOrder.slPrice || !entryOrder.tpPrice) {
@@ -611,10 +629,14 @@ export class OrderManager {
       return
     }
 
+    const svc = this.getExchangeForStrategy(entryOrder.strategyId)
+    if (!getEffectivePaperTrade() && svc?.exchangeId === 'BB') {
+      log.info('order-manager', `SL/TP already set inline (BB): ${entryOrder.coin} sl=${entryOrder.slPrice} tp=${entryOrder.tpPrice}`)
+      return
+    }
+
     const closeSide: 'long' | 'short' = entryOrder.side === 'long' ? 'short' : 'long'
     const triggers: TriggerOrder[] = []
-    // Route SL/TP to strategy-specific exchange wallet
-    const svc = this.getExchangeForStrategy(entryOrder.strategyId)
 
     // SL: trigger-market (guaranteed fill on stop hit)
     const slTrigger: TriggerOrder = {
@@ -730,11 +752,16 @@ export class OrderManager {
     // Cancel on exchange if submitted (or simulate in paper mode) — route to strategy wallet
     if (order.exchangeOrderId) {
       const svc = this.getExchangeForStrategy(order.strategyId)
-      const result = getEffectivePaperTrade()
+      let cancelResult = getEffectivePaperTrade()
         ? paperSimulateCancel(order.exchangeOrderId, order.coin)
         : await cancelOnExchange(order.exchangeOrderId, order.coin, svc)
-      if (!result.success) {
-        log.error('order-manager', `Exchange cancel failed for ${orderId}: ${result.error}`)
+      // Fallback: cancel by cloid when exchangeOrderId is invalid (e.g. Bybit stored "submitted")
+      if (!cancelResult.success && order.cloid && !getEffectivePaperTrade()) {
+        log.info('order-manager', `Retrying cancel by cloid for ${orderId}`)
+        cancelResult = await svc.cancelByCloid(order.coin, order.cloid)
+      }
+      if (!cancelResult.success) {
+        log.error('order-manager', `Exchange cancel failed for ${orderId}: ${cancelResult.error}`)
         // Still mark cancelled in DB — reconciliation will catch discrepancies
       }
     }
@@ -1006,14 +1033,73 @@ export class OrderManager {
 
   /** Load active orders from DB into cache (startup recovery). */
   async loadActiveOrders(): Promise<void> {
+    const exchange = getActiveExchange()
     const rows = await sql`
-      SELECT * FROM orders WHERE status IN ('pending', 'submitted', 'partial', 'filled')
+      SELECT * FROM orders
+      WHERE status IN ('pending', 'submitted', 'partial', 'filled')
+        AND exchange = ${exchange}
     `
     for (const row of rows) {
       const order = rowToOrder(row)
       this.orders.set(order.id, order)
     }
-    log.info('order-manager', `Loaded ${rows.length} active orders from DB`)
+    log.info('order-manager', `Loaded ${rows.length} active orders from DB [exchange=${exchange}]`)
+  }
+
+  /**
+   * Restore open position tracking after restart (crash recovery).
+   *
+   * PositionMonitor state is in-memory and lost on restart. Without this, positions
+   * placed before restart appear as "ext" (no strategy) in the TUI because there is
+   * no tracked entry to match against the exchange snapshot.
+   *
+   * For each coin that still has an open position on the exchange, finds the most
+   * recent filled order in the DB and re-registers it with PositionMonitor via the
+   * onPositionOpen callback. Leverage is set to 0 so the TUI merge falls back to
+   * the exchange-reported leverage (match.leverage > 0 check in tui-positions.ts).
+   *
+   * Called once at startup, after setPositionOpenCallback is wired.
+   */
+  restoreOpenPositions(exchangeSnaps: ExchangePositionSnapshot[]): void {
+    // Build set of coins currently open on exchange
+    const openCoins = new Set<string>()
+    for (const snap of exchangeSnaps) {
+      if (snap.size !== 0) openCoins.add(snap.coin)
+    }
+    if (openCoins.size === 0) return
+
+    // For each open coin, find the most recent filled order in our cache
+    const latestByCoin = new Map<string, Order>()
+    for (const [, order] of this.orders) {
+      if (order.status !== 'filled') continue
+      if (!order.positionId || !order.fillPrice) continue
+      if (!openCoins.has(order.coin)) continue
+      const existing = latestByCoin.get(order.coin)
+      const orderTs = order.filledAt ?? order.updatedAt
+      const existingTs = existing ? (existing.filledAt ?? existing.updatedAt) : 0
+      if (!existing || orderTs > existingTs) latestByCoin.set(order.coin, order)
+    }
+
+    let restored = 0
+    for (const [, order] of latestByCoin) {
+      this.onPositionOpen?.({
+        positionId: order.positionId!,
+        coin: order.coin,
+        side: order.side,
+        entryPrice: order.fillPrice!,
+        size: order.size,  // fillSize not persisted; original size is close enough for trail/TUI
+        slPrice: order.slPrice ?? 0,
+        tpPrice: order.tpPrice ?? 0,
+        entryOrderId: order.id,
+        leverage: 0,  // unknown at restore time; TUI merge uses exchange value as fallback
+        strategyId: order.strategyId,
+      })
+      restored++
+    }
+
+    if (restored > 0) {
+      log.info('order-manager', `Restored ${restored} open position(s) into PositionMonitor after restart`)
+    }
   }
 }
 

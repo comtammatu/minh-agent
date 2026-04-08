@@ -31,6 +31,7 @@ import {
   QUANT_ATR_TP_MULT,
   getActiveExchange,
 } from '../../../config.js'
+import { log } from '../../../lib/logger.js'
 
 // ── Dedup: track last signal bar per coin to avoid duplicates ────────────────
 
@@ -127,5 +128,16 @@ export function runQuantPipeline(
 
   getActiveSetupsMap().set(id, setup)
   stats.setupsTracked++
+
+  const rrRaw = Math.abs(tpPrice - entryPrice) / Math.abs(entryPrice - slPrice)
+  const rr = isNaN(rrRaw) ? 0 : rrRaw
+  log.info('pipeline',
+    `⚡ SETUP | ${coin} ${interval.toUpperCase()} [${activeExchange}] | ${side.toUpperCase()} ema-rsi | ` +
+    `B (3/7) | conf:${setup.confidence.toFixed(2)} | ` +
+    `entry:${entryPrice.toFixed(2)} sl:${slPrice.toFixed(2)} tp:${tpPrice.toFixed(2)} | R:R 1:${rr.toFixed(2)} | ` +
+    `ema50:${ema50.toFixed(2)} ema200:${ema200.toFixed(2)} rsi:${rsiVal.toFixed(1)} | ` +
+    `ttl:${setup.expiresAtBar - setup.detectedAtBar}bars | [quant]`,
+  )
+
   getPipelineEmitter().emit('setup', setup)
 }

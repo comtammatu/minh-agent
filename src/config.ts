@@ -711,6 +711,10 @@ export const BYBIT_BACKFILL_CANDLE_COUNTS: Record<string, number> = {
 export const BYBIT_REST_BURST_TOKENS = 120
 /** Bybit rate limit: refill interval ms (1 token per 100ms = 10/s sustained). */
 export const BYBIT_REST_REFILL_MS = 100
+/** Bybit execution (trading) rate limit: burst tokens. Conservative vs 10/s UID limit. */
+export const BYBIT_EXEC_BURST_TOKENS = 10
+/** Bybit execution rate limit: refill interval ms (1 token per 100ms = 10/s sustained). */
+export const BYBIT_EXEC_REFILL_MS = 100
 
 /** Bybit funding rate refresh interval ms. Funding settles every 8h — 4h refresh is sufficient. */
 export const BYBIT_FUNDING_REFRESH_MS = 4 * 60 * 60 * 1000
@@ -722,7 +726,7 @@ export const BYBIT_FUNDING_REFRESH_MS = 4 * 60 * 60 * 1000
  * Number of top Bybit coins by OI to track (dynamic selection via tickers API).
  * Higher than HL native (20) — Bybit rate limits are ~30x more permissive.
  */
-export const BYBIT_TOP_COINS_LIMIT = 80
+export const BYBIT_TOP_COINS_LIMIT = 30
 
 /** Minimum 24h turnover (USDT) to qualify for Bybit coin tracking. */
 export const BYBIT_MIN_24H_VOLUME = 1_000_000
