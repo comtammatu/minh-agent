@@ -140,6 +140,10 @@ export const SMC_BREAK_LOOKBACK = 20
 /** Timeframes to skip for SMC-SD strategy.
  * Backtest data: 1h WR=55.3%, 15m WR=27.3%, 4h WR=28.6%.
  * 1h is the sweet spot — 15m too noisy, 4h stops too wide. */
+/** Timeframes to skip for SMC-SD strategy.
+ * 15m: needs multi-TF drill-down (4h POI→15m entry) to have edge. Same-TF = noise.
+ * 4h: SL% too wide for zone-based stops (3-6% SL kills R:R).
+ * 1h is the sweet spot: tight enough SL, strong enough structure signals. */
 export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = ['15m', '4h']
 
 /** Minimum bars between signals on same coin/interval (dedup).
@@ -191,6 +195,45 @@ export const SMC_ICT_OTE_BONUS = 0.08
 
 /** Confidence bonus for liquidity pool proximity (BSL/SSL near TP). */
 export const SMC_ICT_LIQUIDITY_POOL_TP_BONUS = 0.05
+
+// ─── ICT Crypto Killzones ────────────────────────────────────────────────────
+// Adapted from ICT forex killzones to 24/7 crypto markets.
+// Crypto volume concentrates around TradFi session opens.
+// Trading OUTSIDE killzones has lower volume = more fakeouts.
+
+/** Enable killzone time filter. When true, signals outside killzones get confidence penalty. */
+export const SMC_ICT_KILLZONE_ENABLED = true
+
+/** Killzone definitions: [startHourUTC, endHourUTC].
+ * Crypto adaption of ICT sessions:
+ * - Asian session: accumulation / range building
+ * - London open: first real move (smart money enters)
+ * - US open / London-US overlap: highest volume, strongest moves
+ * - Asian close / pre-London: often sets the day's high or low */
+export const SMC_ICT_KILLZONES: ReadonlyArray<{ name: string; startUTC: number; endUTC: number; bonus: number }> = [
+  { name: 'london-open', startUTC: 7, endUTC: 10, bonus: 0.08 },     // London open: high-probability
+  { name: 'us-overlap',  startUTC: 13, endUTC: 16, bonus: 0.10 },    // London/US overlap: highest vol
+  { name: 'us-session',  startUTC: 16, endUTC: 20, bonus: 0.05 },    // US afternoon: continuation
+  { name: 'asia-open',   startUTC: 0, endUTC: 3, bonus: 0.03 },      // Asia: lower vol but sets lows
+] as const
+
+/** Confidence penalty for signals OUTSIDE any killzone.
+ * Reduced from 0.08→0.04: was blocking all 15m signals when combined with HTF penalty. */
+export const SMC_ICT_KILLZONE_PENALTY = 0.04
+
+// ─── ICT Breaker Block + Inversion FVG ──────────────────────────────────────
+
+/** Enable Breaker Block detection (OB broken → flips to opposition zone). */
+export const SMC_ICT_BREAKER_BLOCK_ENABLED = true
+
+/** Confidence bonus when price reacts at a Breaker Block (strong level). */
+export const SMC_ICT_BREAKER_BLOCK_BONUS = 0.08
+
+/** Enable Inversion FVG (FVG completely filled → flips type, becomes new zone). */
+export const SMC_ICT_INVERSION_FVG_ENABLED = true
+
+/** Confidence bonus when price reacts at an Inversion FVG. */
+export const SMC_ICT_INVERSION_FVG_BONUS = 0.06
 
 // ─── Layered Pipeline Config ─────────────────────────────────────────────────
 

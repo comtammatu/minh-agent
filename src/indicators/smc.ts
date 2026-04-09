@@ -362,6 +362,157 @@ export function compileKeyZones(
   return { demandZones, supplyZones }
 }
 
+// ─── ICT Breaker Block ──────────────────────────────────────────────────────
+
+export interface BreakerBlock {
+  top: number
+  bottom: number
+  /** Original OB was bullish → broken → now acts as bearish resistance (and vice versa). */
+  type: 'demand' | 'supply'
+  index: number       // index where the OB was broken
+  originalOBIndex: number
+}
+
+/**
+ * Detect Breaker Blocks — ICT concept: when an OB is broken (price closes through it),
+ * the OB flips to become an opposition zone.
+ *
+ * Bullish OB broken by bearish close below → becomes Supply (Bearish Breaker)
+ * Bearish OB broken by bullish close above → becomes Demand (Bullish Breaker)
+ *
+ * Breaker Blocks are high-probability reaction zones because they represent
+ * failed institutional positions — when revisited, remaining orders provide support/resistance.
+ */
+export function detectBreakerBlocks(
+  candles: Candle[],
+  upToIdx: number,
+  params: { lookback?: number } = {},
+): BreakerBlock[] {
+  const obs = detectOrderBlocks(candles, upToIdx, params)
+  const breakers: BreakerBlock[] = []
+
+  for (const ob of obs) {
+    // Check if OB was broken by a subsequent candle closing through it
+    for (let i = ob.index + 2; i <= upToIdx; i++) {
+      const c = candles[i]!
+
+      if (ob.bullish) {
+        // Bullish OB broken: price closes BELOW the OB bottom → flips to Supply
+        if (c.c < ob.bottom) {
+          breakers.push({
+            top: ob.top,
+            bottom: ob.bottom,
+            type: 'supply',  // flipped: was demand (bullish OB), now supply
+            index: i,
+            originalOBIndex: ob.index,
+          })
+          break  // only record first break
+        }
+      } else {
+        // Bearish OB broken: price closes ABOVE the OB top → flips to Demand
+        if (c.c > ob.top) {
+          breakers.push({
+            top: ob.top,
+            bottom: ob.bottom,
+            type: 'demand',  // flipped: was supply (bearish OB), now demand
+            index: i,
+            originalOBIndex: ob.index,
+          })
+          break
+        }
+      }
+    }
+  }
+
+  // Filter: only return breakers that haven't been broken AGAIN
+  return breakers.filter(bb => {
+    for (let i = bb.index + 1; i <= upToIdx; i++) {
+      const c = candles[i]!
+      if (bb.type === 'demand' && c.c < bb.bottom) return false  // broken again
+      if (bb.type === 'supply' && c.c > bb.top) return false
+    }
+    return true
+  })
+}
+
+// ─── ICT Inversion FVG ──────────────────────────────────────────────────────
+
+export interface InversionFVG {
+  top: number
+  bottom: number
+  midpoint: number
+  /** After inversion: bullish FVG filled → flips to bearish (supply), and vice versa. */
+  type: 'demand' | 'supply'
+  index: number       // index where the FVG was inverted (fully filled)
+  originalFVGIndex: number
+}
+
+/**
+ * Detect Inversion FVGs — ICT 2023 model: when price completely fills an FVG
+ * (trades through it), the gap flips type and becomes a new reaction zone.
+ *
+ * Bullish FVG fully filled (price closes below bottom) → becomes Supply zone
+ * Bearish FVG fully filled (price closes above top) → becomes Demand zone
+ *
+ * Inversion FVGs are powerful because they mark where inefficiency was resolved —
+ * the filled gap now acts as a level where unfilled orders remain.
+ */
+export function detectInversionFVGs(
+  candles: Candle[],
+  upToIdx: number,
+  tolerance: number = 0,
+): InversionFVG[] {
+  const inversions: InversionFVG[] = []
+
+  for (let i = 2; i <= upToIdx; i++) {
+    const fvg = detectFVG(candles, i, tolerance)
+    if (!fvg) continue
+
+    // Check if FVG was COMPLETELY filled (not just CE/midpoint)
+    for (let j = i + 1; j <= upToIdx; j++) {
+      const c = candles[j]!
+
+      if (fvg.bullish) {
+        // Bullish FVG fully filled: price closes below the FVG bottom
+        if (c.c < fvg.bottom) {
+          inversions.push({
+            top: fvg.top,
+            bottom: fvg.bottom,
+            midpoint: fvg.midpoint,
+            type: 'supply',  // flipped: was bullish gap → now bearish zone
+            index: j,
+            originalFVGIndex: fvg.index,
+          })
+          break
+        }
+      } else {
+        // Bearish FVG fully filled: price closes above the FVG top
+        if (c.c > fvg.top) {
+          inversions.push({
+            top: fvg.top,
+            bottom: fvg.bottom,
+            midpoint: fvg.midpoint,
+            type: 'demand',  // flipped: was bearish gap → now bullish zone
+            index: j,
+            originalFVGIndex: fvg.index,
+          })
+          break
+        }
+      }
+    }
+  }
+
+  // Filter: only return inversions still valid (not broken again)
+  return inversions.filter(inv => {
+    for (let i = inv.index + 1; i <= upToIdx; i++) {
+      const c = candles[i]!
+      if (inv.type === 'demand' && c.c < inv.bottom) return false
+      if (inv.type === 'supply' && c.c > inv.top) return false
+    }
+    return true
+  })
+}
+
 // ─── ICT HTF Structure Bias ──────────────────────────────────────────────────
 
 /**
