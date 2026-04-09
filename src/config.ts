@@ -280,8 +280,11 @@ export const SMC_5M_CONFIDENCE_BASE = 0.75
 
 // ─── ICT AMD (Power of Three) ───────────────────────────────────────────────
 
-/** Enable AMD session mode. Scans for Judas Swing at session opens. */
-export const SMC_AMD_ENABLED = true
+/** Enable AMD session mode. Scans for Judas Swing at session opens.
+ * DISABLED: 21% WR on backtest — Judas detection too loose for crypto 24/7.
+ * Needs: tighter range criteria, volume confirmation, stricter reversal check.
+ * Re-enable after tuning with longer dataset. */
+export const SMC_AMD_ENABLED = false
 
 /** Accumulation session: Asia (crypto adaptation).
  * Range builds during low-volume Asia hours. */
