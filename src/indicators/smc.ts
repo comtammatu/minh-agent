@@ -659,6 +659,163 @@ export function findLiquidityPools(
   return pools
 }
 
+// ─── ICT AMD (Power of Three) ───────────────────────────────────────────────
+
+export interface SessionRange {
+  high: number
+  low: number
+  startIdx: number
+  endIdx: number
+  barCount: number
+}
+
+/**
+ * Detect the Accumulation range from candles within a session window.
+ * Scans backwards from `idx` to find candles within [startHourUTC, endHourUTC).
+ * Returns the high/low of candles in that window = the session's accumulation range.
+ *
+ * Pure function. Zero I/O.
+ */
+export function detectSessionRange(
+  candles: Candle[],
+  idx: number,
+  startHourUTC: number,
+  endHourUTC: number,
+): SessionRange | null {
+  let high = -Infinity
+  let low = Infinity
+  let startIdx = -1
+  let endIdx = -1
+  let count = 0
+
+  // Scan backwards to find candles within the session window (same day as idx candle)
+  const refDate = new Date(candles[idx]!.t)
+  const refDay = refDate.getUTCDate()
+  const refMonth = refDate.getUTCMonth()
+  const refYear = refDate.getUTCFullYear()
+
+  for (let i = idx; i >= Math.max(0, idx - 200); i--) {
+    const c = candles[i]!
+    const d = new Date(c.t)
+
+    // Must be same UTC day (or previous day for ranges crossing midnight)
+    const dayDiff = Math.abs(refDate.getTime() - d.getTime()) / 86_400_000
+    if (dayDiff > 1.5) break  // too far back
+
+    const hour = d.getUTCHours()
+    const sameDay = d.getUTCDate() === refDay && d.getUTCMonth() === refMonth && d.getUTCFullYear() === refYear
+
+    // Handle ranges that don't cross midnight (e.g., 0-7)
+    let inWindow: boolean
+    if (startHourUTC <= endHourUTC) {
+      inWindow = hour >= startHourUTC && hour < endHourUTC && sameDay
+    } else {
+      // Crosses midnight (e.g., 22-2)
+      inWindow = (hour >= startHourUTC || hour < endHourUTC)
+    }
+
+    if (!inWindow) continue
+
+    if (c.h > high) high = c.h
+    if (c.l < low) low = c.l
+    if (startIdx === -1 || i < startIdx) startIdx = i
+    if (endIdx === -1 || i > endIdx) endIdx = i
+    count++
+  }
+
+  if (count < 3 || high === -Infinity) return null
+  return { high, low, startIdx, endIdx, barCount: count }
+}
+
+export interface JudasSwing {
+  direction: 'bullish' | 'bearish'  // direction of the REAL move (opposite of fake)
+  sweepLevel: number                 // price level of the fake breakout
+  sweepIdx: number                   // candle that swept the range
+  reversalIdx: number                // candle that confirmed reversal
+  rangeHigh: number
+  rangeLow: number
+}
+
+/**
+ * Detect Judas Swing — ICT's fake breakout beyond accumulation range.
+ *
+ * Bullish Judas: price sweeps BELOW range low, then closes back inside → real move is UP
+ * Bearish Judas: price sweeps ABOVE range high, then closes back inside → real move is DOWN
+ *
+ * Requires:
+ * 1. Session range (accumulation) exists
+ * 2. Candle(s) after range end sweep beyond range boundary
+ * 3. Subsequent candle closes back inside range (reversal)
+ *
+ * Pure function. Zero I/O.
+ */
+export function detectJudasSwing(
+  candles: Candle[],
+  idx: number,
+  range: SessionRange,
+  tolerance: number = 0,
+): JudasSwing | null {
+  if (idx <= range.endIdx) return null
+
+  // Scan candles after range for sweep + reversal
+  const scanStart = range.endIdx + 1
+  const scanEnd = Math.min(idx, range.endIdx + 30)  // max 30 bars after range
+
+  let bearishSweepIdx = -1  // swept above range high
+  let bullishSweepIdx = -1  // swept below range low
+
+  for (let i = scanStart; i <= scanEnd; i++) {
+    const c = candles[i]!
+
+    // Bearish Judas: wick above range high (sweep BSL)
+    if (c.h > range.high + tolerance && bearishSweepIdx === -1) {
+      bearishSweepIdx = i
+    }
+
+    // Bullish Judas: wick below range low (sweep SSL)
+    if (c.l < range.low - tolerance && bullishSweepIdx === -1) {
+      bullishSweepIdx = i
+    }
+  }
+
+  // Check for reversal after sweep
+  // Bullish: swept below → candle closes above range low (recovery)
+  if (bullishSweepIdx !== -1) {
+    for (let i = bullishSweepIdx; i <= scanEnd; i++) {
+      const c = candles[i]!
+      if (c.c > range.low && c.c > c.o) {  // closes inside range with bullish body
+        return {
+          direction: 'bullish',
+          sweepLevel: candles[bullishSweepIdx]!.l,
+          sweepIdx: bullishSweepIdx,
+          reversalIdx: i,
+          rangeHigh: range.high,
+          rangeLow: range.low,
+        }
+      }
+    }
+  }
+
+  // Bearish: swept above → candle closes below range high (rejection)
+  if (bearishSweepIdx !== -1) {
+    for (let i = bearishSweepIdx; i <= scanEnd; i++) {
+      const c = candles[i]!
+      if (c.c < range.high && c.c < c.o) {  // closes inside range with bearish body
+        return {
+          direction: 'bearish',
+          sweepLevel: candles[bearishSweepIdx]!.h,
+          sweepIdx: bearishSweepIdx,
+          reversalIdx: i,
+          rangeHigh: range.high,
+          rangeLow: range.low,
+        }
+      }
+    }
+  }
+
+  return null
+}
+
 // ─── ICT LTF Confirming Break ───────────────────────────────────────────────
 
 /**

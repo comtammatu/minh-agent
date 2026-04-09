@@ -138,10 +138,8 @@ export const PATTERN_TTL_BARS: Record<string, number> = {
 export const SMC_BREAK_LOOKBACK = 20
 
 /** Timeframes to skip for SMC-SD strategy.
- * 5m disabled in backtest: only ~17 days of 5m data (5000 candles) — insufficient
- * overlap with 4h POIs for statistically valid drill-down. Code is ready for live
- * where data accumulates naturally. Remove '5m' when running live.
- * 4h/15m active: 4h for POI registration, 15m for confirmation, 1h for same-TF. */
+ * 5m disabled in backtest (insufficient data overlap).
+ * All others active: 4h=POI, 15m=confirm+AMD, 5m=micro-entry(live only), 1h=same-TF. */
 export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = ['5m']
 
 /** Minimum bars between signals on same coin/interval (dedup).
@@ -279,6 +277,41 @@ export const SMC_5M_MIN_RR = 4.0
 
 /** Base confidence for 5m micro-entry (HTF + LTF confirmed = highest confidence). */
 export const SMC_5M_CONFIDENCE_BASE = 0.75
+
+// ─── ICT AMD (Power of Three) ───────────────────────────────────────────────
+
+/** Enable AMD session mode. Scans for Judas Swing at session opens. */
+export const SMC_AMD_ENABLED = true
+
+/** Accumulation session: Asia (crypto adaptation).
+ * Range builds during low-volume Asia hours. */
+export const SMC_AMD_ACCUMULATION_START_UTC = 0
+export const SMC_AMD_ACCUMULATION_END_UTC = 7
+
+/** Manipulation windows: session opens where Judas Swings occur.
+ * Each window: [startHourUTC, endHourUTC, name]. */
+export const SMC_AMD_MANIPULATION_WINDOWS: ReadonlyArray<{ start: number; end: number; name: string }> = [
+  { start: 7, end: 10, name: 'london-open' },   // London open — primary Judas Swing
+  { start: 13, end: 16, name: 'us-open' },       // US open — secondary Judas Swing
+] as const
+
+/** Min R:R for AMD entries (tight SL after Judas reversal). */
+export const SMC_AMD_MIN_RR = 2.5
+
+/** Base confidence for AMD entries (Judas confirmed = high probability). */
+export const SMC_AMD_CONFIDENCE_BASE = 0.72
+
+/** Confidence bonus for Judas Swing detection. */
+export const SMC_AMD_JUDAS_BONUS = 0.10
+
+/** ATR buffer for SL beyond Judas sweep wick. */
+export const SMC_AMD_SL_ATR_BUFFER = 0.3
+
+/** AMD runs on 15m candles (enough resolution to detect Judas + entry). */
+export const SMC_AMD_INTERVAL: CandleInterval = '15m'
+
+/** Min bars in accumulation range (too few = unreliable range). */
+export const SMC_AMD_MIN_RANGE_BARS = 5
 
 // ─── Layered Pipeline Config ─────────────────────────────────────────────────
 

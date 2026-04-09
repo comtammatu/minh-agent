@@ -27,6 +27,8 @@ import {
   detectBreakerBlocks,
   detectInversionFVGs,
   findConfirmingBreak,
+  detectSessionRange,
+  detectJudasSwing,
   oteZone,
   detectFVG,
 } from '../../../indicators/smc.js'
@@ -51,6 +53,9 @@ import {
   SMC_DRILLDOWN_CONFIDENCE_BASE, SMC_DRILLDOWN_CHOCH_BONUS, SMC_DRILLDOWN_MAX_POIS,
   SMC_CONFIRMED_POI_TTL_MS, SMC_CONFIRMED_POI_MAX,
   SMC_5M_FVG_LOOKBACK, SMC_5M_SL_ATR_BUFFER, SMC_5M_MIN_RR, SMC_5M_CONFIDENCE_BASE,
+  SMC_AMD_ENABLED, SMC_AMD_ACCUMULATION_START_UTC, SMC_AMD_ACCUMULATION_END_UTC,
+  SMC_AMD_MANIPULATION_WINDOWS, SMC_AMD_MIN_RR, SMC_AMD_CONFIDENCE_BASE,
+  SMC_AMD_JUDAS_BONUS, SMC_AMD_SL_ATR_BUFFER, SMC_AMD_MIN_RANGE_BARS,
 } from '../../../config.js'
 
 // ── Module-level state ──────────────────────────────────────────────────────
@@ -164,56 +169,142 @@ export class SmcSdStrategy implements IStrategy {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // 15m MODE: CONFIRMATION ONLY (CHoCH at POI → mark confirmed, NO signal)
+  // 15m MODE: POI CONFIRMATION + AMD (Judas Swing → SIGNAL)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private scan15mConfirm(coin: string, candles: Candle[], idx: number): null {
-    const pois = htfPOIs.get(coin)
-    if (!pois || pois.length === 0) return null
-
+  private scan15mConfirm(coin: string, candles: Candle[], idx: number): Signal | null {
     const candle = candles[idx]!
     const nowMs = candle.t
-    const activePOIs = pois.filter(p => nowMs - p.createdAtMs < SMC_HTF_POI_TTL_MS)
-    if (activePOIs.length === 0) { htfPOIs.set(coin, []); return null }
-    htfPOIs.set(coin, activePOIs)
-
     const atrVal = atr(candles, idx, 14)
     if (isNaN(atrVal) || atrVal <= 0) return null
     const tol = atrVal * SMC_PRICE_TOLERANCE_ATR_MULT
 
-    // Check each POI for proximity + CHoCH confirmation
-    for (const poi of activePOIs) {
-      const poiZone: KeyZone = {
-        type: poi.direction === 'bullish' ? 'demand' : 'supply',
-        top: poi.zoneTop, bottom: poi.zoneBottom,
-        strength: poi.strength, origin: poi.zoneOrigin, createdAtIdx: 0,
+    // ── Part 1: POI Confirmation (for 5m micro-entry) ──────────────────
+    const pois = htfPOIs.get(coin)
+    if (pois && pois.length > 0) {
+      const activePOIs = pois.filter(p => nowMs - p.createdAtMs < SMC_HTF_POI_TTL_MS)
+      htfPOIs.set(coin, activePOIs)
+
+      for (const poi of activePOIs) {
+        const poiZone: KeyZone = {
+          type: poi.direction === 'bullish' ? 'demand' : 'supply',
+          top: poi.zoneTop, bottom: poi.zoneBottom,
+          strength: poi.strength, origin: poi.zoneOrigin, createdAtIdx: 0,
+        }
+        const prox = isAtZone(candle, poiZone, atrVal)
+        if (!prox.atZone) continue
+
+        const confirmBreak = findConfirmingBreak(candles, idx, SMC_LTF_CHOCH_LOOKBACK, poi.direction, tol)
+        if (!confirmBreak) continue
+
+        const existing = confirmedPOIs.get(coin) ?? []
+        const alreadyConfirmed = existing.some(cp =>
+          Math.abs(cp.zoneTop - poi.zoneTop) < atrVal * 0.1 &&
+          Math.abs(cp.zoneBottom - poi.zoneBottom) < atrVal * 0.1
+        )
+        if (!alreadyConfirmed) {
+          const pool = existing.filter(p => nowMs - p.confirmedAtMs < SMC_CONFIRMED_POI_TTL_MS)
+          confirmedPOIs.set(coin, [...pool, { ...poi, confirmedAtMs: nowMs, ltfBreakKind: confirmBreak.kind }].slice(-SMC_CONFIRMED_POI_MAX))
+        }
       }
-      const prox = isAtZone(candle, poiZone, atrVal)
-      if (!prox.atZone) continue
-
-      // Look for 15m CHoCH/BOS confirming HTF direction
-      const confirmBreak = findConfirmingBreak(candles, idx, SMC_LTF_CHOCH_LOOKBACK, poi.direction, tol)
-      if (!confirmBreak) continue
-
-      // Already confirmed? Skip duplicate
-      const existing = confirmedPOIs.get(coin) ?? []
-      const alreadyConfirmed = existing.some(cp =>
-        Math.abs(cp.zoneTop - poi.zoneTop) < atrVal * 0.1 &&
-        Math.abs(cp.zoneBottom - poi.zoneBottom) < atrVal * 0.1
-      )
-      if (alreadyConfirmed) continue
-
-      // Register confirmed POI
-      const confirmed: ConfirmedPOI = {
-        ...poi,
-        confirmedAtMs: nowMs,
-        ltfBreakKind: confirmBreak.kind,
-      }
-      const pool = existing.filter(p => nowMs - p.confirmedAtMs < SMC_CONFIRMED_POI_TTL_MS)
-      confirmedPOIs.set(coin, [...pool, confirmed].slice(-SMC_CONFIRMED_POI_MAX))
     }
 
-    return null  // 15m never emits signals — confirmation only
+    // ── Part 2: AMD (Power of Three) — Judas Swing detection ───────────
+    if (!SMC_AMD_ENABLED) return null
+
+    // Check if current time is within a manipulation window
+    const hourUTC = new Date(nowMs).getUTCHours()
+    const activeWindow = SMC_AMD_MANIPULATION_WINDOWS.find(w =>
+      w.start <= w.end ? (hourUTC >= w.start && hourUTC < w.end) : (hourUTC >= w.start || hourUTC < w.end)
+    )
+    if (!activeWindow) return null
+
+    // Detect accumulation range (Asia session)
+    const range = detectSessionRange(candles, idx, SMC_AMD_ACCUMULATION_START_UTC, SMC_AMD_ACCUMULATION_END_UTC)
+    if (!range || range.barCount < SMC_AMD_MIN_RANGE_BARS) return null
+
+    // Detect Judas Swing (fake breakout beyond accumulation range)
+    const judas = detectJudasSwing(candles, idx, range, tol)
+    if (!judas) return null
+
+    // Must be at or after the reversal point
+    if (idx < judas.reversalIdx) return null
+
+    const side: SignalSide = judas.direction === 'bullish' ? 'long' : 'short'
+
+    // Require confirming CHoCH/BOS after Judas reversal
+    const confirmBreak = findConfirmingBreak(candles, idx, SMC_LTF_CHOCH_LOOKBACK, judas.direction, tol)
+    if (!confirmBreak) return null
+
+    // Body quality
+    const bodySize = Math.abs(candle.c - candle.o)
+    const candleRange = candle.h - candle.l
+    if (candleRange > 0 && bodySize / candleRange < SMC_MIN_BODY_RATIO) return null
+
+    // Directional body required
+    if (side === 'long' && candle.c <= candle.o) return null
+    if (side === 'short' && candle.c >= candle.o) return null
+
+    // SL: beyond Judas sweep wick + ATR buffer
+    const entry = candle.c
+    const sl = side === 'long'
+      ? judas.sweepLevel - atrVal * SMC_AMD_SL_ATR_BUFFER
+      : judas.sweepLevel + atrVal * SMC_AMD_SL_ATR_BUFFER
+
+    // TP: opposite side of accumulation range + extension
+    const risk = Math.abs(entry - sl)
+    if (risk <= 0 || risk / entry > MAX_TRADE_SL_PCT) return null
+
+    const dir = side === 'long' ? 1 : -1
+    const rangeSize = range.high - range.low
+    // TP1: opposite range boundary + 1 range extension (AMD distribution target)
+    let tp1 = side === 'long' ? range.high + rangeSize : range.low - rangeSize
+    // Floor: min R:R
+    const minTp = entry + dir * risk * SMC_AMD_MIN_RR
+    if ((side === 'long' && tp1 < minTp) || (side === 'short' && tp1 > minTp)) tp1 = minTp
+
+    const reward = Math.abs(tp1 - entry)
+    if (reward / risk < SMC_AMD_MIN_RR) return null
+
+    // Confidence
+    let confidence = SMC_AMD_CONFIDENCE_BASE
+    confidence += SMC_AMD_JUDAS_BONUS
+    if (confirmBreak.kind === 'choch') confidence += SMC_DRILLDOWN_CHOCH_BONUS
+    if (isDisplacementCandle(candles, idx, atrVal, SMC_ICT_DISPLACEMENT_BODY_ATR)) confidence += 0.08
+
+    // Killzone bonus (we're already in a manipulation window, so always in killzone)
+    const kz = getKillzoneBonus(nowMs)
+    if (kz.inKillzone) confidence += kz.bonus
+
+    // Volume + VSA
+    const volRatio = volumeRatio(candles, idx, 20)
+    if (!isNaN(volRatio) && volRatio > 1.5) confidence += 0.05
+    if (detectVSA(candles, idx).some(s => s.direction === (side === 'long' ? 'bullish' : 'bearish'))) confidence += 0.05
+
+    const regime = detectRegime(candles, idx)
+    confidence = applyRegimeModifier(confidence, side, regime)
+    if (confidence < MIN_CONFIDENCE) return null
+
+    // Dedup
+    const dedupKey = `${coin}|15m-amd`
+    const lastBar = lastSignalBar.get(dedupKey)
+    if (lastBar !== undefined && idx - lastBar <= SMC_DEDUP_BARS * 3) return null  // wider dedup for AMD
+    lastSignalBar.set(dedupKey, idx)
+
+    return {
+      type: 'smc-sd', side,
+      confidence: Math.min(confidence, 1),
+      entryPrice: entry, slPrice: sl, tpPrice: tp1,
+      confluenceGrade: 'A', confluenceCount: 5,
+      patternData: {
+        amd: true, judasDirection: judas.direction,
+        sweepLevel: judas.sweepLevel, rangeHigh: judas.rangeHigh, rangeLow: judas.rangeLow,
+        manipulationWindow: activeWindow.name,
+        ltfConfirmKind: confirmBreak.kind,
+        regime, tp2Price: tp1 + dir * risk * 2, atrAtEntry: atrVal,
+        killzoneName: kz.name,
+      },
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
