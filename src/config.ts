@@ -682,6 +682,25 @@ export const QUANT_ATR_TP_MULT = 3.0
 /** Minimum ADX value to confirm trending market (filter chop). Lower = more signals. */
 export const QUANT_ADX_MIN = 18
 
+// ─── Strategy Enable/Disable ─────────────────────────────────────────────────
+
+/**
+ * Which strategies to enable at startup.
+ * Env: `ENABLED_STRATEGIES` — comma-separated list of strategy IDs.
+ * Valid IDs: layered, quant, smc-sd
+ *
+ * Examples:
+ *   ENABLED_STRATEGIES=smc-sd          → only SMC+SD (ICT)
+ *   ENABLED_STRATEGIES=smc-sd,quant    → SMC+SD and Quant
+ *   ENABLED_STRATEGIES=layered,quant,smc-sd → all (default)
+ *   (unset)                            → all strategies enabled
+ */
+export function getEnabledStrategies(): string[] {
+  const raw = process.env['ENABLED_STRATEGIES']
+  if (!raw || raw.trim() === '') return ['layered', 'quant', 'smc-sd']  // default: all
+  return raw.split(',').map(s => s.trim()).filter(s => s.length > 0)
+}
+
 // ─── Portfolio Risk (Sprint 4.5 S6) ─────────────────────────────────────────
 
 /** Portfolio-level risk limits across all strategies. */

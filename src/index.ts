@@ -35,6 +35,7 @@ import {
   getEffectivePaperTrade,
   MIN_CANDLES_FOR_SCAN,
   getActiveExchange,
+  getEnabledStrategies,
   BYBIT_TOP_COINS_LIMIT,
   BYBIT_FUNDING_REFRESH_MS,
 } from './config.js'
@@ -534,12 +535,22 @@ async function main(): Promise<void> {
   log.info('startup', `ARMED | ${coins.length} coins: ${fullyReady} fully ready, ${partialReady} partial | ${TIMEFRAMES.length} TFs`)
 
   // 7b. Register strategies (Sprint 4.5: multi-strategy fan-out)
+  // All strategies registered, then selectively enabled via ENABLED_STRATEGIES env.
   const registry = getStrategyRegistry()
   registry.register(new LayeredStrategyAdapter())
   registry.register(new QuantStrategyAdapter())
   registry.register(new SmcSdStrategy())
-  const strategyIds = registry.getAll().map(s => s.id)
-  log.info('startup', `STRAT | ${strategyIds.length} strategies registered: ${strategyIds.join(', ')}`)
+
+  // Apply ENABLED_STRATEGIES filter
+  const enabledIds = getEnabledStrategies()
+  for (const s of registry.getAll()) {
+    if (!enabledIds.includes(s.id)) {
+      registry.disable(s.id)
+      log.info('startup', `STRAT | ${s.id} DISABLED (not in ENABLED_STRATEGIES)`)
+    }
+  }
+  const activeIds = registry.getEnabledIds()
+  log.info('startup', `STRAT | ${activeIds.length}/${registry.size} enabled: ${activeIds.join(', ')}${enabledIds.length < 3 ? ' (env: ENABLED_STRATEGIES=' + enabledIds.join(',') + ')' : ''}`)
 
   // 7c. Init ExchangePool (Sprint 4.5: per-strategy wallets or shared fallback)
   const pool = getExchangePool()
