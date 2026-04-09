@@ -604,6 +604,23 @@ describe('TradingAgent', () => {
     expect(agent.getGlobal().pnlHistory[1]!.pnl).toBe(100)
   })
 
+  it('position close events update dailyPnl via recordPnl', () => {
+    // Enter position first
+    agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup({ confluenceGrade: 'A' }) })
+    agent.dispatch('BTC', { type: 'order_filled', positionId: 'pos-1', fillPrice: 100 })
+    expect(agent.getCoinState('BTC')).toBe('IN_POSITION')
+
+    // Close with PnL — should update global dailyPnl
+    agent.dispatch('BTC', { type: 'position_closed', positionId: 'pos-1', closePrice: 110, pnl: 50, reason: 'tp_hit' })
+    expect(agent.getGlobal().dailyPnl).toBe(50)
+
+    // Another trade with loss
+    agent.dispatch('ETH', { type: 'setup_detected', setup: makeSetup({ coin: 'ETH', confluenceGrade: 'A' }) })
+    agent.dispatch('ETH', { type: 'order_filled', positionId: 'pos-2', fillPrice: 200 })
+    agent.dispatch('ETH', { type: 'sl_hit', positionId: 'pos-2', closePrice: 190, pnl: -30 })
+    expect(agent.getGlobal().dailyPnl).toBe(20) // 50 - 30
+  })
+
   it('checkCircuitBreakers emits journal action', () => {
     const actions: unknown[] = []
     agent.onAction((a) => actions.push(a))

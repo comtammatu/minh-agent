@@ -676,7 +676,7 @@ async function main(): Promise<void> {
   // One scan per coin/TF from backfilled store so bias/TUI/strategies are live immediately
   bootstrapPipelineFromStore(coins)
 
-  log.info('agent', `Agent wired: ${strategyIds.length} strategies + exchange pool + order manager + position monitor + invalidation bridge + Telegram bot`)
+  log.info('agent', `Agent wired: ${activeIds.length} strategies + exchange pool + order manager + position monitor + invalidation bridge + Telegram bot`)
 
   // 10. Start coin refresh loop
   selector.startRefreshLoop()
@@ -728,6 +728,7 @@ async function cleanup(): Promise<void> {
   stopTui()
   selector.stopRefreshLoop()
   getPositionMonitor().stopSync()
+  getStrategyRegistry().clear()
   stopBot()
   for (const id of activeIntervals) clearInterval(id)
   activeIntervals.length = 0

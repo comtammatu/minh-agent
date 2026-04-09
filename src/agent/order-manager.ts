@@ -1054,6 +1054,43 @@ export class OrderManager {
       this.orders.set(order.id, order)
     }
     log.info('order-manager', `Loaded ${rows.length} active orders from DB [exchange=${exchange}]`)
+
+    // Reconcile: cancel stale pending/submitted orders from previous runs.
+    // These are phantom orders that never completed — the bot crashed or was
+    // restarted before the order lifecycle finished.  Without this, the
+    // idempotency guard blocks all new entries for the affected coin+strategy.
+    await this.reconcileStaleOrders()
+  }
+
+  /**
+   * Cancel pending/submitted orders older than ORDER_FILL_TIMEOUT_MS.
+   * Called once at startup after loadActiveOrders().
+   *
+   * - pending with no exchange_order_id: never made it to exchange (crash mid-submit)
+   * - submitted older than timeout: exchange likely expired/cancelled it already
+   *
+   * Filled orders are NOT touched — restoreOpenPositions handles those separately.
+   */
+  private async reconcileStaleOrders(): Promise<void> {
+    const now = Date.now()
+    let cancelled = 0
+    for (const [, order] of this.orders) {
+      if (order.status !== 'pending' && order.status !== 'submitted') continue
+      const age = now - order.createdAt
+      // Pending with no exchange ID → never submitted (crash). Cancel immediately.
+      // Submitted but older than timeout → stale. Cancel.
+      if (order.status === 'pending' && !order.exchangeOrderId || age > ORDER_FILL_TIMEOUT_MS) {
+        order.status = 'cancelled'
+        order.updatedAt = now
+        await updateOrderInDb(order)
+        this.orders.set(order.id, order)
+        log.info('order-manager', `Reconciled stale order: ${order.id} ${order.coin} [${order.strategyId}] age=${Math.round(age / 1000)}s → cancelled`)
+        cancelled++
+      }
+    }
+    if (cancelled > 0) {
+      log.info('order-manager', `Reconciled ${cancelled} stale order(s) at startup`)
+    }
   }
 
   /**

@@ -117,28 +117,39 @@ export class BybitExchangeService {
       testnet: this.testnet,
     })
 
-    // Load maxLeverage per coin from getInstrumentsInfo (non-fatal)
+    // Load maxLeverage + lot-size specs per coin from getInstrumentsInfo.
+    // Bybit default limit is 500 — must paginate with cursor to get all instruments (non-fatal).
     try {
-      const instrResp = await this.client.getInstrumentsInfo({ category: 'linear' })
-      for (const inst of instrResp.result?.list ?? []) {
-        const coin = inst.symbol.endsWith('USDT') ? inst.symbol.slice(0, -4) : inst.symbol
-        const maxLev = parseFloat(inst.leverageFilter.maxLeverage)
-        if (Number.isFinite(maxLev) && maxLev > 0) this.maxLeverageMap.set(coin, maxLev)
-        const step = parseFloat(inst.lotSizeFilter.qtyStep)
-        if (Number.isFinite(step) && step > 0) {
-          this.qtyStepMap.set(coin, step)
-          // Count decimal places: e.g. "0.001" → 3
-          const decimals = (inst.lotSizeFilter.qtyStep.split('.')[1] ?? '').length
-          this.stepDecimalsMap.set(coin, decimals)
+      let cursor: string | undefined
+      let totalLoaded = 0
+      do {
+        const instrResp = await this.client.getInstrumentsInfo({
+          category: 'linear',
+          limit: 1000,
+          ...(cursor ? { cursor } : {}),
+        })
+        for (const inst of instrResp.result?.list ?? []) {
+          const coin = inst.symbol.endsWith('USDT') ? inst.symbol.slice(0, -4) : inst.symbol
+          const maxLev = parseFloat(inst.leverageFilter.maxLeverage)
+          if (Number.isFinite(maxLev) && maxLev > 0) this.maxLeverageMap.set(coin, maxLev)
+          const step = parseFloat(inst.lotSizeFilter.qtyStep)
+          if (Number.isFinite(step) && step > 0) {
+            this.qtyStepMap.set(coin, step)
+            // Count decimal places: e.g. "0.001" → 3
+            const decimals = (inst.lotSizeFilter.qtyStep.split('.')[1] ?? '').length
+            this.stepDecimalsMap.set(coin, decimals)
+          }
+          const minQty = parseFloat(inst.lotSizeFilter.minOrderQty)
+          if (Number.isFinite(minQty) && minQty > 0) {
+            this.minOrderQtyMap.set(coin, minQty)
+          }
+          totalLoaded++
         }
-        const minQty = parseFloat(inst.lotSizeFilter.minOrderQty)
-        if (Number.isFinite(minQty) && minQty > 0) {
-          this.minOrderQtyMap.set(coin, minQty)
-        }
-      }
-      log.info('bybit-svc', `Loaded maxLeverage for ${this.maxLeverageMap.size} instruments`)
+        cursor = instrResp.result?.nextPageCursor || undefined
+      } while (cursor)
+      log.info('bybit-svc', `Loaded instrument specs for ${this.maxLeverageMap.size} instruments (${totalLoaded} total)`)
     } catch (err) {
-      log.warn('bybit-svc', `Failed to load maxLeverage data: ${err instanceof Error ? err.message : err}`)
+      log.warn('bybit-svc', `Failed to load instrument data: ${err instanceof Error ? err.message : err}`)
     }
 
     this.initialized = true
@@ -231,6 +242,17 @@ export class BybitExchangeService {
       return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Qty below minimum: ${errMsg}` }
     }
 
+    // Guard: reject qty=0 (can happen after floor rounding with qtyStep=1 and small size)
+    if (baseQty <= 0) {
+      log.warn('bybit-exec', `placeOrder skipped: qty=${baseQty} rounded to 0 for ${params.coin} (raw=${params.size})`)
+      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Qty rounded to 0 (raw=${params.size})` }
+    }
+
+    // Warn if instrument specs weren't loaded (fallback step may produce fractional qty)
+    if (!this.qtyStepMap.has(params.coin)) {
+      log.warn('bybit-exec', `No qtyStep loaded for ${params.coin} — using fallback 0.001, may cause rejection`)
+    }
+
     const submitParams: Parameters<RestClientV5['submitOrder']>[0] = {
       category: 'linear',
       symbol,
@@ -246,13 +268,15 @@ export class BybitExchangeService {
       ...(params.cloid ? { orderLinkId: params.cloid } : {}),
     }
 
+    log.info('bybit-exec', `submitOrder: ${symbol} ${side} ${orderType} qty=${submitParams.qty} price=${submitParams.price ?? 'MKT'} posIdx=${positionIdx} sl=${submitParams.stopLoss ?? '-'} tp=${submitParams.takeProfit ?? '-'} step=${this.qtyStepMap.get(params.coin) ?? '?'} rawSize=${params.size}`)
+
     try {
       await acquireExec()
       const resp = await this.client!.submitOrder(submitParams)
 
       if (resp.retCode !== 0) {
         const errMsg = resp.retMsg ?? `Bybit error code ${resp.retCode}`
-        log.error('bybit-exec', `placeOrder failed: ${errMsg} [${symbol}]`)
+        log.error('bybit-exec', `placeOrder failed: retCode=${resp.retCode} ${errMsg} [${symbol}]`)
         return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: errMsg }
       }
 

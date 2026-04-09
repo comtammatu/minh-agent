@@ -124,6 +124,13 @@ export class StrategyRegistry {
     this.enabled.set(id, false)
   }
 
+  /** Clear all registered strategies (used before reconnect). */
+  clear(): void {
+    this.strategies.clear()
+    this.enabled.clear()
+    this.activeOnly = null
+  }
+
   /**
    * Backtest isolation: only run this strategy during runAll().
    * Pass null to restore fan-out to all enabled strategies.
