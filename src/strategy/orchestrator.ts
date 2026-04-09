@@ -18,6 +18,9 @@ import { getStrategyRegistry, type StrategyRegistry } from './registry.js'
 import { clearQuantState } from './strategies/quant/pipeline.js'
 import { computeExpiresAtBar, setupId } from './shared/invalidation.js'
 import { getOrCreateStats, resetPipelineStats } from './diagnostics.js'
+import { detectRegime } from '../indicators/core.js'
+import { determineBias } from './strategies/layered/layers/bias.js'
+import { findPivots } from '../indicators/smc.js'
 import {
   MIN_CANDLES_FOR_SCAN,
   INDICATOR_WINDOW,
@@ -74,13 +77,29 @@ function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry:
 
   // Build HTF context for ICT top-down analysis (SMC-SD uses this)
   const htfInterval = HTF_MAP[interval]
+  const htfCandles = htfInterval !== interval ? getCandles(coin, htfInterval, Math.max(maxMin + 2, INDICATOR_WINDOW)) : []
   let context: StrategyContext | undefined
-  if (htfInterval !== interval) {
-    const htfCandles = getCandles(coin, htfInterval, maxMin + 2)
-    if (htfCandles.length >= MIN_CANDLES_FOR_SCAN) {
-      context = { htfCandles, htfInterval }
-    }
+  if (htfInterval !== interval && htfCandles.length >= MIN_CANDLES_FOR_SCAN) {
+    context = { htfCandles, htfInterval }
   }
+
+  // Update statusState with regime/bias so TUI watchlist shows data regardless of which strategy is active.
+  const sk = `${coin}|${interval}`
+  const confirmedSlice = candles.slice(0, idx + 1)
+  const regime = detectRegime(confirmedSlice, idx)
+  const pivots = findPivots(confirmedSlice, idx, 3)
+  const bias = determineBias(confirmedSlice, idx, htfCandles, pivots)
+  const activeCount = Array.from(activeSetups.values()).filter(s => s.coin === coin && s.interval === interval).length
+  statusState.set(sk, {
+    coin,
+    interval,
+    regime,
+    bias: bias?.bias ?? 'neutral',
+    biasConfidence: bias?.confidence ?? 0,
+    confluenceGrade: null,
+    activeCount,
+    lastUpdateAt: Date.now(),
+  })
 
   const signalResults = registry.runAll(coin, interval, candles, idx, context)
 
@@ -101,6 +120,12 @@ function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry:
     const stats = getOrCreateStats(strategyId)
     stats.setupsTracked++
     pipelineEmitter.emit('setup', setup)
+
+    // Promote confluenceGrade in statusState when a setup is detected
+    const existing = statusState.get(sk)
+    if (existing && signal.confluenceGrade) {
+      statusState.set(sk, { ...existing, confluenceGrade: signal.confluenceGrade, activeCount: existing.activeCount + 1 })
+    }
 
     const rrRaw = Math.abs(signal.tpPrice - signal.entryPrice) / Math.abs(signal.entryPrice - signal.slPrice)
     const rr = isNaN(rrRaw) ? 0 : rrRaw

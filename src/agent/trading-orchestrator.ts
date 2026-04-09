@@ -112,6 +112,14 @@ export class TradingAgent {
     const key = stateKey(setup.coin, strategyId)
     const coinState = this.getCoinStateByKey(key)
 
+    // Guard: skip if coin+strategy already has a pending order or is mid-entry.
+    // Without this, the pipeline re-detects the same setup every tick and spams
+    // IDLE → ENTERING → order_rejected → IDLE cycles against the DB idempotency guard.
+    const ctx = this.coins.get(key)
+    if (ctx && (ctx.pendingOrderId || ctx.state === 'ENTERING')) {
+      return  // silent — duplicate setup noise is not worth logging every tick
+    }
+
     // S12: Anti-correlation guard
     if (coinState === 'IDLE' || coinState === 'WATCHING') {
       const openCoins = this.getOpenPositionCoins()
@@ -521,6 +529,8 @@ export class TradingAgent {
       }
       ctx.positionId = null
       ctx.activeSetup = null
+      // Update global dailyPnl + circuit breakers
+      this.recordPnl(pnl, undefined, ctx.coin, ctx.strategyId)
     }
 
     if (event.type === 'pause' || event.type === 'circuit_break') {
