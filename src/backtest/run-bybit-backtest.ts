@@ -41,13 +41,15 @@ const COINS = [
   'WLD', 'INJ', 'TIA', 'SEI', 'ONDO',
 ]
 
-/** Timeframes to scan. */
-const TIMEFRAMES: CandleInterval[] = ['15m', '1h', '4h']
+/** Timeframes to scan.
+ * 5m added for ICT micro-entry (4h POI → 15m CHoCH → 5m FVG entry).
+ * 4h for POI registration, 15m for confirmation, 5m for entry, 1h for same-TF. */
+const TIMEFRAMES: CandleInterval[] = ['5m', '15m', '1h', '4h']
 
 /** How many candles to fetch per TF (Bybit allows large history). */
 const CANDLE_COUNTS: Record<CandleInterval, number> = {
   '1m': 500,
-  '5m': 500,
+  '5m': 5000,   // ~17 days — overlap with 15m for drill-down
   '15m': 5000,
   '1h': 5000,
   '4h': 5000,

@@ -138,9 +138,11 @@ export const PATTERN_TTL_BARS: Record<string, number> = {
 export const SMC_BREAK_LOOKBACK = 20
 
 /** Timeframes to skip for SMC-SD strategy.
- * Empty: 4h used for POI registration, 15m for drill-down entry, 1h for same-TF.
- * Multi-TF drill-down (4h→15m) now handles what was previously noise on 15m. */
-export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = []
+ * 5m disabled in backtest: only ~17 days of 5m data (5000 candles) — insufficient
+ * overlap with 4h POIs for statistically valid drill-down. Code is ready for live
+ * where data accumulates naturally. Remove '5m' when running live.
+ * 4h/15m active: 4h for POI registration, 15m for confirmation, 1h for same-TF. */
+export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = ['5m']
 
 /** Minimum bars between signals on same coin/interval (dedup).
  * Reduced from 15 to 8: was too restrictive, missing valid re-entries at zones. */
@@ -256,6 +258,27 @@ export const SMC_DRILLDOWN_CHOCH_BONUS = 0.10
 
 /** Max POIs stored per coin to prevent memory growth. */
 export const SMC_DRILLDOWN_MAX_POIS = 10
+
+/** Confirmed POI TTL in ms. Must be short — 5m entry should happen soon after 15m CHoCH.
+ * 1 hour = 12 × 5m bars. Was 4h but 96% SL rate → too many stale entries. */
+export const SMC_CONFIRMED_POI_TTL_MS = 1 * 3_600_000
+
+/** Max confirmed POIs per coin. */
+export const SMC_CONFIRMED_POI_MAX = 5
+
+// ─── ICT 5m Micro-Entry ─────────────────────────────────────────────────────
+
+/** 5m bars to look for FVG entry after confirmed POI. */
+export const SMC_5M_FVG_LOOKBACK = 5
+
+/** ATR buffer for 5m swing stop (ultra-tight). */
+export const SMC_5M_SL_ATR_BUFFER = 0.3
+
+/** Min R:R for 5m micro-entry (high floor — ultra-tight SL enables this). */
+export const SMC_5M_MIN_RR = 4.0
+
+/** Base confidence for 5m micro-entry (HTF + LTF confirmed = highest confidence). */
+export const SMC_5M_CONFIDENCE_BASE = 0.75
 
 // ─── Layered Pipeline Config ─────────────────────────────────────────────────
 
