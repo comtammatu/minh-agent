@@ -659,5 +659,37 @@ export function findLiquidityPools(
   return pools
 }
 
+// ─── ICT LTF Confirming Break ───────────────────────────────────────────────
+
+/**
+ * Find a confirming BOS/CHoCH within the last N bars matching expected direction.
+ * ICT drill-down: after price reaches HTF POI, look for LTF structure shift.
+ * Prefers CHoCH (reversal = stronger confirmation) over BOS (continuation).
+ *
+ * Pure function. Zero I/O.
+ */
+export function findConfirmingBreak(
+  candles: Candle[],
+  idx: number,
+  lookback: number,
+  expectedDirection: 'bullish' | 'bearish',
+  tolerance: number,
+): StructureBreak | null {
+  let bestBreak: StructureBreak | null = null
+
+  for (let i = Math.max(0, idx - lookback); i <= idx; i++) {
+    const breaks = detectStructureBreaks(candles, i, { tolerance })
+    for (const b of breaks) {
+      if (b.direction !== expectedDirection) continue
+      // Prefer CHoCH over BOS (stronger confirmation)
+      if (!bestBreak || b.kind === 'choch' || (bestBreak.kind !== 'choch' && b.index > bestBreak.index)) {
+        bestBreak = b
+      }
+    }
+  }
+
+  return bestBreak
+}
+
 // ─── S&D re-exports (canonical location: supply-demand.ts) ────────────────────
 export { premiumDiscount, oteZone } from './supply-demand.js'

@@ -138,13 +138,9 @@ export const PATTERN_TTL_BARS: Record<string, number> = {
 export const SMC_BREAK_LOOKBACK = 20
 
 /** Timeframes to skip for SMC-SD strategy.
- * Backtest data: 1h WR=55.3%, 15m WR=27.3%, 4h WR=28.6%.
- * 1h is the sweet spot — 15m too noisy, 4h stops too wide. */
-/** Timeframes to skip for SMC-SD strategy.
- * 15m: needs multi-TF drill-down (4h POI→15m entry) to have edge. Same-TF = noise.
- * 4h: SL% too wide for zone-based stops (3-6% SL kills R:R).
- * 1h is the sweet spot: tight enough SL, strong enough structure signals. */
-export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = ['15m', '4h']
+ * Empty: 4h used for POI registration, 15m for drill-down entry, 1h for same-TF.
+ * Multi-TF drill-down (4h→15m) now handles what was previously noise on 15m. */
+export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = []
 
 /** Minimum bars between signals on same coin/interval (dedup).
  * Reduced from 15 to 8: was too restrictive, missing valid re-entries at zones. */
@@ -234,6 +230,32 @@ export const SMC_ICT_INVERSION_FVG_ENABLED = true
 
 /** Confidence bonus when price reacts at an Inversion FVG. */
 export const SMC_ICT_INVERSION_FVG_BONUS = 0.06
+
+// ─── ICT Multi-TF Drill-Down (4h → 15m) ────────────────────────────────────
+
+/** POI time-to-live in ms. 80 hours = 20 × 4h bars. */
+export const SMC_HTF_POI_TTL_MS = 80 * 3_600_000
+
+/** 15m bars to look back for confirming CHoCH/BOS at POI. */
+export const SMC_LTF_CHOCH_LOOKBACK = 5
+
+/** Bars after CHoCH to look for entry FVG. */
+export const SMC_LTF_ENTRY_FVG_LOOKBACK = 3
+
+/** Min R:R for drill-down entries (higher floor — wide 4h TP expected). */
+export const SMC_DRILLDOWN_MIN_RR = 3.0
+
+/** ATR buffer for 15m structure stop (tighter than 1h's 0.7). */
+export const SMC_DRILLDOWN_SL_ATR_BUFFER = 0.5
+
+/** Base confidence for drill-down signals (HTF alignment guaranteed). */
+export const SMC_DRILLDOWN_CONFIDENCE_BASE = 0.70
+
+/** Bonus if 15m confirmation is CHoCH (reversal > continuation). */
+export const SMC_DRILLDOWN_CHOCH_BONUS = 0.10
+
+/** Max POIs stored per coin to prevent memory growth. */
+export const SMC_DRILLDOWN_MAX_POIS = 10
 
 // ─── Layered Pipeline Config ─────────────────────────────────────────────────
 
