@@ -138,9 +138,9 @@ export const PATTERN_TTL_BARS: Record<string, number> = {
 export const SMC_BREAK_LOOKBACK = 20
 
 /** Timeframes to skip for SMC-SD strategy.
- * 5m disabled in backtest (insufficient data overlap).
- * All others active: 4h=POI, 15m=confirm+AMD, 5m=micro-entry(live only), 1h=same-TF. */
-export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = ['5m']
+ * All TFs active: 4h=POI, 15m=confirm+AMD, 5m=micro-entry, 1h=same-TF.
+ * 5m enabled for live (data accumulates naturally over time). */
+export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = []
 
 /** Minimum bars between signals on same coin/interval (dedup).
  * Reduced from 15 to 8: was too restrictive, missing valid re-entries at zones. */
