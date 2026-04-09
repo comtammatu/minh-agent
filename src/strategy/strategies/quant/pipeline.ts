@@ -17,7 +17,7 @@
  */
 
 import type { Candle, CandleInterval, ActiveSetup, SignalSide } from '../../../types.js'
-import { ema, rsi, atr, detectRegime } from '../../../indicators/core.js'
+import { ema, rsi, atr, adx, volumeRatio, detectRegime } from '../../../indicators/core.js'
 import { getPipelineEmitter, getActiveSetupsMap } from '../../orchestrator.js'
 import { getOrCreateStats } from '../../diagnostics.js'
 import { computeExpiresAtBar, setupId } from '../../shared/invalidation.js'
@@ -31,6 +31,8 @@ import {
   QUANT_ATR_TP_MULT,
   QUANT_MIN_EMA_SEPARATION_PCT,
   QUANT_DEDUP_BARS,
+  QUANT_ADX_MIN,
+  MAX_TRADE_SL_PCT,
   getActiveExchange,
 } from '../../../config.js'
 import { log } from '../../../lib/logger.js'
@@ -83,13 +85,22 @@ export function runQuantPipeline(
 
   if (!side) return
 
+  // ADX filter: only trade in trending markets (ADX > min threshold)
+  const adxVal = adx(candles, idx)
+  if (!isNaN(adxVal) && adxVal < QUANT_ADX_MIN) return
+
   // Regime filter: only block VOLATILE (spiky ATR spike = unreliable entries).
   // Counter-trend is intentional here — RSI pullback in an EMA uptrend is locally BEAR
   // by SMA definition, so applying counter penalty would kill every valid pullback signal.
   const regime = detectRegime(candles, idx)
   if (regime === 'VOLATILE') return
 
-  const confidence = 0.6
+  // Dynamic confidence scoring
+  let confidence = 0.55
+  if (!isNaN(adxVal) && adxVal > 25) confidence += 0.05
+  if (rsiVal < 25 || rsiVal > 75) confidence += 0.05
+  const volRatio = volumeRatio(candles, idx, 20)
+  if (!isNaN(volRatio) && volRatio > 1.3) confidence += 0.05
 
   stats.passL1Bias++
   stats.passL2Structure++
@@ -112,6 +123,9 @@ export function runQuantPipeline(
   const entryPrice = close
   const slPrice = side === 'long' ? close - slDistance : close + slDistance
   const tpPrice = side === 'long' ? close + tpDistance : close - tpDistance
+
+  // SL% cap — reject trades where SL distance exceeds MAX_TRADE_SL_PCT (prevents oversized 4h ATR stops)
+  if (slDistance / close > MAX_TRADE_SL_PCT) return
 
   const id = setupId(coin, interval, 'ema-rsi', 'quant')
   const activeExchange = getActiveExchange()

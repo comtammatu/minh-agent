@@ -91,7 +91,7 @@ describe('SmcSdStrategy', () => {
   })
 
   test('name is descriptive', () => {
-    expect(strategy.name).toBe('SMC + S&D Zone Bounce')
+    expect(strategy.name).toBe('SMC + S&D Zone Bounce (ICT)')
   })
 
   test('patternTypes includes smc-sd', () => {

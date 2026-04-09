@@ -14,7 +14,7 @@
  *                                              emitter.emit('setup', {strategyId})
  */
 
-import type { Candle, CandleInterval, Signal, PatternType } from '../types.js'
+import type { Candle, CandleInterval, Signal, PatternType, StrategyContext } from '../types.js'
 import { log } from '../lib/logger.js'
 
 // ─── IStrategy Interface ────────────────────────────────────────────────────
@@ -46,7 +46,7 @@ export interface IStrategy {
    * and return null — they use the legacy void-return pattern.
    * New strategies should return Signal for registry-managed emit.
    */
-  scan(coin: string, interval: CandleInterval, candles: Candle[], idx: number): Signal | null
+  scan(coin: string, interval: CandleInterval, candles: Candle[], idx: number, context?: StrategyContext): Signal | null
 
   /** Minimum candles needed before scan() produces valid results. */
   minCandles(): number
@@ -149,6 +149,7 @@ export class StrategyRegistry {
     interval: CandleInterval,
     candles: Candle[],
     idx: number,
+    context?: StrategyContext,
   ): Array<{ strategyId: string; signal: Signal }> {
     const results: Array<{ strategyId: string; signal: Signal }> = []
 
@@ -164,7 +165,7 @@ export class StrategyRegistry {
       if (candles.length < strategy.minCandles()) continue
 
       try {
-        const signal = strategy.scan(coin, interval, candles, idx)
+        const signal = strategy.scan(coin, interval, candles, idx, context)
         if (signal !== null) {
           results.push({ strategyId: id, signal })
         }

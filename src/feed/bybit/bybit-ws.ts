@@ -10,7 +10,7 @@
 import { WebsocketClient } from 'bybit-api'
 import type { WSKlineEventV5 } from 'bybit-api'
 import type { Candle, CandleInterval } from '../../types.js'
-import { BYBIT_INTERVAL_MAP, STALENESS_THRESHOLD_MS } from '../../config.js'
+import { BYBIT_INTERVAL_MAP, STALENESS_THRESHOLD_MS, TIMEFRAME_MS } from '../../config.js'
 import { log } from '../../lib/logger.js'
 
 let wsClient: WebsocketClient | null = null
@@ -170,7 +170,11 @@ export function checkBybitStaleness(): void {
   const now = Date.now()
   for (const [k, lastTime] of lastCandleTime) {
     const silent = now - lastTime
-    if (silent > STALENESS_THRESHOLD_MS) {
+    // Per-TF threshold: one full candle duration + base buffer.
+    // Prevents false positives — closed candles only arrive once per TF interval.
+    const tf = k.split('|')[1] as CandleInterval
+    const threshold = (TIMEFRAME_MS[tf] ?? 0) + STALENESS_THRESHOLD_MS
+    if (silent > threshold) {
       log.warn('bybit-ws', `${k}: stale ${Math.round(silent / 1000)}s — no candle update`)
     }
   }

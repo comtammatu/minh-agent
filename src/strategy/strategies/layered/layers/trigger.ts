@@ -157,13 +157,23 @@ export function computeStructureTargets(
     }
   }
 
-  // Apply floor + fallback
+  // Apply floor + fallback — raised from 2R to 3R to improve avg win
   if (tp1 === null) {
-    tp1 = entry + dir * risk * 2  // fallback 2R
+    tp1 = entry + dir * risk * 3  // fallback 3R
   }
   // Ensure TP1 >= MIN_TP1_RR
   if (side === 'long' && tp1 < minTp1) tp1 = minTp1
   if (side === 'short' && tp1 > minTp1) tp1 = minTp1
+
+  // Minimum TP distance: max of 2 ATR or MIN_TP1_RR × risk
+  // Ensures TP always achieves the minimum R:R regardless of zone placement
+  const curAtr = atr(candles, idx, 14)
+  if (!isNaN(curAtr) && curAtr > 0) {
+    const minTpDist = Math.max(curAtr * 2, risk * MIN_TP1_RR)
+    const minTpPrice = entry + dir * minTpDist
+    if (side === 'long' && tp1 < minTpPrice) tp1 = minTpPrice
+    if (side === 'short' && tp1 > minTpPrice) tp1 = minTpPrice
+  }
 
   // ── TP2: Swing structure target ─────────────────────────────────────────
   const pivots = findPivots(candles, idx, 5)
@@ -183,9 +193,9 @@ export function computeStructureTargets(
     tp2 = candidates[0]?.price ?? null
   }
 
-  // Fallback + ensure TP2 > TP1
+  // Fallback + ensure TP2 > TP1 — raised from 3R to 5R
   if (tp2 === null) {
-    tp2 = entry + dir * risk * 3  // fallback 3R
+    tp2 = entry + dir * risk * 5  // fallback 5R
   }
   if (side === 'long' && tp2 <= tp1) tp2 = tp1 + risk
   if (side === 'short' && tp2 >= tp1) tp2 = tp1 - risk

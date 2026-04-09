@@ -50,15 +50,18 @@ export function isAtZone(
   if (zone.type === 'demand') {
     // Demand zone — price dips into / touches from above
     wickTouch = candle.l <= zone.top && candle.l >= zone.bottom
-    nearZone = candle.c >= (zone.bottom - buffer) && candle.c <= (zone.top + buffer)
+    // nearZone tightened: require wick to at least touch zone top (not just close near)
+    nearZone = candle.l <= (zone.top + buffer) && candle.c > zone.top
     throughZone = candle.l < zone.bottom && candle.c > zone.bottom  // Spring/Sweep
   } else {
     // Supply zone — price pushes into / touches from below
     wickTouch = candle.h >= zone.bottom && candle.h <= zone.top
-    nearZone = candle.c <= (zone.top + buffer) && candle.c >= (zone.bottom - buffer)
+    // nearZone tightened: require wick to at least touch zone bottom (not just close near)
+    nearZone = candle.h >= (zone.bottom - buffer) && candle.c < zone.bottom
     throughZone = candle.h > zone.top && candle.c < zone.top  // False breakout
   }
 
+  // Require actual wick interaction — nearZone alone now demands wick proximity
   const atZone = wickTouch || nearZone || throughZone
   return { atZone, wickTouch, nearZone, throughZone }
 }

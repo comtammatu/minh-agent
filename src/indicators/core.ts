@@ -158,20 +158,23 @@ export function detectRegime(candles: Candle[], idx: number): MarketRegime {
   if (isNaN(atr7) || isNaN(atr30)) return 'SIDEWAYS'
   const atrRatio = atr30 > 0 ? atr7 / atr30 : 1
 
-  if (atrRatio > 1.8) return 'VOLATILE'
+  // Volatile threshold relaxed from 1.8 to 2.0 — crypto is naturally volatile
+  if (atrRatio > 2.0) return 'VOLATILE'
 
   const adxVal = adx(candles, idx, 14)
-  if (!isNaN(adxVal) && adxVal < 20) return 'SIDEWAYS'
+  // ADX threshold lowered from 20 to 15: was classifying too many mild trends as SIDEWAYS
+  if (!isNaN(adxVal) && adxVal < 15) return 'SIDEWAYS'
 
   const volTrend = volumeTrend(candles, idx, 10)
-  const strongTrend = !isNaN(adxVal) && adxVal > 30
 
-  if (smaRatio > 1.01) {
-    if (strongTrend || smaRatio > 1.02 || volTrend > 0.1) return 'BULL'
+  // Relaxed SMA ratio thresholds: 1.005/0.995 instead of 1.01/0.99
+  // Crypto trends often show mild SMA divergence but still trend strongly
+  if (smaRatio > 1.005) {
+    if ((!isNaN(adxVal) && adxVal > 20) || smaRatio > 1.015 || volTrend > 0.1) return 'BULL'
     return 'SIDEWAYS'
   }
-  if (smaRatio < 0.99) {
-    if (strongTrend || smaRatio < 0.98 || volTrend > 0.1) return 'BEAR'
+  if (smaRatio < 0.995) {
+    if ((!isNaN(adxVal) && adxVal > 20) || smaRatio < 0.985 || volTrend > 0.1) return 'BEAR'
     return 'SIDEWAYS'
   }
   return 'SIDEWAYS'

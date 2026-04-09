@@ -11,6 +11,7 @@ import type {
   ActiveSetup,
   ConfluenceGrade,
   MarketRegime,
+  StrategyContext,
 } from '../types.js'
 import { appendCandle, getCandles } from '../feed/store.js'
 import { getStrategyRegistry, type StrategyRegistry } from './registry.js'
@@ -22,6 +23,7 @@ import {
   INDICATOR_WINDOW,
   TIMEFRAMES,
   SIGNAL_TIMEFRAMES,
+  HTF_MAP,
   getActiveExchange,
 } from '../config.js'
 import { log } from '../lib/logger.js'
@@ -69,7 +71,18 @@ function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry:
   if (candles.length < MIN_CANDLES_FOR_SCAN + 1) return
 
   const idx = candles.length - 2
-  const signalResults = registry.runAll(coin, interval, candles, idx)
+
+  // Build HTF context for ICT top-down analysis (SMC-SD uses this)
+  const htfInterval = HTF_MAP[interval]
+  let context: StrategyContext | undefined
+  if (htfInterval !== interval) {
+    const htfCandles = getCandles(coin, htfInterval, maxMin + 2)
+    if (htfCandles.length >= MIN_CANDLES_FOR_SCAN) {
+      context = { htfCandles, htfInterval }
+    }
+  }
+
+  const signalResults = registry.runAll(coin, interval, candles, idx, context)
 
   for (const { strategyId, signal } of signalResults) {
     const id = setupId(coin, interval, signal.type, strategyId)

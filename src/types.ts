@@ -183,6 +183,16 @@ export interface AssetCtxSnapshot {
   timestamp: number      // ms epoch
 }
 
+// ─── Strategy Context (ICT Multi-TF) ─────────────────────────────────────────
+
+/** Optional context passed to strategy scan() for multi-timeframe analysis. */
+export interface StrategyContext {
+  /** Higher-timeframe candles for HTF structure alignment (ICT top-down). */
+  htfCandles?: Candle[]
+  /** Higher-timeframe interval identifier. */
+  htfInterval?: CandleInterval
+}
+
 // ─── Backfill ────────────────────────────────────────────────────────────────
 
 /** Per-coin backfill result: how many TFs succeeded. */

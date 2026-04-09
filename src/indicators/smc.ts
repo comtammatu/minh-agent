@@ -21,16 +21,16 @@ export interface LiquiditySweep {
  * Bullish: candles[idx-2].high < candles[idx].low
  * Bearish: candles[idx-2].low  > candles[idx].high
  */
-export function detectFVG(candles: Candle[], idx: number): FVG | null {
+export function detectFVG(candles: Candle[], idx: number, tolerance: number = 0): FVG | null {
   if (idx < 2) return null
   const left = candles[idx - 2]!
   const right = candles[idx]!
 
-  if (right.l > left.h) {
+  if (right.l > left.h - tolerance) {
     const bottom = left.h, top = right.l
     return { top, bottom, midpoint: (top + bottom) / 2, bullish: true, index: idx }
   }
-  if (right.h < left.l) {
+  if (right.h < left.l + tolerance) {
     const top = left.l, bottom = right.h
     return { top, bottom, midpoint: (top + bottom) / 2, bullish: false, index: idx }
   }
@@ -41,11 +41,11 @@ export function detectFVG(candles: Candle[], idx: number): FVG | null {
  * Scan for all active (unfilled) FVGs up to upToIdx.
  * Filled = price retraces through midpoint (Consequent Encroachment).
  */
-export function scanFVGs(candles: Candle[], upToIdx: number): FVG[] {
+export function scanFVGs(candles: Candle[], upToIdx: number, tolerance: number = 0): FVG[] {
   const active: FVG[] = []
 
   for (let i = 2; i <= upToIdx; i++) {
-    const fvg = detectFVG(candles, i)
+    const fvg = detectFVG(candles, i, tolerance)
     if (!fvg) continue
 
     // Check if filled by any subsequent candle
@@ -118,6 +118,7 @@ export function findPivots(
   candles: Candle[],
   upToIdx: number,
   lookback: number = 3,
+  tolerance: number = 0,
 ): PivotPoint[] {
   const pts: PivotPoint[] = []
 
@@ -126,8 +127,8 @@ export function findPivots(
     let isHigh = true, isLow = true
 
     for (let j = 1; j <= lookback; j++) {
-      if (c.h <= candles[i - j]!.h || c.h <= candles[i + j]!.h) isHigh = false
-      if (c.l >= candles[i - j]!.l || c.l >= candles[i + j]!.l) isLow = false
+      if (c.h < candles[i - j]!.h - tolerance || c.h < candles[i + j]!.h - tolerance) isHigh = false
+      if (c.l > candles[i - j]!.l + tolerance || c.l > candles[i + j]!.l + tolerance) isLow = false
     }
 
     if (isHigh) pts.push({ kind: 'high', price: c.h, index: i })
@@ -146,14 +147,38 @@ export function findPivots(
 export function detectStructureBreaks(
   candles: Candle[],
   upToIdx: number,
-  params: { swingLookback?: number } = {},
+  params: { swingLookback?: number; tolerance?: number; minPivotSpacing?: number } = {},
 ): StructureBreak[] {
-  const pivots = findPivots(candles, upToIdx, params.swingLookback ?? 3)
+  const tol = params.tolerance ?? 0
+  const minSpacing = params.minPivotSpacing ?? 5
+  const pivots = findPivots(candles, upToIdx, params.swingLookback ?? 3, tol)
   const breaks: StructureBreak[] = []
 
-  const highs = pivots.filter(p => p.kind === 'high')
-  const lows = pivots.filter(p => p.kind === 'low')
+  // Filter out clustered pivots — require minimum bar spacing between pivots of same kind
+  const filterClustered = (pts: PivotPoint[]): PivotPoint[] => {
+    if (pts.length <= 1) return pts
+    const result: PivotPoint[] = [pts[0]!]
+    for (let i = 1; i < pts.length; i++) {
+      const prev = result[result.length - 1]!
+      const cur = pts[i]!
+      if (cur.index - prev.index >= minSpacing) {
+        result.push(cur)
+      } else if ((cur.kind === 'high' && cur.price > prev.price) ||
+                 (cur.kind === 'low' && cur.price < prev.price)) {
+        // Keep the more extreme pivot in a cluster
+        result[result.length - 1] = cur
+      }
+    }
+    return result
+  }
+
+  const highs = filterClustered(pivots.filter(p => p.kind === 'high'))
+  const lows = filterClustered(pivots.filter(p => p.kind === 'low'))
   if (highs.length < 2 || lows.length < 2) return breaks
+
+  // Require minimum price distance between pivots (0.5 ATR) to avoid noise breaks
+  const curAtr = atr(candles, upToIdx, 14)
+  const minPriceDist = !isNaN(curAtr) ? curAtr * 0.5 : 0
 
   const c = candles[upToIdx]!
   const prevHigh = highs[highs.length - 2]!
@@ -161,14 +186,14 @@ export function detectStructureBreaks(
   const lastHigh = highs[highs.length - 1]!
   const lastLow = lows[lows.length - 1]!
 
-  // Bullish BOS: close > prev swing high
-  if (c.c > prevHigh.price) {
+  // Bullish BOS: close > prev swing high (with tolerance)
+  if (c.c > prevHigh.price - tol && Math.abs(c.c - prevHigh.price) >= minPriceDist * 0.3) {
     const isCHoCH = lastLow.price < lows[Math.max(0, lows.length - 3)]!.price
     breaks.push({ kind: isCHoCH ? 'choch' : 'bos', direction: 'bullish', level: prevHigh.price, index: upToIdx })
   }
 
-  // Bearish BOS: close < prev swing low
-  if (c.c < prevLow.price) {
+  // Bearish BOS: close < prev swing low (with tolerance)
+  if (c.c < prevLow.price + tol && Math.abs(c.c - prevLow.price) >= minPriceDist * 0.3) {
     const isCHoCH = lastHigh.price > highs[Math.max(0, highs.length - 3)]!.price
     breaks.push({ kind: isCHoCH ? 'choch' : 'bos', direction: 'bearish', level: prevLow.price, index: upToIdx })
   }
@@ -271,11 +296,12 @@ function mergeAndRank(
   const zones: KeyZone[] = merged
     .filter(z => !z.broken)
     .map(z => {
-      const sourceScore = Math.min(z.origins.length / 3, 1)
-      const recency = z.lastTouch >= 0 ? Math.min(z.lastTouch / upToIdx, 1) : 0.5
-      const touchScore = z.touches >= 2 ? 0.8 : z.touches === 1 ? 0.5 : 0.3
-      const fresh = z.touches <= 1 ? 0.2 : 0
-      const strength = Math.min(sourceScore * 0.4 + recency * 0.25 + touchScore * 0.25 + fresh, 1)
+      const sourceScore = Math.min(z.origins.length / 2, 1)  // easier to reach 1.0 (2 sources = max)
+      const recency = Math.min((z.latestSourceIdx + 1) / (upToIdx + 1), 1)  // more recent creation = higher
+      // Fresh untested zones are STRONGER (institutional zones — first touch is the reaction)
+      // Multi-tested zones are weaker (diminishing returns each retest)
+      const touchScore = z.touches === 0 ? 1.0 : z.touches === 1 ? 0.7 : 0.4
+      const strength = Math.min(sourceScore * 0.35 + recency * 0.30 + touchScore * 0.35, 1)
       return {
         type: kind,
         top: z.top,
@@ -293,6 +319,7 @@ function mergeAndRank(
 export function compileKeyZones(
   candles: Candle[],
   upToIdx: number,
+  tolerance: number = 0,
 ): { demandZones: KeyZone[]; supplyZones: KeyZone[] } {
   if (upToIdx < 30) return { demandZones: [], supplyZones: [] }
 
@@ -309,7 +336,7 @@ export function compileKeyZones(
     raw.push({ top: ob.top, bottom: ob.bottom, kind: ob.bullish ? 'demand' : 'supply', origin: 'order-block', sourceIdx: ob.index })
   }
 
-  for (const p of findPivots(candles, upToIdx, 3)) {
+  for (const p of findPivots(candles, upToIdx, 3, tolerance)) {
     if (p.kind === 'low') {
       raw.push({ top: p.price + thick, bottom: p.price, kind: 'demand', origin: 'swing', sourceIdx: p.index })
     } else {
@@ -317,7 +344,7 @@ export function compileKeyZones(
     }
   }
 
-  for (const fvg of scanFVGs(candles, upToIdx)) {
+  for (const fvg of scanFVGs(candles, upToIdx, tolerance)) {
     raw.push({ top: fvg.top, bottom: fvg.bottom, kind: fvg.bullish ? 'demand' : 'supply', origin: 'fvg', sourceIdx: fvg.index })
   }
 
@@ -333,6 +360,152 @@ export function compileKeyZones(
   supplyZones.sort((a, b) => Math.abs(price - midOf(a)) - Math.abs(price - midOf(b)))
 
   return { demandZones, supplyZones }
+}
+
+// ─── ICT HTF Structure Bias ──────────────────────────────────────────────────
+
+/**
+ * Determine Higher Timeframe structure bias from swing sequence.
+ * ICT rule: HTF dictates direction — HH+HL = bullish, LH+LL = bearish.
+ *
+ * Returns 'bullish' | 'bearish' | 'neutral' with a confidence score.
+ * Requires at least 4 pivots to determine swing sequence.
+ */
+export function htfStructureBias(
+  candles: Candle[],
+  upToIdx: number,
+  params: { swingLookback?: number; tolerance?: number } = {},
+): { bias: 'bullish' | 'bearish' | 'neutral'; confidence: number } {
+  const tol = params.tolerance ?? 0
+  const pivots = findPivots(candles, upToIdx, params.swingLookback ?? 5, tol)
+  const highs = pivots.filter(p => p.kind === 'high')
+  const lows = pivots.filter(p => p.kind === 'low')
+
+  if (highs.length < 2 || lows.length < 2) return { bias: 'neutral', confidence: 0 }
+
+  // Check last 3 swing highs and lows for pattern
+  const recentHighs = highs.slice(-3)
+  const recentLows = lows.slice(-3)
+
+  let hhCount = 0, hlCount = 0, lhCount = 0, llCount = 0
+
+  for (let i = 1; i < recentHighs.length; i++) {
+    if (recentHighs[i]!.price > recentHighs[i - 1]!.price) hhCount++
+    else lhCount++
+  }
+  for (let i = 1; i < recentLows.length; i++) {
+    if (recentLows[i]!.price > recentLows[i - 1]!.price) hlCount++
+    else llCount++
+  }
+
+  // Also check BOS/CHoCH for confirmation
+  const breaks = detectStructureBreaks(candles, upToIdx, params)
+  const recentBreak = breaks.at(-1)
+
+  // Bullish: HH + HL sequence
+  if (hhCount > 0 && hlCount > 0) {
+    const conf = recentBreak?.direction === 'bullish' ? 0.9 : 0.7
+    return { bias: 'bullish', confidence: conf }
+  }
+
+  // Bearish: LH + LL sequence
+  if (lhCount > 0 && llCount > 0) {
+    const conf = recentBreak?.direction === 'bearish' ? 0.9 : 0.7
+    return { bias: 'bearish', confidence: conf }
+  }
+
+  // Mixed — use BOS direction as tiebreaker
+  if (recentBreak) {
+    return { bias: recentBreak.direction, confidence: 0.5 }
+  }
+
+  return { bias: 'neutral', confidence: 0 }
+}
+
+// ─── ICT Displacement Detection ─────────────────────────────────────────────
+
+/**
+ * Detect displacement candles — strong momentum candles that create BOS/CHoCH.
+ * ICT: Displacement = large body candle (>1.5× ATR) that breaks structure.
+ * These candles are the source of institutional order flow.
+ */
+export function isDisplacementCandle(
+  candles: Candle[],
+  idx: number,
+  atrVal: number,
+  minBodyAtrMult: number = 1.0,
+): boolean {
+  if (idx < 0 || idx >= candles.length) return false
+  const c = candles[idx]!
+  const bodySize = Math.abs(c.c - c.o)
+  return bodySize > atrVal * minBodyAtrMult
+}
+
+// ─── ICT Equal Highs/Lows (Liquidity Pools) ────────────────────────────────
+
+export interface LiquidityPool {
+  level: number
+  type: 'bsl' | 'ssl'  // Buy-side / Sell-side liquidity
+  count: number         // how many equal levels cluster here
+  index: number         // most recent contributing pivot index
+}
+
+/**
+ * Detect equal highs and equal lows — ICT liquidity pools.
+ * BSL (Buy-Side Liquidity): cluster of equal highs = stop losses above
+ * SSL (Sell-Side Liquidity): cluster of equal lows = stop losses below
+ *
+ * Smart money targets these pools for stop hunts before the real move.
+ */
+export function findLiquidityPools(
+  candles: Candle[],
+  upToIdx: number,
+  params: { tolerance?: number; minCluster?: number; lookback?: number } = {},
+): LiquidityPool[] {
+  const tol = params.tolerance ?? 0
+  const minCluster = params.minCluster ?? 2
+  const pivots = findPivots(candles, upToIdx, 3, tol)
+  const pools: LiquidityPool[] = []
+
+  // Group highs by price proximity
+  const highs = pivots.filter(p => p.kind === 'high')
+  const lows = pivots.filter(p => p.kind === 'low')
+
+  const curATR = atr(candles, upToIdx, 14)
+  if (isNaN(curATR) || curATR <= 0) return pools
+  const clusterTol = curATR * 0.15  // 15% of ATR = "equal" level
+
+  // Find BSL (equal highs)
+  for (let i = 0; i < highs.length; i++) {
+    let count = 1
+    let maxIdx = highs[i]!.index
+    for (let j = i + 1; j < highs.length; j++) {
+      if (Math.abs(highs[j]!.price - highs[i]!.price) <= clusterTol) {
+        count++
+        maxIdx = Math.max(maxIdx, highs[j]!.index)
+      }
+    }
+    if (count >= minCluster) {
+      pools.push({ level: highs[i]!.price, type: 'bsl', count, index: maxIdx })
+    }
+  }
+
+  // Find SSL (equal lows)
+  for (let i = 0; i < lows.length; i++) {
+    let count = 1
+    let maxIdx = lows[i]!.index
+    for (let j = i + 1; j < lows.length; j++) {
+      if (Math.abs(lows[j]!.price - lows[i]!.price) <= clusterTol) {
+        count++
+        maxIdx = Math.max(maxIdx, lows[j]!.index)
+      }
+    }
+    if (count >= minCluster) {
+      pools.push({ level: lows[i]!.price, type: 'ssl', count, index: maxIdx })
+    }
+  }
+
+  return pools
 }
 
 // ─── S&D re-exports (canonical location: supply-demand.ts) ────────────────────

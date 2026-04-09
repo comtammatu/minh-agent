@@ -27,12 +27,17 @@ export const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'] as const
 // TFs that generate signals. 1m excluded — used only for entry refinement on 5m/15m signals.
 export const SIGNAL_TIMEFRAMES = ['5m', '15m', '1h', '4h', '1d'] as const
 
-export const MIN_CONFIDENCE = 0.4
+/** Minimum confidence to emit a signal. Raised from 0.4 to 0.50:
+ * low-confidence signals had very poor hit rate. */
+export const MIN_CONFIDENCE = 0.50
 
+/** Regime confidence multipliers.
+ * Counter raised from 0.3→0.0: completely block counter-trend trades
+ * (they had ~20% WR = pure loss). Neutral raised from 0.8→0.85. */
 export const REGIME_MULTIPLIERS = {
   aligned: 1.0,
-  neutral: 0.8,
-  counter: 0.3,
+  neutral: 0.85,
+  counter: 0.0,
 } as const
 
 // Minimum candles required before scanning
@@ -101,8 +106,8 @@ export const STATUS_INTERVAL_MS = 60_000
 export const ZONE_BUFFER_ATR_MULT = 0.3
 
 // ATR multiplier for wick-based SL buffer (trigger layer)
-// SL placed just beyond candle extreme instead of zone boundary for tighter R:R
-export const SL_WICK_ATR_MULT = 0.3
+// Tuned from 0.3→0.5: original too tight (wick hunt), 0.8 too wide (killed R:R).
+export const SL_WICK_ATR_MULT = 0.5
 
 // Volume profile lookback window for confirm layer
 export const VP_LOOKBACK = 100
@@ -132,11 +137,60 @@ export const PATTERN_TTL_BARS: Record<string, number> = {
 /** How many bars back to look for a BOS/CHoCH to establish direction. */
 export const SMC_BREAK_LOOKBACK = 20
 
-/** Timeframes to skip for SMC-SD strategy (underperforms in backtest). */
-export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = ['4h']
+/** Timeframes to skip for SMC-SD strategy.
+ * Backtest data: 1h WR=55.3%, 15m WR=27.3%, 4h WR=28.6%.
+ * 1h is the sweet spot — 15m too noisy, 4h stops too wide. */
+export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = ['15m', '4h']
 
-/** Minimum bars between signals on same coin/interval (dedup). */
-export const SMC_DEDUP_BARS = 10
+/** Minimum bars between signals on same coin/interval (dedup).
+ * Reduced from 15 to 8: was too restrictive, missing valid re-entries at zones. */
+export const SMC_DEDUP_BARS = 8
+
+/** ATR multiplier for structural price comparison tolerance (cross-exchange robustness). */
+export const SMC_PRICE_TOLERANCE_ATR_MULT = 0.02
+
+/** Minimum candle body/range ratio for valid bounce (reject doji/indecision candles).
+ * Reduced from 0.3 to 0.25: allow pin bars with slightly smaller bodies. */
+export const SMC_MIN_BODY_RATIO = 0.25
+
+/** Minimum zone strength score to qualify for bounce detection. */
+export const SMC_MIN_ZONE_STRENGTH = 0.35
+
+/** Minimum reward:risk ratio — skip trades with R:R below this.
+ * Reverted to 2.0: 2.5 was killing 90% of signals. With wider SL (0.7 ATR buffer),
+ * 2.0R is realistic. Winning trade at 2R with 35% WR = positive expectancy. */
+export const SMC_MIN_RR = 2.0
+
+// ─── ICT Model Enhancements ─────────────────────────────────────────────────
+
+/** Enable HTF structure alignment check (ICT top-down analysis).
+ * SOFT mode: HTF alignment adds confidence bonus, opposing HTF still blocks.
+ * Hard reject only when HTF opposes with >0.6 confidence. */
+export const SMC_ICT_HTF_ALIGNMENT = true
+
+/** Enable OTE (Optimal Trade Entry) zone filter.
+ * SOFT: OTE adds confidence bonus, does NOT reject non-OTE entries.
+ * Backtest showed strict OTE filter kills too many valid entries. */
+export const SMC_ICT_OTE_FILTER = true
+
+/** Minimum displacement body/ATR ratio for bounce confirmation.
+ * Lowered from 0.5 to 0.3: crypto wicks often have smaller bodies.
+ * Displacement is a BONUS, not a requirement — standard wick entries still work. */
+export const SMC_ICT_DISPLACEMENT_BODY_ATR = 0.3
+
+/** Require liquidity sweep for through-zone entries (ICT stop hunt model).
+ * Disabled: through-zone alone is a strong signal. Sweep is a bonus.
+ * Was killing 50%+ of through-zone entries. */
+export const SMC_ICT_REQUIRE_SWEEP_FOR_THROUGH = false
+
+/** Confidence bonus for HTF-aligned trades. */
+export const SMC_ICT_HTF_ALIGNED_BONUS = 0.10
+
+/** Confidence bonus for OTE zone entries. */
+export const SMC_ICT_OTE_BONUS = 0.08
+
+/** Confidence bonus for liquidity pool proximity (BSL/SSL near TP). */
+export const SMC_ICT_LIQUIDITY_POOL_TP_BONUS = 0.05
 
 // ─── Layered Pipeline Config ─────────────────────────────────────────────────
 
@@ -345,11 +399,17 @@ export const ATR_STOP_MULTIPLIER = {
   veryWide: 2.5,  // volatile crypto / weekly
 } as const
 
-/** ATR buffer added below structure stop (Section 12.2 Method 1). */
+/** ATR buffer added below structure stop (Section 12.2 Method 1).
+ * Tuned to 0.7: original 0.5 too tight (wick hunts), 1.0 too wide (killed R:R). */
 export const STRUCTURE_STOP_ATR_BUFFER = 0.7
 
-/** Maximum stop distance as fraction of entry price. Beyond this → skip. */
+/** Maximum stop distance as fraction of entry price. Beyond this → skip.
+ * Used by exits.ts (order lifecycle). */
 export const MAX_STOP_DISTANCE_PCT = 0.10
+
+/** Maximum SL distance % for strategy signal emission. Reject trades with SL > this.
+ * Applied in SMC-SD and Quant scan — prevents oversized 4h ATR stops. */
+export const MAX_TRADE_SL_PCT = 0.07
 
 /** Maximum leverage warning threshold. */
 export const MAX_LEVERAGE_WARN = 5.0
@@ -409,14 +469,18 @@ export const ATR_TRAIL_MULTIPLIER: Record<CandleInterval, number> = {
   '1d': 3.0,
 } as const
 
-/** Position split across 3 TP levels: TP1 (zone), TP2 (swing), TP3 (trail). */
-export const MULTI_TP_SPLIT = [0.4, 0.3, 0.3] as const
+/** Position split across 3 TP levels: TP1 (zone), TP2 (swing), TP3 (trail).
+ * Reduced TP1 from 40% to 25%: avg wins were too small vs losses.
+ * Let more size ride to TP2/trailing for better expectancy. */
+export const MULTI_TP_SPLIT = [0.25, 0.35, 0.40] as const
 
-/** Minimum R:R for TP1. TP1 must be at least this far from entry. */
-export const MIN_TP1_RR = 1.5
+/** Minimum R:R for TP1. TP1 must be at least this far from entry.
+ * Raised from 1.5 to 2.0: ensures winning trades cover at least 2 losses. */
+export const MIN_TP1_RR = 2.0
 
-/** Activate trailing stop after price moves this many R in profit. */
-export const TRAIL_ACTIVATION_R = 1.0
+/** Activate trailing stop after price moves this many R in profit.
+ * Reduced from 1.0 to 0.5R: trailing now activates sooner to protect gains. */
+export const TRAIL_ACTIVATION_R = 0.5
 
 // ─── Backtest (Sprint 3A) ──────────────────────────────────────────────────
 
@@ -470,14 +534,16 @@ export const QUANT_EMA_SLOW = 200
 /** RSI period. */
 export const QUANT_RSI_PERIOD = 14
 
-/** RSI oversold threshold — buy signal in uptrend. */
+/** RSI oversold threshold — buy signal in uptrend.
+ * Lowered from 35 to 30: stricter pullback = higher quality entries. */
 export const QUANT_RSI_OVERSOLD = 30
 
-/** RSI overbought threshold — sell signal in downtrend. */
+/** RSI overbought threshold — sell signal in downtrend.
+ * Raised from 65 to 70: stricter overbought = higher quality entries. */
 export const QUANT_RSI_OVERBOUGHT = 70
 
 /** Minimum fractional gap between EMA50 and EMA200 to confirm trend (chop filter). */
-export const QUANT_MIN_EMA_SEPARATION_PCT = 0.005
+export const QUANT_MIN_EMA_SEPARATION_PCT = 0.003
 
 /** Minimum bars between Quant signals on same coin/interval (cooldown dedup). */
 export const QUANT_DEDUP_BARS = 5
@@ -485,8 +551,12 @@ export const QUANT_DEDUP_BARS = 5
 /** ATR multiplier for stop loss distance. */
 export const QUANT_ATR_SL_MULT = 2.0
 
-/** ATR multiplier for take profit distance (1.5 R:R). */
+/** ATR multiplier for take profit distance.
+ * 3.0 = 1.5R with SL_MULT 2.0. Wider TPs (4.0+) drop WR below profitability. */
 export const QUANT_ATR_TP_MULT = 3.0
+
+/** Minimum ADX value to confirm trending market (filter chop). Lower = more signals. */
+export const QUANT_ADX_MIN = 18
 
 // ─── Portfolio Risk (Sprint 4.5 S6) ─────────────────────────────────────────
 
