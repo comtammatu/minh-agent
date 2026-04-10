@@ -28,7 +28,10 @@ import {
   SIGNAL_TIMEFRAMES,
   HTF_MAP,
   getActiveExchange,
+  getEffectivePaperTrade,
+  PAPER_WALLET_STRATEGY_IDS,
 } from '../config.js'
+import { getPaperTracker } from '../agent/paper-tracker.js'
 import { log } from '../lib/logger.js'
 import { EventEmitter } from 'events'
 
@@ -186,6 +189,22 @@ export function onCandleTick(
 ): void {
   // Always store latest candle data
   appendCandle(coin, interval, candle)
+
+  // ── Paper mode: evaluate multi-TP exits on every candle tick ───────────
+  // Mirrors backtest bar-by-bar evaluation — check SL/TP/trailing on each candle.
+  if (getEffectivePaperTrade()) {
+    for (const stratId of PAPER_WALLET_STRATEGY_IDS) {
+      const result = getPaperTracker(stratId).checkCandle(coin, interval, candle)
+      if (result && result.action === 'full_close') {
+        pipelineEmitter.emit('paper_exit', {
+          coin, strategyId: stratId,
+          exitReason: result.exitReason,
+          closePrice: result.closePrice,
+          pnl: result.pnl,
+        })
+      }
+    }
+  }
 
   // ── Closed-candle gate ──────────────────────────────────────────────────
   const sk = `${coin}|${interval}`

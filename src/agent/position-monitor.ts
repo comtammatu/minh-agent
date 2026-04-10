@@ -545,6 +545,9 @@ export class PositionMonitor {
     const toClose: Array<{ pos: PositionState; reason: 'sl_hit' | 'tp_hit'; closePrice: number }> = []
 
     for (const [, pos] of this.positions) {
+      // Skip positions managed by enhanced PaperTracker (multi-TP exits via orchestrator candle ticks)
+      if (getPaperTracker(pos.strategyId).hasEnhancedPosition(pos.coin)) continue
+
       const markPrice = this.priceGetter?.(pos.coin)
       if (!markPrice || markPrice <= 0) continue
 
