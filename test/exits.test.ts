@@ -337,26 +337,26 @@ describe('isTrailingStopHit', () => {
 // ─── Partial Close ──────────────────────────────────────────────────────────
 
 describe('computePartialCloseLevels', () => {
-  it('long: two levels at 1R and 2R', () => {
+  it('long: two levels at 1.5R and 3R (default config)', () => {
     // Entry=100, SL=97 → stopDist=3
-    // Level 1: 100+3=103, close 50%, move SL to breakeven
-    // Level 2: 100+6=106, close remaining 50%
+    // Level 1: 100 + 3×1.5 = 104.5, close 50%, no breakeven move
+    // Level 2: 100 + 3×3.0 = 109, close remaining 50%
     const levels = computePartialCloseLevels('long', 100, 97)
     expect(levels).toHaveLength(2)
-    expect(levels[0].targetPrice).toBe(103)
+    expect(levels[0].targetPrice).toBe(104.5)
     expect(levels[0].closePct).toBe(0.5)
-    expect(levels[0].newSlPrice).toBe(100) // breakeven
-    expect(levels[1].targetPrice).toBe(106)
+    expect(levels[0].newSlPrice).toBeUndefined() // moveSlToBreakeven=false
+    expect(levels[1].targetPrice).toBe(109)
     expect(levels[1].closePct).toBe(0.5)
   })
 
-  it('short: two levels below entry', () => {
+  it('short: two levels below entry (default config)', () => {
     // Entry=100, SL=103 → stopDist=3
-    // Level 1: 100-3=97, Level 2: 100-6=94
+    // Level 1: 100 - 3×1.5 = 95.5, Level 2: 100 - 3×3.0 = 91
     const levels = computePartialCloseLevels('short', 100, 103)
     expect(levels).toHaveLength(2)
-    expect(levels[0].targetPrice).toBe(97)
-    expect(levels[1].targetPrice).toBe(94)
+    expect(levels[0].targetPrice).toBe(95.5)
+    expect(levels[1].targetPrice).toBe(91)
   })
 
   it('custom config', () => {

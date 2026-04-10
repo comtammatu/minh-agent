@@ -27,17 +27,20 @@ export const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'] as const
 // TFs that generate signals. 1m excluded — used only for entry refinement on 5m/15m signals.
 export const SIGNAL_TIMEFRAMES = ['5m', '15m', '1h', '4h', '1d'] as const
 
-/** Minimum confidence to emit a signal. Raised from 0.4 to 0.50:
- * low-confidence signals had very poor hit rate. */
-export const MIN_CONFIDENCE = 0.50
+/** Minimum confidence to emit a signal. Raised from 0.50→0.58:
+ * bonus stacking (HTF+OTE+killzone+breaker) inflated confidence to where
+ * trades with only 3 weak confluences still passed. 0.58 requires meaningful
+ * conviction — base (0.65) + regime modifier (0.85×) still clears threshold. */
+export const MIN_CONFIDENCE = 0.58
 
 /** Regime confidence multipliers.
- * Counter raised from 0.3→0.0: completely block counter-trend trades
- * (they had ~20% WR = pure loss). Neutral raised from 0.8→0.85. */
+ * Counter restored from 0.0→0.20: full block was killing all shorts during dumps.
+ * Crypto 24/7: counter-trend != always wrong (e.g. pullback in uptrend = short valid).
+ * 0.20 = soft filter — signal still needs MIN_CONFIDENCE to pass, just severely discounted. */
 export const REGIME_MULTIPLIERS = {
   aligned: 1.0,
   neutral: 0.85,
-  counter: 0.0,
+  counter: 0.20,
 } as const
 
 // Minimum candles required before scanning
@@ -153,8 +156,11 @@ export const SMC_PRICE_TOLERANCE_ATR_MULT = 0.02
  * Reduced from 0.3 to 0.25: allow pin bars with slightly smaller bodies. */
 export const SMC_MIN_BODY_RATIO = 0.25
 
-/** Minimum zone strength score to qualify for bounce detection. */
-export const SMC_MIN_ZONE_STRENGTH = 0.35
+/** Minimum zone strength score to qualify for bounce detection.
+ * Raised 0.35→0.50: raw demand/supply zones with strength 0.35-0.49 had high
+ * false-break rate (formed from 1-2 pivots, untested). 0.50 filters single-test
+ * zones while breaker blocks (0.85) and inversion FVGs (0.75) still qualify. */
+export const SMC_MIN_ZONE_STRENGTH = 0.50
 
 /** Minimum reward:risk ratio — skip trades with R:R below this.
  * Reverted to 2.0: 2.5 was killing 90% of signals. With wider SL (0.7 ATR buffer),
@@ -208,9 +214,9 @@ export const SMC_ICT_KILLZONE_ENABLED = true
  * - Asian close / pre-London: often sets the day's high or low */
 export const SMC_ICT_KILLZONES: ReadonlyArray<{ name: string; startUTC: number; endUTC: number; bonus: number }> = [
   { name: 'london-open', startUTC: 7, endUTC: 10, bonus: 0.08 },     // London open: high-probability
-  { name: 'us-overlap',  startUTC: 13, endUTC: 16, bonus: 0.10 },    // London/US overlap: highest vol
-  { name: 'us-session',  startUTC: 16, endUTC: 20, bonus: 0.05 },    // US afternoon: continuation
-  { name: 'asia-open',   startUTC: 0, endUTC: 3, bonus: 0.03 },      // Asia: lower vol but sets lows
+  { name: 'us-overlap', startUTC: 13, endUTC: 16, bonus: 0.10 },    // London/US overlap: highest vol
+  { name: 'us-session', startUTC: 16, endUTC: 20, bonus: 0.05 },    // US afternoon: continuation
+  { name: 'asia-open', startUTC: 0, endUTC: 3, bonus: 0.03 },      // Asia: lower vol but sets lows
 ] as const
 
 /** Confidence penalty for signals OUTSIDE any killzone.
@@ -269,11 +275,15 @@ export const SMC_CONFIRMED_POI_MAX = 5
 /** 5m bars to look for FVG entry after confirmed POI. */
 export const SMC_5M_FVG_LOOKBACK = 5
 
-/** ATR buffer for 5m swing stop (ultra-tight). */
-export const SMC_5M_SL_ATR_BUFFER = 0.3
+/** ATR buffer for 5m swing stop.
+ * Raised 0.3→0.5: 0.3 ATR on BTC ≈ $150 buffer — crypto wick noise + spread
+ * (~$15) meant SL was hunted on normal retest before real move. 0.5 gives
+ * enough room; min R:R adjusted down accordingly. */
+export const SMC_5M_SL_ATR_BUFFER = 0.5
 
-/** Min R:R for 5m micro-entry (high floor — ultra-tight SL enables this). */
-export const SMC_5M_MIN_RR = 4.0
+/** Min R:R for 5m micro-entry. Adjusted 4.0→3.5 to match wider SL buffer.
+ * Wider SL = larger risk distance, so R:R floor must be realistic. */
+export const SMC_5M_MIN_RR = 3.5
 
 /** Base confidence for 5m micro-entry (HTF + LTF confirmed = highest confidence). */
 export const SMC_5M_CONFIDENCE_BASE = 0.75
@@ -561,18 +571,26 @@ export const HL_MIN_ORDER_NOTIONAL_USD = 10
  */
 export const MARKET_ORDER_SLIPPAGE_PCT = 0.01  // 1%
 
-/** Trailing stop config defaults. */
+/** Trailing stop config defaults.
+ * activationPct raised 0.01→0.03: +1% in crypto happens within minutes then reverts,
+ * activating trail too early → locked in at low profit. Now needs +3% confirmation.
+ * trailPct raised 0.005→0.01: 0.5% trail hit by normal 0.3-0.7% retests, missing
+ * extended runs (3R→10R). 1% gives room for pullback while still capturing trend. */
 export const TRAILING_STOP = {
-  activationPct: 0.01,  // activate trailing after +1% profit
-  trailPct: 0.005,      // trail 0.5% below highest price
+  activationPct: 0.03,  // activate trailing after +3% profit (was 1% — too early)
+  trailPct: 0.01,       // trail 1% below highest price (was 0.5% — too tight)
 } as const
 
-/** Partial close config defaults. */
+/** Partial close config defaults.
+ * firstTpRatio raised 1.0→1.5: closing at 1R then moving SL to breakeven was
+ * killing expectancy — crypto spread+slippage (~0.06%) means breakeven SL gets
+ * hit on any 0.1% retest. Now close at 1.5R for cushion.
+ * moveSlToBreakeven disabled: remaining 50% needs air room to run to full TP. */
 export const PARTIAL_CLOSE = {
-  firstTpRatio: 1.0,    // first TP at 1R
+  firstTpRatio: 1.5,    // first TP at 1.5R (was 1R — too easy to hit SL after)
   firstClosePct: 0.5,   // close 50% at first TP
-  moveSlToBreakeven: true,
-  secondTpRatio: 2.0,   // second TP at 2R (trail rest)
+  moveSlToBreakeven: false,  // disabled: breakeven SL hit by spread+retest
+  secondTpRatio: 3.0,   // second TP at 3R (remainder rides full target)
 } as const
 
 /** Minimum position size as fraction of account. Below → skip. */
@@ -719,7 +737,7 @@ export const PORTFOLIO_RISK = {
   strategyMaxConcurrent: {
     layered: 3,
     quant: 3,
-    'smc-sd': 2,
+    'smc-sd': 10,
   } as Record<string, number>,
 } as const
 
@@ -945,7 +963,7 @@ export const BYBIT_FUNDING_REFRESH_MS = 4 * 60 * 60 * 1000
  * Number of top Bybit coins by OI to track (dynamic selection via tickers API).
  * Higher than HL native (20) — Bybit rate limits are ~30x more permissive.
  */
-export const BYBIT_TOP_COINS_LIMIT = 30
+export const BYBIT_TOP_COINS_LIMIT = 80
 
 /** Minimum 24h turnover (USDT) to qualify for Bybit coin tracking. */
 export const BYBIT_MIN_24H_VOLUME = 1_000_000
