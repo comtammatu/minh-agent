@@ -15,6 +15,12 @@ let mockSubmitOrder = mock(() =>
 let mockCancelOrder = mock(() =>
   Promise.resolve({ retCode: 0, retMsg: 'OK', result: { orderId: 'bb-123', orderLinkId: '' } }),
 )
+let mockGetInstrumentsInfo = mock(() =>
+  Promise.resolve({ retCode: 0, retMsg: 'OK', result: { list: [], nextPageCursor: '' } }),
+)
+let mockGetTickers = mock(() =>
+  Promise.resolve({ retCode: 0, retMsg: 'OK', result: { list: [{ lastPrice: '50000' }] } }),
+)
 let mockGetPositionInfo = mock(() =>
   Promise.resolve({
     retCode: 0,
@@ -94,6 +100,8 @@ mock.module('bybit-api', () => ({
     cancelOrder = mockCancelOrder
     getPositionInfo = mockGetPositionInfo
     getWalletBalance = mockGetWalletBalance
+    getInstrumentsInfo = mockGetInstrumentsInfo
+    getTickers = mockGetTickers
   },
 }))
 
@@ -111,6 +119,12 @@ describe('BybitExchangeService', () => {
     )
     mockCancelOrder = mock(() =>
       Promise.resolve({ retCode: 0, retMsg: 'OK', result: { orderId: 'bb-123', orderLinkId: '' } }),
+    )
+    mockGetInstrumentsInfo = mock(() =>
+      Promise.resolve({ retCode: 0, retMsg: 'OK', result: { list: [], nextPageCursor: '' } }),
+    )
+    mockGetTickers = mock(() =>
+      Promise.resolve({ retCode: 0, retMsg: 'OK', result: { list: [{ lastPrice: '50000' }] } }),
     )
     mockGetPositionInfo = mock(() =>
       Promise.resolve({
@@ -512,6 +526,71 @@ describe('BybitExchangeService', () => {
       const result = await svc.cancelByCloid('BTC', 'my-client-order-id')
       expect(result.success).toBe(true)
       expect(result.status).toBe('cancelled')
+    })
+  })
+
+  // ── qty rounding (step alignment) ────────────────────────────────────────
+  // Bybit rejects qty not aligned to qtyStep. These tests verify that placeOrder
+  // always submits a valid multiple of qtyStep regardless of the raw computed size.
+
+  describe('qty rounding to qtyStep', () => {
+    /** Helper: build a service with instrument specs injected via mock. */
+    async function makeServiceWithStep(coin: string, qtyStep: string) {
+      mockGetInstrumentsInfo = mock(() =>
+        Promise.resolve({
+          retCode: 0, retMsg: 'OK',
+          result: {
+            list: [{
+              symbol: `${coin}USDT`,
+              leverageFilter: { maxLeverage: '100' },
+              lotSizeFilter: { qtyStep, minOrderQty: qtyStep },
+              nextPageCursor: '',
+            }],
+            nextPageCursor: '',
+          },
+        }),
+      )
+      const { BybitExchangeService } = await import('./bybit-exchange-service.js')
+      const svc = new BybitExchangeService()
+      await svc.init()
+      return svc
+    }
+
+    it('floors limit order size to nearest qtyStep (step=0.1)', async () => {
+      const svc = await makeServiceWithStep('XYZ', '0.1')
+      await svc.placeOrder({ coin: 'XYZ', side: 'long', type: 'limit', price: 100, size: 10.52, reduceOnly: false })
+      const submittedQty = (mockSubmitOrder.mock.calls[0] as [{ qty: string }][])[0]!.qty
+      expect(submittedQty).toBe('10.5')
+    })
+
+    it('does not inflate already-aligned market size due to fp jitter (step=0.1)', async () => {
+      // 10.1 / 0.1 = 101.0000000000001 in IEEE 754 — Math.ceil without epsilon fix → 102
+      const svc = await makeServiceWithStep('XYZ', '0.1')
+      await svc.placeOrder({ coin: 'XYZ', side: 'long', type: 'market', price: 100, size: 10.1, reduceOnly: false })
+      const submittedQty = (mockSubmitOrder.mock.calls[0] as [{ qty: string }][])[0]!.qty
+      expect(submittedQty).toBe('10.1')
+    })
+
+    it('floors limit order with step=1 (integer-qty coins)', async () => {
+      const svc = await makeServiceWithStep('PEPE', '1')
+      await svc.placeOrder({ coin: 'PEPE', side: 'short', type: 'limit', price: 0.00001, size: 1234.7, reduceOnly: false })
+      const submittedQty = (mockSubmitOrder.mock.calls[0] as [{ qty: string }][])[0]!.qty
+      expect(submittedQty).toBe('1234')
+    })
+
+    it('applies step rounding even when getTickers fails (sizeUsd fallback)', async () => {
+      mockGetTickers = mock(() => Promise.reject(new Error('network error')))
+      const svc = await makeServiceWithStep('XYZ', '0.1')
+      // sizeUsd path: getTickers throws → must still round baseQty (params.size=10.52) to step
+      await svc.placeOrder({
+        coin: 'XYZ', side: 'long', type: 'market', price: 100,
+        size: 10.52, reduceOnly: false,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- BybitOrderParams extension
+        sizeUsd: 1000,
+      } as any)
+      const submittedQty = (mockSubmitOrder.mock.calls[0] as [{ qty: string }][])[0]!.qty
+      // ceil(10.52, step=0.1) = 10.6
+      expect(submittedQty).toBe('10.6')
     })
   })
 })

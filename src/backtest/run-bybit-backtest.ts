@@ -33,27 +33,55 @@ import { log } from '../lib/logger.js'
 
 // ─── Configuration ─────────────────────────────────────────────────────────
 
-/** Coins to backtest — top liquid USDT perps on Bybit.
- *  Note: Bybit uses 1000PEPE not PEPE for symbol. Excluded to avoid mismatch. */
+/**
+ * Top 50 liquid USDT perpetuals on Bybit.
+ * Note: Bybit uses 1000PEPE/1000BONK notation for micro-price coins — excluded.
+ * Coins that fail to fetch (delisted, low volume) are skipped automatically.
+ */
 const COINS = [
+  // Mega caps
   'BTC', 'ETH', 'SOL', 'BNB', 'XRP',
-  'DOGE', 'AVAX', 'LINK', 'ARB', 'SUI',
-  'WLD', 'INJ', 'TIA', 'SEI', 'ONDO',
+  // Large caps
+  'DOGE', 'ADA', 'TRX', 'DOT', 'LTC',
+  'AVAX', 'LINK', 'NEAR', 'ATOM', 'APT',
+  // DeFi blue chips
+  'AAVE', 'UNI', 'LDO', 'GMX', 'CRV',
+  'INJ', 'JUP', 'PYTH', 'WLD', 'PENDLE',
+  // L2 / Infra
+  'ARB', 'OP', 'STX', 'STRK', 'IMX',
+  'SUI', 'SEI', 'TIA', 'TON', 'ICP',
+  // AI / Narrative
+  'TAO', 'RENDER', 'AI16Z', 'VIRTUAL', 'ONDO',
+  // Meme / trending
+  'WIF', 'NOT', 'TRUMP', 'PENGU', 'ORDI',
+  // Mid-caps with history
+  'BLUR', 'DYDX', 'ZRO', 'EIGEN', 'BOME',
 ]
 
 /** Timeframes to scan.
- * 5m added for ICT micro-entry (4h POI → 15m CHoCH → 5m FVG entry).
- * 4h for POI registration, 15m for confirmation, 5m for entry, 1h for same-TF. */
+ * 5m: ICT micro-entry (FVG at confirmed 4h POI, re-enabled).
+ * 15m: scalp signal at 4h POI + CHoCH confirmation.
+ * 1h: same-TF swing analysis.
+ * 4h: POI registration + swing signal at zone bounce. */
 const TIMEFRAMES: CandleInterval[] = ['5m', '15m', '1h', '4h']
 
-/** How many candles to fetch per TF (Bybit allows large history). */
+/**
+ * Candle counts per TF — calibrated for 6-month backtest coverage.
+ *
+ * 5m:  8,640  = 30 days  — 5m signals depend on 4h/15m state (initialized by larger TFs).
+ *                           30 days covers all recent micro-entry patterns. Full 6-month
+ *                           coverage would require ~52k candles × 50 coins = too many API calls.
+ * 15m: 17,280 = 6 months — primary scalp signal TF, needs full 6-month history.
+ * 1h:  5,000  = 208 days — already covers 6+ months. Swing same-TF analysis.
+ * 4h:  5,000  = 833 days — POI registration + swing signals. Far exceeds 6 months.
+ */
 const CANDLE_COUNTS: Record<CandleInterval, number> = {
   '1m': 500,
-  '5m': 5000,   // ~17 days — overlap with 15m for drill-down
-  '15m': 5000,
-  '1h': 5000,
-  '4h': 5000,
-  '1d': 2000,
+  '5m': 8_640,
+  '15m': 17_280,
+  '1h': 5_000,
+  '4h': 5_000,
+  '1d': 2_000,
 }
 
 /** HTF warmup candles needed for Layer 1 bias (computeHTFBias). */
@@ -207,17 +235,25 @@ async function main() {
   try { registry.register(new QuantStrategyAdapter()) } catch { /* already registered */ }
   try { registry.register(new SmcSdStrategy()) } catch { /* already registered */ }
 
-  const arg = process.argv[2] ?? 'all'
+  // Default to smc-sd — the primary strategy under test.
+  // Use 'all' to run layered + quant + smc-sd for comparison.
+  const arg = process.argv[2] ?? 'smc-sd'
   const strategies: StrategyType[] = arg === 'all'
     ? ['layered', 'quant', 'smc-sd']
     : [arg as StrategyType]
 
+  // Estimate fetch time (rough): 50 coins × avg 18 batches/TF × 4 TFs = ~3600 requests
+  // At Bybit kline rate limit (~20 req/s public): ~3 min fetch + ~5 min backtest = ~8 min total
+  const totalBatches = COINS.length * TIMEFRAMES.reduce((s, tf) => s + Math.ceil((CANDLE_COUNTS[tf] ?? 5000) / 1000), 0)
+
   console.log('='.repeat(60))
-  console.log('  BYBIT BACKTEST RUNNER')
-  console.log(`  Coins: ${COINS.join(', ')}`)
+  console.log('  BYBIT BACKTEST RUNNER — SMC+SD Dual-Mode')
+  console.log(`  Coins: ${COINS.length} (${COINS.slice(0, 5).join(', ')} ... ${COINS.slice(-3).join(', ')})`)
   console.log(`  Timeframes: ${TIMEFRAMES.join(', ')}`)
+  console.log(`  Coverage: 5m=30d | 15m=6mo | 1h=7mo | 4h=28mo`)
   console.log(`  Strategies: ${strategies.join(', ')}`)
   console.log(`  Commission: ${(BYBIT_COMMISSION_PCT * 100).toFixed(3)}% (Bybit taker)`)
+  console.log(`  Estimated API batches: ~${totalBatches} (fetch may take 5-15 min)`)
   console.log('='.repeat(60))
 
   // Step 1: Fetch candles from Bybit REST

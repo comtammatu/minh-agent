@@ -20,6 +20,27 @@ import { log } from '../lib/logger.js'
 import type { AccountState, PlaceOrderParams, OrderResult, PlaceTriggerParams } from './exchange-service.js'
 import { BYBIT_EXEC_BURST_TOKENS, BYBIT_EXEC_REFILL_MS } from '../config.js'
 
+// ─── Qty Rounding ────────────────────────────────────────────────────────────
+
+/**
+ * Round a raw coin quantity to the nearest valid qtyStep multiple.
+ *
+ * Uses a small epsilon nudge (100 × Number.EPSILON) before the Math.floor/ceil
+ * call to cancel floating-point jitter in the division. Without the nudge,
+ * values that are *exact* multiples of the step (e.g. 10.1 / 0.1 = 101.0000000001)
+ * can round to the wrong integer.
+ *
+ * dir='floor' — limit orders: never exceed the requested size.
+ * dir='ceil'  — market orders: guarantee at least the requested notional.
+ */
+function roundQtyToStep(qty: number, step: number, decimals: number, dir: 'floor' | 'ceil'): number {
+  const eps = Number.EPSILON * 100
+  const rounded = dir === 'floor'
+    ? Math.floor((qty + eps) / step) * step
+    : Math.ceil((qty - eps) / step) * step
+  return parseFloat(rounded.toFixed(decimals))
+}
+
 // ─── Execution Rate Limiter ───────────────────────────────────────────────────
 // Bybit trading endpoints: 10 req/s per UID. Burst=10, refill=100ms.
 // Prevents simultaneous order bursts (e.g. 20 signals firing at once → 429).
@@ -204,33 +225,31 @@ export class BybitExchangeService {
     // This ensures notional >= requested USDT value.
     // For market orders with raw size: round UP to nearest step (preserve risk sizing).
     // For limit orders: round DOWN to nearest qtyStep (Bybit rejects non-multiples of step).
+    const step = this.qtyStepMap.get(params.coin) ?? 0.001
+    const decimals = this.stepDecimalsMap.get(params.coin) ?? 3
+
     let baseQty = params.size
     if (params.type === 'market' && bbParams.sizeUsd !== undefined && bbParams.sizeUsd > 0) {
       try {
         const tickerResp = await this.client!.getTickers({ category: 'linear', symbol })
         const lastPrice = parseFloat(tickerResp.result?.list?.[0]?.lastPrice ?? '0')
         if (lastPrice > 0) {
-          const step = this.qtyStepMap.get(params.coin) ?? 0.001
-          baseQty = Math.ceil(bbParams.sizeUsd / lastPrice / step) * step
-          // Round to avoid floating-point jitter
-          baseQty = parseFloat(baseQty.toFixed(this.stepDecimalsMap.get(params.coin) ?? 3))
+          baseQty = roundQtyToStep(bbParams.sizeUsd / lastPrice, step, decimals, 'ceil')
           log.info('bybit-exec', `sizeUsd=${bbParams.sizeUsd} → price=${lastPrice} → qty=${baseQty} ${params.coin}`)
         } else {
-          log.warn('bybit-exec', `Could not resolve price for ${symbol}, falling back to size=${params.size}`)
+          log.warn('bybit-exec', `Could not resolve price for ${symbol}, rounding raw size to step`)
         }
       } catch (err) {
         log.warn('bybit-exec', `getTickers for qty conversion failed: ${err instanceof Error ? err.message : err}`)
       }
+      // Always align to step — covers both successful price fetch and all fallback paths.
+      // Market: ceil (never undersize the position).
+      baseQty = roundQtyToStep(baseQty, step, decimals, 'ceil')
     } else {
       // Both market (raw size) and limit orders must align to qtyStep.
       // Market: ceil (never go below risk-sized qty).
       // Limit: floor (don't overshoot the requested qty).
-      const step = this.qtyStepMap.get(params.coin) ?? 0.001
-      const decimals = this.stepDecimalsMap.get(params.coin) ?? 3
-      baseQty = params.type === 'market'
-        ? Math.ceil(baseQty / step) * step
-        : Math.floor(baseQty / step) * step
-      baseQty = parseFloat(baseQty.toFixed(decimals))
+      baseQty = roundQtyToStep(baseQty, step, decimals, params.type === 'market' ? 'ceil' : 'floor')
     }
 
     // Guard: reject before sending if qty is below exchange minimum.
@@ -268,7 +287,7 @@ export class BybitExchangeService {
       ...(params.cloid ? { orderLinkId: params.cloid } : {}),
     }
 
-    log.info('bybit-exec', `submitOrder: ${symbol} ${side} ${orderType} qty=${submitParams.qty} price=${submitParams.price ?? 'MKT'} posIdx=${positionIdx} sl=${submitParams.stopLoss ?? '-'} tp=${submitParams.takeProfit ?? '-'} step=${this.qtyStepMap.get(params.coin) ?? '?'} rawSize=${params.size}`)
+    log.info('bybit-exec', `submitOrder: ${symbol} ${side} ${orderType} qty=${submitParams.qty} price=${submitParams.price ?? 'MKT'} posIdx=${positionIdx} sl=${submitParams.stopLoss ?? '-'} tp=${submitParams.takeProfit ?? '-'} step=${step} rawSize=${params.size}`)
 
     try {
       await acquireExec()

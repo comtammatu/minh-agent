@@ -34,14 +34,16 @@ export const SIGNAL_TIMEFRAMES = ['5m', '15m', '1h', '4h', '1d'] as const
 export const MIN_CONFIDENCE = 0.58
 
 /** Regime confidence multipliers.
- * Counter restored from 0.0→0.20: full block was killing all shorts during dumps.
- * Neutral reduced 0.85→0.80 (P1): SIDEWAYS was too permissive — 0.65×0.85=0.5525
- * let one small bonus push past MIN_CONFIDENCE 0.58. At 0.80: 0.65×0.80=0.52 needs
- * meaningful bonus (HTF/killzone/displacement) to pass. 0.75 was too aggressive (killed 95%). */
+ * Counter 0.35→0.25: P2 raised to 0.35 for signal volume, but OOS bad weeks
+ * (W261 WR 10%, W278 WR 33%) show too many counter-trend entries in bear runs.
+ * 0.25 requires even stronger confluence: 0.65×0.25=0.16 base → needs +0.42
+ * bonus (CHoCH+displacement+killzone+HTF). Legitimate pullbacks with 4+ confluence
+ * still pass; low-conviction counter entries blocked.
+ * Neutral 0.80: SIDEWAYS needs meaningful bonus (HTF/killzone) to pass threshold. */
 export const REGIME_MULTIPLIERS = {
   aligned: 1.0,
   neutral: 0.80,
-  counter: 0.20,
+  counter: 0.25,
 } as const
 
 // Minimum candles required before scanning
@@ -142,10 +144,10 @@ export const PATTERN_TTL_BARS: Record<string, number> = {
 export const SMC_BREAK_LOOKBACK = 20
 
 /** Timeframes to skip for SMC-SD strategy.
- * 5m DISABLED: backtest shows 5-21% WR across HL+Bybit (95% SL hit on Bybit).
- * Root cause: tight SL (0.5 ATR) + distant TP (4h targets) = extreme mismatch.
- * Re-enable after fixing SL/TP logic for drill-down entries. */
-export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = ['5m']
+ * 5m re-enabled: TP now targets 1h structure (context.htfCandles via HTF_MAP['5m']='1h')
+ * instead of 4h. 5m SL (0.5 ATR) + 1h TP (1-3%) = R:R 2-6x, WR target 35-40%.
+ * Previous failure: tight 5m SL + distant 4h TP required WR >90% — unachievable. */
+export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = []
 
 /** Coins to skip for SMC-SD strategy (configurable per-exchange blacklist).
  * Empty by default — configure based on backtest results per exchange.
@@ -285,6 +287,40 @@ export const SMC_CONFIRMED_POI_TTL_MS = 1.5 * 3_600_000
 /** Max confirmed POIs per coin. */
 export const SMC_CONFIRMED_POI_MAX = 5
 
+// ─── 4h Swing Signals ────────────────────────────────────────────────────────
+// 4h previously only registered HTF POIs without emitting signals.
+// Enabling adds direct swing entries when price bounces at 4h demand/supply zone.
+// SL is wider (1.0 ATR) and TP uses 4h structure swing targets.
+
+/** Enable 4h same-TF swing signal emission at zone bounce. */
+export const SMC_4H_SWING_ENABLED = true
+
+/** ATR buffer for 4h swing stop — wider than scalp to absorb daily noise. */
+export const SMC_4H_SWING_SL_ATR_BUFFER = 1.0
+
+/** Min R:R for 4h swing entries. */
+export const SMC_4H_SWING_MIN_RR = 2.0
+
+/** Base confidence for 4h swing signals (fresh 4h BOS/CHoCH + zone bounce). */
+export const SMC_4H_SWING_CONFIDENCE_BASE = 0.68
+
+// ─── 15m Scalp Signals ───────────────────────────────────────────────────────
+// 15m previously only confirmed 4h POIs (no signal output).
+// Enabling emits a scalp signal immediately on CHoCH at 4h POI —
+// tighter entry than waiting for 5m FVG. TP: 15m structure targets (~1-3%).
+
+/** Enable 15m scalp signal when CHoCH confirmed at 4h HTF POI. */
+export const SMC_15M_SCALP_ENABLED = true
+
+/** ATR buffer for 15m scalp stop (15m swing structure). */
+export const SMC_15M_SCALP_SL_ATR_BUFFER = 0.5
+
+/** Min R:R for 15m scalp entries. */
+export const SMC_15M_SCALP_MIN_RR = 2.0
+
+/** Base confidence for 15m scalp (4h POI + 15m CHoCH = dual TF confirmation). */
+export const SMC_15M_SCALP_CONFIDENCE_BASE = 0.68
+
 // ─── ICT 5m Micro-Entry ─────────────────────────────────────────────────────
 
 /** 5m bars to look for FVG entry after confirmed POI. */
@@ -296,12 +332,24 @@ export const SMC_5M_FVG_LOOKBACK = 5
  * enough room; min R:R adjusted down accordingly. */
 export const SMC_5M_SL_ATR_BUFFER = 0.5
 
-/** Min R:R for 5m micro-entry. Adjusted 4.0→3.5 to match wider SL buffer.
- * Wider SL = larger risk distance, so R:R floor must be realistic. */
-export const SMC_5M_MIN_RR = 3.5
+/** Min R:R for 5m micro-entry. Reduced 3.5→2.5: TP now targets 1h structure
+ * (context.htfCandles), not 4h. 5m SL (0.5 ATR) + 1h TP (1-3%) = R:R 2-6x.
+ * Original 3.5 was calibrated for 4h TP (~5-20%) which required WR >90%. */
+export const SMC_5M_MIN_RR = 2.5
 
 /** Base confidence for 5m micro-entry (HTF + LTF confirmed = highest confidence). */
 export const SMC_5M_CONFIDENCE_BASE = 0.75
+
+/** Minimum SL distance % for 5m micro-entry.
+ * SL < 0.4% on 5m is pure noise — crypto spread (~0.05%) + normal 5m wick (~0.2%)
+ * means SL is hit before any directional move. Reject ultra-tight stops. */
+export const SMC_5M_MIN_SL_PCT = 0.004
+
+/** Require 15m CHoCH confirmation for 5m micro-entry.
+ * 5m FVG alone at 4h POI has ~22% WR. Adding 15m CHoCH requirement ensures
+ * lower-timeframe structure has shifted before micro-entry. The confirmedPOI
+ * already has ltfBreakKind from the 15m scan — use it as a hard gate. */
+export const SMC_5M_REQUIRE_15M_CHOCH = true
 
 // ─── ICT AMD (Power of Three) ───────────────────────────────────────────────
 
@@ -703,6 +751,22 @@ export const BACKTEST_SLIPPAGE_PCT = 0.0005
 
 /** Default commission per trade for backtest (0.03% = 3 bps, HL taker fee). */
 export const BACKTEST_COMMISSION_PCT = 0.0003
+
+/** Max concurrent open positions in backtest.
+ * Live trading uses RISK.maxConcurrentPositions (3). Backtest allows 5 to test
+ * diversification benefit across 50 coins × 4 TFs, while preventing the unlimited
+ * position count that inflated MaxDD to 200%. */
+export const BACKTEST_MAX_OPEN_POSITIONS = 5
+
+/** Risk per trade for backtest as fraction of current equity.
+ * Lower than live (2%) because backtest has no circuit breaker recovery pause.
+ * 1.5% × 5 max positions = 7.5% total account risk — survivable. */
+export const BACKTEST_RISK_PER_TRADE_PCT = 0.015
+
+/** Circuit breaker drawdown threshold for backtest.
+ * If currentEquity drops below initialCapital × (1 - threshold), skip new entries.
+ * Simulates the live CIRCUIT_BREAKER.maxDrawdownLimit but for full backtest run. */
+export const BACKTEST_CIRCUIT_BREAKER_DD = 0.15
 
 /** Walk-forward: default training window (30 days in ms). */
 export const WF_TRAIN_WINDOW_MS = 30 * 24 * 60 * 60 * 1000

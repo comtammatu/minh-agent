@@ -19,7 +19,7 @@ import type { Candle, ActiveSetup, SignalSide, CandleInterval } from '../types.j
 import type { BacktestTrade, PartialCloseDetail, ExitMode } from './types.js'
 import { computePositionSize } from '../agent/exits.js'
 import { shouldBlockCorrelatedEntry } from '../agent/correlation-guard.js'
-import { DEFAULT_RISK_PERCENT, MULTI_TP_SPLIT, TRAIL_ACTIVATION_R, QUANT_ATR_SL_MULT, QUANT_ATR_TP_MULT, MAX_HOLDING_BARS, TIMEFRAME_MS } from '../config.js'
+import { DEFAULT_RISK_PERCENT, MULTI_TP_SPLIT, TRAIL_ACTIVATION_R, QUANT_ATR_SL_MULT, QUANT_ATR_TP_MULT, MAX_HOLDING_BARS, TIMEFRAME_MS, BACKTEST_MAX_OPEN_POSITIONS, BACKTEST_RISK_PER_TRADE_PCT, BACKTEST_CIRCUIT_BREAKER_DD } from '../config.js'
 
 // ─── Open Position ──────────────────────────────────────────────────────────
 
@@ -68,6 +68,7 @@ export class TradeSimulator {
   private pendingFills = new Map<string, PendingFill>()
   private trades: BacktestTrade[] = []
   private equity: number
+  private initialCapital: number
   private slippagePct: number
   private commissionPct: number
   private exitMode: ExitMode
@@ -75,6 +76,7 @@ export class TradeSimulator {
 
   constructor(initialCapital: number, slippagePct: number, commissionPct: number, exitMode: ExitMode = 'multi', strategyId: string = 'layered') {
     this.equity = initialCapital
+    this.initialCapital = initialCapital
     this.slippagePct = slippagePct
     this.commissionPct = commissionPct
     this.exitMode = exitMode
@@ -88,6 +90,13 @@ export class TradeSimulator {
   tryFill(setup: ActiveSetup, barIndex: number, atrValue: number = 0, trailMult: number = 2.0): boolean {
     if (this.positions.has(setup.coin)) return false
     if (this.pendingFills.has(setup.coin)) return false
+
+    // P3-A: Max concurrent positions (open + pending)
+    const totalOpen = this.positions.size + this.pendingFills.size
+    if (totalOpen >= BACKTEST_MAX_OPEN_POSITIONS) return false
+
+    // P3-A: Circuit breaker — skip new entries if drawdown exceeds threshold
+    if (this.equity < this.initialCapital * (1 - BACKTEST_CIRCUIT_BREAKER_DD)) return false
 
     // Correlation guard — match live trading behavior (max 2 per group)
     const openCoins = [...this.positions.keys(), ...this.pendingFills.keys()]
@@ -121,8 +130,8 @@ export class TradeSimulator {
       actualTp = side === 'long' ? fillPrice + tpDist : fillPrice - tpDist
     }
 
-    // Position sizing using fill price and actual SL
-    const sizeCoins = computePositionSize(this.equity, DEFAULT_RISK_PERCENT, fillPrice, actualSl)
+    // Position sizing using fill price and actual SL (P3-A: backtest-specific risk %)
+    const sizeCoins = computePositionSize(this.equity, BACKTEST_RISK_PER_TRADE_PCT, fillPrice, actualSl)
     const sizeUsd = sizeCoins * fillPrice
     if (sizeUsd <= 0) return
 
