@@ -263,9 +263,10 @@ export const SMC_DRILLDOWN_CHOCH_BONUS = 0.10
 /** Max POIs stored per coin to prevent memory growth. */
 export const SMC_DRILLDOWN_MAX_POIS = 10
 
-/** Confirmed POI TTL in ms. Must be short — 5m entry should happen soon after 15m CHoCH.
- * 1 hour = 12 × 5m bars. Was 4h but 96% SL rate → too many stale entries. */
-export const SMC_CONFIRMED_POI_TTL_MS = 1 * 3_600_000
+/** Confirmed POI TTL in ms. Raised 1h→1.5h: 15m CHoCH can happen near bar end,
+ * giving only 30-45min for 5m FVG to appear — too short. 1.5h = 18 bars on 5m.
+ * Conservative increase (was 4h → 96% SL rate, so not reverting far). */
+export const SMC_CONFIRMED_POI_TTL_MS = 1.5 * 3_600_000
 
 /** Max confirmed POIs per coin. */
 export const SMC_CONFIRMED_POI_MAX = 5
@@ -325,6 +326,34 @@ export const SMC_AMD_INTERVAL: CandleInterval = '15m'
 
 /** Min bars in accumulation range (too few = unreliable range). */
 export const SMC_AMD_MIN_RANGE_BARS = 5
+
+// ─── P2: Liquidation Cascade Filter ─────────────────────────────────────────
+// Perp liquidation cascades produce sharp wicks + huge volume that look like
+// ICT manipulation but are forced-selling artifacts. Detect and discount.
+
+/** Volume ratio threshold above which a candle is considered a potential cascade.
+ * 3.0 = volume is 3× the 20-bar average — extreme spike, not normal absorption. */
+export const SMC_LIQUIDATION_VOLUME_RATIO = 3.0
+
+/** Wick-to-ATR ratio threshold. If intra-candle range > N × ATR, likely cascade.
+ * 3.0 ATR wick on a single bar = abnormal in normal markets, common in liquidations. */
+export const SMC_LIQUIDATION_WICK_ATR_MULT = 3.0
+
+/** Confidence multiplier applied when cascade detected. 0.4 = heavy discount;
+ * not 0.0 (sometimes cascade creates valid entry after the flush completes). */
+export const SMC_LIQUIDATION_CONFIDENCE_MULT = 0.4
+
+// ─── P2: Weekend Volume Filter ───────────────────────────────────────────────
+// Crypto volume Fri-Sun = 30-50% of weekday. Low-volume BOS/CHoCH has higher
+// false-break rate because thin books allow easier manipulation.
+
+/** Volume ratio below which weekend candles are considered low-volume.
+ * 0.6 = current volume is 60% below the 20-bar average → suspicious. */
+export const SMC_WEEKEND_VOLUME_RATIO_THRESHOLD = 0.6
+
+/** Confidence multiplier on low-volume weekend bars. 0.7 = 30% penalty.
+ * Not 0.0 — genuine setups can still form on weekends, just less reliable. */
+export const SMC_WEEKEND_CONFIDENCE_MULT = 0.7
 
 // ─── Layered Pipeline Config ─────────────────────────────────────────────────
 

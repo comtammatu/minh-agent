@@ -56,11 +56,21 @@ import {
   SMC_AMD_ENABLED, SMC_AMD_ACCUMULATION_START_UTC, SMC_AMD_ACCUMULATION_END_UTC,
   SMC_AMD_MANIPULATION_WINDOWS, SMC_AMD_MIN_RR, SMC_AMD_CONFIDENCE_BASE,
   SMC_AMD_JUDAS_BONUS, SMC_AMD_SL_ATR_BUFFER, SMC_AMD_MIN_RANGE_BARS,
+  SMC_LIQUIDATION_VOLUME_RATIO, SMC_LIQUIDATION_WICK_ATR_MULT, SMC_LIQUIDATION_CONFIDENCE_MULT,
+  SMC_WEEKEND_VOLUME_RATIO_THRESHOLD, SMC_WEEKEND_CONFIDENCE_MULT,
 } from '../../../config.js'
 
 // ── Module-level state ──────────────────────────────────────────────────────
 
-const lastSignalBar = new Map<string, number>()
+/** Zone-aware dedup state: track last signal's zone so we allow re-entry
+ * once price has exited and returned to the zone (new test = new opportunity). */
+interface DedupState {
+  lastBar: number
+  zoneTop: number | null
+  zoneBottom: number | null
+}
+
+const lastSignalState = new Map<string, DedupState>()
 
 // ── HTF POI Pool (4h writes) ────────────────────────────────────────────────
 
@@ -99,6 +109,83 @@ function getKillzoneBonus(timestampMs: number): { inKillzone: boolean; bonus: nu
     }
   }
   return { inKillzone: false, bonus: 0, name: 'off-session' }
+}
+
+// ── Liquidation cascade detector ────────────────────────────────────────────
+
+/**
+ * Returns true if the current candle looks like a perp liquidation cascade:
+ * abnormally large wick (>N×ATR) combined with extreme volume spike (>N×avg).
+ * These are forced-selling artifacts, NOT genuine ICT price action.
+ * Pure function — zero I/O.
+ */
+function isLiquidationCascade(candles: Candle[], idx: number, atrVal: number): boolean {
+  const candle = candles[idx]!
+  const wickSize = candle.h - candle.l
+  const volRatio = volumeRatio(candles, idx, 20)
+  return (
+    wickSize > atrVal * SMC_LIQUIDATION_WICK_ATR_MULT &&
+    !isNaN(volRatio) &&
+    volRatio > SMC_LIQUIDATION_VOLUME_RATIO
+  )
+}
+
+// ── Weekend low-volume multiplier ────────────────────────────────────────────
+
+/**
+ * Returns a confidence multiplier for weekend low-volume sessions.
+ * Crypto Fri-Sun volume = 30-50% of weekday → structure breaks more easily faked.
+ * Returns 1.0 on weekdays or when volume is normal.
+ * Pure function — zero I/O.
+ */
+function getWeekendMultiplier(timestampMs: number, candles: Candle[], idx: number): number {
+  const day = new Date(timestampMs).getUTCDay()  // 0=Sun, 6=Sat
+  if (day !== 0 && day !== 6) return 1.0
+  const volRatio = volumeRatio(candles, idx, 20)
+  if (isNaN(volRatio) || volRatio >= SMC_WEEKEND_VOLUME_RATIO_THRESHOLD) return 1.0
+  return SMC_WEEKEND_CONFIDENCE_MULT
+}
+
+// ── Zone-aware dedup helpers ─────────────────────────────────────────────────
+
+/**
+ * Check zone-aware dedup. Allows re-entry when price has exited the last
+ * signal's zone (new zone test = new opportunity), otherwise time-gate applies.
+ */
+function isDuplicateSignal(
+  key: string,
+  idx: number,
+  currentPrice: number,
+  newZoneTop: number | null,
+  newZoneBottom: number | null,
+): boolean {
+  const state = lastSignalState.get(key)
+  if (!state) return false
+
+  const timePassed = idx - state.lastBar
+
+  // Zone overlap check: do the new signal's zone and the last signal's zone share price range?
+  // Overlapping zones = same area being tested again → apply full dedup.
+  // Non-overlapping zones = genuinely different level → apply half dedup (shorter cooldown).
+  //
+  // Bug avoided: do NOT compare currentPrice against old zone top/bottom.
+  // currentPrice is AT the new zone, so it will appear "outside" any zone at a different price
+  // level, incorrectly bypassing dedup. Compare ZONES to ZONES instead.
+  if (
+    state.zoneTop !== null && state.zoneBottom !== null &&
+    newZoneTop !== null && newZoneBottom !== null
+  ) {
+    const zonesOverlap = newZoneTop > state.zoneBottom && newZoneBottom < state.zoneTop
+    const dedupBars = zonesOverlap ? SMC_DEDUP_BARS : Math.ceil(SMC_DEDUP_BARS / 2)
+    return timePassed <= dedupBars
+  }
+
+  // No zone info → standard time-based dedup
+  return timePassed <= SMC_DEDUP_BARS
+}
+
+function recordSignal(key: string, idx: number, zoneTop: number | null, zoneBottom: number | null): void {
+  lastSignalState.set(key, { lastBar: idx, zoneTop, zoneBottom })
 }
 
 // ── Strategy ────────────────────────────────────────────────────────────────
@@ -447,13 +534,18 @@ export class SmcSdStrategy implements IStrategy {
     const regime = detectRegime(candles, idx)
     confidence = applyRegimeModifier(confidence, side, regime)
 
+    // P2: liquidation cascade discount
+    if (isLiquidationCascade(candles, idx, atrVal)) confidence *= SMC_LIQUIDATION_CONFIDENCE_MULT
+
+    // P2: weekend low-volume discount
+    confidence *= getWeekendMultiplier(candle.t, candles, idx)
+
     if (confidence < MIN_CONFIDENCE) return null
 
-    // ── E. DEDUP + SIGNAL ──────────────────────────────────────────────
+    // ── E. DEDUP + SIGNAL (zone-aware) ────────────────────────────────
     const dedupKey = `${coin}|5m`
-    const lastBar = lastSignalBar.get(dedupKey)
-    if (lastBar !== undefined && idx - lastBar <= SMC_DEDUP_BARS) return null
-    lastSignalBar.set(dedupKey, idx)
+    if (isDuplicateSignal(dedupKey, idx, entry, bestPOI.zoneTop, bestPOI.zoneBottom)) return null
+    recordSignal(dedupKey, idx, bestPOI.zoneTop, bestPOI.zoneBottom)
 
     // Remove consumed confirmed POI
     const remaining = (confirmedPOIs.get(coin) ?? []).filter(p => p !== bestPOI)
@@ -591,6 +683,13 @@ export class SmcSdStrategy implements IStrategy {
     let killzoneName = 'off-session'
     if (SMC_ICT_KILLZONE_ENABLED) { const kz = getKillzoneBonus(candle.t); killzoneName = kz.name; confidence += kz.inKillzone ? kz.bonus : -SMC_ICT_KILLZONE_PENALTY }
     confidence = applyRegimeModifier(confidence, side, detectRegime(candles, idx))
+
+    // P2: liquidation cascade discount
+    if (isLiquidationCascade(candles, idx, atrVal)) confidence *= SMC_LIQUIDATION_CONFIDENCE_MULT
+
+    // P2: weekend low-volume discount
+    confidence *= getWeekendMultiplier(candle.t, candles, idx)
+
     if (confidence < MIN_CONFIDENCE) return null
 
     // SL/TP
@@ -605,10 +704,10 @@ export class SmcSdStrategy implements IStrategy {
     const riskAmt = Math.abs(entry - sl)
     if (riskAmt / entry > MAX_TRADE_SL_PCT || riskAmt <= 0 || Math.abs(tp1 - entry) / riskAmt < SMC_MIN_RR) return null
 
+    // P2: zone-aware dedup
     const dedupKey = `${coin}|${interval}`
-    const lastBar = lastSignalBar.get(dedupKey)
-    if (lastBar !== undefined && idx - lastBar <= SMC_DEDUP_BARS) return null
-    lastSignalBar.set(dedupKey, idx)
+    if (isDuplicateSignal(dedupKey, idx, entry, bestZone.top, bestZone.bottom)) return null
+    recordSignal(dedupKey, idx, bestZone.top, bestZone.bottom)
 
     return {
       type: 'smc-sd', side, confidence: Math.min(confidence, 1),
@@ -629,7 +728,7 @@ export class SmcSdStrategy implements IStrategy {
   minCandles(): number { return MIN_CANDLES_FOR_SCAN }
 
   clearState(): void {
-    lastSignalBar.clear()
+    lastSignalState.clear()
     htfPOIs.clear()
     confirmedPOIs.clear()
   }
