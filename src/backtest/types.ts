@@ -61,7 +61,7 @@ export interface BacktestTrade {
 
   pnl: number         // realized PnL after slippage + commission
   pnlPct: number      // PnL as fraction of entry notional
-  exitReason: 'sl_hit' | 'tp_hit' | 'trail_stop' | 'invalidated' | 'end_of_data'
+  exitReason: 'sl_hit' | 'tp_hit' | 'trail_stop' | 'invalidated' | 'end_of_data' | 'max_hold'
 
   /** Strategy that generated this trade. */
   strategyId?: string

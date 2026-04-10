@@ -141,9 +141,10 @@ export const PATTERN_TTL_BARS: Record<string, number> = {
 export const SMC_BREAK_LOOKBACK = 20
 
 /** Timeframes to skip for SMC-SD strategy.
- * All TFs active: 4h=POI, 15m=confirm+AMD, 5m=micro-entry, 1h=same-TF.
- * 5m enabled for live (data accumulates naturally over time). */
-export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = []
+ * 5m DISABLED: backtest shows 5-21% WR across HL+Bybit (95% SL hit on Bybit).
+ * Root cause: tight SL (0.5 ATR) + distant TP (4h targets) = extreme mismatch.
+ * Re-enable after fixing SL/TP logic for drill-down entries. */
+export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = ['5m']
 
 /** Minimum bars between signals on same coin/interval (dedup).
  * Reduced from 15 to 8: was too restrictive, missing valid re-entries at zones. */
@@ -481,6 +482,26 @@ export const TIMEFRAME_MS: Record<CandleInterval, number> = {
   '1d': 86_400_000,
 } as const
 
+// ─── Max Holding Period (P0 fix) ──────────────────────────────────────────
+
+/** Maximum bars to hold a position per TF before force-closing at market.
+ * Prevents zombie positions that lock capital for weeks.
+ * Backtest showed 5m trades held 1000-12000 bars (3-43 days), 1h held 500-2000 bars.
+ * These limits ensure capital turnover:
+ *   5m: 200 bars = ~17h (disabled anyway, but for future)
+ *   15m: 120 bars = 30h
+ *   1h: 72 bars = 3 days
+ *   4h: 30 bars = 5 days
+ *   1d: 15 bars = 15 days */
+export const MAX_HOLDING_BARS: Record<string, number> = {
+  '1m': 300,
+  '5m': 200,
+  '15m': 120,
+  '1h': 72,
+  '4h': 30,
+  '1d': 15,
+}
+
 // ─── Circuit Breakers (S11) ────────────────────────────────────────────────
 
 /** Circuit breaker thresholds and cooldown durations. */
@@ -563,8 +584,10 @@ export const ATR_STOP_MULTIPLIER = {
 } as const
 
 /** ATR buffer added below structure stop (Section 12.2 Method 1).
- * Tuned to 0.7: original 0.5 too tight (wick hunts), 1.0 too wide (killed R:R). */
-export const STRUCTURE_STOP_ATR_BUFFER = 0.7
+ * Raised 0.7→1.0: backtest shows 1h SL hit 44% (HL) / 44% (Bybit) with 0.7.
+ * Crypto wicks routinely sweep 0.7 ATR past structure — 1.0 gives breathing room.
+ * R:R impact offset by fewer SL hits (higher WR). */
+export const STRUCTURE_STOP_ATR_BUFFER = 1.0
 
 /** Maximum stop distance as fraction of entry price. Beyond this → skip.
  * Used by exits.ts (order lifecycle). */

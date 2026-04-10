@@ -18,7 +18,7 @@
 import type { Candle, ActiveSetup, SignalSide, CandleInterval } from '../types.js'
 import type { BacktestTrade, PartialCloseDetail, ExitMode } from './types.js'
 import { computePositionSize } from '../agent/exits.js'
-import { DEFAULT_RISK_PERCENT, MULTI_TP_SPLIT, TRAIL_ACTIVATION_R, QUANT_ATR_SL_MULT, QUANT_ATR_TP_MULT } from '../config.js'
+import { DEFAULT_RISK_PERCENT, MULTI_TP_SPLIT, TRAIL_ACTIVATION_R, QUANT_ATR_SL_MULT, QUANT_ATR_TP_MULT, MAX_HOLDING_BARS, TIMEFRAME_MS } from '../config.js'
 
 // ─── Open Position ──────────────────────────────────────────────────────────
 
@@ -175,6 +175,16 @@ export class TradeSimulator {
 
     // ── Single-exit mode: one SL, one TP, 100% close ──
     if (this.exitMode === 'single') {
+      // Max holding period for single-exit too (time-based, not global bar index)
+      const singleMaxBars = MAX_HOLDING_BARS[pos.interval] ?? 72
+      const singleTfMs = TIMEFRAME_MS[pos.interval] ?? 3_600_000
+      const singleElapsedMs = candle.t - pos.entryTime
+      if (singleElapsedMs >= singleMaxBars * singleTfMs) {
+        pos.partialCloses.push({ price: candle.c, sizePct: 1.0, bar: holdBars, reason: 'max_hold' })
+        pos.remainingSizePct = 0
+        this.finalizePosition(pos, barIndex, candle.t, 'max_hold')
+        return
+      }
       if (this.isSLHit(pos, candle)) {
         pos.partialCloses.push({ price: pos.currentSlPrice, sizePct: 1.0, bar: holdBars, reason: 'sl_hit' })
         pos.remainingSizePct = 0
@@ -191,6 +201,24 @@ export class TradeSimulator {
     }
 
     // ── Multi-exit mode (original) ──
+
+    // ── 0. Max holding period check — force-close zombie positions ──
+    // Use elapsed time (not global barIndex which counts ALL coin×TF events)
+    const maxBars = MAX_HOLDING_BARS[pos.interval] ?? 72
+    const tfMs = TIMEFRAME_MS[pos.interval] ?? 3_600_000
+    const maxHoldMs = maxBars * tfMs
+    const elapsedMs = candle.t - pos.entryTime
+    if (elapsedMs >= maxHoldMs) {
+      pos.partialCloses.push({
+        price: candle.c,
+        sizePct: pos.remainingSizePct,
+        bar: holdBars,
+        reason: 'max_hold',
+      })
+      pos.remainingSizePct = 0
+      this.finalizePosition(pos, barIndex, candle.t, 'max_hold')
+      return
+    }
 
     // ── 1. SL check (against current SL — may have moved to breakeven) ──
     if (this.isSLHit(pos, candle)) {
