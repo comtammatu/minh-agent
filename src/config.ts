@@ -35,11 +35,12 @@ export const MIN_CONFIDENCE = 0.58
 
 /** Regime confidence multipliers.
  * Counter restored from 0.0→0.20: full block was killing all shorts during dumps.
- * Crypto 24/7: counter-trend != always wrong (e.g. pullback in uptrend = short valid).
- * 0.20 = soft filter — signal still needs MIN_CONFIDENCE to pass, just severely discounted. */
+ * Neutral reduced 0.85→0.80 (P1): SIDEWAYS was too permissive — 0.65×0.85=0.5525
+ * let one small bonus push past MIN_CONFIDENCE 0.58. At 0.80: 0.65×0.80=0.52 needs
+ * meaningful bonus (HTF/killzone/displacement) to pass. 0.75 was too aggressive (killed 95%). */
 export const REGIME_MULTIPLIERS = {
   aligned: 1.0,
-  neutral: 0.85,
+  neutral: 0.80,
   counter: 0.20,
 } as const
 
@@ -164,8 +165,9 @@ export const SMC_MIN_BODY_RATIO = 0.25
 export const SMC_MIN_ZONE_STRENGTH = 0.50
 
 /** Minimum reward:risk ratio — skip trades with R:R below this.
- * Reverted to 2.0: 2.5 was killing 90% of signals. With wider SL (0.7 ATR buffer),
- * 2.0R is realistic. Winning trade at 2R with 35% WR = positive expectancy. */
+ * Kept at 2.0 (P1): wider SL (1.0 ATR from P0) already raised effective quality.
+ * 2.3 combined with neutral 0.80 killed 95% of signals — too aggressive.
+ * 2.0R with 45% WR = profitable. Quality comes from regime+HTF filters, not R:R floor. */
 export const SMC_MIN_RR = 2.0
 
 // ─── ICT Model Enhancements ─────────────────────────────────────────────────
@@ -192,6 +194,11 @@ export const SMC_ICT_REQUIRE_SWEEP_FOR_THROUGH = false
 
 /** Confidence bonus for HTF-aligned trades. */
 export const SMC_ICT_HTF_ALIGNED_BONUS = 0.10
+
+/** Confidence penalty when HTF bias opposes signal direction (P1).
+ * Targets counter-HTF longs in bear: 0.65 - 0.10 = 0.55 × 0.75 = 0.4125 → BLOCKED.
+ * Symmetric: also penalizes shorts in strong bull HTF bias. */
+export const SMC_ICT_HTF_COUNTER_PENALTY = 0.10
 
 /** Confidence bonus for OTE zone entries. */
 export const SMC_ICT_OTE_BONUS = 0.08

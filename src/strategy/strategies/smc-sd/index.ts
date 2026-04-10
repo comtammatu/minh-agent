@@ -43,7 +43,7 @@ import {
   SMC_MIN_RR, MAX_TRADE_SL_PCT, ZONE_MAX_AGE, MIN_CONFIDENCE,
   STRUCTURE_STOP_ATR_BUFFER, MIN_CANDLES_FOR_SCAN,
   SMC_ICT_HTF_ALIGNMENT, SMC_ICT_OTE_FILTER, SMC_ICT_DISPLACEMENT_BODY_ATR,
-  SMC_ICT_REQUIRE_SWEEP_FOR_THROUGH, SMC_ICT_HTF_ALIGNED_BONUS,
+  SMC_ICT_REQUIRE_SWEEP_FOR_THROUGH, SMC_ICT_HTF_ALIGNED_BONUS, SMC_ICT_HTF_COUNTER_PENALTY,
   SMC_ICT_OTE_BONUS, SMC_ICT_LIQUIDITY_POOL_TP_BONUS,
   SMC_ICT_KILLZONE_ENABLED, SMC_ICT_KILLZONES, SMC_ICT_KILLZONE_PENALTY,
   SMC_ICT_BREAKER_BLOCK_ENABLED, SMC_ICT_BREAKER_BLOCK_BONUS,
@@ -668,7 +668,7 @@ export class SmcSdStrategy implements IStrategy {
     if ((side === 'long' && candle.c > candle.o) || (side === 'short' && candle.c < candle.o)) confidence += 0.05
     if ((side === 'long' && pd === 'discount') || (side === 'short' && pd === 'premium')) confidence += 0.05
     if (htfAligned) confidence += SMC_ICT_HTF_ALIGNED_BONUS
-    if (htfOpposed) confidence -= 0.06
+    if (htfOpposed) confidence -= SMC_ICT_HTF_COUNTER_PENALTY
     if (inOTE) confidence += SMC_ICT_OTE_BONUS
     if (bestZone.origin === 'breaker-block') confidence += SMC_ICT_BREAKER_BLOCK_BONUS
     if (bestZone.origin === 'inversion-fvg') confidence += SMC_ICT_INVERSION_FVG_BONUS
