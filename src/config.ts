@@ -147,6 +147,12 @@ export const SMC_BREAK_LOOKBACK = 20
  * Re-enable after fixing SL/TP logic for drill-down entries. */
 export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = ['5m']
 
+/** Coins to skip for SMC-SD strategy (configurable per-exchange blacklist).
+ * Empty by default — configure based on backtest results per exchange.
+ * Historical underperformers (0% WR on HL P2b): DOGE, LINK, AVAX.
+ * Reason: high-noise meme/DeFi coins with erratic wicks defeat zone-bounce logic. */
+export const SMC_COIN_BLACKLIST: ReadonlyArray<string> = []
+
 /** Minimum bars between signals on same coin/interval (dedup).
  * Reduced from 15 to 8: was too restrictive, missing valid re-entries at zones. */
 export const SMC_DEDUP_BARS = 8
@@ -497,7 +503,7 @@ export const TIMEFRAME_MS: Record<CandleInterval, number> = {
  * These limits ensure capital turnover:
  *   5m: 200 bars = ~17h (disabled anyway, but for future)
  *   15m: 120 bars = 30h
- *   1h: 72 bars = 3 days
+ *   1h: 72 bars = 3 days (48 tested — killed trailing stop winners)
  *   4h: 30 bars = 5 days
  *   1d: 15 bars = 15 days */
 export const MAX_HOLDING_BARS: Record<string, number> = {
@@ -671,9 +677,10 @@ export const ATR_TRAIL_MULTIPLIER: Record<CandleInterval, number> = {
 } as const
 
 /** Position split across 3 TP levels: TP1 (zone), TP2 (swing), TP3 (trail).
- * Reduced TP1 from 40% to 25%: avg wins were too small vs losses.
- * Let more size ride to TP2/trailing for better expectancy. */
-export const MULTI_TP_SPLIT = [0.25, 0.35, 0.40] as const
+ * P2 rebalance: TP2 only hit 9% of partial closes (6/67 on Bybit) — 35% allocation
+ * sat idle. Shifted weight to TP1 which fires most often. Trail kept at 40%
+ * (primary profit engine: +$4,247 from 11 trades on HL). */
+export const MULTI_TP_SPLIT = [0.35, 0.25, 0.40] as const
 
 /** Minimum R:R for TP1. TP1 must be at least this far from entry.
  * Raised from 1.5 to 2.0: ensures winning trades cover at least 2 losses. */

@@ -38,7 +38,7 @@ import { applyRegimeModifier } from '../../shared/regime.js'
 import { detectRegime, atr, adx, volumeRatio } from '../../../indicators/core.js'
 import { detectVSA } from '../../../indicators/vsa.js'
 import {
-  SMC_BREAK_LOOKBACK, SMC_DEDUP_BARS, SMC_SD_SKIP_INTERVALS,
+  SMC_BREAK_LOOKBACK, SMC_DEDUP_BARS, SMC_SD_SKIP_INTERVALS, SMC_COIN_BLACKLIST,
   SMC_PRICE_TOLERANCE_ATR_MULT, SMC_MIN_BODY_RATIO, SMC_MIN_ZONE_STRENGTH,
   SMC_MIN_RR, MAX_TRADE_SL_PCT, ZONE_MAX_AGE, MIN_CONFIDENCE,
   STRUCTURE_STOP_ATR_BUFFER, MIN_CANDLES_FOR_SCAN,
@@ -198,6 +198,7 @@ export class SmcSdStrategy implements IStrategy {
   scan(coin: string, interval: CandleInterval, candles: Candle[], idx: number, context?: StrategyContext): Signal | null {
     if (idx < MIN_CANDLES_FOR_SCAN) return null
     if (SMC_SD_SKIP_INTERVALS.includes(interval)) return null
+    if (SMC_COIN_BLACKLIST.includes(coin)) return null
 
     // ── 4-MODE ROUTING ──────────────────────────────────────────────
     if (interval === '4h') return this.scan4hPOI(coin, candles, idx)

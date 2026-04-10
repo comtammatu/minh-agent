@@ -18,6 +18,7 @@
 import type { Candle, ActiveSetup, SignalSide, CandleInterval } from '../types.js'
 import type { BacktestTrade, PartialCloseDetail, ExitMode } from './types.js'
 import { computePositionSize } from '../agent/exits.js'
+import { shouldBlockCorrelatedEntry } from '../agent/correlation-guard.js'
 import { DEFAULT_RISK_PERCENT, MULTI_TP_SPLIT, TRAIL_ACTIVATION_R, QUANT_ATR_SL_MULT, QUANT_ATR_TP_MULT, MAX_HOLDING_BARS, TIMEFRAME_MS } from '../config.js'
 
 // ─── Open Position ──────────────────────────────────────────────────────────
@@ -87,6 +88,11 @@ export class TradeSimulator {
   tryFill(setup: ActiveSetup, barIndex: number, atrValue: number = 0, trailMult: number = 2.0): boolean {
     if (this.positions.has(setup.coin)) return false
     if (this.pendingFills.has(setup.coin)) return false
+
+    // Correlation guard — match live trading behavior (max 2 per group)
+    const openCoins = [...this.positions.keys(), ...this.pendingFills.keys()]
+    const corrCheck = shouldBlockCorrelatedEntry(setup.coin, openCoins)
+    if (corrCheck.blocked) return false
 
     this.pendingFills.set(setup.coin, { setup, signalBarIndex: barIndex, atrValue, trailMult })
     return true
