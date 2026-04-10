@@ -253,21 +253,13 @@ async function refreshLiveAccountStatesForTui(): Promise<void> {
   }
 }
 
-async function refreshLiveTuiPositionsCache(): Promise<void> {
+function refreshLiveTuiPositionsCache(): void {
   if (getEffectivePaperTrade()) {
     liveTuiExchangePositionsCache = null
     return
   }
-  try {
-    const pool = getExchangePool()
-    if (!pool.isInitialized()) {
-      liveTuiExchangePositionsCache = null
-      return
-    }
-    liveTuiExchangePositionsCache = await queryExchangePositions()
-  } catch {
-    // Transient HL errors: keep previous exchange snapshot
-  }
+  // Reuse cached snapshots from position-monitor's syncWithExchange — avoids duplicate API calls.
+  liveTuiExchangePositionsCache = getPositionMonitor().getLastExchangeSnapshots()
 }
 
 async function refreshLiveTuiCaches(): Promise<void> {
@@ -692,12 +684,13 @@ async function main(): Promise<void> {
   tuiSources.getHealthReport = () => health.getReport()
   tuiSources.getAccountState = async () => {
     try {
-      const p = getExchangePool()
-      if (!p.isInitialized()) return null
       if (liveAccountStatesByStrategyCache && liveAccountStatesByStrategyCache.size > 0) {
+        const p = getExchangePool()
+        if (!p.isInitialized()) return null
         return aggregateAccountStatesForTui(p, liveAccountStatesByStrategyCache)
       }
-      return await p.getShared().getAccountState()
+      // Reuse cached state from position-monitor's syncWithExchange — avoids duplicate API calls.
+      return pm.getLastAccountState()
     } catch {
       return null
     }

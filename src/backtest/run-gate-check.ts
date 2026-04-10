@@ -30,6 +30,8 @@ import {
   WF_STEP_MS,
 } from '../config.js'
 import { log } from '../lib/logger.js'
+import { getStrategyRegistry } from '../strategy/registry.js'
+import { SmcSdStrategy } from '../strategy/strategies/smc-sd/index.js'
 
 // ─── Configuration ─────────────────────────────────────────────────────────
 
@@ -56,6 +58,9 @@ const INITIAL_CAPITAL = 10_000
 
 async function main() {
   log.info('gate-check', '=== EXPECTANCY GATE CHECK ===')
+
+  // Register SMC-SD strategy
+  getStrategyRegistry().register(new SmcSdStrategy())
 
   // Ensure DB is ready
   await runMigrations(sql)
@@ -116,6 +121,8 @@ async function main() {
     initialCapital: INITIAL_CAPITAL,
     slippagePct: BACKTEST_SLIPPAGE_PCT,
     commissionPct: BACKTEST_COMMISSION_PCT,
+    strategy: 'smc-sd',
+    exitMode: 'multi',
   }
 
   const diagResult = runBacktest(candles, backtestConfig)

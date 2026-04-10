@@ -84,26 +84,26 @@ describe('evaluatePosition', () => {
   describe('trailing stop', () => {
     it('activates trailing after +1% profit (long)', () => {
       const pos = makePosition({ side: 'long', entryPrice: 100 })
-      // Price at +1.5% — above activation threshold
-      const actions = evaluatePosition(pos, 101.5)
+      // Price at +3.5% — above activation threshold (activationPct=0.03)
+      const actions = evaluatePosition(pos, 103.5)
       // Should get trail_update (first activation)
       const update = findAction(actions, 'trail_update')
       expect(update).toBeDefined()
       if (update?.type === 'trail_update') {
-        // Trail at 0.5% below highest: 101.5 * (1 - 0.005) = ~101.0
-        expect(update.newSlPrice).toBeCloseTo(101.5 * (1 - TRAILING_STOP.trailPct), 2)
+        // Trail at 1% below highest: 103.5 * (1 - 0.01) = ~102.465
+        expect(update.newSlPrice).toBeCloseTo(103.5 * (1 - TRAILING_STOP.trailPct), 2)
       }
     })
 
     it('activates trailing after +1% profit (short)', () => {
       const pos = makePosition({ side: 'short', entryPrice: 100, slPrice: 105 })
-      // Price at 98.5 — +1.5% profit for short
-      const actions = evaluatePosition(pos, 98.5)
+      // Price at 96.5 — +3.5% profit for short (activationPct=0.03)
+      const actions = evaluatePosition(pos, 96.5)
       const update = findAction(actions, 'trail_update')
       expect(update).toBeDefined()
       if (update?.type === 'trail_update') {
-        // Trail at 0.5% above lowest: 98.5 * (1 + 0.005) = ~98.99
-        expect(update.newSlPrice).toBeCloseTo(98.5 * (1 + TRAILING_STOP.trailPct), 2)
+        // Trail at 1% above lowest: 96.5 * (1 + 0.01) = ~97.465
+        expect(update.newSlPrice).toBeCloseTo(96.5 * (1 + TRAILING_STOP.trailPct), 2)
       }
     })
 
@@ -114,11 +114,11 @@ describe('evaluatePosition', () => {
         trailingState: {
           active: true,
           highestPrice: 103,
-          currentStopPrice: 103 * (1 - TRAILING_STOP.trailPct),  // ~102.485
+          currentStopPrice: 103 * (1 - TRAILING_STOP.trailPct),  // 103 * 0.99 = 101.97
         },
       })
-      // Price drops below trail stop
-      const actions = evaluatePosition(pos, 102)
+      // Price drops below trail stop (101.5 < 101.97)
+      const actions = evaluatePosition(pos, 101.5)
       const close = findAction(actions, 'close')
       expect(close).toBeDefined()
       if (close?.type === 'close') {
@@ -147,18 +147,19 @@ describe('evaluatePosition', () => {
     })
 
     it('does not send trail_update when change is below threshold', () => {
-      // Previous trail at 101.0, new trail would be 101.05 — ~0.05% change < 0.1% threshold
+      // trailPct=1%: current stop at 101.0 (highestPrice=102.02)
+      // New price 102.05 → new stop = 102.05*0.99 = 101.0295, change ~0.03% < 0.1% threshold
       const pos = makePosition({
         side: 'long',
         entryPrice: 100,
         trailingState: {
           active: true,
-          highestPrice: 101.5,
+          highestPrice: 102.02,
           currentStopPrice: 101.0,
         },
       })
-      // Price at 101.55 — trail moves to ~101.05, a ~0.05% change
-      const actions = evaluatePosition(pos, 101.55)
+      // Price at 102.05 — trail moves to ~101.03, a ~0.03% change from 101.0
+      const actions = evaluatePosition(pos, 102.05)
       const update = findAction(actions, 'trail_update')
       expect(update).toBeUndefined()
     })
@@ -187,12 +188,12 @@ describe('evaluatePosition', () => {
         trailingState: {
           active: true,
           highestPrice: 106,
-          currentStopPrice: 106 * (1 - TRAILING_STOP.trailPct),  // ~105.47
+          currentStopPrice: 106 * (1 - TRAILING_STOP.trailPct),  // 106 * 0.99 = 104.94
         },
       })
-      // Price is 105 — hits trail AND would trigger partial close at 1R (105)
+      // Price is 104.5 — below trail stop (104.94), triggers close before 1.5R partial (107.5)
       // Trail stop hit should take priority → only close action
-      const actions = evaluatePosition(pos, 105)
+      const actions = evaluatePosition(pos, 104.5)
       expect(actions).toHaveLength(1)
       expect(actions[0]!.type).toBe('close')
     })
@@ -203,15 +204,16 @@ describe('evaluatePosition', () => {
       const pos = makePosition({
         side: 'long',
         entryPrice: 100,
-        slPrice: 95,  // 5 point stop
+        slPrice: 95,  // 5 point stop, R=5
       })
-      // 1R target = 100 + 5 = 105. Price at 105.5 → hit
-      const actions = evaluatePosition(pos, 105.5)
+      // 1.5R target = 100 + 7.5 = 107.5. Price at 108 → hit
+      const actions = evaluatePosition(pos, 108)
       const partial = findAction(actions, 'partial_close')
       expect(partial).toBeDefined()
       if (partial?.type === 'partial_close') {
         expect(partial.closePct).toBe(PARTIAL_CLOSE.firstClosePct)  // 0.5
-        expect(partial.newSlPrice).toBe(100)  // breakeven
+        // moveSlToBreakeven=false → SL not moved
+        expect(partial.newSlPrice).toBeUndefined()
       }
     })
 
@@ -219,15 +221,16 @@ describe('evaluatePosition', () => {
       const pos = makePosition({
         side: 'short',
         entryPrice: 100,
-        slPrice: 105,  // 5 point stop
+        slPrice: 105,  // 5 point stop, R=5
       })
-      // 1R target = 100 - 5 = 95. Price at 94.5 → hit
-      const actions = evaluatePosition(pos, 94.5)
+      // 1.5R target = 100 - 7.5 = 92.5. Price at 92 → hit
+      const actions = evaluatePosition(pos, 92)
       const partial = findAction(actions, 'partial_close')
       expect(partial).toBeDefined()
       if (partial?.type === 'partial_close') {
         expect(partial.closePct).toBe(PARTIAL_CLOSE.firstClosePct)
-        expect(partial.newSlPrice).toBe(100)  // breakeven
+        // moveSlToBreakeven=false → SL not moved
+        expect(partial.newSlPrice).toBeUndefined()
       }
     })
 
@@ -235,7 +238,7 @@ describe('evaluatePosition', () => {
       const pos = makePosition({
         side: 'long',
         entryPrice: 100,
-        slPrice: 95,  // 1R = 105
+        slPrice: 95,  // 1.5R target = 107.5
       })
       const actions = evaluatePosition(pos, 104)
       const partial = findAction(actions, 'partial_close')
@@ -251,7 +254,7 @@ describe('evaluatePosition', () => {
       })
       const actions = evaluatePosition(pos, 106)
       const partial = findAction(actions, 'partial_close')
-      // Level 0 already fired, level 1 (2R = 110) not hit yet
+      // Level 0 already fired, level 1 (3R = 115) not hit yet
       expect(partial).toBeUndefined()
     })
 
@@ -262,8 +265,8 @@ describe('evaluatePosition', () => {
         slPrice: 95,
         partialClosesFired: [0],  // level 0 already fired
       })
-      // 2R = 100 + 10 = 110. Price at 110.5 → hit
-      const actions = evaluatePosition(pos, 110.5)
+      // 3R = 100 + 15 = 115. Price at 115.5 → hit
+      const actions = evaluatePosition(pos, 115.5)
       const partial = findAction(actions, 'partial_close')
       expect(partial).toBeDefined()
       if (partial?.type === 'partial_close') {
@@ -454,11 +457,11 @@ describe('PositionMonitor', () => {
       pos.trailingState = {
         active: true,
         highestPrice: 103,
-        currentStopPrice: 103 * (1 - TRAILING_STOP.trailPct),
+        currentStopPrice: 103 * (1 - TRAILING_STOP.trailPct),  // 103 * 0.99 = 101.97
       }
 
-      // Price drops to trigger trail stop
-      await pm.monitorPosition('pos-1', 102)
+      // Price drops below trail stop (101.5 < 101.97)
+      await pm.monitorPosition('pos-1', 101.5)
 
       expect(dispatched).not.toBeNull()
       expect(dispatched!.coin).toBe('BTC')
@@ -471,15 +474,16 @@ describe('PositionMonitor', () => {
         entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1', leverage: 10,
       })
 
-      // Price at 1R = 105
-      const actions = await pm.monitorPosition('pos-1', 106)
+      // Price at 1.5R = 107.5. Use 108 to trigger partial close
+      const actions = await pm.monitorPosition('pos-1', 108)
       const partial = findAction(actions, 'partial_close')
       expect(partial).toBeDefined()
 
       const pos = pm.getPosition('pos-1')!
       expect(pos.partialClosesFired).toContain(0)
       expect(pos.currentSize).toBeCloseTo(0.5, 2)
-      expect(pos.slPrice).toBe(100)  // moved to breakeven
+      // moveSlToBreakeven=false → SL stays at original 95
+      expect(pos.slPrice).toBe(95)
     })
 
     it('returns hold for unknown position', async () => {

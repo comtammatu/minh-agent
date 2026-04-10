@@ -190,7 +190,7 @@ export interface PositionState {
 export type MonitorAction =
   | { type: 'hold' }
   | { type: 'trail_update'; positionId: string; newSlPrice: number }
-  | { type: 'partial_close'; positionId: string; closePct: number; newSlPrice: number | null }
+  | { type: 'partial_close'; positionId: string; closePct: number; newSlPrice?: number | null }
   | { type: 'close'; positionId: string; reason: string }
   | { type: 'alert'; positionId: string; message: string }
 

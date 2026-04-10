@@ -35,7 +35,7 @@ import {
   TRAIL_UPDATE_THRESHOLD,
 } from '../config.js'
 import { getHLExchangeService as getExchangeService } from '../execution/hl-exchange-service.js'
-import type { IExchangeService as ExchangeService } from '../execution/exchange-service.js'
+import type { IExchangeService as ExchangeService, AccountState } from '../execution/exchange-service.js'
 import { getExchangePool, type IExchangeService as PoolExchangeService } from '../execution/exchange-pool.js'
 import { log } from '../lib/logger.js'
 import { getEffectivePaperTrade, PAPER_SLIPPAGE_PCT } from '../config.js'
@@ -137,7 +137,7 @@ export function evaluatePosition(
         type: 'partial_close',
         positionId: position.positionId,
         closePct: level.closePct,
-        newSlPrice: level.newSlPrice ?? null,
+        newSlPrice: level.newSlPrice,
       })
       // Only fire one partial close per tick to avoid cascading
       break
@@ -233,6 +233,10 @@ export class PositionMonitor {
   private onEquityUpdate: ((equity: number) => void) | null = null
   /** Callback to get current mark price for a coin (paper mode SL/TP checks). */
   private priceGetter: ((coin: string) => number | null) | null = null
+  /** Cached exchange position snapshots from last syncWithExchange (TUI reuse — avoids duplicate API calls). */
+  private lastExchangeSnapshots: ExchangePositionSnapshot[] | null = null
+  /** Cached account state from last syncWithExchange (TUI reuse — avoids duplicate API calls). */
+  private lastAccountState: AccountState | null = null
 
   /** Set the callback for dispatching events to the agent state machine. */
   setAgentDispatch(fn: (coin: string, event: AgentEvent, strategyId?: string) => void): void {
@@ -354,7 +358,7 @@ export class PositionMonitor {
         }
         const closeSize = pos.currentSize * action.closePct
         pos.currentSize -= closeSize
-        if (action.newSlPrice !== null) {
+        if (action.newSlPrice != null) {  // null and undefined both excluded
           pos.slPrice = action.newSlPrice
         }
         log.info('position-monitor', `Partial close: ${pos.coin} ${(action.closePct * 100).toFixed(0)}% (${closeSize.toFixed(4)} coins) remaining=${pos.currentSize.toFixed(4)}`)
@@ -466,10 +470,12 @@ export class PositionMonitor {
               this.onEquityUpdate?.(sum)
             } else {
               const st = await pool.getShared().getAccountState()
+              this.lastAccountState = st
               this.onEquityUpdate?.(st.effectiveBalance)
             }
           } else {
             const accountState = await getExchangeService().getAccountState()
+            this.lastAccountState = accountState
             this.onEquityUpdate?.(accountState.effectiveBalance)
           }
         }
@@ -491,6 +497,7 @@ export class PositionMonitor {
       }
 
       const snapshots = await queryExchangePositions()
+      this.lastExchangeSnapshots = snapshots
       // null = API/network error — skip reconciliation to avoid false position closes
       if (snapshots === null) {
         log.warn('position-monitor', `getPositions API error — skipping reconciliation this cycle (${this.positions.size} position(s) still tracked)`)
@@ -605,6 +612,16 @@ export class PositionMonitor {
   /** Check if sync interval is running. */
   isSyncRunning(): boolean {
     return this.syncInterval !== null
+  }
+
+  /** Get cached exchange position snapshots from last sync (TUI reuse). */
+  getLastExchangeSnapshots(): ExchangePositionSnapshot[] | null {
+    return this.lastExchangeSnapshots
+  }
+
+  /** Get cached account state from last sync (TUI reuse). */
+  getLastAccountState(): AccountState | null {
+    return this.lastAccountState
   }
 }
 

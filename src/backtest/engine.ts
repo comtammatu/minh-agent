@@ -48,6 +48,7 @@ export function runBacktest(
   clearPipelineState()
   clearStore()
   clearOnPersist()  // prevent DB writes during backtest
+  getStrategyRegistry().clearAllState()  // reset per-strategy dedup (critical for walk-forward isolation)
   getStrategyRegistry().activateOnly(config.strategy ?? 'layered')
 
   const slippage = config.slippagePct ?? BACKTEST_SLIPPAGE_PCT
