@@ -190,7 +190,7 @@ export function setupId(
   coin: string,
   interval: CandleInterval,
   type: ActiveSetup['type'],
-  strategyId: string = 'layered',
+  strategyId: string = 'smc-sd',
 ): string {
   return `${strategyId}:${coin}|${interval}|${type}`
 }

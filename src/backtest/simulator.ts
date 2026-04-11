@@ -18,7 +18,12 @@
 import type { Candle, ActiveSetup, SignalSide, CandleInterval } from '../types.js'
 import type { BacktestTrade, PartialCloseDetail, ExitMode } from './types.js'
 import { computePositionSize } from '../agent/exits.js'
-import { DEFAULT_RISK_PERCENT, MULTI_TP_SPLIT, TRAIL_ACTIVATION_R, QUANT_ATR_SL_MULT, QUANT_ATR_TP_MULT } from '../config.js'
+import { shouldBlockCorrelatedEntry } from '../agent/correlation-guard.js'
+import { DEFAULT_RISK_PERCENT, MULTI_TP_SPLIT, TRAIL_ACTIVATION_R, MAX_HOLDING_BARS, TIMEFRAME_MS, BACKTEST_MAX_OPEN_POSITIONS, BACKTEST_RISK_PER_TRADE_PCT, BACKTEST_CIRCUIT_BREAKER_DD } from '../config.js'
+
+/** ATR multiplier for SL/TP in single-exit backtest mode. */
+const SINGLE_EXIT_ATR_SL_MULT = 2.0
+const SINGLE_EXIT_ATR_TP_MULT = 3.0
 
 // ─── Open Position ──────────────────────────────────────────────────────────
 
@@ -67,13 +72,15 @@ export class TradeSimulator {
   private pendingFills = new Map<string, PendingFill>()
   private trades: BacktestTrade[] = []
   private equity: number
+  private initialCapital: number
   private slippagePct: number
   private commissionPct: number
   private exitMode: ExitMode
   private strategyId: string
 
-  constructor(initialCapital: number, slippagePct: number, commissionPct: number, exitMode: ExitMode = 'multi', strategyId: string = 'layered') {
+  constructor(initialCapital: number, slippagePct: number, commissionPct: number, exitMode: ExitMode = 'multi', strategyId: string = 'smc-sd') {
     this.equity = initialCapital
+    this.initialCapital = initialCapital
     this.slippagePct = slippagePct
     this.commissionPct = commissionPct
     this.exitMode = exitMode
@@ -87,6 +94,18 @@ export class TradeSimulator {
   tryFill(setup: ActiveSetup, barIndex: number, atrValue: number = 0, trailMult: number = 2.0): boolean {
     if (this.positions.has(setup.coin)) return false
     if (this.pendingFills.has(setup.coin)) return false
+
+    // P3-A: Max concurrent positions (open + pending)
+    const totalOpen = this.positions.size + this.pendingFills.size
+    if (totalOpen >= BACKTEST_MAX_OPEN_POSITIONS) return false
+
+    // P3-A: Circuit breaker — skip new entries if drawdown exceeds threshold
+    if (this.equity < this.initialCapital * (1 - BACKTEST_CIRCUIT_BREAKER_DD)) return false
+
+    // Correlation guard — match live trading behavior (max 2 per group)
+    const openCoins = [...this.positions.keys(), ...this.pendingFills.keys()]
+    const corrCheck = shouldBlockCorrelatedEntry(setup.coin, openCoins)
+    if (corrCheck.blocked) return false
 
     this.pendingFills.set(setup.coin, { setup, signalBarIndex: barIndex, atrValue, trailMult })
     return true
@@ -109,14 +128,14 @@ export class TradeSimulator {
     let actualSl = slPrice
     let actualTp = tpPrice
     if (this.exitMode === 'single' && atrValue > 0) {
-      const slDist = atrValue * QUANT_ATR_SL_MULT
-      const tpDist = atrValue * QUANT_ATR_TP_MULT
+      const slDist = atrValue * SINGLE_EXIT_ATR_SL_MULT
+      const tpDist = atrValue * SINGLE_EXIT_ATR_TP_MULT
       actualSl = side === 'long' ? fillPrice - slDist : fillPrice + slDist
       actualTp = side === 'long' ? fillPrice + tpDist : fillPrice - tpDist
     }
 
-    // Position sizing using fill price and actual SL
-    const sizeCoins = computePositionSize(this.equity, DEFAULT_RISK_PERCENT, fillPrice, actualSl)
+    // Position sizing using fill price and actual SL (P3-A: backtest-specific risk %)
+    const sizeCoins = computePositionSize(this.equity, BACKTEST_RISK_PER_TRADE_PCT, fillPrice, actualSl)
     const sizeUsd = sizeCoins * fillPrice
     if (sizeUsd <= 0) return
 
@@ -175,6 +194,16 @@ export class TradeSimulator {
 
     // ── Single-exit mode: one SL, one TP, 100% close ──
     if (this.exitMode === 'single') {
+      // Max holding period for single-exit too (time-based, not global bar index)
+      const singleMaxBars = MAX_HOLDING_BARS[pos.interval] ?? 72
+      const singleTfMs = TIMEFRAME_MS[pos.interval] ?? 3_600_000
+      const singleElapsedMs = candle.t - pos.entryTime
+      if (singleElapsedMs >= singleMaxBars * singleTfMs) {
+        pos.partialCloses.push({ price: candle.c, sizePct: 1.0, bar: holdBars, reason: 'max_hold' })
+        pos.remainingSizePct = 0
+        this.finalizePosition(pos, barIndex, candle.t, 'max_hold')
+        return
+      }
       if (this.isSLHit(pos, candle)) {
         pos.partialCloses.push({ price: pos.currentSlPrice, sizePct: 1.0, bar: holdBars, reason: 'sl_hit' })
         pos.remainingSizePct = 0
@@ -191,6 +220,24 @@ export class TradeSimulator {
     }
 
     // ── Multi-exit mode (original) ──
+
+    // ── 0. Max holding period check — force-close zombie positions ──
+    // Use elapsed time (not global barIndex which counts ALL coin×TF events)
+    const maxBars = MAX_HOLDING_BARS[pos.interval] ?? 72
+    const tfMs = TIMEFRAME_MS[pos.interval] ?? 3_600_000
+    const maxHoldMs = maxBars * tfMs
+    const elapsedMs = candle.t - pos.entryTime
+    if (elapsedMs >= maxHoldMs) {
+      pos.partialCloses.push({
+        price: candle.c,
+        sizePct: pos.remainingSizePct,
+        bar: holdBars,
+        reason: 'max_hold',
+      })
+      pos.remainingSizePct = 0
+      this.finalizePosition(pos, barIndex, candle.t, 'max_hold')
+      return
+    }
 
     // ── 1. SL check (against current SL — may have moved to breakeven) ──
     if (this.isSLHit(pos, candle)) {

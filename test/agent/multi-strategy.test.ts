@@ -18,7 +18,7 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
     id: 'BTC|1h|order-block|long',
     coin: 'BTC',
     interval: '1h',
-    type: 'order-block',
+    type: 'smc-sd',
     side: 'long',
     confidence: 0.75,
     entryPrice: 50000,
@@ -38,24 +38,24 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
 
 describe('stateKey / parseStateKey', () => {
   it('builds key from coin + strategyId', () => {
-    expect(stateKey('BTC', 'layered')).toBe('BTC:layered')
-    expect(stateKey('ETH', 'quant')).toBe('ETH:quant')
+    expect(stateKey('BTC', 'smc-sd')).toBe('BTC:smc-sd')
+    expect(stateKey('ETH', 'alpha')).toBe('ETH:alpha')
   })
 
   it('defaults strategyId to layered', () => {
-    expect(stateKey('BTC')).toBe('BTC:layered')
+    expect(stateKey('BTC')).toBe('BTC:smc-sd')
   })
 
   it('parses key back to coin + strategyId', () => {
-    const { coin, strategyId } = parseStateKey('BTC:quant')
+    const { coin, strategyId } = parseStateKey('BTC:alpha')
     expect(coin).toBe('BTC')
-    expect(strategyId).toBe('quant')
+    expect(strategyId).toBe('alpha')
   })
 
   it('parses key without colon as default strategy', () => {
     const { coin, strategyId } = parseStateKey('BTC')
     expect(coin).toBe('BTC')
-    expect(strategyId).toBe('layered')
+    expect(strategyId).toBe('smc-sd')
   })
 
   it('handles coin names with special chars', () => {
@@ -77,51 +77,51 @@ describe('Multi-strategy state independence', () => {
   })
 
   it('same coin, different strategies → independent states (V2)', () => {
-    const layeredSetup = makeSetup({ strategyId: 'layered', confluenceGrade: 'A' })
-    const quantSetup = makeSetup({ strategyId: 'quant', id: 'BTC|1h|breakout|long', confluenceGrade: 'B' })
+    const layeredSetup = makeSetup({ strategyId: 'smc-sd', confluenceGrade: 'A' })
+    const quantSetup = makeSetup({ strategyId: 'alpha', id: 'BTC|1h|breakout|long', confluenceGrade: 'B' })
 
     // Dispatch to two different strategies for same coin
-    agent.dispatch('BTC', { type: 'setup_detected', setup: layeredSetup }, 'layered')
-    agent.dispatch('BTC', { type: 'setup_detected', setup: quantSetup }, 'quant')
+    agent.dispatch('BTC', { type: 'setup_detected', setup: layeredSetup }, 'smc-sd')
+    agent.dispatch('BTC', { type: 'setup_detected', setup: quantSetup }, 'alpha')
 
-    expect(agent.getCoinState('BTC', 'layered')).toBe('ENTERING')
-    expect(agent.getCoinState('BTC', 'quant')).toBe('ENTERING')
+    expect(agent.getCoinState('BTC', 'smc-sd')).toBe('ENTERING')
+    expect(agent.getCoinState('BTC', 'alpha')).toBe('ENTERING')
 
     // Invalidate layered — quant should remain WATCHING
     agent.dispatch('BTC', {
       type: 'setup_invalidated',
       setupId: layeredSetup.id,
       reason: 'zone-broken',
-    }, 'layered')
+    }, 'smc-sd')
 
-    expect(agent.getCoinState('BTC', 'layered')).toBe('IDLE')
-    expect(agent.getCoinState('BTC', 'quant')).toBe('ENTERING')
+    expect(agent.getCoinState('BTC', 'smc-sd')).toBe('IDLE')
+    expect(agent.getCoinState('BTC', 'alpha')).toBe('ENTERING')
   })
 
   it('different coins, same strategy → independent states', () => {
-    const btcSetup = makeSetup({ coin: 'BTC', strategyId: 'quant', confluenceGrade: 'A' })
-    const ethSetup = makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', strategyId: 'quant', confluenceGrade: 'B' })
+    const btcSetup = makeSetup({ coin: 'BTC', strategyId: 'alpha', confluenceGrade: 'A' })
+    const ethSetup = makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', strategyId: 'alpha', confluenceGrade: 'B' })
 
-    agent.dispatch('BTC', { type: 'setup_detected', setup: btcSetup }, 'quant')
-    agent.dispatch('ETH', { type: 'setup_detected', setup: ethSetup }, 'quant')
+    agent.dispatch('BTC', { type: 'setup_detected', setup: btcSetup }, 'alpha')
+    agent.dispatch('ETH', { type: 'setup_detected', setup: ethSetup }, 'alpha')
 
-    expect(agent.getCoinState('BTC', 'quant')).toBe('ENTERING')
-    expect(agent.getCoinState('ETH', 'quant')).toBe('ENTERING')
+    expect(agent.getCoinState('BTC', 'alpha')).toBe('ENTERING')
+    expect(agent.getCoinState('ETH', 'alpha')).toBe('ENTERING')
 
     // Pause BTC only (via dispatch), ETH unaffected
-    agent.dispatch('BTC', { type: 'pause', reason: 'manual' }, 'quant')
+    agent.dispatch('BTC', { type: 'pause', reason: 'manual' }, 'alpha')
 
-    expect(agent.getCoinState('BTC', 'quant')).toBe('PAUSED')
-    expect(agent.getCoinState('ETH', 'quant')).toBe('ENTERING')
+    expect(agent.getCoinState('BTC', 'alpha')).toBe('PAUSED')
+    expect(agent.getCoinState('ETH', 'alpha')).toBe('ENTERING')
   })
 
   it('onSetup routes to correct strategy from setup.strategyId', () => {
-    const setup = makeSetup({ strategyId: 'quant', confluenceGrade: 'A' })
+    const setup = makeSetup({ strategyId: 'alpha', confluenceGrade: 'A' })
     agent.onSetup(setup)
 
-    expect(agent.getCoinState('BTC', 'quant')).toBe('ENTERING')
+    expect(agent.getCoinState('BTC', 'alpha')).toBe('ENTERING')
     // Default strategy should still be IDLE
-    expect(agent.getCoinState('BTC', 'layered')).toBe('IDLE')
+    expect(agent.getCoinState('BTC', 'smc-sd')).toBe('IDLE')
   })
 
   it('onSetup defaults to layered when no strategyId', () => {
@@ -129,14 +129,14 @@ describe('Multi-strategy state independence', () => {
     delete (setup as Record<string, unknown>).strategyId
     agent.onSetup(setup)
 
-    expect(agent.getCoinState('BTC', 'layered')).toBe('ENTERING')
+    expect(agent.getCoinState('BTC', 'smc-sd')).toBe('ENTERING')
   })
 
   it('getCoinState defaults to layered for backward compat', () => {
     const setup = makeSetup({ confluenceGrade: 'A' })
-    agent.dispatch('BTC', { type: 'setup_detected', setup }, 'layered')
+    agent.dispatch('BTC', { type: 'setup_detected', setup }, 'smc-sd')
 
-    // No strategyId argument → defaults to 'layered'
+    // No strategyId argument → defaults to 'smc-sd'
     expect(agent.getCoinState('BTC')).toBe('ENTERING')
   })
 })
@@ -152,51 +152,51 @@ describe('Per-strategy GlobalContext (V6)', () => {
   })
 
   it('each strategy has independent dailyPnl', () => {
-    agent.recordPnl(-100, 10000, 'BTC', 'layered')
-    agent.recordPnl(200, 10000, 'BTC', 'quant')
+    agent.recordPnl(-100, 10000, 'BTC', 'smc-sd')
+    agent.recordPnl(200, 10000, 'BTC', 'alpha')
 
-    expect(agent.getStrategyGlobal('layered').dailyPnl).toBe(-100)
-    expect(agent.getStrategyGlobal('quant').dailyPnl).toBe(200)
+    expect(agent.getStrategyGlobal('smc-sd').dailyPnl).toBe(-100)
+    expect(agent.getStrategyGlobal('alpha').dailyPnl).toBe(200)
   })
 
   it('each strategy has independent consecutive loss count', () => {
-    agent.recordPnl(-50, 10000, 'BTC', 'layered')
-    agent.recordPnl(-50, 10000, 'BTC', 'layered')
-    agent.recordPnl(100, 10000, 'BTC', 'quant')
+    agent.recordPnl(-50, 10000, 'BTC', 'smc-sd')
+    agent.recordPnl(-50, 10000, 'BTC', 'smc-sd')
+    agent.recordPnl(100, 10000, 'BTC', 'alpha')
 
-    expect(agent.getStrategyGlobal('layered').totalConsecutiveLosses).toBe(2)
-    expect(agent.getStrategyGlobal('quant').totalConsecutiveLosses).toBe(0)
+    expect(agent.getStrategyGlobal('smc-sd').totalConsecutiveLosses).toBe(2)
+    expect(agent.getStrategyGlobal('alpha').totalConsecutiveLosses).toBe(0)
   })
 
   it('each strategy has independent pnlHistory', () => {
-    agent.recordPnl(-50, 10000, 'BTC', 'layered')
-    agent.recordPnl(-30, 10000, 'ETH', 'quant')
-    agent.recordPnl(100, 10000, 'BTC', 'layered')
+    agent.recordPnl(-50, 10000, 'BTC', 'smc-sd')
+    agent.recordPnl(-30, 10000, 'ETH', 'alpha')
+    agent.recordPnl(100, 10000, 'BTC', 'smc-sd')
 
-    expect(agent.getStrategyGlobal('layered').pnlHistory).toHaveLength(2)
-    expect(agent.getStrategyGlobal('quant').pnlHistory).toHaveLength(1)
+    expect(agent.getStrategyGlobal('smc-sd').pnlHistory).toHaveLength(2)
+    expect(agent.getStrategyGlobal('alpha').pnlHistory).toHaveLength(1)
   })
 
   it('each strategy has independent peakAccountValue', () => {
-    agent.updateAccountValue(10000, 'layered')
-    agent.updateAccountValue(5000, 'quant')
+    agent.updateAccountValue(10000, 'smc-sd')
+    agent.updateAccountValue(5000, 'alpha')
 
-    expect(agent.getStrategyGlobal('layered').peakAccountValue).toBe(10000)
-    expect(agent.getStrategyGlobal('quant').peakAccountValue).toBe(5000)
+    expect(agent.getStrategyGlobal('smc-sd').peakAccountValue).toBe(10000)
+    expect(agent.getStrategyGlobal('alpha').peakAccountValue).toBe(5000)
   })
 
   it('resetDailyPnl resets all strategies', () => {
-    agent.recordPnl(-100, 10000, 'BTC', 'layered')
-    agent.recordPnl(-200, 10000, 'BTC', 'quant')
+    agent.recordPnl(-100, 10000, 'BTC', 'smc-sd')
+    agent.recordPnl(-200, 10000, 'BTC', 'alpha')
 
     agent.resetDailyPnl()
 
-    expect(agent.getStrategyGlobal('layered').dailyPnl).toBe(0)
-    expect(agent.getStrategyGlobal('quant').dailyPnl).toBe(0)
+    expect(agent.getStrategyGlobal('smc-sd').dailyPnl).toBe(0)
+    expect(agent.getStrategyGlobal('alpha').dailyPnl).toBe(0)
   })
 
   it('getGlobal() returns default strategy for backward compat', () => {
-    agent.recordPnl(-100, 10000, 'BTC', 'layered')
+    agent.recordPnl(-100, 10000, 'BTC', 'smc-sd')
     expect(agent.getGlobal().dailyPnl).toBe(-100)
   })
 })
@@ -215,34 +215,34 @@ describe('Per-strategy circuit breakers (V6)', () => {
     // Put BTC watching on both strategies
     agent.dispatch('BTC', {
       type: 'setup_detected',
-      setup: makeSetup({ strategyId: 'layered', confluenceGrade: 'A' }),
-    }, 'layered')
+      setup: makeSetup({ strategyId: 'smc-sd', confluenceGrade: 'A' }),
+    }, 'smc-sd')
     agent.dispatch('BTC', {
       type: 'setup_detected',
-      setup: makeSetup({ strategyId: 'quant', id: 'BTC|1h|breakout|long', confluenceGrade: 'A' }),
-    }, 'quant')
+      setup: makeSetup({ strategyId: 'alpha', id: 'BTC|1h|breakout|long', confluenceGrade: 'A' }),
+    }, 'alpha')
 
-    expect(agent.getCoinState('BTC', 'layered')).toBe('ENTERING')
-    expect(agent.getCoinState('BTC', 'quant')).toBe('ENTERING')
+    expect(agent.getCoinState('BTC', 'smc-sd')).toBe('ENTERING')
+    expect(agent.getCoinState('BTC', 'alpha')).toBe('ENTERING')
 
     // Trip CB on layered (3.5% daily loss)
-    agent.recordPnl(-350, 10000, 'ETH', 'layered')
+    agent.recordPnl(-350, 10000, 'ETH', 'smc-sd')
 
     // Layered should be paused, quant should remain WATCHING
-    expect(agent.getStrategyGlobal('layered').globalPaused).toBe(true)
-    expect(agent.getCoinState('BTC', 'layered')).toBe('PAUSED')
+    expect(agent.getStrategyGlobal('smc-sd').globalPaused).toBe(true)
+    expect(agent.getCoinState('BTC', 'smc-sd')).toBe('PAUSED')
 
-    expect(agent.getStrategyGlobal('quant').globalPaused).toBe(false)
-    expect(agent.getCoinState('BTC', 'quant')).toBe('ENTERING')
+    expect(agent.getStrategyGlobal('alpha').globalPaused).toBe(false)
+    expect(agent.getCoinState('BTC', 'alpha')).toBe('ENTERING')
   })
 
   it('CB respects R5 per-strategy: IN_POSITION coins keep SL/TP', () => {
     // Put BTC IN_POSITION for layered via internal state
     const coinsMap = (agent as unknown as { coins: Map<string, CoinContext> }).coins
-    coinsMap.set('BTC:layered', {
+    coinsMap.set('BTC:smc-sd', {
       state: 'IN_POSITION',
       coin: 'BTC',
-      strategyId: 'layered',
+      strategyId: 'smc-sd',
       activeSetup: null,
       pendingOrderId: null,
       positionId: 'pos-1',
@@ -255,54 +255,54 @@ describe('Per-strategy circuit breakers (V6)', () => {
     // Put ETH ENTERING for layered
     agent.dispatch('ETH', {
       type: 'setup_detected',
-      setup: makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', strategyId: 'layered', confluenceGrade: 'A' }),
-    }, 'layered')
+      setup: makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', strategyId: 'smc-sd', confluenceGrade: 'A' }),
+    }, 'smc-sd')
 
     // Trip CB on layered
-    agent.recordPnl(-400, 10000, 'SOL', 'layered')
+    agent.recordPnl(-400, 10000, 'SOL', 'smc-sd')
 
     // R5: BTC IN_POSITION stays, ETH gets paused
-    expect(agent.getCoinState('BTC', 'layered')).toBe('IN_POSITION')
-    expect(agent.getCoinState('ETH', 'layered')).toBe('PAUSED')
+    expect(agent.getCoinState('BTC', 'smc-sd')).toBe('IN_POSITION')
+    expect(agent.getCoinState('ETH', 'smc-sd')).toBe('PAUSED')
   })
 
   it('pauseStrategy only pauses one strategy', () => {
     agent.dispatch('BTC', {
       type: 'setup_detected',
-      setup: makeSetup({ strategyId: 'layered', confluenceGrade: 'A' }),
-    }, 'layered')
+      setup: makeSetup({ strategyId: 'smc-sd', confluenceGrade: 'A' }),
+    }, 'smc-sd')
     agent.dispatch('ETH', {
       type: 'setup_detected',
-      setup: makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', strategyId: 'quant', confluenceGrade: 'A' }),
-    }, 'quant')
+      setup: makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', strategyId: 'alpha', confluenceGrade: 'A' }),
+    }, 'alpha')
 
-    agent.pauseStrategy('layered', 'manual test')
+    agent.pauseStrategy('smc-sd', 'manual test')
 
-    expect(agent.getCoinState('BTC', 'layered')).toBe('PAUSED')
-    expect(agent.getCoinState('ETH', 'quant')).toBe('ENTERING')
-    expect(agent.getStrategyGlobal('layered').globalPaused).toBe(true)
-    expect(agent.getStrategyGlobal('quant').globalPaused).toBe(false)
+    expect(agent.getCoinState('BTC', 'smc-sd')).toBe('PAUSED')
+    expect(agent.getCoinState('ETH', 'alpha')).toBe('ENTERING')
+    expect(agent.getStrategyGlobal('smc-sd').globalPaused).toBe(true)
+    expect(agent.getStrategyGlobal('alpha').globalPaused).toBe(false)
   })
 
   it('resumeStrategy only resumes one strategy', () => {
     agent.dispatch('BTC', {
       type: 'setup_detected',
-      setup: makeSetup({ strategyId: 'layered', confluenceGrade: 'A' }),
-    }, 'layered')
+      setup: makeSetup({ strategyId: 'smc-sd', confluenceGrade: 'A' }),
+    }, 'smc-sd')
     agent.dispatch('ETH', {
       type: 'setup_detected',
-      setup: makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', strategyId: 'quant', confluenceGrade: 'A' }),
-    }, 'quant')
+      setup: makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', strategyId: 'alpha', confluenceGrade: 'A' }),
+    }, 'alpha')
 
     // Pause both
     agent.pauseAll('test')
-    expect(agent.getCoinState('BTC', 'layered')).toBe('PAUSED')
-    expect(agent.getCoinState('ETH', 'quant')).toBe('PAUSED')
+    expect(agent.getCoinState('BTC', 'smc-sd')).toBe('PAUSED')
+    expect(agent.getCoinState('ETH', 'alpha')).toBe('PAUSED')
 
     // Resume only quant
-    agent.resumeStrategy('quant')
-    expect(agent.getCoinState('BTC', 'layered')).toBe('PAUSED')
-    expect(agent.getCoinState('ETH', 'quant')).toBe('IDLE')
+    agent.resumeStrategy('alpha')
+    expect(agent.getCoinState('BTC', 'smc-sd')).toBe('PAUSED')
+    expect(agent.getCoinState('ETH', 'alpha')).toBe('IDLE')
   })
 })
 
@@ -319,37 +319,37 @@ describe('Multi-strategy snapshot', () => {
   it('snapshot includes strategyId in coin entries', () => {
     agent.dispatch('BTC', {
       type: 'setup_detected',
-      setup: makeSetup({ strategyId: 'layered', confluenceGrade: 'A' }),
-    }, 'layered')
+      setup: makeSetup({ strategyId: 'smc-sd', confluenceGrade: 'A' }),
+    }, 'smc-sd')
     agent.dispatch('BTC', {
       type: 'setup_detected',
-      setup: makeSetup({ strategyId: 'quant', id: 'BTC|1h|breakout|long', confluenceGrade: 'B' }),
-    }, 'quant')
+      setup: makeSetup({ strategyId: 'alpha', id: 'BTC|1h|breakout|long', confluenceGrade: 'B' }),
+    }, 'alpha')
 
     const snap = agent.getSnapshot()
 
-    expect(snap.coins['BTC:layered']).toBeDefined()
-    expect(snap.coins['BTC:layered']!.strategyId).toBe('layered')
-    expect(snap.coins['BTC:layered']!.state).toBe('ENTERING')
+    expect(snap.coins['BTC:smc-sd']).toBeDefined()
+    expect(snap.coins['BTC:smc-sd']!.strategyId).toBe('smc-sd')
+    expect(snap.coins['BTC:smc-sd']!.state).toBe('ENTERING')
 
-    expect(snap.coins['BTC:quant']).toBeDefined()
-    expect(snap.coins['BTC:quant']!.strategyId).toBe('quant')
-    expect(snap.coins['BTC:quant']!.state).toBe('ENTERING')
+    expect(snap.coins['BTC:alpha']).toBeDefined()
+    expect(snap.coins['BTC:alpha']!.strategyId).toBe('alpha')
+    expect(snap.coins['BTC:alpha']!.state).toBe('ENTERING')
   })
 
   it('snapshot includes per-strategy globals', () => {
-    agent.recordPnl(-100, 10000, 'BTC', 'layered')
-    agent.recordPnl(50, 10000, 'BTC', 'quant')
+    agent.recordPnl(-100, 10000, 'BTC', 'smc-sd')
+    agent.recordPnl(50, 10000, 'BTC', 'alpha')
 
     const snap = agent.getSnapshot()
 
     expect(snap.strategyGlobals).toBeDefined()
-    expect(snap.strategyGlobals!['layered']!.dailyPnl).toBe(-100)
-    expect(snap.strategyGlobals!['quant']!.dailyPnl).toBe(50)
+    expect(snap.strategyGlobals!['smc-sd']!.dailyPnl).toBe(-100)
+    expect(snap.strategyGlobals!['alpha']!.dailyPnl).toBe(50)
   })
 
   it('snapshot.global is backward-compat default strategy', () => {
-    agent.recordPnl(-100, 10000, 'BTC', 'layered')
+    agent.recordPnl(-100, 10000, 'BTC', 'smc-sd')
     const snap = agent.getSnapshot()
     expect(snap.global.dailyPnl).toBe(-100)
   })
@@ -369,16 +369,16 @@ describe('Full lifecycle: two strategies, same coin', () => {
     // Both strategies detect BTC setup
     agent.dispatch('BTC', {
       type: 'setup_detected',
-      setup: makeSetup({ strategyId: 'layered', confluenceGrade: 'A' }),
-    }, 'layered')
+      setup: makeSetup({ strategyId: 'smc-sd', confluenceGrade: 'A' }),
+    }, 'smc-sd')
     agent.dispatch('BTC', {
       type: 'setup_detected',
-      setup: makeSetup({ strategyId: 'quant', id: 'BTC|1h|breakout|long', confluenceGrade: 'B' }),
-    }, 'quant')
+      setup: makeSetup({ strategyId: 'alpha', id: 'BTC|1h|breakout|long', confluenceGrade: 'B' }),
+    }, 'alpha')
 
     // Both ENTERING (place_order emitted)
-    expect(agent.getCoinState('BTC', 'layered')).toBe('ENTERING')
-    expect(agent.getCoinState('BTC', 'quant')).toBe('ENTERING')
+    expect(agent.getCoinState('BTC', 'smc-sd')).toBe('ENTERING')
+    expect(agent.getCoinState('BTC', 'alpha')).toBe('ENTERING')
 
     // Layered progresses to IN_POSITION (order filled)
     agent.dispatch('BTC', {
@@ -386,20 +386,20 @@ describe('Full lifecycle: two strategies, same coin', () => {
       orderId: 'ord-L1',
       fillPrice: 50000,
       positionId: 'pos-L1',
-    }, 'layered')
+    }, 'smc-sd')
 
-    expect(agent.getCoinState('BTC', 'layered')).toBe('IN_POSITION')
-    expect(agent.getCoinState('BTC', 'quant')).toBe('ENTERING')  // still ENTERING
+    expect(agent.getCoinState('BTC', 'smc-sd')).toBe('IN_POSITION')
+    expect(agent.getCoinState('BTC', 'alpha')).toBe('ENTERING')  // still ENTERING
 
     // Quant invalidated — goes IDLE
     agent.dispatch('BTC', {
       type: 'setup_invalidated',
       setupId: 'BTC|1h|breakout|long',
       reason: 'expired',
-    }, 'quant')
+    }, 'alpha')
 
-    expect(agent.getCoinState('BTC', 'layered')).toBe('IN_POSITION')  // unaffected
-    expect(agent.getCoinState('BTC', 'quant')).toBe('IDLE')
+    expect(agent.getCoinState('BTC', 'smc-sd')).toBe('IN_POSITION')  // unaffected
+    expect(agent.getCoinState('BTC', 'alpha')).toBe('IDLE')
 
     // Layered TP hit → EXITING → IDLE
     agent.dispatch('BTC', {
@@ -407,8 +407,8 @@ describe('Full lifecycle: two strategies, same coin', () => {
       positionId: 'pos-L1',
       closePrice: 52000,
       pnl: 200,
-    }, 'layered')
-    expect(agent.getCoinState('BTC', 'layered')).toBe('EXITING')
+    }, 'smc-sd')
+    expect(agent.getCoinState('BTC', 'smc-sd')).toBe('EXITING')
 
     agent.dispatch('BTC', {
       type: 'position_closed',
@@ -416,8 +416,8 @@ describe('Full lifecycle: two strategies, same coin', () => {
       closePrice: 52000,
       pnl: 200,
       reason: 'tp_hit',
-    }, 'layered')
-    expect(agent.getCoinState('BTC', 'layered')).toBe('IDLE')
+    }, 'smc-sd')
+    expect(agent.getCoinState('BTC', 'smc-sd')).toBe('IDLE')
   })
 })
 
@@ -435,14 +435,14 @@ describe('Cross-strategy open positions (V7)', () => {
     const coinsMap = (agent as unknown as { coins: Map<string, CoinContext> }).coins
 
     // BTC in position for both strategies
-    coinsMap.set('BTC:layered', {
-      state: 'IN_POSITION', coin: 'BTC', strategyId: 'layered',
+    coinsMap.set('BTC:smc-sd', {
+      state: 'IN_POSITION', coin: 'BTC', strategyId: 'smc-sd',
       activeSetup: null, pendingOrderId: null, positionId: 'pos-L1',
       stateEnteredAt: Date.now(), consecutiveLosses: 0,
       pauseReason: null, pauseUntil: null,
     })
-    coinsMap.set('BTC:quant', {
-      state: 'IN_POSITION', coin: 'BTC', strategyId: 'quant',
+    coinsMap.set('BTC:alpha', {
+      state: 'IN_POSITION', coin: 'BTC', strategyId: 'alpha',
       activeSetup: null, pendingOrderId: null, positionId: 'pos-Q1',
       stateEnteredAt: Date.now(), consecutiveLosses: 0,
       pauseReason: null, pauseUntil: null,

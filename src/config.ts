@@ -27,17 +27,23 @@ export const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'] as const
 // TFs that generate signals. 1m excluded — used only for entry refinement on 5m/15m signals.
 export const SIGNAL_TIMEFRAMES = ['5m', '15m', '1h', '4h', '1d'] as const
 
-/** Minimum confidence to emit a signal. Raised from 0.4 to 0.50:
- * low-confidence signals had very poor hit rate. */
-export const MIN_CONFIDENCE = 0.50
+/** Minimum confidence to emit a signal. Raised from 0.50→0.58:
+ * bonus stacking (HTF+OTE+killzone+breaker) inflated confidence to where
+ * trades with only 3 weak confluences still passed. 0.58 requires meaningful
+ * conviction — base (0.65) + regime modifier (0.85×) still clears threshold. */
+export const MIN_CONFIDENCE = 0.58
 
 /** Regime confidence multipliers.
- * Counter raised from 0.3→0.0: completely block counter-trend trades
- * (they had ~20% WR = pure loss). Neutral raised from 0.8→0.85. */
+ * Counter 0.35→0.25: P2 raised to 0.35 for signal volume, but OOS bad weeks
+ * (W261 WR 10%, W278 WR 33%) show too many counter-trend entries in bear runs.
+ * 0.25 requires even stronger confluence: 0.65×0.25=0.16 base → needs +0.42
+ * bonus (CHoCH+displacement+killzone+HTF). Legitimate pullbacks with 4+ confluence
+ * still pass; low-conviction counter entries blocked.
+ * Neutral 0.80: SIDEWAYS needs meaningful bonus (HTF/killzone) to pass threshold. */
 export const REGIME_MULTIPLIERS = {
   aligned: 1.0,
-  neutral: 0.85,
-  counter: 0.0,
+  neutral: 0.80,
+  counter: 0.25,
 } as const
 
 // Minimum candles required before scanning
@@ -120,15 +126,6 @@ export const VP_VALUE_AREA_PCT = 0.7
 
 // Pattern TTL in bars (how long a setup stays active before expiring)
 export const PATTERN_TTL_BARS: Record<string, number> = {
-  'order-block': 20,
-  'fvg': 10,
-  'spring': 15,
-  'demand-zone': 25,
-  'breakout': 5,
-  'vsa-signal': 8,
-  'price-action': 6,
-  'volume-profile': 12,
-  'ema-rsi': 1,
   'smc-sd': 12,
 }
 
@@ -138,9 +135,16 @@ export const PATTERN_TTL_BARS: Record<string, number> = {
 export const SMC_BREAK_LOOKBACK = 20
 
 /** Timeframes to skip for SMC-SD strategy.
- * All TFs active: 4h=POI, 15m=confirm+AMD, 5m=micro-entry, 1h=same-TF.
- * 5m enabled for live (data accumulates naturally over time). */
+ * 5m re-enabled: TP now targets 1h structure (context.htfCandles via HTF_MAP['5m']='1h')
+ * instead of 4h. 5m SL (0.5 ATR) + 1h TP (1-3%) = R:R 2-6x, WR target 35-40%.
+ * Previous failure: tight 5m SL + distant 4h TP required WR >90% — unachievable. */
 export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = []
+
+/** Coins to skip for SMC-SD strategy (configurable per-exchange blacklist).
+ * Empty by default — configure based on backtest results per exchange.
+ * Historical underperformers (0% WR on HL P2b): DOGE, LINK, AVAX.
+ * Reason: high-noise meme/DeFi coins with erratic wicks defeat zone-bounce logic. */
+export const SMC_COIN_BLACKLIST: ReadonlyArray<string> = []
 
 /** Minimum bars between signals on same coin/interval (dedup).
  * Reduced from 15 to 8: was too restrictive, missing valid re-entries at zones. */
@@ -153,12 +157,16 @@ export const SMC_PRICE_TOLERANCE_ATR_MULT = 0.02
  * Reduced from 0.3 to 0.25: allow pin bars with slightly smaller bodies. */
 export const SMC_MIN_BODY_RATIO = 0.25
 
-/** Minimum zone strength score to qualify for bounce detection. */
-export const SMC_MIN_ZONE_STRENGTH = 0.35
+/** Minimum zone strength score to qualify for bounce detection.
+ * Raised 0.35→0.50: raw demand/supply zones with strength 0.35-0.49 had high
+ * false-break rate (formed from 1-2 pivots, untested). 0.50 filters single-test
+ * zones while breaker blocks (0.85) and inversion FVGs (0.75) still qualify. */
+export const SMC_MIN_ZONE_STRENGTH = 0.50
 
 /** Minimum reward:risk ratio — skip trades with R:R below this.
- * Reverted to 2.0: 2.5 was killing 90% of signals. With wider SL (0.7 ATR buffer),
- * 2.0R is realistic. Winning trade at 2R with 35% WR = positive expectancy. */
+ * Kept at 2.0 (P1): wider SL (1.0 ATR from P0) already raised effective quality.
+ * 2.3 combined with neutral 0.80 killed 95% of signals — too aggressive.
+ * 2.0R with 45% WR = profitable. Quality comes from regime+HTF filters, not R:R floor. */
 export const SMC_MIN_RR = 2.0
 
 // ─── ICT Model Enhancements ─────────────────────────────────────────────────
@@ -186,6 +194,11 @@ export const SMC_ICT_REQUIRE_SWEEP_FOR_THROUGH = false
 /** Confidence bonus for HTF-aligned trades. */
 export const SMC_ICT_HTF_ALIGNED_BONUS = 0.10
 
+/** Confidence penalty when HTF bias opposes signal direction (P1).
+ * Targets counter-HTF longs in bear: 0.65 - 0.10 = 0.55 × 0.75 = 0.4125 → BLOCKED.
+ * Symmetric: also penalizes shorts in strong bull HTF bias. */
+export const SMC_ICT_HTF_COUNTER_PENALTY = 0.10
+
 /** Confidence bonus for OTE zone entries. */
 export const SMC_ICT_OTE_BONUS = 0.08
 
@@ -208,9 +221,9 @@ export const SMC_ICT_KILLZONE_ENABLED = true
  * - Asian close / pre-London: often sets the day's high or low */
 export const SMC_ICT_KILLZONES: ReadonlyArray<{ name: string; startUTC: number; endUTC: number; bonus: number }> = [
   { name: 'london-open', startUTC: 7, endUTC: 10, bonus: 0.08 },     // London open: high-probability
-  { name: 'us-overlap',  startUTC: 13, endUTC: 16, bonus: 0.10 },    // London/US overlap: highest vol
-  { name: 'us-session',  startUTC: 16, endUTC: 20, bonus: 0.05 },    // US afternoon: continuation
-  { name: 'asia-open',   startUTC: 0, endUTC: 3, bonus: 0.03 },      // Asia: lower vol but sets lows
+  { name: 'us-overlap', startUTC: 13, endUTC: 16, bonus: 0.10 },    // London/US overlap: highest vol
+  { name: 'us-session', startUTC: 16, endUTC: 20, bonus: 0.05 },    // US afternoon: continuation
+  { name: 'asia-open', startUTC: 0, endUTC: 3, bonus: 0.03 },      // Asia: lower vol but sets lows
 ] as const
 
 /** Confidence penalty for signals OUTSIDE any killzone.
@@ -257,26 +270,77 @@ export const SMC_DRILLDOWN_CHOCH_BONUS = 0.10
 /** Max POIs stored per coin to prevent memory growth. */
 export const SMC_DRILLDOWN_MAX_POIS = 10
 
-/** Confirmed POI TTL in ms. Must be short — 5m entry should happen soon after 15m CHoCH.
- * 1 hour = 12 × 5m bars. Was 4h but 96% SL rate → too many stale entries. */
-export const SMC_CONFIRMED_POI_TTL_MS = 1 * 3_600_000
+/** Confirmed POI TTL in ms. Raised 1h→1.5h: 15m CHoCH can happen near bar end,
+ * giving only 30-45min for 5m FVG to appear — too short. 1.5h = 18 bars on 5m.
+ * Conservative increase (was 4h → 96% SL rate, so not reverting far). */
+export const SMC_CONFIRMED_POI_TTL_MS = 1.5 * 3_600_000
 
 /** Max confirmed POIs per coin. */
 export const SMC_CONFIRMED_POI_MAX = 5
+
+// ─── 4h Swing Signals ────────────────────────────────────────────────────────
+// 4h previously only registered HTF POIs without emitting signals.
+// Enabling adds direct swing entries when price bounces at 4h demand/supply zone.
+// SL is wider (1.0 ATR) and TP uses 4h structure swing targets.
+
+/** Enable 4h same-TF swing signal emission at zone bounce. */
+export const SMC_4H_SWING_ENABLED = true
+
+/** ATR buffer for 4h swing stop — wider than scalp to absorb daily noise. */
+export const SMC_4H_SWING_SL_ATR_BUFFER = 1.0
+
+/** Min R:R for 4h swing entries. */
+export const SMC_4H_SWING_MIN_RR = 2.0
+
+/** Base confidence for 4h swing signals (fresh 4h BOS/CHoCH + zone bounce). */
+export const SMC_4H_SWING_CONFIDENCE_BASE = 0.68
+
+// ─── 15m Scalp Signals ───────────────────────────────────────────────────────
+// 15m previously only confirmed 4h POIs (no signal output).
+// Enabling emits a scalp signal immediately on CHoCH at 4h POI —
+// tighter entry than waiting for 5m FVG. TP: 15m structure targets (~1-3%).
+
+/** Enable 15m scalp signal when CHoCH confirmed at 4h HTF POI. */
+export const SMC_15M_SCALP_ENABLED = true
+
+/** ATR buffer for 15m scalp stop (15m swing structure). */
+export const SMC_15M_SCALP_SL_ATR_BUFFER = 0.5
+
+/** Min R:R for 15m scalp entries. */
+export const SMC_15M_SCALP_MIN_RR = 2.0
+
+/** Base confidence for 15m scalp (4h POI + 15m CHoCH = dual TF confirmation). */
+export const SMC_15M_SCALP_CONFIDENCE_BASE = 0.68
 
 // ─── ICT 5m Micro-Entry ─────────────────────────────────────────────────────
 
 /** 5m bars to look for FVG entry after confirmed POI. */
 export const SMC_5M_FVG_LOOKBACK = 5
 
-/** ATR buffer for 5m swing stop (ultra-tight). */
-export const SMC_5M_SL_ATR_BUFFER = 0.3
+/** ATR buffer for 5m swing stop.
+ * Raised 0.3→0.5: 0.3 ATR on BTC ≈ $150 buffer — crypto wick noise + spread
+ * (~$15) meant SL was hunted on normal retest before real move. 0.5 gives
+ * enough room; min R:R adjusted down accordingly. */
+export const SMC_5M_SL_ATR_BUFFER = 0.5
 
-/** Min R:R for 5m micro-entry (high floor — ultra-tight SL enables this). */
-export const SMC_5M_MIN_RR = 4.0
+/** Min R:R for 5m micro-entry. Reduced 3.5→2.5: TP now targets 1h structure
+ * (context.htfCandles), not 4h. 5m SL (0.5 ATR) + 1h TP (1-3%) = R:R 2-6x.
+ * Original 3.5 was calibrated for 4h TP (~5-20%) which required WR >90%. */
+export const SMC_5M_MIN_RR = 2.5
 
 /** Base confidence for 5m micro-entry (HTF + LTF confirmed = highest confidence). */
 export const SMC_5M_CONFIDENCE_BASE = 0.75
+
+/** Minimum SL distance % for 5m micro-entry.
+ * SL < 0.4% on 5m is pure noise — crypto spread (~0.05%) + normal 5m wick (~0.2%)
+ * means SL is hit before any directional move. Reject ultra-tight stops. */
+export const SMC_5M_MIN_SL_PCT = 0.004
+
+/** Require 15m CHoCH confirmation for 5m micro-entry.
+ * 5m FVG alone at 4h POI has ~22% WR. Adding 15m CHoCH requirement ensures
+ * lower-timeframe structure has shifted before micro-entry. The confirmedPOI
+ * already has ltfBreakKind from the 15m scan — use it as a hard gate. */
+export const SMC_5M_REQUIRE_15M_CHOCH = true
 
 // ─── ICT AMD (Power of Three) ───────────────────────────────────────────────
 
@@ -315,6 +379,34 @@ export const SMC_AMD_INTERVAL: CandleInterval = '15m'
 
 /** Min bars in accumulation range (too few = unreliable range). */
 export const SMC_AMD_MIN_RANGE_BARS = 5
+
+// ─── P2: Liquidation Cascade Filter ─────────────────────────────────────────
+// Perp liquidation cascades produce sharp wicks + huge volume that look like
+// ICT manipulation but are forced-selling artifacts. Detect and discount.
+
+/** Volume ratio threshold above which a candle is considered a potential cascade.
+ * 3.0 = volume is 3× the 20-bar average — extreme spike, not normal absorption. */
+export const SMC_LIQUIDATION_VOLUME_RATIO = 3.0
+
+/** Wick-to-ATR ratio threshold. If intra-candle range > N × ATR, likely cascade.
+ * 3.0 ATR wick on a single bar = abnormal in normal markets, common in liquidations. */
+export const SMC_LIQUIDATION_WICK_ATR_MULT = 3.0
+
+/** Confidence multiplier applied when cascade detected. 0.4 = heavy discount;
+ * not 0.0 (sometimes cascade creates valid entry after the flush completes). */
+export const SMC_LIQUIDATION_CONFIDENCE_MULT = 0.4
+
+// ─── P2: Weekend Volume Filter ───────────────────────────────────────────────
+// Crypto volume Fri-Sun = 30-50% of weekday. Low-volume BOS/CHoCH has higher
+// false-break rate because thin books allow easier manipulation.
+
+/** Volume ratio below which weekend candles are considered low-volume.
+ * 0.6 = current volume is 60% below the 20-bar average → suspicious. */
+export const SMC_WEEKEND_VOLUME_RATIO_THRESHOLD = 0.6
+
+/** Confidence multiplier on low-volume weekend bars. 0.7 = 30% penalty.
+ * Not 0.0 — genuine setups can still form on weekends, just less reliable. */
+export const SMC_WEEKEND_CONFIDENCE_MULT = 0.7
 
 // ─── Layered Pipeline Config ─────────────────────────────────────────────────
 
@@ -442,6 +534,26 @@ export const TIMEFRAME_MS: Record<CandleInterval, number> = {
   '1d': 86_400_000,
 } as const
 
+// ─── Max Holding Period (P0 fix) ──────────────────────────────────────────
+
+/** Maximum bars to hold a position per TF before force-closing at market.
+ * Prevents zombie positions that lock capital for weeks.
+ * Backtest showed 5m trades held 1000-12000 bars (3-43 days), 1h held 500-2000 bars.
+ * These limits ensure capital turnover:
+ *   5m: 200 bars = ~17h (disabled anyway, but for future)
+ *   15m: 120 bars = 30h
+ *   1h: 72 bars = 3 days (48 tested — killed trailing stop winners)
+ *   4h: 30 bars = 5 days
+ *   1d: 15 bars = 15 days */
+export const MAX_HOLDING_BARS: Record<string, number> = {
+  '1m': 300,
+  '5m': 200,
+  '15m': 120,
+  '1h': 72,
+  '4h': 30,
+  '1d': 15,
+}
+
 // ─── Circuit Breakers (S11) ────────────────────────────────────────────────
 
 /** Circuit breaker thresholds and cooldown durations. */
@@ -524,15 +636,17 @@ export const ATR_STOP_MULTIPLIER = {
 } as const
 
 /** ATR buffer added below structure stop (Section 12.2 Method 1).
- * Tuned to 0.7: original 0.5 too tight (wick hunts), 1.0 too wide (killed R:R). */
-export const STRUCTURE_STOP_ATR_BUFFER = 0.7
+ * Raised 0.7→1.0: backtest shows 1h SL hit 44% (HL) / 44% (Bybit) with 0.7.
+ * Crypto wicks routinely sweep 0.7 ATR past structure — 1.0 gives breathing room.
+ * R:R impact offset by fewer SL hits (higher WR). */
+export const STRUCTURE_STOP_ATR_BUFFER = 1.0
 
 /** Maximum stop distance as fraction of entry price. Beyond this → skip.
  * Used by exits.ts (order lifecycle). */
 export const MAX_STOP_DISTANCE_PCT = 0.10
 
 /** Maximum SL distance % for strategy signal emission. Reject trades with SL > this.
- * Applied in SMC-SD and Quant scan — prevents oversized 4h ATR stops. */
+ * Applied in SMC-SD scan — prevents oversized 4h ATR stops. */
 export const MAX_TRADE_SL_PCT = 0.07
 
 /** Maximum leverage warning threshold. */
@@ -561,18 +675,26 @@ export const HL_MIN_ORDER_NOTIONAL_USD = 10
  */
 export const MARKET_ORDER_SLIPPAGE_PCT = 0.01  // 1%
 
-/** Trailing stop config defaults. */
+/** Trailing stop config defaults.
+ * activationPct raised 0.01→0.03: +1% in crypto happens within minutes then reverts,
+ * activating trail too early → locked in at low profit. Now needs +3% confirmation.
+ * trailPct raised 0.005→0.01: 0.5% trail hit by normal 0.3-0.7% retests, missing
+ * extended runs (3R→10R). 1% gives room for pullback while still capturing trend. */
 export const TRAILING_STOP = {
-  activationPct: 0.01,  // activate trailing after +1% profit
-  trailPct: 0.005,      // trail 0.5% below highest price
+  activationPct: 0.03,  // activate trailing after +3% profit (was 1% — too early)
+  trailPct: 0.01,       // trail 1% below highest price (was 0.5% — too tight)
 } as const
 
-/** Partial close config defaults. */
+/** Partial close config defaults.
+ * firstTpRatio raised 1.0→1.5: closing at 1R then moving SL to breakeven was
+ * killing expectancy — crypto spread+slippage (~0.06%) means breakeven SL gets
+ * hit on any 0.1% retest. Now close at 1.5R for cushion.
+ * moveSlToBreakeven disabled: remaining 50% needs air room to run to full TP. */
 export const PARTIAL_CLOSE = {
-  firstTpRatio: 1.0,    // first TP at 1R
+  firstTpRatio: 1.5,    // first TP at 1.5R (was 1R — too easy to hit SL after)
   firstClosePct: 0.5,   // close 50% at first TP
-  moveSlToBreakeven: true,
-  secondTpRatio: 2.0,   // second TP at 2R (trail rest)
+  moveSlToBreakeven: false,  // disabled: breakeven SL hit by spread+retest
+  secondTpRatio: 3.0,   // second TP at 3R (remainder rides full target)
 } as const
 
 /** Minimum position size as fraction of account. Below → skip. */
@@ -594,9 +716,10 @@ export const ATR_TRAIL_MULTIPLIER: Record<CandleInterval, number> = {
 } as const
 
 /** Position split across 3 TP levels: TP1 (zone), TP2 (swing), TP3 (trail).
- * Reduced TP1 from 40% to 25%: avg wins were too small vs losses.
- * Let more size ride to TP2/trailing for better expectancy. */
-export const MULTI_TP_SPLIT = [0.25, 0.35, 0.40] as const
+ * P2 rebalance: TP2 only hit 9% of partial closes (6/67 on Bybit) — 35% allocation
+ * sat idle. Shifted weight to TP1 which fires most often. Trail kept at 40%
+ * (primary profit engine: +$4,247 from 11 trades on HL). */
+export const MULTI_TP_SPLIT = [0.35, 0.25, 0.40] as const
 
 /** Minimum R:R for TP1. TP1 must be at least this far from entry.
  * Raised from 1.5 to 2.0: ensures winning trades cover at least 2 losses. */
@@ -619,6 +742,22 @@ export const BACKTEST_SLIPPAGE_PCT = 0.0005
 
 /** Default commission per trade for backtest (0.03% = 3 bps, HL taker fee). */
 export const BACKTEST_COMMISSION_PCT = 0.0003
+
+/** Max concurrent open positions in backtest.
+ * Live trading uses RISK.maxConcurrentPositions (3). Backtest allows 5 to test
+ * diversification benefit across 50 coins × 4 TFs, while preventing the unlimited
+ * position count that inflated MaxDD to 200%. */
+export const BACKTEST_MAX_OPEN_POSITIONS = 5
+
+/** Risk per trade for backtest as fraction of current equity.
+ * Lower than live (2%) because backtest has no circuit breaker recovery pause.
+ * 1.5% × 5 max positions = 7.5% total account risk — survivable. */
+export const BACKTEST_RISK_PER_TRADE_PCT = 0.015
+
+/** Circuit breaker drawdown threshold for backtest.
+ * If currentEquity drops below initialCapital × (1 - threshold), skip new entries.
+ * Simulates the live CIRCUIT_BREAKER.maxDrawdownLimit but for full backtest run. */
+export const BACKTEST_CIRCUIT_BREAKER_DD = 0.15
 
 /** Walk-forward: default training window (30 days in ms). */
 export const WF_TRAIN_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
@@ -647,57 +786,16 @@ export const WF_CONFIDENCE_LEVEL = 0.95
 /** Walk-forward: minimum fraction of OOS windows with positive expectancy. */
 export const WF_MIN_WINDOW_CONSISTENCY = 0.5
 
-// ─── Quant Baseline Strategy ────────────────────────────────────────────────
-
-/** EMA fast period for trend filter. */
-export const QUANT_EMA_FAST = 50
-
-/** EMA slow period for trend filter. */
-export const QUANT_EMA_SLOW = 200
-
-/** RSI period. */
-export const QUANT_RSI_PERIOD = 14
-
-/** RSI oversold threshold — buy signal in uptrend.
- * Lowered from 35 to 30: stricter pullback = higher quality entries. */
-export const QUANT_RSI_OVERSOLD = 30
-
-/** RSI overbought threshold — sell signal in downtrend.
- * Raised from 65 to 70: stricter overbought = higher quality entries. */
-export const QUANT_RSI_OVERBOUGHT = 70
-
-/** Minimum fractional gap between EMA50 and EMA200 to confirm trend (chop filter). */
-export const QUANT_MIN_EMA_SEPARATION_PCT = 0.003
-
-/** Minimum bars between Quant signals on same coin/interval (cooldown dedup). */
-export const QUANT_DEDUP_BARS = 5
-
-/** ATR multiplier for stop loss distance. */
-export const QUANT_ATR_SL_MULT = 2.0
-
-/** ATR multiplier for take profit distance.
- * 3.0 = 1.5R with SL_MULT 2.0. Wider TPs (4.0+) drop WR below profitability. */
-export const QUANT_ATR_TP_MULT = 3.0
-
-/** Minimum ADX value to confirm trending market (filter chop). Lower = more signals. */
-export const QUANT_ADX_MIN = 18
-
 // ─── Strategy Enable/Disable ─────────────────────────────────────────────────
 
 /**
  * Which strategies to enable at startup.
  * Env: `ENABLED_STRATEGIES` — comma-separated list of strategy IDs.
- * Valid IDs: layered, quant, smc-sd
- *
- * Examples:
- *   ENABLED_STRATEGIES=smc-sd          → only SMC+SD (ICT)
- *   ENABLED_STRATEGIES=smc-sd,quant    → SMC+SD and Quant
- *   ENABLED_STRATEGIES=layered,quant,smc-sd → all (default)
- *   (unset)                            → all strategies enabled
+ * Default: smc-sd only.
  */
 export function getEnabledStrategies(): string[] {
   const raw = process.env['ENABLED_STRATEGIES']
-  if (!raw || raw.trim() === '') return ['layered', 'quant', 'smc-sd']  // default: all
+  if (!raw || raw.trim() === '') return ['smc-sd']
   return raw.split(',').map(s => s.trim()).filter(s => s.length > 0)
 }
 
@@ -711,15 +809,11 @@ export const PORTFOLIO_RISK = {
   maxTotalConcurrent: 6,
   /** Per-strategy capital allocation as fraction of total account (must sum ≤ 1.0). */
   strategyAllocations: {
-    layered: 0.35,
-    quant: 0.35,
-    'smc-sd': 0.30,
+    'smc-sd': 1.0,
   } as Record<string, number>,
   /** Per-strategy max concurrent positions. */
   strategyMaxConcurrent: {
-    layered: 3,
-    quant: 3,
-    'smc-sd': 2,
+    'smc-sd': 10,
   } as Record<string, number>,
 } as const
 
@@ -771,12 +865,10 @@ export const PAPER_DEFAULT_BALANCE_PER_WALLET = 100
  * Env: `PAPER_BALANCE_LAYERED`, `PAPER_BALANCE_QUANT`, `PAPER_BALANCE_SMC_SD` (USD each).
  * Unset → {@link PAPER_DEFAULT_BALANCE_PER_WALLET} each.
  */
-export const PAPER_WALLET_STRATEGY_IDS = ['layered', 'quant', 'smc-sd'] as const
+export const PAPER_WALLET_STRATEGY_IDS = ['smc-sd'] as const
 export type PaperWalletStrategyId = (typeof PAPER_WALLET_STRATEGY_IDS)[number]
 
 const PAPER_BALANCE_ENV: Record<string, string> = {
-  layered: 'PAPER_BALANCE_LAYERED',
-  quant: 'PAPER_BALANCE_QUANT',
   'smc-sd': 'PAPER_BALANCE_SMC_SD',
 }
 
@@ -945,7 +1037,7 @@ export const BYBIT_FUNDING_REFRESH_MS = 4 * 60 * 60 * 1000
  * Number of top Bybit coins by OI to track (dynamic selection via tickers API).
  * Higher than HL native (20) — Bybit rate limits are ~30x more permissive.
  */
-export const BYBIT_TOP_COINS_LIMIT = 30
+export const BYBIT_TOP_COINS_LIMIT = 80
 
 /** Minimum 24h turnover (USDT) to qualify for Bybit coin tracking. */
 export const BYBIT_MIN_24H_VOLUME = 1_000_000

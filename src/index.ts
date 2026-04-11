@@ -93,8 +93,6 @@ import { getInvalidationBridge } from './agent/invalidation-bridge.js'
 import { startBot, stopBot, formatAlert, sendTelegramAlert } from './alert/telegram/index.js'
 import { connectToAgent as connectMetrics } from './analytics/metrics-service.js'
 import { getStrategyRegistry } from './strategy/registry.js'
-import { LayeredStrategyAdapter } from './strategy/strategies/layered/index.js'
-import { QuantStrategyAdapter } from './strategy/strategies/quant/index.js'
 import { SmcSdStrategy } from './strategy/strategies/smc-sd/index.js'
 import type { CandleInterval } from './types.js'
 
@@ -208,7 +206,7 @@ function aggregateAccountStatesForTui(pool: ExchangePool, m: Map<string, Account
     throw new Error('aggregateAccountStatesForTui: empty map')
   }
   if (!pool.isMultiWallet()) {
-    const st = m.get('layered') ?? Array.from(m.values())[0]
+    const st = m.get('smc-sd') ?? Array.from(m.values())[0]
     if (!st) throw new Error('aggregateAccountStatesForTui: no entry')
     return st
   }
@@ -253,21 +251,13 @@ async function refreshLiveAccountStatesForTui(): Promise<void> {
   }
 }
 
-async function refreshLiveTuiPositionsCache(): Promise<void> {
+function refreshLiveTuiPositionsCache(): void {
   if (getEffectivePaperTrade()) {
     liveTuiExchangePositionsCache = null
     return
   }
-  try {
-    const pool = getExchangePool()
-    if (!pool.isInitialized()) {
-      liveTuiExchangePositionsCache = null
-      return
-    }
-    liveTuiExchangePositionsCache = await queryExchangePositions()
-  } catch {
-    // Transient HL errors: keep previous exchange snapshot
-  }
+  // Reuse cached snapshots from position-monitor's syncWithExchange — avoids duplicate API calls.
+  liveTuiExchangePositionsCache = getPositionMonitor().getLastExchangeSnapshots()
 }
 
 async function refreshLiveTuiCaches(): Promise<void> {
@@ -537,8 +527,6 @@ async function main(): Promise<void> {
   // 7b. Register strategies (Sprint 4.5: multi-strategy fan-out)
   // All strategies registered, then selectively enabled via ENABLED_STRATEGIES env.
   const registry = getStrategyRegistry()
-  registry.register(new LayeredStrategyAdapter())
-  registry.register(new QuantStrategyAdapter())
   registry.register(new SmcSdStrategy())
 
   // Apply ENABLED_STRATEGIES filter
@@ -692,12 +680,13 @@ async function main(): Promise<void> {
   tuiSources.getHealthReport = () => health.getReport()
   tuiSources.getAccountState = async () => {
     try {
-      const p = getExchangePool()
-      if (!p.isInitialized()) return null
       if (liveAccountStatesByStrategyCache && liveAccountStatesByStrategyCache.size > 0) {
+        const p = getExchangePool()
+        if (!p.isInitialized()) return null
         return aggregateAccountStatesForTui(p, liveAccountStatesByStrategyCache)
       }
-      return await p.getShared().getAccountState()
+      // Reuse cached state from position-monitor's syncWithExchange — avoids duplicate API calls.
+      return pm.getLastAccountState()
     } catch {
       return null
     }

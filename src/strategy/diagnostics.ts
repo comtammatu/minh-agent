@@ -75,7 +75,7 @@ export function getOrCreateStats(strategyId: string): PipelineStats {
 }
 
 /** Get pipeline stats for a specific strategy (snapshot copy). */
-export function getPipelineStats(strategyId: string = 'layered'): PipelineStats {
+export function getPipelineStats(strategyId: string = 'smc-sd'): PipelineStats {
   return { ...(pipelineStatsMap.get(strategyId) ?? zeroPipelineStats()) }
 }
 

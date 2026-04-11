@@ -339,8 +339,8 @@ export function computeTrailingStop(
     ? (currentPrice - entryPrice) / entryPrice
     : (entryPrice - currentPrice) / entryPrice
 
-  // Not yet activated
-  if (profitPct < config.activationPct) {
+  // Not yet activated (and wasn't previously active — once active, stays active)
+  if (profitPct < config.activationPct && !prevState?.active) {
     return {
       active: false,
       highestPrice: side === 'long'

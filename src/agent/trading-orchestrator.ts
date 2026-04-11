@@ -28,7 +28,7 @@ import { DEFAULT_RISK_PERCENT } from '../config.js'
 import { log } from '../lib/logger.js'
 
 /** Default strategy ID for backward compatibility (single-strategy mode). */
-const DEFAULT_STRATEGY = 'layered'
+const DEFAULT_STRATEGY = 'smc-sd'
 
 // ─── State Key Helpers ──────────────────────────────────────────────────────
 
@@ -436,7 +436,7 @@ export class TradingAgent {
     }
   }
 
-  /** Get state for a specific coin+strategy. Defaults to 'layered'. */
+  /** Get state for a specific coin+strategy. Defaults to 'smc-sd'. */
   getCoinState(coin: string, strategyId: string = DEFAULT_STRATEGY): AgentState {
     const key = stateKey(coin, strategyId)
     return this.coins.get(key)?.state ?? 'IDLE'

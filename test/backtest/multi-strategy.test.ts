@@ -5,14 +5,15 @@
  *   1. strategyId propagation from config → TradeSimulator → BacktestTrade
  *   2. activateOnly() isolation — quant-only backtest doesn't run layered
  *   3. Walk-forward passes strategy through backtestConfig
- *   4. Default strategyId = 'layered' when config.strategy is omitted
+ *   4. Default strategyId = 'smc-sd' when config.strategy is omitted
  */
 
 import { describe, test, expect, beforeEach } from 'bun:test'
 import { TradeSimulator } from '../../src/backtest/simulator.js'
 import type { BacktestTrade } from '../../src/backtest/types.js'
 import type { ActiveSetup, Candle, CandleInterval } from '../../src/types.js'
-import { getStrategyRegistry } from '../../src/strategy/registry.js'
+import { getStrategyRegistry, resetStrategyRegistry } from '../../src/strategy/registry.js'
+import { SmcSdStrategy } from '../../src/strategy/strategies/smc-sd/index.js'
 
 // ─── Test Helpers ───────────────────────────────────────────────────────────
 
@@ -32,7 +33,7 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
     id: 'BTC|1h|order-block|long',
     coin: 'BTC',
     interval: '1h' as CandleInterval,
-    type: 'order-block',
+    type: 'smc-sd',
     side: 'long',
     confidence: 0.8,
     entryPrice: 100,
@@ -50,7 +51,7 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
 // ─── strategyId Propagation ────────────────────────────────────────────────
 
 describe('TradeSimulator strategyId', () => {
-  test('default strategyId is "layered"', () => {
+  test('default strategyId is "smc-sd"', () => {
     const sim = new TradeSimulator(10000, 0, 0, 'single')
     const setup = makeSetup()
 
@@ -63,11 +64,11 @@ describe('TradeSimulator strategyId', () => {
 
     const trades = sim.getTrades()
     expect(trades.length).toBe(1)
-    expect(trades[0]!.strategyId).toBe('layered')
+    expect(trades[0]!.strategyId).toBe('smc-sd')
   })
 
-  test('strategyId="quant" propagates to trades', () => {
-    const sim = new TradeSimulator(10000, 0, 0, 'single', 'quant')
+  test('strategyId="alpha" propagates to trades', () => {
+    const sim = new TradeSimulator(10000, 0, 0, 'single', 'alpha')
     const setup = makeSetup({
       id: 'BTC|1h|ema-crossover|long',
       type: 'ema-crossover',
@@ -79,11 +80,11 @@ describe('TradeSimulator strategyId', () => {
 
     const trades = sim.getTrades()
     expect(trades.length).toBe(1)
-    expect(trades[0]!.strategyId).toBe('quant')
+    expect(trades[0]!.strategyId).toBe('alpha')
   })
 
   test('strategyId persists across multiple trades', () => {
-    const sim = new TradeSimulator(10000, 0, 0, 'single', 'quant')
+    const sim = new TradeSimulator(10000, 0, 0, 'single', 'alpha')
 
     // Trade 1: fill + SL hit
     sim.tryFill(makeSetup({ coin: 'BTC' }), 0)
@@ -97,8 +98,8 @@ describe('TradeSimulator strategyId', () => {
 
     const trades = sim.getTrades()
     expect(trades.length).toBe(2)
-    expect(trades[0]!.strategyId).toBe('quant')
-    expect(trades[1]!.strategyId).toBe('quant')
+    expect(trades[0]!.strategyId).toBe('alpha')
+    expect(trades[1]!.strategyId).toBe('alpha')
   })
 
   test('closeAll preserves strategyId', () => {
@@ -117,7 +118,7 @@ describe('TradeSimulator strategyId', () => {
   })
 
   test('closeByInvalidation preserves strategyId', () => {
-    const sim = new TradeSimulator(10000, 0, 0, 'single', 'quant')
+    const sim = new TradeSimulator(10000, 0, 0, 'single', 'alpha')
     const setup = makeSetup()
 
     sim.tryFill(setup, 0)
@@ -127,7 +128,7 @@ describe('TradeSimulator strategyId', () => {
 
     const trades = sim.getTrades()
     expect(trades.length).toBe(1)
-    expect(trades[0]!.strategyId).toBe('quant')
+    expect(trades[0]!.strategyId).toBe('alpha')
     expect(trades[0]!.exitReason).toBe('invalidated')
   })
 })
@@ -135,15 +136,19 @@ describe('TradeSimulator strategyId', () => {
 // ─── StrategyRegistry activateOnly ─────────────────────────────────────────
 
 describe('StrategyRegistry activateOnly isolation', () => {
+  beforeEach(() => {
+    resetStrategyRegistry()
+    const registry = getStrategyRegistry()
+    try { registry.register(new SmcSdStrategy()) } catch { /* already registered */ }
+  })
+
   test('activateOnly restricts runAll to single strategy', () => {
     const registry = getStrategyRegistry()
-    const enabledBefore = registry.getEnabledIds()
 
-    // activateOnly('quant') → runAll only runs quant
-    registry.activateOnly('quant')
+    // activateOnly('smc-sd') → runAll only runs smc-sd
+    registry.activateOnly('smc-sd')
     const allStrategies = registry.getAll()
-    // Verify quant exists in registry
-    expect(allStrategies.some(s => s.id === 'quant')).toBe(true)
+    expect(allStrategies.some(s => s.id === 'smc-sd')).toBe(true)
 
     // Restore
     registry.activateOnly(null)
@@ -151,12 +156,12 @@ describe('StrategyRegistry activateOnly isolation', () => {
 
   test('activateOnly(null) restores fan-out', () => {
     const registry = getStrategyRegistry()
-    registry.activateOnly('layered')
+    registry.activateOnly('smc-sd')
     registry.activateOnly(null)
 
     // All enabled strategies should participate in runAll
     const enabledIds = registry.getEnabledIds()
-    expect(enabledIds.length).toBeGreaterThanOrEqual(2) // layered + quant
+    expect(enabledIds.length).toBeGreaterThanOrEqual(1)
   })
 
   test('activateOnly throws for unregistered strategy', () => {

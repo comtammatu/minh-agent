@@ -24,17 +24,7 @@ export type StructureBias = 'bullish' | 'bearish' | 'neutral'
 
 export type SignalSide = 'long' | 'short'
 
-export type PatternType =
-  | 'order-block'
-  | 'fvg'
-  | 'spring'
-  | 'demand-zone'
-  | 'breakout'
-  | 'vsa-signal'
-  | 'price-action'
-  | 'volume-profile'
-  | 'ema-rsi'
-  | 'smc-sd'
+export type PatternType = 'smc-sd'
 
 export interface Signal {
   type: PatternType
@@ -44,12 +34,8 @@ export interface Signal {
   slPrice: number
   tpPrice: number
   patternData: Record<string, unknown>
-  // Layered pipeline fields (optional, added by pipeline)
-  biasSource?: string
   confluenceGrade?: ConfluenceGrade
   confluenceCount?: number
-  zoneOrigin?: string
-  riskAssessment?: RiskAssessment
 }
 
 export interface ActiveSetup extends Signal {
@@ -59,7 +45,7 @@ export interface ActiveSetup extends Signal {
   detectedAt: number      // timestamp ms
   detectedAtBar: number   // bar index when setup was created (for 0-bar skip)
   expiresAtBar: number    // bar index when detected + TTL
-  /** Strategy that generated this setup (Sprint 4.5). Omitted = 'layered' for backward compat. */
+  /** Strategy that generated this setup. */
   strategyId?: string
   /** Exchange this signal came from — used by OrderManager to route to correct executor. */
   exchange: ExchangeId
@@ -214,36 +200,6 @@ export type InvalidationReason =
   | 'va-broken'
   | 'ttl-expired'
 
-// ─── Layered Pipeline ────────────────────────────────────────────────────────
-
-export interface BiasResult {
-  bias: 'long' | 'short' | 'neutral'
-  confidence: number
-  source: string           // 'wyckoff+smc', 'wyckoff-only', etc.
-  htfBias?: 'long' | 'short' | 'neutral'
-}
-
-export type StructureVerdict = 'confirm' | 'neutral' | 'deny'
-
-export interface ZoneConfirmation {
-  zone: KeyZone
-  vsaBoost: number         // 0 to 0.20
-  vpBoost: number          // -0.10 to 0.15
-  deltaBoost?: number      // -0.10 to 0.15 (Phase B)
-  bookBoost?: number       // -0.10 to 0.20 (Phase B)
-  fundingBoost?: number    // 0 to 0.10 (Phase B)
-  oiBoost?: number         // 0 to 0.10 (Phase D)
-  divergenceWarning?: boolean  // mark/oracle divergence flag (Phase D)
-  throughZone: boolean     // Spring/Sweep detected
-  confirmed: boolean
-}
+// ─── Confluence ──────────────────────────────────────────────────────────────
 
 export type ConfluenceGrade = 'C' | 'B' | 'A' | 'A+'
-
-export interface RiskAssessment {
-  tradeable: boolean
-  reason?: string
-  suggestedSize: 'full' | 'standard' | 'partial' | 'skip'
-  minRR: number
-  stopMethod: 'structure' | 'atr' | 'skip'
-}

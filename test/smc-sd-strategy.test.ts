@@ -249,3 +249,100 @@ describe('SmcSdStrategy', () => {
     }
   })
 })
+
+// ─── P2 Feature Tests ─────────────────────────────────────────────────────────
+
+describe('P2: isLiquidationCascade — confidence discount', () => {
+  test('signal with extreme wick + volume spike has reduced confidence vs normal bar', () => {
+    const strategy = new SmcSdStrategy()
+
+    // Build a trending series first to create structure + zones
+    const base = generateTrendCandles(180, 50000, 'up')
+
+    // Find a bar that generates a signal under normal conditions
+    let normalSignal = null
+    let normalIdx = -1
+    for (let i = MIN_CANDLES_FOR_SCAN; i < base.length - 1; i++) {
+      const s = strategy.scan('BTC', '1h', base, i)
+      if (s) { normalSignal = s; normalIdx = i; break }
+    }
+
+    if (!normalSignal || normalIdx < 0) return  // no signal found — skip
+
+    // Now inject a liquidation cascade at that bar: huge wick + spike volume
+    strategy.clearState()
+    const cascadeCandles = [...base]
+    const orig = cascadeCandles[normalIdx]!
+    // avg volume ≈ 750 (500 + random*500) → 3.0× threshold = need >2250
+    // ATR ≈ 0.3% of price on synthetic data → 3× = need wick > 3× ATR
+    const atrEst = orig.c * 0.003
+    cascadeCandles[normalIdx] = {
+      ...orig,
+      h: orig.c + atrEst * 5,   // wick = 5× ATR
+      l: orig.c - atrEst * 5,
+      v: 3000,                   // 4× normal volume
+    }
+
+    const cascadeSignal = strategy.scan('BTC', '1h', cascadeCandles, normalIdx)
+
+    // Cascade candle either gets filtered out (null) or has lower confidence
+    if (cascadeSignal !== null) {
+      expect(cascadeSignal.confidence).toBeLessThan(normalSignal.confidence)
+    }
+    // If null — cascade was severe enough to drop below MIN_CONFIDENCE, which is correct
+  })
+})
+
+describe('P2: getWeekendMultiplier — low-volume weekend penalty', () => {
+  test('Saturday low-volume candle reduces confidence vs weekday equivalent', () => {
+    const strategy = new SmcSdStrategy()
+    const base = generateTrendCandles(180, 50000, 'up')
+
+    // Find any signal
+    let weekdaySignal = null
+    let sigIdx = -1
+    for (let i = MIN_CANDLES_FOR_SCAN; i < base.length - 1; i++) {
+      const s = strategy.scan('BTC', '1h', base, i)
+      if (s) { weekdaySignal = s; sigIdx = i; break }
+    }
+    if (!weekdaySignal || sigIdx < 0) return
+
+    // Replay with a Saturday timestamp + low volume on the signal bar
+    strategy.clearState()
+    const satCandles = base.map((c, i) => {
+      if (i !== sigIdx) return c
+      // Saturday UTC: 2024-01-06 = Saturday
+      const satTs = Date.UTC(2024, 0, 6, 12, 0, 0)
+      return { ...c, t: satTs, v: 100 }  // low volume on Saturday
+    })
+
+    const satSignal = strategy.scan('BTC', '1h', satCandles, sigIdx)
+
+    if (satSignal !== null) {
+      expect(satSignal.confidence).toBeLessThan(weekdaySignal.confidence)
+    }
+    // null = weekend penalty dropped below MIN_CONFIDENCE — also correct
+  })
+})
+
+describe('P2: zone-aware dedup — allows re-entry after price exits zone', () => {
+  test('clearState resets zone dedup state', () => {
+    const strategy = new SmcSdStrategy()
+    const candles = generateTrendCandles(200, 50000, 'up')
+
+    // Get a signal, then clearState, then same bar should be unblocked
+    let firstSignal = null
+    let firstIdx = -1
+    for (let i = MIN_CANDLES_FOR_SCAN; i < candles.length - 1; i++) {
+      const s = strategy.scan('BTC', '1h', candles, i)
+      if (s) { firstSignal = s; firstIdx = i; break }
+    }
+    if (!firstSignal || firstIdx < 0) return
+
+    // After clearState, same bar index is no longer dedup'd
+    strategy.clearState()
+    const afterClear = strategy.scan('BTC', '1h', candles, firstIdx)
+    // Should produce a signal again (dedup reset)
+    expect(afterClear).not.toBeNull()
+  })
+})

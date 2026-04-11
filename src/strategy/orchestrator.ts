@@ -15,11 +15,10 @@ import type {
 } from '../types.js'
 import { appendCandle, getCandles } from '../feed/store.js'
 import { getStrategyRegistry, type StrategyRegistry } from './registry.js'
-import { clearQuantState } from './strategies/quant/pipeline.js'
 import { computeExpiresAtBar, setupId } from './shared/invalidation.js'
 import { getOrCreateStats, resetPipelineStats } from './diagnostics.js'
 import { detectRegime } from '../indicators/core.js'
-import { determineBias } from './strategies/layered/layers/bias.js'
+import { determineBias } from './shared/bias.js'
 import { findPivots } from '../indicators/smc.js'
 import {
   MIN_CANDLES_FOR_SCAN,
@@ -28,7 +27,10 @@ import {
   SIGNAL_TIMEFRAMES,
   HTF_MAP,
   getActiveExchange,
+  getEffectivePaperTrade,
+  PAPER_WALLET_STRATEGY_IDS,
 } from '../config.js'
+import { getPaperTracker } from '../agent/paper-tracker.js'
 import { log } from '../lib/logger.js'
 import { EventEmitter } from 'events'
 
@@ -187,6 +189,22 @@ export function onCandleTick(
   // Always store latest candle data
   appendCandle(coin, interval, candle)
 
+  // ── Paper mode: evaluate multi-TP exits on every candle tick ───────────
+  // Mirrors backtest bar-by-bar evaluation — check SL/TP/trailing on each candle.
+  if (getEffectivePaperTrade()) {
+    for (const stratId of PAPER_WALLET_STRATEGY_IDS) {
+      const result = getPaperTracker(stratId).checkCandle(coin, interval, candle)
+      if (result && result.action === 'full_close') {
+        pipelineEmitter.emit('paper_exit', {
+          coin, strategyId: stratId,
+          exitReason: result.exitReason,
+          closePrice: result.closePrice,
+          pnl: result.pnl,
+        })
+      }
+    }
+  }
+
   // ── Closed-candle gate ──────────────────────────────────────────────────
   const sk = `${coin}|${interval}`
   const prevTs = lastCandleTs.get(sk)
@@ -234,7 +252,7 @@ export function clearCoinState(coin: string): void {
 
 /**
  * Clear pipeline state. If strategyId given, clear only that strategy's stats.
- * Without strategyId, clears everything (all setups, status, timestamps, stats, quant state).
+ * Without strategyId, clears everything (all setups, status, timestamps, stats).
  */
 export function clearPipelineState(strategyId?: string): void {
   if (strategyId) {
@@ -243,29 +261,16 @@ export function clearPipelineState(strategyId?: string): void {
       if (id.startsWith(`${strategyId}:`)) activeSetups.delete(id)
     }
     resetPipelineStats(strategyId)
-    if (strategyId === 'quant') clearQuantState()
   } else {
     // Full clear
     activeSetups.clear()
     statusState.clear()
     lastCandleTs.clear()
     resetPipelineStats()
-    clearQuantState()
   }
 }
 
 // ── Aliases for StrategyRegistry adapter (Sprint 4.5) ────────────────────────
-
-/** Clear layered pipeline state only (not quant/smc-sd). Used by LayeredStrategyAdapter. */
-export function clearLayeredState(): void {
-  // Only delete setups belonging to the layered strategy
-  for (const k of activeSetups.keys()) {
-    if (k.startsWith('layered:')) activeSetups.delete(k)
-  }
-  statusState.clear()
-  lastCandleTs.clear()
-  resetPipelineStats('layered')
-}
 
 // ── Internals used by pipeline.ts ────────────────────────────────────────────
 

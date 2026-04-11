@@ -25,7 +25,7 @@ export type AgentState =
 export interface CoinContext {
   state: AgentState
   coin: string
-  /** Strategy that owns this context (Sprint 4.5). Default 'layered' for backward compat. */
+  /** Strategy that owns this context (Sprint 4.5). Default 'smc-sd'. */
   strategyId: string
   /** The setup being watched/entered (null when IDLE/PAUSED). */
   activeSetup: ActiveSetup | null
@@ -190,7 +190,7 @@ export interface PositionState {
 export type MonitorAction =
   | { type: 'hold' }
   | { type: 'trail_update'; positionId: string; newSlPrice: number }
-  | { type: 'partial_close'; positionId: string; closePct: number; newSlPrice: number | null }
+  | { type: 'partial_close'; positionId: string; closePct: number; newSlPrice?: number | null }
   | { type: 'close'; positionId: string; reason: string }
   | { type: 'alert'; positionId: string; message: string }
 

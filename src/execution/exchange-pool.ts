@@ -71,7 +71,7 @@ export class ExchangePool {
    * Get exchange service for a strategy.
    * Always returns the shared instance — all strategies share one wallet.
    *
-   * @param strategyId Strategy identifier (e.g. 'layered', 'quant', 'smc-sd'). Ignored — kept for API compat.
+   * @param strategyId Strategy identifier (e.g. 'smc-sd'). Ignored — kept for API compat.
    * @param exchange Override exchange for this lookup. Defaults to {@link activeExchange}.
    */
   get(_strategyId: string, exchange?: ExchangeId): IExchangeService {

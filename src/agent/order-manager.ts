@@ -51,10 +51,10 @@ import {
   computeEntryLeverageForTargetMargin,
   computePositionSize,
 } from './exits.js'
-import { DEFAULT_RISK_PERCENT, SIMULATED_ACCOUNT, TARGET_MARGIN_PCT, getActiveExchange } from '../config.js'
+import { DEFAULT_RISK_PERCENT, SIMULATED_ACCOUNT, TARGET_MARGIN_PCT, getActiveExchange, ATR_TRAIL_MULTIPLIER } from '../config.js'
 
 /** Default strategy ID for backward compatibility (single-strategy mode). */
-const DEFAULT_STRATEGY = 'layered'
+const DEFAULT_STRATEGY = 'smc-sd'
 
 /** `orders.id` is UUID — reject malformed strings before querying to avoid PostgreSQL ERROR logs. */
 function isValidOrderUuid(id: string): boolean {
@@ -494,7 +494,34 @@ export class OrderManager {
       if (getEffectivePaperTrade()) {
         const slippageDir = side === 'long' ? 1 : -1
         const paperFillPrice = entryPrice * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
-        getPaperTracker(strategyId).recordEntry(order.id, coin, side, paperFillPrice, order.size)
+        const paperTracker = getPaperTracker(strategyId)
+
+        // Correlation guard for paper mode (mirrors live TradingAgent check)
+        const corrCheck = paperTracker.canEnter(coin)
+        if (corrCheck.blocked) {
+          log.info('order-manager', `[PAPER] Blocked by correlation guard: ${corrCheck.reason}`)
+          order.status = 'rejected'
+          order.updatedAt = Date.now()
+          await updateOrderInDb(order)
+          return order
+        }
+
+        // Enhanced entry with multi-TP tracking (matches backtest simulator)
+        const tp2Price = (setup.patternData['tp2Price'] as number | undefined) ?? tpPrice
+        const atrVal = (setup.patternData['atrAtEntry'] as number | undefined) ?? 0
+        const trailMult = ATR_TRAIL_MULTIPLIER[setup.interval] ?? 2.0
+
+        paperTracker.recordEntryEnhanced({
+          orderId: order.id, coin, side,
+          entryPrice: paperFillPrice,
+          size: order.size,
+          interval: setup.interval,
+          slPrice: slPrice ?? paperFillPrice,
+          tp1Price: tpPrice ?? paperFillPrice,
+          tp2Price: tp2Price ?? tpPrice ?? paperFillPrice,
+          atrValue: atrVal,
+          trailMultiplier: trailMult,
+        })
         await this.onOrderFilled(order.id, paperFillPrice, order.size)
       } else if (
         result.fillPrice !== undefined &&

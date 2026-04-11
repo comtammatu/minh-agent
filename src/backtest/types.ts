@@ -10,7 +10,7 @@ import type { PipelineStats } from '../strategy/diagnostics.js'
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
-export type StrategyType = 'layered' | 'quant' | 'smc-sd'
+export type StrategyType = 'smc-sd'
 export type ExitMode = 'multi' | 'single'
 
 export interface BacktestConfig {
@@ -24,7 +24,7 @@ export interface BacktestConfig {
   slippagePct: number
   /** Commission as fraction per trade (0.0003 = 0.03%). Applied to entry + exit. */
   commissionPct: number
-  /** Strategy to use. Default 'layered' (5-layer Wyckoff/SMC pipeline). */
+  /** Strategy to use. Default 'smc-sd' (ICT Smart Money Concepts). */
   strategy?: StrategyType
   /** Exit mode. 'multi' = TP1/TP2/trailing partials (default). 'single' = one SL + one TP, 100% close. */
   exitMode?: ExitMode
@@ -61,7 +61,7 @@ export interface BacktestTrade {
 
   pnl: number         // realized PnL after slippage + commission
   pnlPct: number      // PnL as fraction of entry notional
-  exitReason: 'sl_hit' | 'tp_hit' | 'trail_stop' | 'invalidated' | 'end_of_data'
+  exitReason: 'sl_hit' | 'tp_hit' | 'trail_stop' | 'invalidated' | 'end_of_data' | 'max_hold'
 
   /** Strategy that generated this trade. */
   strategyId?: string
