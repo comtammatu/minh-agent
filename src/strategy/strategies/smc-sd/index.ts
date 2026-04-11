@@ -385,7 +385,7 @@ export class SmcSdStrategy implements IStrategy {
           // 4h POI + 15m CHoCH = dual-TF confirmation → emit scalp signal now.
           // TP uses 15m structure targets (realistic for scalp, not 4h range).
           if (SMC_15M_SCALP_ENABLED) {
-            const scalpSignal = this.emit15mScalpSignal(coin, candles, idx, fresh, atrVal, tol)
+            const scalpSignal = this.emit15mScalpSignal(coin, candles, idx, fresh, atrVal, tol, strategyParams)
             if (scalpSignal) return scalpSignal
           }
         }
@@ -497,6 +497,7 @@ export class SmcSdStrategy implements IStrategy {
   private emit15mScalpSignal(
     coin: string, candles: Candle[], idx: number,
     poi: ConfirmedPOI, atrVal: number, tol: number,
+    strategyParams?: StrategyParams,
   ): Signal | null {
     const candle = candles[idx]!
     const side: SignalSide = poi.direction === 'bullish' ? 'long' : 'short'
