@@ -875,3 +875,127 @@ After wiring all 6 params with fresh 15m signals (post-hotfix), the holdout PF c
 - Evaluate adding 1H same-TF signals for more trade frequency
 - Consider Approach B (algo-trading-bot cherry-pick) for new signal sources
 - Or accept breakeven strategy + improve execution (position sizing, portfolio management)
+
+---
+
+## Evolution Phase 2 — 10-Coin Diagnostic Run (2026-04-11)
+
+### Run Summary
+
+| Field | Value |
+|-------|-------|
+| Coins | BTC, ETH, SOL, AVAX, LINK, ARB, APT, BNB, DOT, ATOM |
+| Trials | 1 (default params) |
+| Duration | 26.6s |
+| OOS trades | 205 (all `1h_same_tf`) |
+| OOS PF | 0.57, MaxDD 73%, WinRate 39.5% |
+| Holdout trades | 41 (all `1h_same_tf`) |
+| Holdout PF | **0.17**, MaxDD **187%** |
+| 15m drilldown trades | **0** (zero across all 10 coins) |
+
+### Root Cause: scan1hSameTF Entry Quality [CONFIRMED]
+
+100% of trades come from `scan1hSameTF`. The 15m drilldown path (4H→15m→5m) fires zero times. The holdout PF of 0.17 means the 1H entry logic loses $5.83 for every $1 won. This is not a parameter problem — it's a structural quality problem in the entry filters.
+
+### Hard Stop Triggered
+
+Per CEO plan rule: holdout PF 0.17 < 1.1 with 41 trades (>40) → strategy fix required before more optimizer runs.
+
+---
+
+## Evolution Phase 2 — 200-Trial Full Optimizer Run (2026-04-12)
+
+### Run Summary
+
+| Field | Value |
+|-------|-------|
+| Coins | BTC, ETH, SOL, AVAX, LINK, ARB, APT, BNB, DOT, ATOM |
+| Trials | 200 (all successful) |
+| Duration | 5174.4s (~86 minutes) |
+| Result file | `results/optimize-2026-04-11T18-29-31-237Z.json` |
+
+### Top-10 Holdout Results
+
+All top-10 share the same pathology:
+
+| # | OOS PF | OOS Trades | Hold PF | Hold # | Hold Modes | SMC_MIN_RR |
+|---|--------|-----------|---------|--------|-----------|------------|
+| 1 | 6.34 | 5 | 0.00 | 2 | 1h_same_tf:2 | 2.50 |
+| 2 | 3.82 | 6 | 0.00 | 2 | 1h_same_tf:2 | 2.50 |
+| 3 | 3.82 | 6 | 0.00 | 2 | 1h_same_tf:2 | 2.50 |
+| 4 | 3.13 | 15 | 0.00 | 3 | 1h_same_tf:3 | 2.50 |
+| 5-10 | 2.26-2.91 | 5-16 | 0.00 | 1-3 | 1h_same_tf:1-3 | 2.50 |
+
+### Diagnosis [CONFIRMED]
+
+**SMC_MIN_RR = 2.50 in all top-10** — the optimizer found no real alpha. It resolved to maximum RR filtering, reducing trade count to 5-16 on train and 1-3 on holdout. This produces high OOS PF by cherry-picking the few survivors — not generalizable edge.
+
+**Hold PF = 0.00 for every result** — with 1-3 holdout trades, this means zero winning trades. Statistically meaningless (95% CI = ±∞).
+
+**15m_drilldown: zero trades across all 200 trials.** The 4H POI → 15m CHoCH → 5m FVG cascade never fires in 10-coin × 6-month data.
+
+**Root cause confirmed:** Strategy has no extractable alpha at current architecture. Parameter optimization exhausted. Fixing `scan1hSameTF` entry quality (6 fixes per Eng Review) is the only remaining lever before abandoning the path.
+
+### Decision: Proceed with scan1hSameTF Fix Plan
+
+Per Eng Review (2026-04-12), 6 fixes targeting:
+1. Directional close bug (wick bounce + throughZone paths)
+2. BOS confidence penalty (`SMC_1H_BOS_PENALTY = 0.15`)
+3. Hard-block HTF-opposed BOS entries
+4. Minimum volume floor (`SMC_1H_MIN_VOLUME_RATIO = 0.7`)
+5. ADX threshold raise (18 → 20)
+
+Rollback criterion: re-run optimizer after fixes. Holdout PF < 1.1 with 40+ trades → abandon `scan1hSameTF`, investigate drilldown cascade.
+
+---
+
+## Eng Review — scan1hSameTF Fix Plan (2026-04-12)
+
+### Comparison: scan1hSameTF vs scan15mDrillDown quality gates
+
+```
+scan15mDrillDown (4H→15m→5m):
+  ├─ 4H BOS/CHoCH → zone registration      (MANDATORY structural direction)
+  ├─ 15m CHoCH at POI zone                  (MANDATORY timing confirmation)
+  └─ 5m FVG-only entry                      (MANDATORY precision entry)
+
+scan1hSameTF:
+  ├─ BOS/CHoCH on same 1H TF               (BOS fire rate 3-5x > CHoCH)
+  ├─ HTF alignment = ±confidence only       (counter-trend entries survive)
+  ├─ Bounce: 4 paths, 2 missing bc check   (bearish candle → long entry BUG)
+  ├─ ADX < 18 threshold                     (accepts chop territory)
+  └─ No volume minimum                      (dead-volume breaks pass through)
+```
+
+### 6 Fixes Agreed (Eng Review + Outside Voice)
+
+| # | Fix | Lines | Change |
+|---|-----|-------|--------|
+| 1a | Directional close — wick bounce | 839, 845 | Add `&& bc` |
+| 1b | Directional close — throughZone | 838, 844 | Add `&& bc` (outside voice catch) |
+| 2 | BOS confidence penalty -0.15 | 857 | BOS base = `SMC_1H_CONFIDENCE_BASE - SMC_1H_BOS_PENALTY` |
+| 3 | Hard-block HTF opposed BOS | after 786 | `if (htfOpposed && recentBreak.kind === 'bos') return null` |
+| 4 | Min volume floor 0.7x | after 769 | `if (!isNaN(volRatio) && volRatio < SMC_1H_MIN_VOLUME_RATIO) return null` |
+| 5 | ADX threshold 18→20 | 852 | `adxVal < SMC_1H_MIN_ADX` (config constant) |
+
+**DRY**: `volumeRatio()` computed once early, reused for filter + confidence bonus.
+
+### Files: 2
+- `src/strategy/strategies/smc-sd/index.ts` — 6 fixes in `scan1hSameTF`
+- `src/config.ts` — 3 new constants: `SMC_1H_MIN_ADX=20`, `SMC_1H_MIN_VOLUME_RATIO=0.7`, `SMC_1H_BOS_PENALTY=0.15`
+
+### Tests: 18 unit tests (boundary coverage for all 6 filters)
+
+### Outside Voice Findings (Claude subagent)
+1. **"Band-aids on broken system"** — Acknowledged. These fixes ARE the diagnostic. If holdout PF still < 1.1 after fixes → abandon scan1hSameTF, investigate drilldown cascade.
+2. **throughZone directional close bug** — Caught additional 2 lines missed by review. Added as Fix 1b.
+3. **BOS penalty nearly useless (16 additive bonuses overcome -0.15)** — Partially valid. Fix 2 combined with Fix 3 (hard-block counter-trend BOS) narrows BOS survival to HTF-aligned + stacked bonuses.
+4. **Additive confidence model is the real problem** — Deferred to P3 TODO. Would affect all scan modes.
+5. **Drilldown fires zero — investigate that instead** — Deferred to P2 TODO.
+
+### Rollback Criteria
+CEO hard stop applies: re-run 10-coin optimizer after fixes. Holdout PF < 1.1 with 40+ trades → abandon scan1hSameTF entirely.
+
+### TODOS Added
+- [P2] Debug drilldown cascade — why 4H→15m→5m fires zero times
+- [P3] Investigate multiplicative confidence scoring model
