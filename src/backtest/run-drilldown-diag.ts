@@ -179,6 +179,45 @@ async function main() {
   }
 
   console.log('\n' + '='.repeat(60))
+
+  // ── ISOLATED 5M DRILLDOWN (disable 1h + 15m to eliminate slot contention) ──
+  console.log('\n\n' + '='.repeat(60))
+  console.log('  ISOLATED 5M DRILLDOWN (1h_same_tf + 15m_drilldown disabled)')
+  console.log('='.repeat(60))
+
+  const isolatedConfig: BacktestConfig = {
+    ...baseConfig,
+    disabledScanModes: ['1h_same_tf', '15m_drilldown'],
+  }
+
+  const isolatedWfConfig: WalkForwardConfig = {
+    ...wfConfig,
+    backtestConfig: isolatedConfig,
+  }
+
+  resetDrilldownDiagnostics()
+  log.info('diag', 'Running isolated 5m drilldown trial (1h+15m disabled)...')
+  const isoStart = Date.now()
+  const isoResult = runTrial(allCandles, isolatedConfig, isolatedWfConfig, defaultParams, 0)
+  const isoElapsed = ((Date.now() - isoStart) / 1000).toFixed(1)
+
+  console.log('\n── ISOLATED 5M RESULT ──')
+  console.log(`  Trades:     ${isoResult.tradeCount}`)
+  console.log(`  OOS PF:     ${isoResult.oosPF.toFixed(3)}`)
+  console.log(`  Win rate:   ${(isoResult.winRate * 100).toFixed(1)}%`)
+  console.log(`  Max DD:     ${(isoResult.maxDD * 100).toFixed(1)}%`)
+  console.log(`  Elapsed:    ${isoElapsed}s`)
+  if (isoResult.tradesByMode) {
+    console.log(`  By mode:    ${JSON.stringify(isoResult.tradesByMode)}`)
+  }
+
+  console.log('\n── COMPARISON ──')
+  console.log(`  Full run:     ${result.tradeCount} trades (PF ${result.oosPF.toFixed(3)})`)
+  console.log(`  Isolated 5m:  ${isoResult.tradeCount} trades (PF ${isoResult.oosPF.toFixed(3)})`)
+  const delta = isoResult.tradeCount - (result.tradesByMode?.['5m_micro'] ?? 0)
+  console.log(`  5m trades unlocked by removing contention: ${delta}`)
+
+  console.log('\n' + '='.repeat(60))
 }
 
 function pct(num: number, denom: number): string {

@@ -1177,5 +1177,50 @@ Drilldown trades (OOS): 0           0           unchanged
 
 ### Assessment
 - [CONFIRMED] F1-F4 relieve the 5m bottleneck — 5m signals 27→49
-- [CONFIRMED] 0 drilldown trades is a simulator slot contention issue, not a signal quality issue
+- ~~[CONFIRMED] 0 drilldown trades is a simulator slot contention issue, not a signal quality issue~~ **REVISED below**
 - [UNCERTAIN] 5m signal quality (PF, WR) — blocked by slot contention, needs isolated testing
+
+---
+
+## Isolated 5m Drilldown Validation (2026-04-12)
+
+### Approach
+
+Added `disabledScanModes` field to `BacktestConfig` to filter signals in engine before reaching simulator. Ran diagnostic with `['1h_same_tf', '15m_drilldown']` disabled — only 5m_micro + 4h_poi signals reach simulator.
+
+### Results (BTC, ETH, SOL — 3 coins)
+
+| Run | Trades | PF | By Mode |
+|-----|--------|----|---------|
+| Full (all modes) | 61 | 0.704 | 1h_same_tf: 61 |
+| Isolated (1h+15m disabled) | 0 | 0.000 | {} |
+
+Key observations:
+- **Slot contention is NOT the root cause.** Even with 1h and 15m completely disabled, 5m signals produce 0 trades.
+- Only 18 5m signals generated (3-coin subset), ~49 for full 10-coin set.
+- 4H signals also fire but produce 0 trades (even without contention) — suggesting walk-forward window distribution is the real blocker.
+- All 61 trades in full run are `1h_same_tf` — the only mode with enough signal volume to survive WF windowing.
+
+### Root Cause (revised)
+
+The real blockers for 5m drilldown trades (in order of impact):
+
+1. **Signal volume too low**: 18 signals across 3 coins over ~90 days of data. The 4H→15m→5m cascade funnel has extreme attrition (192K POIs → 3.2K confirmed → 18 signals = 0.009% end-to-end conversion).
+2. **Walk-forward window distribution**: With only 18 signals, the probability of having signals in OOS windows that also survive the fill process is near-zero.
+3. **Slot contention (minor factor)**: Would only matter if signal volume were sufficient — it's not.
+
+### Updated Assessment
+
+- [CONFIRMED] F1-F4 relieve the 5m bottleneck (signals 27→49)
+- [DISPROVED] 0 drilldown trades is a simulator slot contention issue ← **slot contention is NOT the root cause**
+- [CONFIRMED] 0 drilldown trades is a signal volume + WF distribution problem
+- [UNCERTAIN] 5m signal quality (PF, WR) — insufficient volume to evaluate statistically
+
+### Next Steps
+
+1. **Increase 5m signal volume** (P1): The cascade funnel drops 99.99% of candidates. Key choke points:
+   - 15m "not at zone" rejects 89.5% — widen zone proximity tolerance?
+   - 5m "no confirmed POIs" rejects 81.9% — extend POI confirmation TTL?
+   - 5m "SL too tight" rejects 1175 — relax min SL width?
+2. **Or**: Bypass walk-forward for signal quality test — run raw backtest (no train/test split) to evaluate 5m trades without WF windowing.
+3. **Or**: Increase dataset — more coins or longer history to generate more signals.

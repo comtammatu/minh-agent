@@ -44,6 +44,8 @@ export interface BacktestConfig {
   exitMode?: ExitMode
   /** Parameter overrides for optimizer trials. Undefined = use config.ts defaults. */
   strategyParams?: StrategyParams
+  /** Scan modes to disable (e.g. ['1h_same_tf'] to test drilldown in isolation). */
+  disabledScanModes?: string[]
 }
 
 // ─── Partial Close Detail ──────────────────────────────────────────────────

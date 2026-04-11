@@ -33,6 +33,7 @@ import { getStrategyRegistry } from '../strategy/registry.js'
 import { clearStore, clearOnPersist, getCandles } from '../feed/store.js'
 import { atr } from '../indicators/core.js'
 import { BACKTEST_SLIPPAGE_PCT, BACKTEST_COMMISSION_PCT, ATR_TRAIL_MULTIPLIER, INDICATOR_WINDOW, BACKTEST_CHUNK_SIZE } from '../config.js'
+import { inferScanMode } from './optimize.js'
 
 /**
  * Run a backtest on historical candle data.
@@ -66,6 +67,9 @@ export function runBacktest(
   let currentCoin: string = ''
 
   const onSetup = (setup: ActiveSetup) => {
+    // Skip disabled scan modes (for isolated testing)
+    if (config.disabledScanModes?.includes(inferScanMode(setup.interval))) return
+
     // Compute ATR at fill time from store (candles already appended)
     const storeCandles = getCandles(setup.coin, setup.interval, INDICATOR_WINDOW)
     const idx = storeCandles.length - 2  // closed candle (same as pipeline)
@@ -208,6 +212,9 @@ export async function runBacktestAsync(
   let currentBarIndex = 0
 
   const onSetup = (setup: ActiveSetup) => {
+    // Skip disabled scan modes (for isolated testing)
+    if (config.disabledScanModes?.includes(inferScanMode(setup.interval))) return
+
     const storeCandles = getCandles(setup.coin, setup.interval, INDICATOR_WINDOW)
     const idx = storeCandles.length - 2
     const atrVal = idx >= 14 ? atr(storeCandles, idx, 14) : 0
