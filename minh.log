@@ -1,0 +1,328 @@
+2026-04-11T18:50:28.019Z [INFO ] [bybit-ws] WS reconnected — re-subscribing 480 topics
+2026-04-11T18:50:29.875Z [INFO ] [startup] PG load: 1010581 candles
+2026-04-11T18:50:29.875Z [INFO ] [bybit-backfill] skipping 477 coin/TF pairs already loaded from PG
+2026-04-11T18:50:30.427Z [INFO ] [bybit-backfill] XAU 1d: 34 candles
+2026-04-11T18:50:30.466Z [INFO ] [bybit-backfill] CL 1d: 19 candles
+2026-04-11T18:50:30.591Z [INFO ] [bybit-backfill] XAG 1d: 34 candles
+2026-04-11T18:50:30.766Z [INFO ] [bybit-funding] Loaded funding rates for 539 coins
+2026-04-11T18:50:30.766Z [INFO ] [startup] ARMED | 80 coins: 80 fully ready, 0 partial | 6 TFs
+2026-04-11T18:50:30.767Z [INFO ] [startup] STRAT | 1/1 enabled: smc-sd (env: ENABLED_STRATEGIES=smc-sd)
+2026-04-11T18:50:30.767Z [INFO ] [exchange-pool] Active exchange: BB
+2026-04-11T18:50:30.767Z [INFO ] [exchange-pool] Bybit single-wallet mode
+2026-04-11T18:50:31.015Z [INFO ] [bybit-svc] Loaded instrument specs for 643 instruments (643 total)
+2026-04-11T18:50:31.015Z [INFO ] [bybit-svc] BybitExchangeService initialized (testnet=false)
+2026-04-11T18:50:31.015Z [INFO ] [exchange-pool] ExchangePool ready (shared wallet)
+2026-04-11T18:50:31.117Z [INFO ] [bybit-exec] getAccountState OK: equity=252.45
+2026-04-11T18:50:31.273Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:50:31.273Z [INFO ] [startup] MODE  | LIVE TRADING — real orders on Bybit
+2026-04-11T18:50:31.273Z [INFO ] [startup] ACCT  | BYBIT:…TozD | balance: $252.45 (perp: $252.45 + spot: $0.00) | margin: $30.65 | free: $221.80
+2026-04-11T18:50:31.273Z [INFO ] [startup] POS   | 10 open position(s):
+  JUP        LONG 1260 @ $0.16 | uPnL: +$5.18
+  KAS        LONG 3000 @ $0.03 | uPnL: $-0.09
+  APT        LONG 323.52 @ $0.85 | uPnL: +$7.64 | liq: $0.14
+  XPL        LONG 763 @ $0.13 | uPnL: +$2.98
+  POPCAT     LONG 1650 @ $0.05 | uPnL: +$1.55
+  HYPE       LONG 2.56 @ $41.67 | uPnL: +$2.25
+  UNI        LONG 72.5 @ $3.13 | uPnL: +$4.57
+  STRK       LONG 4667.2 @ $0.03 | uPnL: +$4.33
+  ENA        LONG 2022 @ $0.09 | uPnL: +$5.23
+  BTC        LONG 0.002 @ $72719.70 | uPnL: +$1.54
+2026-04-11T18:50:31.281Z [INFO ] [order-manager] Loaded 19 active orders from DB [exchange=BB]
+2026-04-11T18:50:31.396Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:50:31.397Z [INFO ] [position-monitor] Tracking position: ENA long @ 0.09389 size=995.4553513910646
+2026-04-11T18:50:31.397Z [INFO ] [position-monitor] Tracking position: APT long @ 0.8514 size=323.52039831597915
+2026-04-11T18:50:31.397Z [INFO ] [position-monitor] Tracking position: XPL long @ 0.13201 size=763.7417295757177
+2026-04-11T18:50:31.397Z [INFO ] [position-monitor] Tracking position: STRK long @ 0.03452 size=2402.492416525537
+2026-04-11T18:50:31.397Z [INFO ] [position-monitor] Tracking position: HYPE long @ 41.671 size=2.566696011015114
+2026-04-11T18:50:31.397Z [INFO ] [position-monitor] Tracking position: JUP long @ 0.16291 size=1260.946723826879
+2026-04-11T18:50:31.397Z [INFO ] [position-monitor] Tracking position: UNI long @ 3.132 size=72.52398230624982
+2026-04-11T18:50:31.397Z [INFO ] [position-monitor] Tracking position: POPCAT long @ 0.05178032 size=1650.2348699596077
+2026-04-11T18:50:31.397Z [INFO ] [position-monitor] Tracking position: BTC long @ 72719.7 size=0.002063177916170948
+2026-04-11T18:50:31.397Z [INFO ] [position-monitor] Tracking position: KAS long @ 0.0330803 size=3000.86391460892
+2026-04-11T18:50:31.397Z [INFO ] [order-manager] Restored 10 open position(s) into PositionMonitor after restart
+2026-04-11T18:50:31.397Z [INFO ] [position-monitor] Exchange sync started (interval=10000ms)
+2026-04-11T18:50:31.397Z [INFO ] [metrics-service] Connected to agent trade_closed events
+2026-04-11T18:50:32.193Z [INFO ] [bot] setMyCommands OK (13 commands)
+2026-04-11T18:50:32.193Z [INFO ] [bot] Day report scheduler (UTC, every 45s tick)
+2026-04-11T18:50:32.193Z [INFO ] [bot] Telegram bot started (long-polling, 13 commands: /help, /menu, /status, /positions, /pnl, /pause, /resume, /risk, /closeall, /confirm, /report, /strategy, /paper)
+2026-04-11T18:50:32.193Z [INFO ] [invalidation-bridge] Connected to pipeline
+2026-04-11T18:50:32.196Z [INFO ] [agent] BTC      IDLE → ENTERING | smc-sd long
+2026-04-11T18:50:32.197Z [INFO ] [pipeline] ⚡ SETUP | BTC 4H [BB] | LONG smc-sd at breaker-block | A (4/7) | conf:1.00 | BULL | entry:73204 sl:70720 tp:78171 | R:R 1:2.00 | ttl:12bars | [smc-sd]
+2026-04-11T18:50:32.202Z [INFO ] [agent] 1000PEPE IDLE → ENTERING | smc-sd long
+2026-04-11T18:50:32.202Z [INFO ] [pipeline] ⚡ SETUP | 1000PEPE 1H [BB] | LONG smc-sd at order-block | B (3/7) | conf:0.70 | BULL | entry:0.0036 sl:0.0035 tp:0.0037 | R:R 1:2.00 | ttl:12bars | [smc-sd]
+2026-04-11T18:50:32.203Z [INFO ] [agent] LINK     IDLE → ENTERING | smc-sd long
+2026-04-11T18:50:32.203Z [INFO ] [pipeline] ⚡ SETUP | LINK 1H [BB] | LONG smc-sd at inversion-fvg | B (3/7) | conf:0.75 | BULL | entry:9.0050 sl:8.9056 tp:9.2039 | R:R 1:2.00 | ttl:12bars | [smc-sd]
+2026-04-11T18:50:32.207Z [INFO ] [agent] TON      IDLE → ENTERING | smc-sd long
+2026-04-11T18:50:32.207Z [INFO ] [pipeline] ⚡ SETUP | TON 4H [BB] | LONG smc-sd at fvg | A (4/7) | conf:0.96 | BULL | entry:1.2891 sl:1.2323 tp:1.4027 | R:R 1:2.00 | ttl:12bars | [smc-sd]
+2026-04-11T18:50:32.208Z [INFO ] [agent] WLD      IDLE → ENTERING | smc-sd long
+2026-04-11T18:50:32.208Z [INFO ] [pipeline] ⚡ SETUP | WLD 4H [BB] | LONG smc-sd at swing | A (4/7) | conf:0.96 | BULL | entry:0.2806 sl:0.2617 tp:0.3184 | R:R 1:2.00 | ttl:12bars | [smc-sd]
+2026-04-11T18:50:32.209Z [INFO ] [agent] TRX      IDLE → ENTERING | smc-sd short
+2026-04-11T18:50:32.209Z [INFO ] [pipeline] ⚡ SETUP | TRX 1H [BB] | SHORT smc-sd at swing | B (3/7) | conf:0.65 | SIDEWAYS | entry:0.3186 sl:0.3196 tp:0.3166 | R:R 1:2.00 | ttl:12bars | [smc-sd]
+2026-04-11T18:50:32.211Z [INFO ] [agent] APT      IDLE → ENTERING | smc-sd long
+2026-04-11T18:50:32.211Z [INFO ] [pipeline] ⚡ SETUP | APT 1H [BB] | LONG smc-sd at order-block | B (3/7) | conf:0.70 | BULL | entry:0.8514 sl:0.8355 tp:0.8833 | R:R 1:2.00 | ttl:12bars | [smc-sd]
+2026-04-11T18:50:32.219Z [INFO ] [agent] STRK     IDLE → ENTERING | smc-sd long
+2026-04-11T18:50:32.219Z [INFO ] [pipeline] ⚡ SETUP | STRK 4H [BB] | LONG smc-sd at fvg | A (4/7) | conf:0.91 | BULL | entry:0.0357 sl:0.0336 tp:0.0400 | R:R 1:2.00 | ttl:12bars | [smc-sd]
+2026-04-11T18:50:32.220Z [INFO ] [agent] KAS      IDLE → ENTERING | smc-sd long
+2026-04-11T18:50:32.220Z [INFO ] [pipeline] ⚡ SETUP | KAS 4H [BB] | LONG smc-sd at breaker-block | A (4/7) | conf:1.00 | BULL | entry:0.0337 sl:0.0320 tp:0.0372 | R:R 1:2.00 | ttl:12bars | [smc-sd]
+2026-04-11T18:50:32.221Z [INFO ] [agent] POPCAT   IDLE → ENTERING | smc-sd long
+2026-04-11T18:50:32.221Z [INFO ] [pipeline] ⚡ SETUP | POPCAT 4H [BB] | LONG smc-sd at fvg | A (4/7) | conf:0.91 | BULL | entry:0.0529 sl:0.0498 tp:0.0591 | R:R 1:2.00 | ttl:12bars | [smc-sd]
+2026-04-11T18:50:32.222Z [INFO ] [pipeline] Bootstrap scan + WS seed | 80 coin(s) × 6 TF
+2026-04-11T18:50:32.222Z [INFO ] [agent] Agent wired: 1 strategies + exchange pool + order manager + position monitor + invalidation bridge + Telegram bot
+2026-04-11T18:50:32.244Z [INFO ] [order-manager] Order created: d7f238ec-a135-4e60-ae9d-71087217583c BTC long @ 73203.7 strategy=smc-sd [cloid=0xad1acfa8...]
+2026-04-11T18:50:32.253Z [INFO ] [order-manager] Order created: 40611903-3b95-4add-96ef-fd6a78216281 STRK long @ 0.03569 strategy=smc-sd [cloid=0xd4b3edb5...]
+2026-04-11T18:50:32.254Z [INFO ] [order-manager] Order created: e9396b21-8e93-4583-95ae-271585d192e5 KAS long @ 0.03374 strategy=smc-sd [cloid=0x876c8e82...]
+2026-04-11T18:50:32.281Z [INFO ] [order-manager] Order created: 6e6295f4-7dd1-481f-8458-700daf24540c POPCAT long @ 0.05292 strategy=smc-sd [cloid=0x3c866bfe...]
+2026-04-11T18:50:32.281Z [INFO ] [order-manager] Order created: 46329239-4d88-4e21-9a0a-84d900431dd0 LINK long @ 9.005 strategy=smc-sd [cloid=0x0fc6a884...]
+2026-04-11T18:50:32.281Z [INFO ] [order-manager] Order created: bf4cdaca-2dc1-4634-95bb-c57062299800 WLD long @ 0.2806 strategy=smc-sd [cloid=0x413a2043...]
+2026-04-11T18:50:32.285Z [INFO ] [order-manager] Order created: 54f51117-b24b-468a-9eaa-1c724a1ce3b9 APT long @ 0.8514 strategy=smc-sd [cloid=0x290f5f29...]
+2026-04-11T18:50:32.286Z [INFO ] [order-manager] Order created: 1814190e-b6d1-442d-83b9-8ded085e15e8 1000PEPE long @ 0.003586 strategy=smc-sd [cloid=0xf6872735...]
+2026-04-11T18:50:32.286Z [INFO ] [order-manager] Order created: 7e4e0a79-2170-4b12-8c46-e3798c600ff2 TRX short @ 0.31858 strategy=smc-sd [cloid=0xf3429874...]
+2026-04-11T18:50:32.287Z [INFO ] [order-manager] Order created: 28dab244-4d04-416b-949c-7480ec300766 TON long @ 1.2891 strategy=smc-sd [cloid=0xa6552559...]
+2026-04-11T18:50:32.332Z [INFO ] [bybit-svc] Loaded 35 risk tiers for BTCUSDT
+2026-04-11T18:50:32.333Z [INFO ] [bybit-svc] Loaded 30 risk tiers for KASUSDT
+2026-04-11T18:50:32.333Z [INFO ] [bybit-svc] Loaded 30 risk tiers for STRKUSDT
+2026-04-11T18:50:32.404Z [INFO ] [bybit-svc] setLeverage: BTCUSDT already at 100x
+2026-04-11T18:50:32.404Z [INFO ] [bybit-exec] submitOrder: BTCUSDT Buy Limit qty=0.002 price=73203.7 posIdx=1 sl=70720.17467671641 tp=78170.75064656716 step=0.001 rawSize=0.0025412348619242775
+2026-04-11T18:50:32.488Z [INFO ] [bybit-svc] setLeverage: KASUSDT already at 50x
+2026-04-11T18:50:32.488Z [INFO ] [bybit-exec] submitOrder: KASUSDT Buy Limit qty=3690 price=0.03374 posIdx=1 sl=0.03203250684234451 tp=0.03715498631531098 step=10 rawSize=3696.1911699053344
+2026-04-11T18:50:32.488Z [INFO ] [bybit-svc] setLeverage: STRKUSDT already at 50x
+2026-04-11T18:50:32.488Z [INFO ] [bybit-exec] submitOrder: STRKUSDT Buy Limit qty=2959.1 price=0.03569 posIdx=1 sl=0.033557233808521145 tp=0.03995553238295771 step=0.1 rawSize=2959.1715947184134
+2026-04-11T18:50:32.489Z [INFO ] [bybit-exec] placeOrder OK: BTCUSDT Buy orderId=86ff53a0-073b-4e85-b004-5bb6ea0eeedb
+2026-04-11T18:50:32.491Z [INFO ] [bybit-svc] Loaded 30 risk tiers for TONUSDT
+2026-04-11T18:50:32.491Z [INFO ] [bybit-svc] Loaded 30 risk tiers for WLDUSDT
+2026-04-11T18:50:32.491Z [INFO ] [bybit-svc] Loaded 30 risk tiers for 1000PEPEUSDT
+2026-04-11T18:50:32.491Z [INFO ] [bybit-svc] Loaded 30 risk tiers for TRXUSDT
+2026-04-11T18:50:32.491Z [INFO ] [bybit-svc] Loaded 30 risk tiers for LINKUSDT
+2026-04-11T18:50:32.491Z [INFO ] [bybit-svc] Loaded 30 risk tiers for POPCATUSDT
+2026-04-11T18:50:32.491Z [INFO ] [bybit-svc] Loaded 30 risk tiers for APTUSDT
+2026-04-11T18:50:32.497Z [INFO ] [order-manager] Order submitted: d7f238ec-a135-4e60-ae9d-71087217583c exchangeId=86ff53a0-073b-4e85-b004-5bb6ea0eeedb
+2026-04-11T18:50:32.594Z [INFO ] [bybit-svc] setLeverage: 1000PEPEUSDT already at 50x
+2026-04-11T18:50:32.594Z [INFO ] [bybit-exec] submitOrder: 1000PEPEUSDT Buy Limit qty=88100 price=0.003586 posIdx=1 sl=0.0035143697376962438 tp=0.003729260524607513 step=100 rawSize=88108.30686667786
+2026-04-11T18:50:32.594Z [INFO ] [bybit-svc] setLeverage: LINKUSDT already at 50x
+2026-04-11T18:50:32.594Z [INFO ] [bybit-exec] submitOrder: LINKUSDT Buy Limit qty=63.4 price=9.005 posIdx=1 sl=8.905553948264174 tp=9.203892103471654 step=0.1 rawSize=63.46376775988488
+2026-04-11T18:50:32.594Z [INFO ] [bybit-exec] placeOrder OK: KASUSDT Buy orderId=b9c1353e-09a1-4a10-955b-076907c9aea5
+2026-04-11T18:50:32.594Z [INFO ] [bybit-svc] setLeverage: TRXUSDT already at 75x
+2026-04-11T18:50:32.594Z [INFO ] [bybit-exec] submitOrder: TRXUSDT Sell Limit qty=6445 price=0.31858 posIdx=2 sl=0.31955921177526453 tp=0.31662157644947087 step=1 rawSize=6445.205512663378
+2026-04-11T18:50:32.594Z [INFO ] [bybit-svc] setLeverage: TONUSDT already at 50x
+2026-04-11T18:50:32.594Z [INFO ] [bybit-exec] submitOrder: TONUSDT Buy Limit qty=111 price=1.2891 posIdx=1 sl=1.23229292321695 tp=1.4027141535660999 step=0.1 rawSize=111.09920610953061
+2026-04-11T18:50:32.594Z [INFO ] [bybit-svc] setLeverage: POPCATUSDT already at 50x
+2026-04-11T18:50:32.594Z [INFO ] [bybit-exec] submitOrder: POPCATUSDT Buy Limit qty=2032 price=0.05292 posIdx=1 sl=0.04981501494937177 tp=0.05912997010125646 step=1 rawSize=2032.6091846152551
+2026-04-11T18:50:32.594Z [INFO ] [bybit-exec] placeOrder OK: STRKUSDT Buy orderId=728e46d2-27c9-407d-a595-af94d8681061
+2026-04-11T18:50:32.594Z [INFO ] [bybit-svc] setLeverage: WLDUSDT already at 50x
+2026-04-11T18:50:32.594Z [INFO ] [bybit-exec] submitOrder: WLDUSDT Buy Limit qty=333.9 price=0.2806 posIdx=1 sl=0.26169964602318835 tp=0.31840070795362335 step=0.1 rawSize=333.92079004144927
+2026-04-11T18:50:32.599Z [INFO ] [order-manager] Order submitted: e9396b21-8e93-4583-95ae-271585d192e5 exchangeId=b9c1353e-09a1-4a10-955b-076907c9aea5
+2026-04-11T18:50:32.599Z [INFO ] [order-manager] Order submitted: 40611903-3b95-4add-96ef-fd6a78216281 exchangeId=728e46d2-27c9-407d-a595-af94d8681061
+2026-04-11T18:50:32.675Z [INFO ] [bybit-exec] placeOrder OK: 1000PEPEUSDT Buy orderId=1f7b6914-917d-4d3e-9eea-6691054828f2
+2026-04-11T18:50:32.675Z [INFO ] [bybit-svc] setLeverage: APTUSDT already at 50x
+2026-04-11T18:50:32.675Z [INFO ] [bybit-exec] submitOrder: APTUSDT Buy Limit qty=395.86 price=0.8514 posIdx=1 sl=0.8354570711241139 tp=0.8832858577517723 step=0.01 rawSize=395.8633436260138
+2026-04-11T18:50:32.681Z [INFO ] [order-manager] Order submitted: 1814190e-b6d1-442d-83b9-8ded085e15e8 exchangeId=1f7b6914-917d-4d3e-9eea-6691054828f2
+2026-04-11T18:50:32.760Z [INFO ] [bybit-exec] placeOrder OK: APTUSDT Buy orderId=740370fc-1878-420b-9aaf-d9d875a2660e
+2026-04-11T18:50:32.765Z [INFO ] [order-manager] Order submitted: 54f51117-b24b-468a-9eaa-1c724a1ce3b9 exchangeId=740370fc-1878-420b-9aaf-d9d875a2660e
+2026-04-11T18:50:32.796Z [INFO ] [bybit-exec] placeOrder OK: LINKUSDT Buy orderId=64115ae9-95f2-4a90-8a51-7f08e63eea0b
+2026-04-11T18:50:32.799Z [INFO ] [order-manager] Order submitted: 46329239-4d88-4e21-9a0a-84d900431dd0 exchangeId=64115ae9-95f2-4a90-8a51-7f08e63eea0b
+2026-04-11T18:50:32.897Z [ERROR] [bybit-exec] placeOrder failed: retCode=10001 StopLoss:31955000 set for Sell position should greater base_price:31963000??LastPrice [TRXUSDT]
+2026-04-11T18:50:32.900Z [ERROR] [order-manager] Order rejected by exchange: StopLoss:31955000 set for Sell position should greater base_price:31963000??LastPrice
+2026-04-11T18:50:32.900Z [INFO ] [agent] TRX      ENTERING → IDLE | smc-sd short
+2026-04-11T18:50:32.900Z [INFO ] [agent] TRX      SKIP Order rejected: StopLoss:31955000 set for Sell position should greater base_price:31963000??LastPrice
+2026-04-11T18:50:33.000Z [INFO ] [bybit-exec] placeOrder OK: TONUSDT Buy orderId=efa61a76-05b2-4793-ae66-8661a962ab9c
+2026-04-11T18:50:33.003Z [INFO ] [order-manager] Order submitted: 28dab244-4d04-416b-949c-7480ec300766 exchangeId=efa61a76-05b2-4793-ae66-8661a962ab9c
+2026-04-11T18:50:33.119Z [INFO ] [bybit-exec] placeOrder OK: POPCATUSDT Buy orderId=953e9b5b-b240-4124-8baa-7f38a3ca77e0
+2026-04-11T18:50:33.121Z [INFO ] [order-manager] Order submitted: 6e6295f4-7dd1-481f-8458-700daf24540c exchangeId=953e9b5b-b240-4124-8baa-7f38a3ca77e0
+2026-04-11T18:50:33.206Z [INFO ] [bybit-exec] placeOrder OK: WLDUSDT Buy orderId=fafac12f-56ad-46f3-96d2-410d12c25757
+2026-04-11T18:50:33.208Z [INFO ] [order-manager] Order submitted: bf4cdaca-2dc1-4634-95bb-c57062299800 exchangeId=fafac12f-56ad-46f3-96d2-410d12c25757
+2026-04-11T18:50:41.539Z [INFO ] [bybit-exec] getAccountState OK: equity=252.25
+2026-04-11T18:50:41.766Z [INFO ] [order-manager] Order filled: 40611903-3b95-4add-96ef-fd6a78216281 STRK @ 0.03539 positionId=9c8cfb86-85f3-4f74-8257-103b256c64fa
+2026-04-11T18:50:41.767Z [INFO ] [order-manager] SL/TP already set inline (BB): STRK sl=0.033557233808521145 tp=0.03995553238295771
+2026-04-11T18:50:41.767Z [INFO ] [position-monitor] Tracking position: STRK long @ 0.03539 size=2959.1
+2026-04-11T18:50:41.767Z [INFO ] [agent] STRK     ENTERING → IN_POSITION | smc-sd long
+2026-04-11T18:50:41.862Z [INFO ] [order-manager] Order filled: e9396b21-8e93-4583-95ae-271585d192e5 KAS @ 0.03306 positionId=bcc33148-c23c-41e5-921a-6788fa536e4c
+2026-04-11T18:50:41.862Z [INFO ] [order-manager] SL/TP already set inline (BB): KAS sl=0.03203250684234451 tp=0.03715498631531098
+2026-04-11T18:50:41.862Z [INFO ] [position-monitor] Tracking position: KAS long @ 0.03306 size=3690
+2026-04-11T18:50:41.862Z [INFO ] [agent] KAS      ENTERING → IN_POSITION | smc-sd long
+2026-04-11T18:50:41.955Z [INFO ] [order-manager] Order filled: 6e6295f4-7dd1-481f-8458-700daf24540c POPCAT @ 0.0527255 positionId=a75513d3-8458-4f82-889a-83d81bace486
+2026-04-11T18:50:41.955Z [INFO ] [order-manager] SL/TP already set inline (BB): POPCAT sl=0.04981501494937177 tp=0.05912997010125646
+2026-04-11T18:50:41.955Z [INFO ] [position-monitor] Tracking position: POPCAT long @ 0.0527255 size=2032
+2026-04-11T18:50:41.955Z [INFO ] [agent] POPCAT   ENTERING → IN_POSITION | smc-sd long
+2026-04-11T18:50:42.670Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:50:55.374Z [INFO ] [bybit-exec] getAccountState OK: equity=252.31
+2026-04-11T18:50:58.282Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:51:01.535Z [INFO ] [bybit-exec] getAccountState OK: equity=252.24
+2026-04-11T18:51:02.166Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:51:11.509Z [INFO ] [bybit-exec] getAccountState OK: equity=251.86
+2026-04-11T18:51:12.224Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:51:22.368Z [INFO ] [bybit-exec] getAccountState OK: equity=251.40
+2026-04-11T18:51:25.981Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:51:31.517Z [INFO ] [bybit-exec] getAccountState OK: equity=250.92
+2026-04-11T18:51:32.351Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:51:41.517Z [INFO ] [bybit-exec] getAccountState OK: equity=250.83
+2026-04-11T18:51:42.267Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:51:51.657Z [INFO ] [bybit-exec] getAccountState OK: equity=251.05
+2026-04-11T18:51:52.533Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:52:01.529Z [INFO ] [bybit-exec] getAccountState OK: equity=250.98
+2026-04-11T18:52:02.282Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:52:11.597Z [INFO ] [bybit-exec] getAccountState OK: equity=250.76
+2026-04-11T18:52:12.281Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:52:21.924Z [INFO ] [bybit-exec] getAccountState OK: equity=250.36
+2026-04-11T18:52:25.690Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:52:31.578Z [INFO ] [bybit-exec] getAccountState OK: equity=250.41
+2026-04-11T18:52:32.279Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:52:41.562Z [INFO ] [bybit-exec] getAccountState OK: equity=250.51
+2026-04-11T18:52:42.398Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:52:51.573Z [INFO ] [bybit-exec] getAccountState OK: equity=250.72
+2026-04-11T18:52:52.300Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:53:01.570Z [INFO ] [bybit-exec] getAccountState OK: equity=250.75
+2026-04-11T18:53:02.285Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:53:11.565Z [INFO ] [bybit-exec] getAccountState OK: equity=250.84
+2026-04-11T18:53:12.217Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:53:21.594Z [INFO ] [bybit-exec] getAccountState OK: equity=250.82
+2026-04-11T18:53:22.450Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:53:31.572Z [INFO ] [bybit-exec] getAccountState OK: equity=250.81
+2026-04-11T18:53:32.306Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:53:41.581Z [INFO ] [bybit-exec] getAccountState OK: equity=250.80
+2026-04-11T18:53:42.375Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:53:51.569Z [INFO ] [bybit-exec] getAccountState OK: equity=250.85
+2026-04-11T18:53:52.490Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:54:01.678Z [INFO ] [bybit-exec] getAccountState OK: equity=250.95
+2026-04-11T18:54:02.372Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:54:11.583Z [INFO ] [bybit-exec] getAccountState OK: equity=250.86
+2026-04-11T18:54:12.401Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:54:21.722Z [INFO ] [bybit-exec] getAccountState OK: equity=250.69
+2026-04-11T18:54:22.440Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:54:31.605Z [INFO ] [bybit-exec] getAccountState OK: equity=250.69
+2026-04-11T18:54:32.285Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:54:41.646Z [INFO ] [bybit-exec] getAccountState OK: equity=250.11
+2026-04-11T18:54:42.312Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:54:51.632Z [INFO ] [bybit-exec] getAccountState OK: equity=250.07
+2026-04-11T18:54:52.371Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:55:01.655Z [INFO ] [bybit-exec] getAccountState OK: equity=249.89
+2026-04-11T18:55:02.350Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:55:11.931Z [INFO ] [bybit-exec] getAccountState OK: equity=249.84
+2026-04-11T18:55:12.665Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:55:21.636Z [INFO ] [bybit-exec] getAccountState OK: equity=250.22
+2026-04-11T18:55:22.407Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:55:31.672Z [INFO ] [bybit-exec] getAccountState OK: equity=249.74
+2026-04-11T18:55:32.470Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:55:41.653Z [INFO ] [bybit-exec] getAccountState OK: equity=249.31
+2026-04-11T18:55:42.465Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:55:51.628Z [INFO ] [bybit-exec] getAccountState OK: equity=248.83
+2026-04-11T18:55:52.374Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:56:01.697Z [INFO ] [bybit-exec] getAccountState OK: equity=248.39
+2026-04-11T18:56:02.486Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:56:11.693Z [INFO ] [bybit-exec] getAccountState OK: equity=247.37
+2026-04-11T18:56:12.366Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:56:21.632Z [INFO ] [bybit-exec] getAccountState OK: equity=247.44
+2026-04-11T18:56:22.376Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:56:31.429Z [INFO ] [order-manager] Order timeout: d7f238ec-a135-4e60-ae9d-71087217583c BTC age=359s
+2026-04-11T18:56:31.510Z [ERROR] [bybit-exec] cancelOrder failed: order not exists or too late to cancel [BTCUSDT orderId=86]
+2026-04-11T18:56:31.510Z [INFO ] [order-manager] Retrying cancel by cloid for d7f238ec-a135-4e60-ae9d-71087217583c
+2026-04-11T18:56:31.667Z [INFO ] [bybit-exec] cancelByCloid OK: BTCUSDT cloid=0xad1acfa8...
+2026-04-11T18:56:31.672Z [INFO ] [order-manager] Order cancelled: d7f238ec-a135-4e60-ae9d-71087217583c reason=timeout
+2026-04-11T18:56:31.673Z [INFO ] [agent] BTC      ENTERING → IDLE | smc-sd long
+2026-04-11T18:56:31.673Z [INFO ] [agent] BTC      SKIP Order timeout
+2026-04-11T18:56:31.673Z [INFO ] [order-manager] Order timeout: 46329239-4d88-4e21-9a0a-84d900431dd0 LINK age=359s
+2026-04-11T18:56:31.761Z [ERROR] [bybit-exec] cancelOrder failed: order not exists or too late to cancel [LINKUSDT orderId=64115]
+2026-04-11T18:56:31.761Z [INFO ] [order-manager] Retrying cancel by cloid for 46329239-4d88-4e21-9a0a-84d900431dd0
+2026-04-11T18:56:31.817Z [INFO ] [bybit-exec] getAccountState OK: equity=248.43
+2026-04-11T18:56:31.832Z [INFO ] [bybit-exec] cancelByCloid OK: LINKUSDT cloid=0x0fc6a884...
+2026-04-11T18:56:31.837Z [INFO ] [order-manager] Order cancelled: 46329239-4d88-4e21-9a0a-84d900431dd0 reason=timeout
+2026-04-11T18:56:31.837Z [INFO ] [agent] LINK     ENTERING → IDLE | smc-sd long
+2026-04-11T18:56:31.837Z [INFO ] [agent] LINK     SKIP Order timeout
+2026-04-11T18:56:31.837Z [INFO ] [order-manager] Order timeout: bf4cdaca-2dc1-4634-95bb-c57062299800 WLD age=359s
+2026-04-11T18:56:31.975Z [INFO ] [bybit-exec] cancelOrder OK: WLDUSDT orderId=fafac12f-56ad-46f3-96d2-410d12c25757
+2026-04-11T18:56:31.982Z [INFO ] [order-manager] Order cancelled: bf4cdaca-2dc1-4634-95bb-c57062299800 reason=timeout
+2026-04-11T18:56:31.982Z [INFO ] [agent] WLD      ENTERING → IDLE | smc-sd long
+2026-04-11T18:56:31.982Z [INFO ] [agent] WLD      SKIP Order timeout
+2026-04-11T18:56:31.982Z [INFO ] [order-manager] Order timeout: 54f51117-b24b-468a-9eaa-1c724a1ce3b9 APT age=359s
+2026-04-11T18:56:32.028Z [ERROR] [bybit-exec] cancelOrder failed: order not exists or too late to cancel [APTUSDT orderId=740370]
+2026-04-11T18:56:32.028Z [INFO ] [order-manager] Retrying cancel by cloid for 54f51117-b24b-468a-9eaa-1c724a1ce3b9
+2026-04-11T18:56:32.062Z [INFO ] [bybit-exec] cancelByCloid OK: APTUSDT cloid=0x290f5f29...
+2026-04-11T18:56:32.065Z [INFO ] [order-manager] Order cancelled: 54f51117-b24b-468a-9eaa-1c724a1ce3b9 reason=timeout
+2026-04-11T18:56:32.065Z [INFO ] [agent] APT      ENTERING → IDLE | smc-sd long
+2026-04-11T18:56:32.065Z [INFO ] [agent] APT      SKIP Order timeout
+2026-04-11T18:56:32.065Z [INFO ] [order-manager] Order timeout: 1814190e-b6d1-442d-83b9-8ded085e15e8 1000PEPE age=359s
+2026-04-11T18:56:32.113Z [ERROR] [bybit-exec] cancelOrder failed: order not exists or too late to cancel [1000PEPEUSDT orderId=1]
+2026-04-11T18:56:32.113Z [INFO ] [order-manager] Retrying cancel by cloid for 1814190e-b6d1-442d-83b9-8ded085e15e8
+2026-04-11T18:56:32.186Z [INFO ] [bybit-exec] cancelByCloid OK: 1000PEPEUSDT cloid=0xf6872735...
+2026-04-11T18:56:32.213Z [INFO ] [order-manager] Order cancelled: 1814190e-b6d1-442d-83b9-8ded085e15e8 reason=timeout
+2026-04-11T18:56:32.213Z [INFO ] [agent] 1000PEPE ENTERING → IDLE | smc-sd long
+2026-04-11T18:56:32.213Z [INFO ] [agent] 1000PEPE SKIP Order timeout
+2026-04-11T18:56:32.213Z [INFO ] [order-manager] Order timeout: 28dab244-4d04-416b-949c-7480ec300766 TON age=359s
+2026-04-11T18:56:32.270Z [INFO ] [bybit-exec] cancelOrder OK: TONUSDT orderId=efa61a76-05b2-4793-ae66-8661a962ab9c
+2026-04-11T18:56:32.273Z [INFO ] [order-manager] Order cancelled: 28dab244-4d04-416b-949c-7480ec300766 reason=timeout
+2026-04-11T18:56:32.273Z [INFO ] [agent] TON      ENTERING → IDLE | smc-sd long
+2026-04-11T18:56:32.273Z [INFO ] [agent] TON      SKIP Order timeout
+2026-04-11T18:56:32.339Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:56:41.600Z [INFO ] [bybit-exec] getAccountState OK: equity=248.49
+2026-04-11T18:56:41.651Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:56:51.611Z [INFO ] [bybit-exec] getAccountState OK: equity=248.41
+2026-04-11T18:56:51.660Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:57:01.607Z [INFO ] [bybit-exec] getAccountState OK: equity=248.64
+2026-04-11T18:57:01.678Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:57:11.622Z [INFO ] [bybit-exec] getAccountState OK: equity=248.68
+2026-04-11T18:57:11.676Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:57:21.642Z [INFO ] [bybit-exec] getAccountState OK: equity=248.56
+2026-04-11T18:57:21.719Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:57:31.361Z [WARN ] [health] DEGRADED — rss=518.4MB
+2026-04-11T18:57:31.361Z [WARN ] [health] RSS WARNING: 518.4MB
+2026-04-11T18:57:31.688Z [INFO ] [bybit-exec] getAccountState OK: equity=248.29
+2026-04-11T18:57:31.730Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:57:41.673Z [INFO ] [bybit-exec] getAccountState OK: equity=248.12
+2026-04-11T18:57:41.729Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:57:51.691Z [INFO ] [bybit-exec] getAccountState OK: equity=248.02
+2026-04-11T18:57:51.805Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:58:01.379Z [WARN ] [health] DEGRADED — rss=539.8MB
+2026-04-11T18:58:01.379Z [WARN ] [health] RSS WARNING: 539.8MB
+2026-04-11T18:58:01.709Z [INFO ] [bybit-exec] getAccountState OK: equity=248.11
+2026-04-11T18:58:01.833Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:58:11.673Z [INFO ] [bybit-exec] getAccountState OK: equity=248.12
+2026-04-11T18:58:11.722Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:58:21.820Z [INFO ] [bybit-exec] getAccountState OK: equity=248.26
+2026-04-11T18:58:21.875Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:58:31.381Z [WARN ] [health] DEGRADED — rss=562.8MB
+2026-04-11T18:58:31.381Z [WARN ] [health] RSS WARNING: 562.8MB
+2026-04-11T18:58:31.781Z [INFO ] [bybit-exec] getAccountState OK: equity=248.27
+2026-04-11T18:58:31.820Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:58:41.716Z [INFO ] [bybit-exec] getAccountState OK: equity=248.27
+2026-04-11T18:58:41.793Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:58:51.729Z [INFO ] [bybit-exec] getAccountState OK: equity=248.20
+2026-04-11T18:58:51.828Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:59:01.715Z [INFO ] [bybit-exec] getAccountState OK: equity=248.47
+2026-04-11T18:59:01.775Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:59:11.757Z [INFO ] [bybit-exec] getAccountState OK: equity=248.80
+2026-04-11T18:59:11.799Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:59:21.741Z [INFO ] [bybit-exec] getAccountState OK: equity=248.64
+2026-04-11T18:59:21.815Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:59:31.720Z [INFO ] [bybit-exec] getAccountState OK: equity=249.23
+2026-04-11T18:59:31.777Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:59:41.744Z [INFO ] [bybit-exec] getAccountState OK: equity=249.24
+2026-04-11T18:59:41.786Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T18:59:51.727Z [INFO ] [bybit-exec] getAccountState OK: equity=249.55
+2026-04-11T18:59:51.784Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:00:00.483Z [INFO ] [agent] CC       IDLE → ENTERING | smc-sd short
+2026-04-11T19:00:00.484Z [INFO ] [pipeline] ⚡ SETUP | CC 1H [BB] | SHORT smc-sd at order-block | B (3/7) | conf:0.75 | BEAR | entry:0.1476 sl:0.1511 tp:0.1405 | R:R 1:2.00 | ttl:12bars | [smc-sd]
+2026-04-11T19:00:00.490Z [INFO ] [order-manager] Order created: 9bf7be10-4aa1-4aa1-90a4-452054702d33 CC short @ 0.14758 strategy=smc-sd [cloid=0x36d690ff...]
+2026-04-11T19:00:00.524Z [INFO ] [bybit-svc] Loaded 30 risk tiers for CCUSDT
+2026-04-11T19:00:00.582Z [INFO ] [bybit-svc] setLeverage: CCUSDT already at 25x
+2026-04-11T19:00:00.583Z [INFO ] [bybit-exec] submitOrder: CCUSDT Sell Limit qty=1756 price=0.14758 posIdx=2 sl=0.15113141705468877 tp=0.14047716589062242 step=1 rawSize=1756.713542982273
+2026-04-11T19:00:00.611Z [INFO ] [agent] JUP      IDLE → ENTERING | smc-sd long
+2026-04-11T19:00:00.611Z [INFO ] [pipeline] ⚡ SETUP | JUP 1H [BB] | LONG smc-sd at order-block | B (3/7) | conf:0.75 | BULL | entry:0.1631 sl:0.1603 tp:0.1685 | R:R 1:2.00 | ttl:12bars | [smc-sd]
+2026-04-11T19:00:00.623Z [INFO ] [order-manager] Order created: c2538338-4e7d-4f91-8b59-9b927da7b171 JUP long @ 0.16307 strategy=smc-sd [cloid=0x8adc14dd...]
+2026-04-11T19:00:00.653Z [INFO ] [bybit-exec] placeOrder OK: CCUSDT Sell orderId=7de2d0e6-6add-4c95-911d-5ced52311289
+2026-04-11T19:00:00.656Z [INFO ] [order-manager] Order submitted: 9bf7be10-4aa1-4aa1-90a4-452054702d33 exchangeId=7de2d0e6-6add-4c95-911d-5ced52311289
+2026-04-11T19:00:00.696Z [INFO ] [bybit-svc] Loaded 30 risk tiers for JUPUSDT
+2026-04-11T19:00:00.789Z [INFO ] [bybit-svc] setLeverage: JUPUSDT already at 50x
+2026-04-11T19:00:00.789Z [INFO ] [bybit-exec] submitOrder: JUPUSDT Buy Limit qty=2279 price=0.16307 posIdx=1 sl=0.1603329897920922 tp=0.16854402041581557 step=1 rawSize=2279.4297290981076
+2026-04-11T19:00:00.832Z [INFO ] [bybit-exec] placeOrder OK: JUPUSDT Buy orderId=95764e54-9c78-4344-9c74-6066c09622a3
+2026-04-11T19:00:00.836Z [INFO ] [order-manager] Order submitted: c2538338-4e7d-4f91-8b59-9b927da7b171 exchangeId=95764e54-9c78-4344-9c74-6066c09622a3
+2026-04-11T19:00:01.754Z [INFO ] [bybit-exec] getAccountState OK: equity=250.39
+2026-04-11T19:00:01.973Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:00:11.755Z [INFO ] [bybit-exec] getAccountState OK: equity=251.07
+2026-04-11T19:00:11.948Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:00:21.777Z [INFO ] [bybit-exec] getAccountState OK: equity=251.05
+2026-04-11T19:00:21.978Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:00:31.840Z [INFO ] [bybit-exec] getAccountState OK: equity=250.79
+2026-04-11T19:00:32.012Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:00:41.792Z [INFO ] [bybit-exec] getAccountState OK: equity=251.51
+2026-04-11T19:00:42.013Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:00:51.797Z [INFO ] [bybit-exec] getAccountState OK: equity=250.83
+2026-04-11T19:00:51.948Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
