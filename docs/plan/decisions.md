@@ -718,3 +718,92 @@ Sprint 5: ADVISE (gated on >= 100 closed trades). Sprint 6-7: Memory layers.
 **Tests:** 1148 pass, 0 fail. +76 new tests vs S11 (1072→1148).
 
 **Security audit (CSO):** 1 MEDIUM finding — Bybit orders not cancelled on process exit (scheduleCancel no-op, cleanup() has no cancelAll). Deferred. Report: `.gstack/security-reports/2026-04-08-162000.json`.
+
+---
+
+## Evolution Phase 1 — Days 6-7: 200-Trial Optimizer Results (2026-04-11)
+
+### Run Summary
+
+| Metric | Value |
+|--------|-------|
+| Run ID | `82277273-a5bc-4070-b080-54fc9d92f1ce` |
+| Coins | BTC, ETH, SOL |
+| Trials | 200 (all successful) |
+| Duration | 26.3 min (7.9s avg/trial) |
+| Valid trials (≥5 OOS trades) | 75/200 (37.5%) |
+| Bybit data | 5m-1d, 80/20 train/holdout split |
+
+### Hotfix Applied
+
+**Bug found:** `emit15mScalpSignal()` used `strategyParams` without receiving it as parameter → `ReferenceError` on every 15m POI confirmation scan. All 15m scalp signals silently killed. Fixed in commit `09dac68`. [CONFIRMED]
+
+### Pareto Frontier (OOS PF vs MaxDD)
+
+Only **2 Pareto-optimal points** out of 75 valid trials:
+
+| # | OOS PF | MaxDD | WR | Trades | Holdout PF | Holdout MaxDD | MinConf | MinRR |
+|---|--------|-------|----|--------|------------|---------------|---------|-------|
+| 1 | 2.21 | 8.8% | 40% | 53 | 0.67 | 3.5% | 0.70 | 2.0 |
+| 2 | 2.25 | 8.9% | 42% | 52 | 0.60 | 4.1% | 0.75 | 1.5 |
+
+### Holdout Validation [CONFIRMED]
+
+**Zero trials achieved holdout PF > 1.5.** Best holdout PF across all top-10: **1.02** (trial #9, barely breakeven).
+
+| Rank | OOS PF | OOS DD | Holdout PF | Holdout DD | Holdout Trades |
+|------|--------|--------|------------|------------|----------------|
+| 1 | 2.25 | 8.9% | 0.60 | 4.1% | 13 |
+| 2 | 2.24 | 9.5% | 0.38 | 4.3% | 12 |
+| 3 | 2.21 | 8.8% | 0.67 | 3.5% | 12 |
+| 9 | 1.43 | 20.5% | **1.02** | 3.0% | 17 |
+
+Pattern: high OOS PF (2.2+) with low trades (52-53) → worst holdout collapse. Classic overfitting.
+
+### P3 Sanity Check [CONFIRMED]
+
+| Dataset | PF | MaxDD | Trades | WR |
+|---------|-------|-------|--------|-----|
+| Train OOS | 1.32 | 21.9% | 81 | 40% |
+| Holdout | 1.02 | 3.0% | 17 | 47% |
+
+P3 is **NOT on the Pareto frontier** (dominated by higher-PF, lower-DD combos). Holdout PF=1.02 is consistent with the broader pattern: the strategy barely breaks even on unseen data regardless of parameter choice.
+
+### Two Clusters Observed [CONFIRMED]
+
+1. **Low-DD cluster** (8 trials): MaxDD < 15%, PF 0.78-2.25, 40-63 trades. High MinConf (0.65-0.80) + MinRR 1.5-2.0. Fewer but "cleaner" trades. But holdout shows these are overfit to train market regime.
+
+2. **High-trade cluster** (67 trials): MaxDD 15-23%, PF 0.92-1.43, 72-90 trades. Low MinConf (0.40-0.55). More trades, more consistent OOS PF, but still degrades on holdout.
+
+### Parameter Sensitivity [CONFIRMED]
+
+| Parameter | Effect on PF | Notes |
+|-----------|-------------|-------|
+| MIN_CONFIDENCE | **Low** — full range produces PF>1.3 | Strategy behavior insensitive to confidence threshold |
+| REGIME_MULT_COUNTER | **Low** — scattered across range | No clear sweet spot |
+| REGIME_MULT_NEUTRAL | **Low** — full range | Same |
+| SMC_MIN_RR | **Moderate** — only 1.5-2.0 in good trials | Higher RR (3.0-4.0) produces too few trades |
+| SL_WICK_ATR_MULT | **None** — not wired into strategy | Expected, not wired |
+| SMC_DRILLDOWN_CONFIDENCE_BASE | **None** — not wired | Expected, not wired |
+
+### Plateau Detection
+
+**Not detected** (PF variance 0.089 > 0.05 threshold). Random search has NOT exhausted the parameter space. But given that NO holdout improvement exists, smarter sampling (Optuna/TPE) is unlikely to help — the ceiling is in the strategy logic, not the search method.
+
+### Decision Point [UNCERTAIN]
+
+**Result: ❌ No trial meets holdout PF > 1.5 — strategy logic has limits.**
+
+The optimizer revealed that SMC-SD with these 6 knobs cannot produce robust out-of-sample alpha. The strategy overfits to specific market regimes in the training window and fails to generalize. This is NOT a parameter tuning problem — it's a strategy structure problem.
+
+**Root causes (hypothesized):**
+1. Only 4H POI + 15m confirmation fires signals — very few setups per month
+2. Holdout period (20% most recent data) may have different market conditions
+3. 15m scalp signals were broken until hotfix — historical optimization literature was blind to 15m (all prior P0-P3 tuning ran with broken 15m)
+4. `SL_WICK_ATR_MULT` and `SMC_DRILLDOWN_CONFIDENCE_BASE` not wired — optimizer only has 4 effective knobs
+
+**Recommended next steps:**
+1. Wire remaining 2 params (`SL_WICK_ATR_MULT`, `SMC_DRILLDOWN_CONFIDENCE_BASE`) and re-run
+2. Re-evaluate with 15m hotfix — P3 itself was tuned with broken 15m, so prior P1-P3 benchmark numbers may change
+3. If still no holdout improvement → strategy review: add new signal sources (1H same-TF, additional pattern types), or investigate ensemble approach
+4. Consider Approach B (structured cherry-pick from algo-trading-bot) for new strategy patterns
