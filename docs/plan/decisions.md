@@ -783,8 +783,8 @@ P3 is **NOT on the Pareto frontier** (dominated by higher-PF, lower-DD combos). 
 | REGIME_MULT_COUNTER | **Low** — scattered across range | No clear sweet spot |
 | REGIME_MULT_NEUTRAL | **Low** — full range | Same |
 | SMC_MIN_RR | **Moderate** — only 1.5-2.0 in good trials | Higher RR (3.0-4.0) produces too few trades |
-| SL_WICK_ATR_MULT | **None** — not wired into strategy | Expected, not wired |
-| SMC_DRILLDOWN_CONFIDENCE_BASE | **None** — not wired | Expected, not wired |
+| SL_WICK_ATR_MULT | **Low** — tight stops (0.3) preferred, but holdout flat | Wired Day 8; tighter SL → slightly fewer trades, same holdout collapse |
+| SMC_DRILLDOWN_CONFIDENCE_BASE | **Low** — no clear optimum (0.50-0.80 scattered) | Wired Day 8; overrides per-mode base, no holdout benefit |
 
 ### Plateau Detection
 
@@ -803,7 +803,75 @@ The optimizer revealed that SMC-SD with these 6 knobs cannot produce robust out-
 4. `SL_WICK_ATR_MULT` and `SMC_DRILLDOWN_CONFIDENCE_BASE` not wired — optimizer only has 4 effective knobs
 
 **Recommended next steps:**
-1. Wire remaining 2 params (`SL_WICK_ATR_MULT`, `SMC_DRILLDOWN_CONFIDENCE_BASE`) and re-run
+1. Wire remaining 2 params (`SL_WICK_ATR_MULT`, `SMC_DRILLDOWN_CONFIDENCE_BASE`) and re-run → **DONE (Day 8)**
 2. Re-evaluate with 15m hotfix — P3 itself was tuned with broken 15m, so prior P1-P3 benchmark numbers may change
 3. If still no holdout improvement → strategy review: add new signal sources (1H same-TF, additional pattern types), or investigate ensemble approach
 4. Consider Approach B (structured cherry-pick from algo-trading-bot) for new strategy patterns
+
+---
+
+## Evolution Phase 1 — Day 8: All-Params Re-run Results (2026-04-11)
+
+### Run Summary
+
+| Metric | Value |
+|--------|-------|
+| Run ID | `optimize-2026-04-11T15-19-15-123Z` |
+| Coins | BTC, ETH, SOL |
+| Trials | 200 (all successful) |
+| Duration | 1562.1s (26 min, 7.8s avg/trial) |
+| Valid trials (≥5 OOS trades) | 76/200 (38%) |
+| New params wired | `SL_WICK_ATR_MULT`, `SMC_DRILLDOWN_CONFIDENCE_BASE` |
+
+### What Changed vs Days 6-7
+
+- Days 6-7: 4 effective params (SL_WICK_ATR_MULT + SMC_DRILLDOWN_CONFIDENCE_BASE not wired)
+- Day 8: All 6 params active in optimizer search space
+
+### Top 10 Holdout Results [CONFIRMED]
+
+| # | OOS PF | OOS Trades | Holdout PF | Holdout Trades | SL_WICK | ConfBase | MinConf | MinRR |
+|---|--------|------------|------------|----------------|---------|----------|---------|-------|
+| 1 | 15.42 | 5 | 0.00 | 1 | 0.30 | 0.50 | 0.80 | 2.50 |
+| 2 | 9.34 | 6 | 0.00 | 1 | 0.30 | 0.80 | 0.70 | 2.50 |
+| 3 | 7.28 | 7 | 0.00 | 1 | 0.30 | 0.50 | 0.45 | 2.50 |
+| 4 | 7.28 | 7 | 0.00 | 1 | 0.30 | 0.70 | 0.40 | 2.50 |
+| 5 | 2.43 | 52 | 0.54 | 13 | 0.30 | 0.60 | 0.75 | 2.00 |
+| 6 | 2.24 | 53 | 0.63 | 13 | 0.40 | 0.80 | 0.70 | 1.50 |
+| 7 | 2.20 | 62 | **0.98** | 15 | 0.60 | 0.70 | 0.70 | 2.00 |
+| 8 | 2.04 | 64 | 0.73 | 16 | 0.40 | 0.75 | 0.70 | 2.00 |
+| 9 | 1.80 | 53 | 0.82 | 13 | 0.30 | 0.65 | 0.80 | 2.00 |
+| 10 | 1.47 | 84 | 0.89 | 18 | 0.30 | 0.65 | 0.70 | 2.00 |
+
+**Best holdout PF = 0.98 (trial #7) — barely below breakeven. Zero trials exceed holdout PF 1.5.**
+
+### Comparison vs Days 6-7 [CONFIRMED]
+
+| Metric | Days 6-7 (4 params) | Day 8 (6 params) | Change |
+|--------|---------------------|------------------|--------|
+| Best holdout PF | 1.02 | 0.98 | -0.04 (worse) |
+| Valid trials | 75/200 | 76/200 | +1 |
+| OOS PF variance | 0.089 | 4.56 | ↑↑ (more spread — new params create more variance) |
+| Plateau detected | false | false | Same |
+| Zero trials > 1.5 holdout | ✅ | ✅ | Same |
+
+### New Param Sensitivity [CONFIRMED]
+
+- **SL_WICK_ATR_MULT**: Optimizer consistently selects 0.30-0.40 (tight stops). High OOS PF achievable with tight stops, but holdout still collapses. No holdout improvement from this param.
+- **SMC_DRILLDOWN_CONFIDENCE_BASE**: Scattered across 0.50-0.80, no clear optimum. Wide range produces similar results → param has no meaningful effect on holdout.
+
+### Final Verdict [CONFIRMED]
+
+**❌ Strategy logic has a ceiling. Parameter optimization is exhausted.**
+
+After wiring all 6 params with fresh 15m signals (post-hotfix), the holdout PF ceiling is ~1.0. Adding 2 more knobs marginally hurt performance (1.02 → 0.98). This eliminates the last "maybe we didn't try enough knobs" hypothesis.
+
+**Root cause confirmed:** This is a strategy structure problem, not a search problem:
+1. Too few trades per window (15-18 holdout trades → high variance, noise dominates)
+2. 4H POI → 15m CHoCH drill-down fires rarely, especially in holdout period
+3. High OOS PF always from tiny-trade-count trials (5-7 trades) → pure luck, collapses on holdout
+
+**Decision: Move to strategy review (next steps 3-4 from Days 6-7 recommendations)**
+- Evaluate adding 1H same-TF signals for more trade frequency
+- Consider Approach B (algo-trading-bot cherry-pick) for new signal sources
+- Or accept breakeven strategy + improve execution (position sizing, portfolio management)
