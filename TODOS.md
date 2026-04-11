@@ -20,19 +20,23 @@ Items deferred from CEO/Eng reviews. Priority: P1 (do next), P2 (soon), P3 (some
 **Depends on:** D+E+F run results
 **Added by:** CEO Review 2026-04-11
 
-### [P2] Debug Drilldown Cascade — Why does 4H→15m→5m fire zero times?
+### [DONE] Debug Drilldown Cascade — Why does 4H→15m→5m fire zero times?
 
-**What:** Add diagnostic logging to count how many 4H POIs are registered (scan4hPOI), how many 15m confirmations happen (scan15mConfirm), and how many 5m entries trigger (scan5mMicroEntry). Identify where the cascade stalls.
+**Status:** DIAGNOSED 2026-04-12. Root cause: 5m FVG-only entry requirement (8,703 kills), CHoCH gate (1,293 kills), short TTL (907 expirations). See `docs/plan/decisions.md` "Drilldown Cascade Diagnostic Results".
 
-**Why:** The drilldown path is designed for 10:1-40:1 R:R entries (4H structure + 15m confirmation + 5m precision). If it can be made to fire, it's higher quality than any 1H same-TF signal. Across 10 coins in the optimizer, it produced exactly zero trades — either the 4H breaks are too rare, the 15m confirmation window is too narrow, or the 5m FVG-only entry requirement is too strict.
+**Diagnostic tool:** `src/backtest/run-drilldown-diag.ts`
 
-**How to start:** Instrument `scan4hPOI`, `scan15mConfirm`, and `scan5mMicroEntry` with counters. Run single-trial optimizer on 10 coins and analyze where the cascade drops to zero.
+### [P1] Fix Drilldown 5m Entry Bottleneck — Unblock 4H→15m→5m cascade
 
-**Trigger:** After scan1hSameTF 5-fix diagnostic. If 1H holdout PF still < 1.1, promote this to P1.
+**What:** Implement 4 fixes to the 5m micro-entry stage: (F1) allow displacement bounce as FVG fallback, (F2) relax CHoCH-only requirement, (F3) extend confirmed POI TTL to 4h, (F4) extend FVG lookback to 10 bars. Then run optimizer to validate.
 
-**Effort:** S (1-2 days instrumentation + analysis)
-**Depends on:** scan1hSameTF fix results
-**Added by:** Eng Review 2026-04-12 (outside voice recommendation)
+**Why:** Diagnostic showed 649K POIs → 11,667 confirmations → 27 signals → 0 trades. 5m entry is the sole bottleneck. Drilldown R:R (10:1-40:1) is the highest-value path in the strategy.
+
+**How to start:** Apply F1-F4 in order (see decisions.md for details), run optimizer after each to measure impact.
+
+**Effort:** S (1-2 sessions)
+**Depends on:** Drilldown diagnostic (DONE)
+**Added by:** Drilldown diagnostic session 2026-04-12
 
 ### [P3] Investigate Multiplicative Confidence Scoring Model
 

@@ -102,6 +102,64 @@ interface ConfirmedPOI extends HtfPOI {
 
 const confirmedPOIs = new Map<string, ConfirmedPOI[]>()
 
+// ── Drilldown cascade diagnostics ──────────────────────────────────────────
+
+export interface DrilldownDiagnostics {
+  // 4H stage
+  scan4h_calls: number
+  scan4h_no_break: number
+  scan4h_no_zones: number
+  scan4h_pois_registered: number
+  scan4h_swing_signals: number
+  // 15m stage
+  scan15m_calls: number
+  scan15m_no_htf_pois: number
+  scan15m_pois_expired: number
+  scan15m_pois_checked: number
+  scan15m_not_at_zone: number
+  scan15m_no_confirm_break: number
+  scan15m_already_confirmed: number
+  scan15m_confirmed: number
+  scan15m_scalp_signals: number
+  // 5m stage
+  scan5m_calls: number
+  scan5m_no_confirmed_pois: number
+  scan5m_pois_expired: number
+  scan5m_not_at_zone: number
+  scan5m_no_fvg: number
+  scan5m_body_rejected: number
+  scan5m_sl_too_wide: number
+  scan5m_sl_too_tight: number
+  scan5m_require_choch_fail: number
+  scan5m_rr_too_low: number
+  scan5m_confidence_too_low: number
+  scan5m_signals: number
+}
+
+const diag: DrilldownDiagnostics = {
+  scan4h_calls: 0, scan4h_no_break: 0, scan4h_no_zones: 0,
+  scan4h_pois_registered: 0, scan4h_swing_signals: 0,
+  scan15m_calls: 0, scan15m_no_htf_pois: 0, scan15m_pois_expired: 0,
+  scan15m_pois_checked: 0, scan15m_not_at_zone: 0,
+  scan15m_no_confirm_break: 0, scan15m_already_confirmed: 0,
+  scan15m_confirmed: 0, scan15m_scalp_signals: 0,
+  scan5m_calls: 0, scan5m_no_confirmed_pois: 0, scan5m_pois_expired: 0,
+  scan5m_not_at_zone: 0, scan5m_no_fvg: 0,
+  scan5m_body_rejected: 0, scan5m_sl_too_wide: 0, scan5m_sl_too_tight: 0,
+  scan5m_require_choch_fail: 0, scan5m_rr_too_low: 0,
+  scan5m_confidence_too_low: 0, scan5m_signals: 0,
+}
+
+export function getDrilldownDiagnostics(): DrilldownDiagnostics {
+  return { ...diag }
+}
+
+export function resetDrilldownDiagnostics(): void {
+  for (const key of Object.keys(diag) as (keyof DrilldownDiagnostics)[]) {
+    diag[key] = 0
+  }
+}
+
 // ── Killzone helper ─────────────────────────────────────────────────────────
 
 function getKillzoneBonus(timestampMs: number): { inKillzone: boolean; bonus: number; name: string } {
@@ -218,13 +276,14 @@ export class SmcSdStrategy implements IStrategy {
   // ═══════════════════════════════════════════════════════════════════════════
 
   private scan4hPOI(coin: string, candles: Candle[], idx: number, strategyParams?: StrategyParams): Signal | null {
+    diag.scan4h_calls++
     const atrVal = atr(candles, idx, 14)
     if (isNaN(atrVal) || atrVal <= 0) return null
     const tol = atrVal * SMC_PRICE_TOLERANCE_ATR_MULT
 
     const breaks = detectStructureBreaks(candles, idx, { tolerance: tol })
     const recentBreak = breaks.filter(b => idx - b.index <= SMC_BREAK_LOOKBACK).at(-1)
-    if (!recentBreak) return null
+    if (!recentBreak) { diag.scan4h_no_break++; return null }
 
     const direction = recentBreak.direction
     const { demandZones, supplyZones } = compileKeyZones(candles, idx, tol)
@@ -247,7 +306,7 @@ export class SmcSdStrategy implements IStrategy {
       .filter(z => idx - z.createdAtIdx <= ZONE_MAX_AGE && z.strength >= SMC_MIN_ZONE_STRENGTH)
       .sort((a, b) => b.strength - a.strength)
       .slice(0, SMC_DRILLDOWN_MAX_POIS)
-    if (zones.length === 0) return null
+    if (zones.length === 0) { diag.scan4h_no_zones++; return null }
 
     const nowMs = candles[idx]!.t
     const newPOIs: HtfPOI[] = zones.map(z => ({
@@ -258,6 +317,7 @@ export class SmcSdStrategy implements IStrategy {
 
     const existing = (htfPOIs.get(coin) ?? []).filter(p => nowMs - p.createdAtMs < SMC_HTF_POI_TTL_MS)
     htfPOIs.set(coin, [...existing, ...newPOIs].slice(-SMC_DRILLDOWN_MAX_POIS))
+    diag.scan4h_pois_registered += newPOIs.length
 
     // ── 4h SWING SIGNAL: emit if price is currently AT a zone ─────────────
     if (SMC_4H_SWING_ENABLED) {
@@ -327,6 +387,7 @@ export class SmcSdStrategy implements IStrategy {
         if (isDuplicateSignal(dedupKey, idx, entry, z.top, z.bottom)) continue
         recordSignal(dedupKey, idx, z.top, z.bottom)
 
+        diag.scan4h_swing_signals++
         return {
           type: 'smc-sd', side,
           confidence: Math.min(confidence, 1),
@@ -350,6 +411,7 @@ export class SmcSdStrategy implements IStrategy {
   // ═══════════════════════════════════════════════════════════════════════════
 
   private scan15mConfirm(coin: string, candles: Candle[], idx: number, strategyParams?: StrategyParams): Signal | null {
+    diag.scan15m_calls++
     const candle = candles[idx]!
     const nowMs = candle.t
     const atrVal = atr(candles, idx, 14)
@@ -358,39 +420,44 @@ export class SmcSdStrategy implements IStrategy {
 
     // ── Part 1: POI Confirmation (for 5m micro-entry) ──────────────────
     const pois = htfPOIs.get(coin)
-    if (pois && pois.length > 0) {
+    if (!pois || pois.length === 0) {
+      diag.scan15m_no_htf_pois++
+    } else {
       const activePOIs = pois.filter(p => nowMs - p.createdAtMs < SMC_HTF_POI_TTL_MS)
+      diag.scan15m_pois_expired += pois.length - activePOIs.length
       htfPOIs.set(coin, activePOIs)
 
       for (const poi of activePOIs) {
+        diag.scan15m_pois_checked++
         const poiZone: KeyZone = {
           type: poi.direction === 'bullish' ? 'demand' : 'supply',
           top: poi.zoneTop, bottom: poi.zoneBottom,
           strength: poi.strength, origin: poi.zoneOrigin, createdAtIdx: 0,
         }
         const prox = isAtZone(candle, poiZone, atrVal)
-        if (!prox.atZone) continue
+        if (!prox.atZone) { diag.scan15m_not_at_zone++; continue }
 
         const confirmBreak = findConfirmingBreak(candles, idx, SMC_LTF_CHOCH_LOOKBACK, poi.direction, tol)
-        if (!confirmBreak) continue
+        if (!confirmBreak) { diag.scan15m_no_confirm_break++; continue }
 
         const existing = confirmedPOIs.get(coin) ?? []
         const alreadyConfirmed = existing.some(cp =>
           Math.abs(cp.zoneTop - poi.zoneTop) < atrVal * 0.1 &&
           Math.abs(cp.zoneBottom - poi.zoneBottom) < atrVal * 0.1
         )
-        if (!alreadyConfirmed) {
-          const pool = existing.filter(p => nowMs - p.confirmedAtMs < SMC_CONFIRMED_POI_TTL_MS)
-          const fresh: ConfirmedPOI = { ...poi, confirmedAtMs: nowMs, ltfBreakKind: confirmBreak.kind }
-          confirmedPOIs.set(coin, [...pool, fresh].slice(-SMC_CONFIRMED_POI_MAX))
+        if (alreadyConfirmed) { diag.scan15m_already_confirmed++; continue }
 
-          // ── 15m SCALP SIGNAL: emit on fresh confirmation ─────────────────
-          // 4h POI + 15m CHoCH = dual-TF confirmation → emit scalp signal now.
-          // TP uses 15m structure targets (realistic for scalp, not 4h range).
-          if (SMC_15M_SCALP_ENABLED) {
-            const scalpSignal = this.emit15mScalpSignal(coin, candles, idx, fresh, atrVal, tol, strategyParams)
-            if (scalpSignal) return scalpSignal
-          }
+        const pool = existing.filter(p => nowMs - p.confirmedAtMs < SMC_CONFIRMED_POI_TTL_MS)
+        const fresh: ConfirmedPOI = { ...poi, confirmedAtMs: nowMs, ltfBreakKind: confirmBreak.kind }
+        confirmedPOIs.set(coin, [...pool, fresh].slice(-SMC_CONFIRMED_POI_MAX))
+        diag.scan15m_confirmed++
+
+        // ── 15m SCALP SIGNAL: emit on fresh confirmation ─────────────────
+        // 4h POI + 15m CHoCH = dual-TF confirmation → emit scalp signal now.
+        // TP uses 15m structure targets (realistic for scalp, not 4h range).
+        if (SMC_15M_SCALP_ENABLED) {
+          const scalpSignal = this.emit15mScalpSignal(coin, candles, idx, fresh, atrVal, tol, strategyParams)
+          if (scalpSignal) { diag.scan15m_scalp_signals++; return scalpSignal }
         }
       }
     }
@@ -584,15 +651,16 @@ export class SmcSdStrategy implements IStrategy {
   // ═══════════════════════════════════════════════════════════════════════════
 
   private scan5mMicroEntry(coin: string, candles: Candle[], idx: number, context?: StrategyContext, strategyParams?: StrategyParams): Signal | null {
+    diag.scan5m_calls++
     const pool = confirmedPOIs.get(coin)
-    if (!pool || pool.length === 0) return null
+    if (!pool || pool.length === 0) { diag.scan5m_no_confirmed_pois++; return null }
 
     const candle = candles[idx]!
     const nowMs = candle.t
 
     // Expire stale confirmed POIs
     const active = pool.filter(p => nowMs - p.confirmedAtMs < SMC_CONFIRMED_POI_TTL_MS)
-    if (active.length === 0) { confirmedPOIs.set(coin, []); return null }
+    if (active.length === 0) { diag.scan5m_pois_expired++; confirmedPOIs.set(coin, []); return null }
     confirmedPOIs.set(coin, active)
 
     const atrVal = atr(candles, idx, 14)
@@ -610,7 +678,7 @@ export class SmcSdStrategy implements IStrategy {
       const prox = isAtZone(candle, poiZone, atrVal)
       if (prox.atZone) { bestPOI = poi; break }
     }
-    if (!bestPOI) return null
+    if (!bestPOI) { diag.scan5m_not_at_zone++; return null }
 
     const side: SignalSide = bestPOI.direction === 'bullish' ? 'long' : 'short'
 
@@ -635,12 +703,12 @@ export class SmcSdStrategy implements IStrategy {
 
     // 5m: FVG only. Wick/displacement entries are noise on 5m micro-TF.
     // ICT: after 15m CHoCH, the first 5m FVG IS the entry — nothing else.
-    if (!isBounce) return null
+    if (!isBounce) { diag.scan5m_no_fvg++; return null }
 
     // Body quality
     const bodySize = Math.abs(candle.c - candle.o)
     const candleRange = candle.h - candle.l
-    if (candleRange > 0 && bodySize / candleRange < SMC_MIN_BODY_RATIO) return null
+    if (candleRange > 0 && bodySize / candleRange < SMC_MIN_BODY_RATIO) { diag.scan5m_body_rejected++; return null }
 
     // ── C. MIXED-TF SL/TP ─────────────────────────────────────────────
     const entry = candle.c
@@ -660,14 +728,14 @@ export class SmcSdStrategy implements IStrategy {
     // TP: 4h structure targets — context.htfCandles = 1h (HTF_MAP['5m']='1h')
     // For 4h targets, compute from POI break level + risk-based fallback
     const risk = Math.abs(entry - sl)
-    if (risk <= 0 || risk / entry > MAX_TRADE_SL_PCT) return null
+    if (risk <= 0 || risk / entry > MAX_TRADE_SL_PCT) { diag.scan5m_sl_too_wide++; return null }
 
     // P3-B: Minimum SL distance — ultra-tight stops are noise on 5m
     const slPct = risk / entry
-    if (slPct < SMC_5M_MIN_SL_PCT) return null
+    if (slPct < SMC_5M_MIN_SL_PCT) { diag.scan5m_sl_too_tight++; return null }
 
     // P3-B: Require 15m CHoCH confirmation (not just BOS)
-    if (SMC_5M_REQUIRE_15M_CHOCH && bestPOI.ltfBreakKind !== 'choch') return null
+    if (SMC_5M_REQUIRE_15M_CHOCH && bestPOI.ltfBreakKind !== 'choch') { diag.scan5m_require_choch_fail++; return null }
 
     const dir = side === 'long' ? 1 : -1
     let tp1: number
@@ -689,7 +757,7 @@ export class SmcSdStrategy implements IStrategy {
 
     // R:R check
     const reward = Math.abs(tp1 - entry)
-    if (reward / risk < SMC_5M_MIN_RR) return null
+    if (reward / risk < SMC_5M_MIN_RR) { diag.scan5m_rr_too_low++; return null }
 
     // ── D. CONFIDENCE ──────────────────────────────────────────────────
     let confidence = strategyParams?.SMC_DRILLDOWN_CONFIDENCE_BASE ?? SMC_5M_CONFIDENCE_BASE
@@ -733,7 +801,7 @@ export class SmcSdStrategy implements IStrategy {
     // P2: weekend low-volume discount
     confidence *= getWeekendMultiplier(candle.t, candles, idx)
 
-    if (confidence < (strategyParams?.MIN_CONFIDENCE ?? MIN_CONFIDENCE)) return null
+    if (confidence < (strategyParams?.MIN_CONFIDENCE ?? MIN_CONFIDENCE)) { diag.scan5m_confidence_too_low++; return null }
 
     // ── E. DEDUP + SIGNAL (zone-aware) ────────────────────────────────
     const dedupKey = `${coin}|5m`
@@ -743,6 +811,7 @@ export class SmcSdStrategy implements IStrategy {
     // Remove consumed confirmed POI
     const remaining = (confirmedPOIs.get(coin) ?? []).filter(p => p !== bestPOI)
     confirmedPOIs.set(coin, remaining)
+    diag.scan5m_signals++
 
     return {
       type: 'smc-sd', side,
@@ -931,5 +1000,6 @@ export class SmcSdStrategy implements IStrategy {
     lastSignalState.clear()
     htfPOIs.clear()
     confirmedPOIs.clear()
+    // Note: do NOT reset diagnostics here — they accumulate across walk-forward windows
   }
 }

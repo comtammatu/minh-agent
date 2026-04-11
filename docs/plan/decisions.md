@@ -1043,3 +1043,86 @@ export const SMC_1H_MIN_ADX = 20
 - 1H trade volume collapsed (expected — 1H was 100% of trades, now heavily filtered)
 - Hard stop rule: trades < 40 → inconclusive, need multi-trial run to evaluate
 - **Next step**: Run 200-trial optimizer to check if 1H trades survive with better quality. If holdout PF < 1.1 with 40+ trades → escalate to P2 (drilldown debug)
+
+---
+
+## Drilldown Cascade Diagnostic Results (2026-04-12)
+
+### Context
+Skipped Option A (200-trial optimizer) per owner recommendation — 1-trial showed trades=1, 200 trials unlikely to produce ≥40 trades. Went directly to Option B: diagnose why 4H→15m→5m drilldown fires zero times.
+
+### Methodology
+Added diagnostic counters to all three drilldown stages (`scan4hPOI`, `scan15mConfirm`, `scan5mMicroEntry`) counting every rejection reason. Ran 1-trial walk-forward on all data (10 coins, ~840K candles) with default params. Diagnostic script: `src/backtest/run-drilldown-diag.ts`.
+
+### Cascade Funnel
+
+```
+4H POIs registered: 649,489
+     ↓ (1.8% conversion)
+15m confirmed:      11,667
+     ↓ (0.23% conversion)
+5m signals:         27
+     ↓ (all filtered by downstream)
+Trades:             0 drilldown trades (167 total, all 1h_same_tf)
+```
+
+### Stage-by-Stage Analysis
+
+#### 4H Stage — HEALTHY
+- 148,860 calls → 649,489 POIs registered
+- 50.4% no structure break (normal — not every bar has BOS/CHoCH)
+- 0% no zones (every break has associated zones — good)
+- 10,861 swing signals emitted (4H swing path works well)
+- **Verdict: 4H POI registration works. Not the bottleneck.**
+
+#### 15M Stage — HEALTHY
+- 797,510 calls
+- 43.7% no HTF POIs available (expected — 4H breaks are intermittent)
+- 4,441,838 POI-checks performed
+- 90.3% not at zone (price not near registered 4H POI — normal)
+- 7.1% no confirming break within 5 bars (SMC_LTF_CHOCH_LOOKBACK=5)
+- 11,667 confirmed POIs (1.8% of registered — reasonable)
+- 254 scalp signals (15m scalp path works)
+- **Verdict: 15m confirmation works. Not the bottleneck.**
+
+#### 5M Stage — BOTTLENECK [CONFIRMED]
+- 188,510 calls
+- 90.4% no confirmed POIs available
+- **8,703 rejections: No FVG found** ← PRIMARY BOTTLENECK
+  - 5m price is AT the confirmed zone, but no FVG detected within SMC_5M_FVG_LOOKBACK=5 bars
+  - FVG-only entry requirement is extremely strict on 5m timeframe
+- **1,293 rejections: Require 15m CHoCH fail** ← SECONDARY BOTTLENECK
+  - BOS-confirmed POIs blocked by SMC_5M_REQUIRE_15M_CHOCH=true
+- 907 expirations: Confirmed POI TTL = 1.5h (only ~18 bars of 5m) ← TERTIARY ISSUE
+- 794 body quality rejections
+- 190 SL too tight (SMC_5M_MIN_SL_PCT=0.004)
+- 123 R:R too low
+- 36 confidence too low
+- 27 signals survived all filters — but these were likely consumed by dedup or occurred on test windows with zero fills
+
+### Root Causes (ranked by impact)
+
+1. **5m FVG-only entry (8,703 kills)**: `detectFVG` requires a 3-candle gap (candle[i-2].low > candle[i].high or vice versa). On 5m crypto, FVGs form rarely — small bars don't create gaps. The ICT model assumes FVGs are the entry mechanism, but on 5m crypto the price action is too noisy for clean gaps. `SMC_5M_FVG_LOOKBACK=5` bars = only 25 minutes to find an FVG.
+
+2. **CHoCH-only confirmation gate (1,293 kills)**: `SMC_5M_REQUIRE_15M_CHOCH=true` blocks all BOS-confirmed POIs. In 15m, BOS is more common than CHoCH. This filter alone kills ~14% of the 5m candidates that pass the zone check.
+
+3. **Confirmed POI TTL too short (907 expirations)**: `SMC_CONFIRMED_POI_TTL_MS=1.5h` = 18 bars of 5m. If price revisits the zone even 2 hours after confirmation, the POI is already dead.
+
+### Proposed Fixes (for next session)
+
+| Fix | Change | Expected Impact |
+|-----|--------|-----------------|
+| F1: Allow displacement entry on 5m | Add displacement bounce as fallback when no FVG found | Recovers ~8,703 candidates → ~500-1000 signals |
+| F2: Relax CHoCH requirement | Set `SMC_5M_REQUIRE_15M_CHOCH=false` | Recovers ~1,293 candidates |
+| F3: Extend confirmed POI TTL | `SMC_CONFIRMED_POI_TTL_MS: 1.5h → 4h` | Recovers ~907 expirations |
+| F4: Extend FVG lookback | `SMC_5M_FVG_LOOKBACK: 5 → 10` bars (50 min) | Wider search window for FVGs |
+
+**Recommended order**: F1 → F4 → F3 → F2 (most impactful first, preserve quality filters as long as possible).
+
+**Risk**: Loosening 5m filters may increase noise. Need optimizer validation after fixes.
+
+### Assessment
+- [CONFIRMED] 4H and 15m stages work correctly — cascade stalls at 5m
+- [CONFIRMED] Primary bottleneck is 5m FVG-only entry requirement
+- [CONFIRMED] 27 signals survived filters but zero drilldown trades in OOS
+- [UNCERTAIN] Whether loosening 5m filters will produce profitable trades (need optimizer run after fixes)
