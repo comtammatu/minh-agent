@@ -194,7 +194,7 @@ export async function getDailySummary(date: Date): Promise<DailySummary> {
 
 /**
  * Same as {@link getDailySummary} but for a calendar date in an IANA timezone (e.g. Asia/Ho_Chi_Minh).
- * `dateYmd` must be `YYYY-MM-DD`. Used for Telegram đầu/cuối ngày reports.
+ * `dateYmd` must be `YYYY-MM-DD`. Used for Telegram morning/evening reports.
  */
 export async function getDailySummaryForLocalDate(dateYmd: string, timeZone: string): Promise<DailySummary> {
   const exitRows = await sql<{

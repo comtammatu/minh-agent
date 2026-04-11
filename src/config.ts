@@ -952,7 +952,7 @@ export const TELEGRAM_BOT = {
   /** /closeall confirmation timeout (seconds). User must /confirm within this window. */
   closeallConfirmTimeoutSec: 30,
   /**
-   * IANA timezone for đầu ngày / cuối ngày reports (journal stats use local calendar day).
+   * IANA timezone for morning/evening daily reports (journal stats use local calendar day).
    * Default UTC. Example: `Asia/Ho_Chi_Minh`.
    */
   reportTimezone: process.env.TELEGRAM_REPORT_TZ?.trim() || 'UTC',

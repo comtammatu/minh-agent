@@ -504,13 +504,13 @@ function paperHandler(args: string): string {
     setPaperTradeRuntimeOverride(false)
     return [
       `Paper trade: *OFF* \\(live execution\\)\\.`,
-      `⚠️ Đảm bảo bạn hiểu rủi ro trước khi giao dịch thật\\.`,
-      `Dùng \\/paper reset để trở lại theo env\\.`,
+      `⚠️ Đảm bảo bạn hiểu rủi ro trước khi giao dịch thực\\.`,
+      `Dùng \\/paper reset để khôi phục cài đặt theo env\\.`,
     ].join('\n')
   }
   if (a === 'reset' || a === 'env') {
     setPaperTradeRuntimeOverride(null)
-    return `Đã xóa override\\. Env: *${esc(PAPER_TRADE ? 'PAPER' : 'LIVE')}*\\.`
+    return `Đã hủy override\\. Env: *${esc(PAPER_TRADE ? 'PAPER' : 'LIVE')}*\\.`
   }
   const ov = getPaperTradeRuntimeOverride()
   return [

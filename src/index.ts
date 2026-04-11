@@ -92,7 +92,7 @@ import { getPositionMonitor, queryExchangePositions } from './agent/position-mon
 import { getInvalidationBridge } from './agent/invalidation-bridge.js'
 import { startBot, stopBot, formatAlert, sendTelegramAlert } from './alert/telegram/index.js'
 import { connectToAgent as connectMetrics } from './analytics/metrics-service.js'
-import { getStrategyRegistry } from './strategy/registry.js'
+import { getStrategyRegistry, resetStrategyRegistry } from './strategy/registry.js'
 import { SmcSdStrategy } from './strategy/strategies/smc-sd/index.js'
 import type { CandleInterval } from './types.js'
 
@@ -728,6 +728,7 @@ async function cleanup(): Promise<void> {
     closeAllBybitTrades()
     closeAllBybitTicker()
   }
+  resetStrategyRegistry()
 }
 
 /** Run main() with exponential backoff reconnection on failure. */

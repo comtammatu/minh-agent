@@ -370,7 +370,7 @@ export function formatDailySummary(summary: {
   ].join('\n')
 }
 
-/** HTML daily summary for scheduled đầu/cuối ngày reports. */
+/** HTML daily summary for scheduled morning/evening reports. */
 export function formatDailySummaryHtml(
   title: string,
   summary: {
