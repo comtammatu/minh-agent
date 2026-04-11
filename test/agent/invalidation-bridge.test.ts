@@ -13,7 +13,7 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
     id: 'layered:BTC|1h|order-block',
     coin: 'BTC',
     interval: '1h',
-    type: 'order-block',
+    type: 'smc-sd',
     side: 'long',
     confidence: 0.75,
     entryPrice: 50000,
@@ -25,7 +25,7 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
     expiresAtBar: 120,
     confluenceGrade: 'B',
     confluenceCount: 4,
-    strategyId: 'layered',
+    strategyId: 'smc-sd',
     ...overrides,
   }
 }
@@ -33,7 +33,7 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
 describe('parseCoinFromSetupId', () => {
   it('parses coin from modern setupId format strategyId:COIN|interval|type', () => {
     expect(parseCoinFromSetupId('layered:BTC|1h|order-block')).toBe('BTC')
-    expect(parseCoinFromSetupId('quant:ETH|15m|ema-rsi')).toBe('ETH')
+    expect(parseCoinFromSetupId('alpha:ETH|15m|smc-sd')).toBe('ETH')
     expect(parseCoinFromSetupId('smc-sd:1000PEPE|1h|smc-sd')).toBe('1000PEPE')
   })
 
@@ -50,7 +50,7 @@ describe('parseCoinFromSetupId', () => {
 
 describe('parseStrategyFromSetupId', () => {
   it('returns strategy id for modern format', () => {
-    expect(parseStrategyFromSetupId('quant:BTC|1h|ema-rsi')).toBe('quant')
+    expect(parseStrategyFromSetupId('alpha:BTC|1h|smc-sd')).toBe('alpha')
     expect(parseStrategyFromSetupId('smc-sd:1000PEPE|1h|smc-sd')).toBe('smc-sd')
   })
 
@@ -72,17 +72,17 @@ describe('InvalidationBridge.onInvalidation', () => {
 
   it('dispatches setup_invalidated to the correct strategy when setupId matches', () => {
     // Put both strategies into ENTERING with distinct setup ids
-    const layeredSetup = makeSetup({ id: 'layered:BTC|1h|order-block', strategyId: 'layered' })
-    const quantSetup = makeSetup({ id: 'quant:BTC|1h|ema-rsi', type: 'ema-rsi', strategyId: 'quant' })
+    const layeredSetup = makeSetup({ id: 'layered:BTC|1h|order-block', strategyId: 'smc-sd' })
+    const quantSetup = makeSetup({ id: 'alpha:BTC|1h|smc-sd', type: 'smc-sd', strategyId: 'alpha' })
 
-    agent.dispatch('BTC', { type: 'setup_detected', setup: layeredSetup }, 'layered')
-    agent.dispatch('BTC', { type: 'setup_detected', setup: quantSetup }, 'quant')
+    agent.dispatch('BTC', { type: 'setup_detected', setup: layeredSetup }, 'smc-sd')
+    agent.dispatch('BTC', { type: 'setup_detected', setup: quantSetup }, 'alpha')
 
     // Invalidate quant only
-    bridge.onInvalidation('quant:BTC|1h|ema-rsi', 'expired', agent)
+    bridge.onInvalidation('alpha:BTC|1h|smc-sd', 'expired', agent)
 
-    expect(agent.getCoinState('BTC', 'quant')).toBe('IDLE')
-    expect(agent.getCoinState('BTC', 'layered')).toBe('ENTERING')
+    expect(agent.getCoinState('BTC', 'alpha')).toBe('IDLE')
+    expect(agent.getCoinState('BTC', 'smc-sd')).toBe('ENTERING')
   })
 })
 

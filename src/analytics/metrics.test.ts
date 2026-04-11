@@ -157,7 +157,7 @@ describe('aggregatePatterns', () => {
   it('converts rows to PatternMetric with computed winRate', () => {
     const rows: PatternPerfRow[] = [
       { week: new Date(), patternType: 'ob', signalGrade: 'A', trades: 10, wins: 7, totalPnl: 500, avgPnl: 50 },
-      { week: new Date(), patternType: 'fvg', signalGrade: 'B', trades: 5, wins: 2, totalPnl: -100, avgPnl: -20 },
+      { week: new Date(), patternType: 'smc-sd', signalGrade: 'B', trades: 5, wins: 2, totalPnl: -100, avgPnl: -20 },
     ]
     const result = aggregatePatterns(rows)
 
@@ -165,7 +165,7 @@ describe('aggregatePatterns', () => {
     // Sorted by totalPnl DESC
     expect(result[0]!.patternType).toBe('ob')
     expect(result[0]!.winRate).toBe(0.7)
-    expect(result[1]!.patternType).toBe('fvg')
+    expect(result[1]!.patternType).toBe('smc-sd')
     expect(result[1]!.winRate).toBe(0.4)
   })
 

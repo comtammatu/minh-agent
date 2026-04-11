@@ -15,11 +15,10 @@ import type {
 } from '../types.js'
 import { appendCandle, getCandles } from '../feed/store.js'
 import { getStrategyRegistry, type StrategyRegistry } from './registry.js'
-import { clearQuantState } from './strategies/quant/pipeline.js'
 import { computeExpiresAtBar, setupId } from './shared/invalidation.js'
 import { getOrCreateStats, resetPipelineStats } from './diagnostics.js'
 import { detectRegime } from '../indicators/core.js'
-import { determineBias } from './strategies/layered/layers/bias.js'
+import { determineBias } from './shared/bias.js'
 import { findPivots } from '../indicators/smc.js'
 import {
   MIN_CANDLES_FOR_SCAN,
@@ -253,7 +252,7 @@ export function clearCoinState(coin: string): void {
 
 /**
  * Clear pipeline state. If strategyId given, clear only that strategy's stats.
- * Without strategyId, clears everything (all setups, status, timestamps, stats, quant state).
+ * Without strategyId, clears everything (all setups, status, timestamps, stats).
  */
 export function clearPipelineState(strategyId?: string): void {
   if (strategyId) {
@@ -262,29 +261,16 @@ export function clearPipelineState(strategyId?: string): void {
       if (id.startsWith(`${strategyId}:`)) activeSetups.delete(id)
     }
     resetPipelineStats(strategyId)
-    if (strategyId === 'quant') clearQuantState()
   } else {
     // Full clear
     activeSetups.clear()
     statusState.clear()
     lastCandleTs.clear()
     resetPipelineStats()
-    clearQuantState()
   }
 }
 
 // ── Aliases for StrategyRegistry adapter (Sprint 4.5) ────────────────────────
-
-/** Clear layered pipeline state only (not quant/smc-sd). Used by LayeredStrategyAdapter. */
-export function clearLayeredState(): void {
-  // Only delete setups belonging to the layered strategy
-  for (const k of activeSetups.keys()) {
-    if (k.startsWith('layered:')) activeSetups.delete(k)
-  }
-  statusState.clear()
-  lastCandleTs.clear()
-  resetPipelineStats('layered')
-}
 
 // ── Internals used by pipeline.ts ────────────────────────────────────────────
 

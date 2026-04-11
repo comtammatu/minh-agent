@@ -16,8 +16,6 @@ import { walkForward } from './walk-forward.js'
 import { formatExpectancyReport, formatMetricsSummary } from './report.js'
 import { formatPipelineStats } from '../strategy/diagnostics.js'
 import { getStrategyRegistry } from '../strategy/registry.js'
-import { LayeredStrategyAdapter } from '../strategy/strategies/layered/index.js'
-import { QuantStrategyAdapter } from '../strategy/strategies/quant/index.js'
 import { SmcSdStrategy } from '../strategy/strategies/smc-sd/index.js'
 import {
   BACKTEST_SLIPPAGE_PCT,
@@ -248,13 +246,13 @@ function runStrategyBacktest(
 
 async function main() {
   const registry = getStrategyRegistry()
-  try { registry.register(new LayeredStrategyAdapter()) } catch { /* already registered */ }
-  try { registry.register(new QuantStrategyAdapter()) } catch { /* already registered */ }
+  
+  
   try { registry.register(new SmcSdStrategy()) } catch { /* already registered */ }
 
   const arg = process.argv[2] ?? 'smc-sd'
   const strategies: StrategyType[] = arg === 'all'
-    ? ['layered', 'quant', 'smc-sd']
+    ? ['smc-sd']
     : [arg as StrategyType]
 
   console.log('='.repeat(60))

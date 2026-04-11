@@ -16,8 +16,6 @@ import { walkForward } from './walk-forward.js'
 import { formatExpectancyReport, formatMetricsSummary } from './report.js'
 import { formatPipelineStats } from '../strategy/diagnostics.js'
 import { getStrategyRegistry } from '../strategy/registry.js'
-import { LayeredStrategyAdapter } from '../strategy/strategies/layered/index.js'
-import { QuantStrategyAdapter } from '../strategy/strategies/quant/index.js'
 import { SmcSdStrategy } from '../strategy/strategies/smc-sd/index.js'
 import {
   BACKTEST_SLIPPAGE_PCT,
@@ -231,15 +229,15 @@ function runStrategyBacktest(
 async function main() {
   // Register strategies (required before engine can use them)
   const registry = getStrategyRegistry()
-  try { registry.register(new LayeredStrategyAdapter()) } catch { /* already registered */ }
-  try { registry.register(new QuantStrategyAdapter()) } catch { /* already registered */ }
+  
+  
   try { registry.register(new SmcSdStrategy()) } catch { /* already registered */ }
 
   // Default to smc-sd — the primary strategy under test.
   // Use 'all' to run layered + quant + smc-sd for comparison.
   const arg = process.argv[2] ?? 'smc-sd'
   const strategies: StrategyType[] = arg === 'all'
-    ? ['layered', 'quant', 'smc-sd']
+    ? ['smc-sd']
     : [arg as StrategyType]
 
   // Estimate fetch time (rough): 50 coins × avg 18 batches/TF × 4 TFs = ~3600 requests

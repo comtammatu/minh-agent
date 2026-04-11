@@ -25,7 +25,7 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
     id: 'BTC|1h|order-block|long',
     coin: 'BTC',
     interval: '1h',
-    type: 'order-block',
+    type: 'smc-sd',
     side: 'long',
     confidence: 0.75,
     entryPrice: 50000,
@@ -46,7 +46,7 @@ function makeCoinCtx(overrides: Partial<CoinContext> = {}): CoinContext {
   return {
     state: 'IDLE',
     coin: 'BTC',
-    strategyId: 'layered',
+    strategyId: 'smc-sd',
     activeSetup: null,
     pendingOrderId: null,
     positionId: null,
@@ -448,8 +448,8 @@ describe('TradingAgent', () => {
     agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup({ confluenceGrade: 'A' }) })
 
     const snap = agent.getSnapshot()
-    expect(snap.coins['BTC:layered']).toBeDefined()
-    expect(snap.coins['BTC:layered']!.state).toBe('ENTERING')
+    expect(snap.coins['BTC:smc-sd']).toBeDefined()
+    expect(snap.coins['BTC:smc-sd']!.state).toBe('ENTERING')
     expect(snap.global.dailyPnl).toBe(0)
     expect(snap.global.globalPaused).toBe(false)
     expect(typeof snap.global.uptime).toBe('number')
@@ -530,7 +530,7 @@ describe('TradingAgent', () => {
     )
     expect(agent.getCoinState('SOL')).toBe('IN_POSITION')
     const snap = agent.getSnapshot()
-    expect(snap.coins['SOL:layered']!.positionId).toContain('orphan')
+    expect(snap.coins['SOL:smc-sd']!.positionId).toContain('orphan')
   })
 
   // ── Circuit Breaker Integration (S11) ───────────────────────────────────
@@ -550,7 +550,7 @@ describe('TradingAgent', () => {
   it('checkCircuitBreakers does NOT pause IN_POSITION coins (R5)', () => {
     // Put BTC in IN_POSITION
     const btcCtx = (agent as unknown as { coins: Map<string, CoinContext> }).coins
-    btcCtx.set('BTC:layered', makeCoinCtx({ state: 'IN_POSITION', positionId: 'pos-1', coin: 'BTC' }))
+    btcCtx.set('BTC:smc-sd', makeCoinCtx({ state: 'IN_POSITION', positionId: 'pos-1', coin: 'BTC' }))
 
     // Put ETH in ENTERING
     agent.dispatch('ETH', { type: 'setup_detected', setup: makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', confluenceGrade: 'A' }) })
@@ -706,7 +706,7 @@ describe('TradingAgent — correlation guard', () => {
 
     // Put STX in ENTERING via internal state (same pattern as CB tests)
     const coinsMap = (agent as unknown as { coins: Map<string, CoinContext> }).coins
-    coinsMap.set('STX:layered', makeCoinCtx({ state: 'ENTERING', coin: 'STX', pendingOrderId: 'o2' }))
+    coinsMap.set('STX:smc-sd', makeCoinCtx({ state: 'ENTERING', coin: 'STX', pendingOrderId: 'o2' }))
 
     // ORDI blocked — BTC (IN_POSITION) + STX (ENTERING) = 2 in btc-ecosystem
     agent.onSetup(makeSetup({ coin: 'ORDI', id: 'ORDI|1h|ob|long', confluenceGrade: 'A' }))

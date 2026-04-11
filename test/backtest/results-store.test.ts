@@ -71,7 +71,7 @@ function makeTrade(overrides: Partial<BacktestTrade> = {}): BacktestTrade {
     coin: 'BTC',
     interval: '1h',
     side: 'long',
-    patternType: 'order-block',
+    patternType: 'smc-sd',
     confluenceGrade: 'B',
     entryPrice: 50000,
     exitPrice: 51000,
@@ -102,7 +102,7 @@ function makeResult(overrides: Partial<BacktestResult> = {}): BacktestResult {
       makeTrade({
         coin: 'ETH',
         side: 'short',
-        patternType: 'fvg',
+        patternType: 'smc-sd',
         confluenceGrade: 'A',
         entryPrice: 3000,
         exitPrice: 2900,
@@ -267,7 +267,7 @@ describe('results-store integration', () => {
     expect(loaded!.trades.length).toBe(result.trades.length)
     expect(loaded!.trades[0].coin).toBe('BTC')
     expect(loaded!.trades[0].side).toBe('long')
-    expect(loaded!.trades[0].patternType).toBe('order-block')
+    expect(loaded!.trades[0].patternType).toBe('smc-sd')
     expect(loaded!.trades[0].entryPrice).toBe(50000)
     expect(loaded!.trades[0].exitReason).toBe('tp_hit')
     expect(loaded!.trades[1].coin).toBe('ETH')

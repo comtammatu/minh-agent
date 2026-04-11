@@ -92,8 +92,8 @@ describe('ExchangePool', () => {
       const pool = new ExchangePool()
       await pool.init()
 
-      const layered = pool.get('layered')
-      const quant = pool.get('quant')
+      const layered = pool.get('smc-sd')
+      const quant = pool.get('alpha')
       const unknown = pool.get('unknown-strategy')
 
       // All return the same shared instance
@@ -117,8 +117,8 @@ describe('ExchangePool', () => {
     it('should report no dedicated wallets', async () => {
       const pool = new ExchangePool()
       await pool.init()
-      expect(pool.hasDedicatedWallet('layered')).toBe(false)
-      expect(pool.hasDedicatedWallet('quant')).toBe(false)
+      expect(pool.hasDedicatedWallet('smc-sd')).toBe(false)
+      expect(pool.hasDedicatedWallet('alpha')).toBe(false)
       expect(pool.getStrategyIds()).toEqual([])
     })
 
@@ -138,7 +138,7 @@ describe('ExchangePool', () => {
   describe('lifecycle', () => {
     it('should throw if get() called before init()', () => {
       const pool = new ExchangePool()
-      expect(() => pool.get('layered')).toThrow('not initialized')
+      expect(() => pool.get('smc-sd')).toThrow('not initialized')
     })
 
     it('should throw if getShared() called before init()', () => {

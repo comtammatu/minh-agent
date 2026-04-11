@@ -14,7 +14,7 @@ function baseTracked(overrides: Partial<PositionState> & Pick<PositionState, 'po
     tpPrice: overrides.tpPrice ?? 120,
     entryOrderId: overrides.entryOrderId ?? 'oid-1',
     leverage: overrides.leverage ?? 5,
-    strategyId: overrides.strategyId ?? 'layered',
+    strategyId: overrides.strategyId ?? 'smc-sd',
     trailingState: overrides.trailingState ?? null,
     partialClosesFired: overrides.partialClosesFired ?? [],
     lastSyncAt: overrides.lastSyncAt ?? 0,

@@ -107,16 +107,16 @@ export async function getStrategyClosedStatsByStrategy(): Promise<
 > {
   type Row = { strategy_id: string | null; wins: string; losses: string; trade_count: string }
   const rows = await sql<Row[]>`
-    SELECT COALESCE(strategy_id, 'layered') AS strategy_id,
+    SELECT COALESCE(strategy_id, 'smc-sd') AS strategy_id,
       COUNT(*) FILTER (WHERE realized_pnl > 0)::int AS wins,
       COUNT(*) FILTER (WHERE realized_pnl < 0)::int AS losses,
       COUNT(*)::int AS trade_count
     FROM positions
     WHERE status = 'closed' AND closed_at IS NOT NULL
-    GROUP BY COALESCE(strategy_id, 'layered')
+    GROUP BY COALESCE(strategy_id, 'smc-sd')
   `
   return rows.map(r => ({
-    strategyId: r.strategy_id ?? 'layered',
+    strategyId: r.strategy_id ?? 'smc-sd',
     wins: Number(r.wins),
     losses: Number(r.losses),
     tradeCount: Number(r.trade_count),

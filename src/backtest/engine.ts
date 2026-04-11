@@ -49,12 +49,12 @@ export function runBacktest(
   clearStore()
   clearOnPersist()  // prevent DB writes during backtest
   getStrategyRegistry().clearAllState()  // reset per-strategy dedup (critical for walk-forward isolation)
-  getStrategyRegistry().activateOnly(config.strategy ?? 'layered')
+  getStrategyRegistry().activateOnly(config.strategy ?? 'smc-sd')
 
   const slippage = config.slippagePct ?? BACKTEST_SLIPPAGE_PCT
   const commission = config.commissionPct ?? BACKTEST_COMMISSION_PCT
   const exitMode = config.exitMode ?? 'multi'
-  const strategyId = config.strategy ?? 'layered'
+  const strategyId = config.strategy ?? 'smc-sd'
   const simulator = new TradeSimulator(config.initialCapital, slippage, commission, exitMode, strategyId)
 
   // ── Wire pipeline → simulator ───────────────────────────────────────────
@@ -111,7 +111,7 @@ export function runBacktest(
     const equityCurve = buildEquityCurve(trades, config.initialCapital)
 
     // Capture pipeline diagnostic stats before cleanup
-    const pipelineStatsSnapshot = getPipelineStats(config.strategy ?? 'layered')
+    const pipelineStatsSnapshot = getPipelineStats(config.strategy ?? 'smc-sd')
 
     return { config, metrics, trades, equityCurve, pipelineStats: pipelineStatsSnapshot }
   } finally {
@@ -193,12 +193,12 @@ export async function runBacktestAsync(
   clearPipelineState()
   clearStore()
   clearOnPersist()
-  getStrategyRegistry().activateOnly(config.strategy ?? 'layered')
+  getStrategyRegistry().activateOnly(config.strategy ?? 'smc-sd')
 
   const slippage = config.slippagePct ?? BACKTEST_SLIPPAGE_PCT
   const commission = config.commissionPct ?? BACKTEST_COMMISSION_PCT
   const asyncExitMode = config.exitMode ?? 'multi'
-  const simulator = new TradeSimulator(config.initialCapital, slippage, commission, asyncExitMode, config.strategy ?? 'layered')
+  const simulator = new TradeSimulator(config.initialCapital, slippage, commission, asyncExitMode, config.strategy ?? 'smc-sd')
 
   const emitter = getPipelineEmitter()
   let currentBarIndex = 0
@@ -249,7 +249,7 @@ export async function runBacktestAsync(
     const trades = simulator.getTrades()
     const metrics = computeMetrics(trades, config.initialCapital)
     const equityCurve = buildEquityCurve(trades, config.initialCapital)
-    const pipelineStatsSnapshot = getPipelineStats(config.strategy ?? 'layered')
+    const pipelineStatsSnapshot = getPipelineStats(config.strategy ?? 'smc-sd')
 
     onProgress?.({ bar: total, total, pct: 100, phase: 'done' })
 

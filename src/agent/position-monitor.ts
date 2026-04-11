@@ -216,7 +216,7 @@ export function reconcilePositions(
 // ─── PositionMonitor Class ──────────────────────────────────────────────────
 
 /** Default strategy ID for backward compatibility. */
-const DEFAULT_STRATEGY = 'layered'
+const DEFAULT_STRATEGY = 'smc-sd'
 
 export class PositionMonitor {
   /** Tracked open positions — keyed by positionId. */

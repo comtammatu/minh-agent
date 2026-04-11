@@ -33,10 +33,10 @@ export function normalizeStrategyId(raw: string | undefined): string {
   if (raw && PAPER_WALLET_STRATEGY_IDS.includes(raw as (typeof PAPER_WALLET_STRATEGY_IDS)[number])) {
     return raw
   }
-  return 'layered'
+  return 'smc-sd'
 }
 
-/** Build TUI stats from DB rows; always emits 3 wallet rows (layered / quant / smc-sd). */
+/** Build TUI stats from DB rows; emits one wallet row per configured strategy. */
 export function buildLiveStrategyWalletStats(rows: StrategyClosedStatRow[]): LiveStrategyWalletStats {
   const byId = new Map(rows.map(r => [r.strategyId, r]))
   const wallets: LiveStrategyWalletRow[] = PAPER_WALLET_STRATEGY_IDS.map(sid => {

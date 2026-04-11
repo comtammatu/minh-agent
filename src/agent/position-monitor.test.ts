@@ -34,7 +34,7 @@ function makePosition(overrides: Partial<PositionState> = {}): PositionState {
     tpPrice: 110,     // 10% TP
     entryOrderId: 'ord-1',
     leverage: 10,
-    strategyId: 'layered',
+    strategyId: 'smc-sd',
     trailingState: null,
     partialClosesFired: [],
     lastSyncAt: Date.now(),
@@ -348,7 +348,7 @@ describe('reconcilePositions', () => {
 
   it('matches exchange row by strategyId when snapshots are tagged (multi-wallet)', () => {
     const tracked = new Map<string, PositionState>()
-    tracked.set('pos-q', makePosition({ positionId: 'pos-q', coin: 'BTC', strategyId: 'quant' }))
+    tracked.set('pos-q', makePosition({ positionId: 'pos-q', coin: 'BTC', strategyId: 'alpha' }))
     // Exchange has BTC for layered only — quant position missing on its account
     const snaps: ExchangePositionSnapshot[] = [{
       coin: 'BTC',
@@ -356,7 +356,7 @@ describe('reconcilePositions', () => {
       entryPrice: 100,
       unrealizedPnl: 0,
       liquidationPrice: null,
-      strategyId: 'layered',
+      strategyId: 'smc-sd',
     }]
     const actions = reconcilePositions(tracked, snaps)
     expect(actions).toHaveLength(1)

@@ -21,16 +21,14 @@ import { walkForward, bootstrapExpectancyCI, perWindowConsistency, formatGateRep
 import type { BacktestConfig, BacktestTrade, WalkForwardConfig, WalkForwardWindow, BacktestMetrics } from '../../src/backtest/types.js'
 import type { Candle, CandleInterval } from '../../src/types.js'
 import { getStrategyRegistry, resetStrategyRegistry } from '../../src/strategy/registry.js'
-import { LayeredStrategyAdapter } from '../../src/strategy/strategies/layered/index.js'
-import { QuantStrategyAdapter } from '../../src/strategy/strategies/quant/index.js'
+import { SmcSdStrategy } from '../../src/strategy/strategies/smc-sd/index.js'
 
 // Register strategies before any test runs
 beforeAll(() => {
   process.env['ACTIVE_EXCHANGE'] = 'HL'
   resetStrategyRegistry()
   const reg = getStrategyRegistry()
-  reg.register(new LayeredStrategyAdapter())
-  reg.register(new QuantStrategyAdapter())
+  reg.register(new SmcSdStrategy())
 })
 
 // ─── Test Helpers ───────────────────────────────────────────────────────────
@@ -345,7 +343,7 @@ describe('walkForward — overfit detection', () => {
 function makeTrade(pnl: number): BacktestTrade {
   return {
     coin: 'BTC', interval: '1h' as CandleInterval, side: 'long' as const,
-    patternType: 'price-action' as const, confluenceGrade: 'B' as const,
+    patternType: 'smc-sd' as const, confluenceGrade: 'B' as const,
     entryPrice: 40000, exitPrice: pnl > 0 ? 40000 + pnl : 40000 + pnl,
     slPrice: 39000, tpPrice: 41000, sizeUsd: 1000,
     entryTime: Date.now(), exitTime: Date.now() + 3600000,

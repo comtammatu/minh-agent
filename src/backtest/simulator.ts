@@ -19,7 +19,11 @@ import type { Candle, ActiveSetup, SignalSide, CandleInterval } from '../types.j
 import type { BacktestTrade, PartialCloseDetail, ExitMode } from './types.js'
 import { computePositionSize } from '../agent/exits.js'
 import { shouldBlockCorrelatedEntry } from '../agent/correlation-guard.js'
-import { DEFAULT_RISK_PERCENT, MULTI_TP_SPLIT, TRAIL_ACTIVATION_R, QUANT_ATR_SL_MULT, QUANT_ATR_TP_MULT, MAX_HOLDING_BARS, TIMEFRAME_MS, BACKTEST_MAX_OPEN_POSITIONS, BACKTEST_RISK_PER_TRADE_PCT, BACKTEST_CIRCUIT_BREAKER_DD } from '../config.js'
+import { DEFAULT_RISK_PERCENT, MULTI_TP_SPLIT, TRAIL_ACTIVATION_R, MAX_HOLDING_BARS, TIMEFRAME_MS, BACKTEST_MAX_OPEN_POSITIONS, BACKTEST_RISK_PER_TRADE_PCT, BACKTEST_CIRCUIT_BREAKER_DD } from '../config.js'
+
+/** ATR multiplier for SL/TP in single-exit backtest mode. */
+const SINGLE_EXIT_ATR_SL_MULT = 2.0
+const SINGLE_EXIT_ATR_TP_MULT = 3.0
 
 // ─── Open Position ──────────────────────────────────────────────────────────
 
@@ -74,7 +78,7 @@ export class TradeSimulator {
   private exitMode: ExitMode
   private strategyId: string
 
-  constructor(initialCapital: number, slippagePct: number, commissionPct: number, exitMode: ExitMode = 'multi', strategyId: string = 'layered') {
+  constructor(initialCapital: number, slippagePct: number, commissionPct: number, exitMode: ExitMode = 'multi', strategyId: string = 'smc-sd') {
     this.equity = initialCapital
     this.initialCapital = initialCapital
     this.slippagePct = slippagePct
@@ -124,8 +128,8 @@ export class TradeSimulator {
     let actualSl = slPrice
     let actualTp = tpPrice
     if (this.exitMode === 'single' && atrValue > 0) {
-      const slDist = atrValue * QUANT_ATR_SL_MULT
-      const tpDist = atrValue * QUANT_ATR_TP_MULT
+      const slDist = atrValue * SINGLE_EXIT_ATR_SL_MULT
+      const tpDist = atrValue * SINGLE_EXIT_ATR_TP_MULT
       actualSl = side === 'long' ? fillPrice - slDist : fillPrice + slDist
       actualTp = side === 'long' ? fillPrice + tpDist : fillPrice - tpDist
     }

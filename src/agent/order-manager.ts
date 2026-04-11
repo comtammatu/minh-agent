@@ -54,7 +54,7 @@ import {
 import { DEFAULT_RISK_PERCENT, SIMULATED_ACCOUNT, TARGET_MARGIN_PCT, getActiveExchange, ATR_TRAIL_MULTIPLIER } from '../config.js'
 
 /** Default strategy ID for backward compatibility (single-strategy mode). */
-const DEFAULT_STRATEGY = 'layered'
+const DEFAULT_STRATEGY = 'smc-sd'
 
 /** `orders.id` is UUID — reject malformed strings before querying to avoid PostgreSQL ERROR logs. */
 function isValidOrderUuid(id: string): boolean {

@@ -31,11 +31,7 @@ import {
   candleCount,
 } from './feed/store.js'
 import { StrategyRegistry } from './strategy/registry.js'
-import { LayeredStrategyAdapter } from './strategy/strategies/layered/index.js'
-import { QuantStrategyAdapter } from './strategy/strategies/quant/index.js'
 import { SmcSdStrategy } from './strategy/strategies/smc-sd/index.js'
-import { clearLayeredState } from './strategy/strategies/layered/pipeline.js'
-import { clearQuantState } from './strategy/strategies/quant/pipeline.js'
 import { getPipelineEmitter, getActiveSetupsMap, getStatusState } from './strategy/orchestrator.js'
 import type {
   Candle,
@@ -230,8 +226,6 @@ function runStrategiesForExchange(exchangeId: ExchangeId): CollectedSignal[] {
 
   // 2. Create a fresh strategy registry
   const registry = new StrategyRegistry()
-  registry.register(new LayeredStrategyAdapter())
-  registry.register(new QuantStrategyAdapter())
   registry.register(new SmcSdStrategy())
 
   // 3. Listen for layered/quant signals via pipelineEmitter (singleton)
@@ -286,8 +280,6 @@ function runStrategiesForExchange(exchangeId: ExchangeId): CollectedSignal[] {
 
   // 5. Cleanup
   emitter.removeListener('setup', onSetup)
-  clearLayeredState()
-  clearQuantState()
 
   // Clear module-level orchestrator state to avoid contamination
   const activeSetups = getActiveSetupsMap()

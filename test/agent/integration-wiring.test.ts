@@ -39,21 +39,21 @@ describe('StrategyRegistry wiring', () => {
 
 describe('stateKey / parseStateKey', () => {
   it('builds key from coin + strategyId', () => {
-    expect(stateKey('BTC', 'quant')).toBe('BTC:quant')
-    expect(stateKey('ETH', 'layered')).toBe('ETH:layered')
+    expect(stateKey('BTC', 'alpha')).toBe('BTC:alpha')
+    expect(stateKey('ETH', 'smc-sd')).toBe('ETH:smc-sd')
   })
 
   it('defaults to layered when no strategyId', () => {
-    expect(stateKey('BTC')).toBe('BTC:layered')
+    expect(stateKey('BTC')).toBe('BTC:smc-sd')
   })
 
   it('parses key back to coin + strategyId', () => {
-    expect(parseStateKey('BTC:quant')).toEqual({ coin: 'BTC', strategyId: 'quant' })
-    expect(parseStateKey('ETH:layered')).toEqual({ coin: 'ETH', strategyId: 'layered' })
+    expect(parseStateKey('BTC:alpha')).toEqual({ coin: 'BTC', strategyId: 'alpha' })
+    expect(parseStateKey('ETH:smc-sd')).toEqual({ coin: 'ETH', strategyId: 'smc-sd' })
   })
 
   it('handles coin-only key (backward compat)', () => {
-    expect(parseStateKey('BTC')).toEqual({ coin: 'BTC', strategyId: 'layered' })
+    expect(parseStateKey('BTC')).toEqual({ coin: 'BTC', strategyId: 'smc-sd' })
   })
 })
 
@@ -80,9 +80,9 @@ describe('Order strategyId field', () => {
       filledAt: null,
       fillPrice: null,
       fillSize: 0,
-      strategyId: 'quant',
+      strategyId: 'alpha',
     }
-    expect(order.strategyId).toBe('quant')
+    expect(order.strategyId).toBe('alpha')
   })
 })
 
@@ -100,13 +100,13 @@ describe('PositionState strategyId field', () => {
       slPrice: 95,
       tpPrice: 110,
       entryOrderId: 'order1',
-      strategyId: 'layered',
+      strategyId: 'smc-sd',
       trailingState: null,
       partialClosesFired: [],
       lastSyncAt: Date.now(),
       openedAt: Date.now(),
     }
-    expect(state.strategyId).toBe('layered')
+    expect(state.strategyId).toBe('smc-sd')
   })
 })
 
@@ -119,10 +119,10 @@ describe('Dispatch callback with strategyId', () => {
     const callback = (coin: string, _event: unknown, strategyId?: string) => {
       dispatched.push({ coin, strategyId })
     }
-    callback('BTC', { type: 'order_filled' }, 'quant')
+    callback('BTC', { type: 'order_filled' }, 'alpha')
     callback('ETH', { type: 'order_timeout' })
     expect(dispatched).toEqual([
-      { coin: 'BTC', strategyId: 'quant' },
+      { coin: 'BTC', strategyId: 'alpha' },
       { coin: 'ETH', strategyId: undefined },
     ])
   })

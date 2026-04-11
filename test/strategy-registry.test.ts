@@ -1,5 +1,5 @@
 /**
- * Strategy Registry + Adapter tests — Sprint 4.5 S1.
+ * Strategy Registry tests — Sprint 4.5 S1.
  *
  * Tests cover:
  *   1. IStrategy interface contract
@@ -7,17 +7,14 @@
  *   3. StrategyRegistry: runAll fan-out, error isolation
  *   4. StrategyRegistry: activateOnly (backtest isolation)
  *   5. StrategyRegistry: disable guard
- *   6. LayeredStrategyAdapter wraps correctly
- *   7. QuantStrategyAdapter wraps correctly
- *   8. Adapters clear state on clearState()
+ *   6. SmcSdStrategy adapter
  */
 
 import { describe, test, expect, beforeEach } from 'bun:test'
 import type { Candle, CandleInterval, Signal, PatternType } from '../src/types.js'
 import { StrategyRegistry, resetStrategyRegistry, getStrategyRegistry } from '../src/strategy/registry.js'
 import type { IStrategy } from '../src/strategy/registry.js'
-import { LayeredStrategyAdapter } from '../src/strategy/strategies/layered/index.js'
-import { QuantStrategyAdapter } from '../src/strategy/strategies/quant/index.js'
+import { SmcSdStrategy } from '../src/strategy/strategies/smc-sd/index.js'
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
@@ -34,7 +31,7 @@ function mockStrategy(overrides: Partial<IStrategy> = {}): IStrategy {
   return {
     id: overrides.id ?? 'mock',
     name: overrides.name ?? 'Mock Strategy',
-    patternTypes: overrides.patternTypes ?? ['ema-rsi' as PatternType],
+    patternTypes: overrides.patternTypes ?? ['smc-sd' as PatternType],
     scan: overrides.scan ?? (() => null),
     minCandles: overrides.minCandles ?? (() => 10),
     clearState: overrides.clearState ?? (() => {}),
@@ -58,7 +55,7 @@ function throwingStrategy(id: string): IStrategy {
 }
 
 const testSignal: Signal = {
-  type: 'ema-rsi',
+  type: 'smc-sd',
   side: 'long',
   confidence: 0.6,
   entryPrice: 100,
@@ -359,59 +356,29 @@ describe('StrategyRegistry', () => {
   })
 })
 
-// ── Adapter tests ──────────────────────────────────────────────────────────
+// ── SmcSdStrategy adapter tests ────────────────────────────────────────────
 
-describe('LayeredStrategyAdapter', () => {
+describe('SmcSdStrategy', () => {
   test('has correct id and name', () => {
-    const adapter = new LayeredStrategyAdapter()
-    expect(adapter.id).toBe('layered')
-    expect(adapter.name).toContain('Wyckoff')
+    const strategy = new SmcSdStrategy()
+    expect(strategy.id).toBe('smc-sd')
+    expect(strategy.name).toContain('SMC')
   })
 
-  test('patternTypes includes all layered patterns', () => {
-    const adapter = new LayeredStrategyAdapter()
-    expect(adapter.patternTypes).toContain('order-block')
-    expect(adapter.patternTypes).toContain('fvg')
-    expect(adapter.patternTypes).toContain('spring')
-    expect(adapter.patternTypes.length).toBeGreaterThanOrEqual(8)
+  test('patternTypes is smc-sd only', () => {
+    const strategy = new SmcSdStrategy()
+    expect(strategy.patternTypes).toEqual(['smc-sd'])
   })
 
-  test('minCandles returns INDICATOR_WINDOW', () => {
-    const adapter = new LayeredStrategyAdapter()
-    expect(adapter.minCandles()).toBeGreaterThanOrEqual(50)
+  test('minCandles returns >= 50', () => {
+    const strategy = new SmcSdStrategy()
+    expect(strategy.minCandles()).toBeGreaterThanOrEqual(50)
   })
 
-  test('scan returns null (legacy emit pattern)', () => {
-    const adapter = new LayeredStrategyAdapter()
-    // With insufficient candles, runPipeline returns early
+  test('scan returns null with insufficient candles', () => {
+    const strategy = new SmcSdStrategy()
     const candles = Array.from({ length: 10 }, (_, i) => makeCandle(100, i * 60000))
-    const result = adapter.scan('BTC', '1h', candles, 8)
-    expect(result).toBeNull()
-  })
-})
-
-describe('QuantStrategyAdapter', () => {
-  test('has correct id and name', () => {
-    const adapter = new QuantStrategyAdapter()
-    expect(adapter.id).toBe('quant')
-    expect(adapter.name).toContain('EMA')
-  })
-
-  test('patternTypes is ema-rsi only', () => {
-    const adapter = new QuantStrategyAdapter()
-    expect(adapter.patternTypes).toEqual(['ema-rsi'])
-  })
-
-  test('minCandles returns QUANT_EMA_SLOW (200)', () => {
-    const adapter = new QuantStrategyAdapter()
-    expect(adapter.minCandles()).toBe(200)
-  })
-
-  test('scan returns null (legacy emit pattern)', () => {
-    const adapter = new QuantStrategyAdapter()
-    // With insufficient candles, runQuantPipeline returns early
-    const candles = Array.from({ length: 10 }, (_, i) => makeCandle(100, i * 60000))
-    const result = adapter.scan('BTC', '1h', candles, 8)
+    const result = strategy.scan('BTC', '1h', candles, 8)
     expect(result).toBeNull()
   })
 })

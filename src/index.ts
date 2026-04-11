@@ -93,8 +93,6 @@ import { getInvalidationBridge } from './agent/invalidation-bridge.js'
 import { startBot, stopBot, formatAlert, sendTelegramAlert } from './alert/telegram/index.js'
 import { connectToAgent as connectMetrics } from './analytics/metrics-service.js'
 import { getStrategyRegistry } from './strategy/registry.js'
-import { LayeredStrategyAdapter } from './strategy/strategies/layered/index.js'
-import { QuantStrategyAdapter } from './strategy/strategies/quant/index.js'
 import { SmcSdStrategy } from './strategy/strategies/smc-sd/index.js'
 import type { CandleInterval } from './types.js'
 
@@ -208,7 +206,7 @@ function aggregateAccountStatesForTui(pool: ExchangePool, m: Map<string, Account
     throw new Error('aggregateAccountStatesForTui: empty map')
   }
   if (!pool.isMultiWallet()) {
-    const st = m.get('layered') ?? Array.from(m.values())[0]
+    const st = m.get('smc-sd') ?? Array.from(m.values())[0]
     if (!st) throw new Error('aggregateAccountStatesForTui: no entry')
     return st
   }
@@ -529,8 +527,6 @@ async function main(): Promise<void> {
   // 7b. Register strategies (Sprint 4.5: multi-strategy fan-out)
   // All strategies registered, then selectively enabled via ENABLED_STRATEGIES env.
   const registry = getStrategyRegistry()
-  registry.register(new LayeredStrategyAdapter())
-  registry.register(new QuantStrategyAdapter())
   registry.register(new SmcSdStrategy())
 
   // Apply ENABLED_STRATEGIES filter

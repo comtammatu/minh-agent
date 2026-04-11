@@ -154,8 +154,8 @@ describe('getPaperTracker (per strategy)', () => {
   })
 
   it('isolates balances per strategyId', () => {
-    const layered = getPaperTracker('layered')
-    const quant = getPaperTracker('quant')
+    const layered = getPaperTracker('smc-sd')
+    const quant = getPaperTracker('alpha')
     layered.recordEntry('o1', 'BTC', 'long', 50_000, 0.1)
     layered.recordExit('o1', 51_000)
     expect(layered.getBalance()).not.toBe(quant.getBalance())
@@ -163,6 +163,6 @@ describe('getPaperTracker (per strategy)', () => {
   })
 
   it('returns same instance for same strategyId', () => {
-    expect(getPaperTracker('layered')).toBe(getPaperTracker('layered'))
+    expect(getPaperTracker('smc-sd')).toBe(getPaperTracker('smc-sd'))
   })
 })

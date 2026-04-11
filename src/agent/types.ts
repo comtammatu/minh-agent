@@ -25,7 +25,7 @@ export type AgentState =
 export interface CoinContext {
   state: AgentState
   coin: string
-  /** Strategy that owns this context (Sprint 4.5). Default 'layered' for backward compat. */
+  /** Strategy that owns this context (Sprint 4.5). Default 'smc-sd'. */
   strategyId: string
   /** The setup being watched/entered (null when IDLE/PAUSED). */
   activeSetup: ActiveSetup | null

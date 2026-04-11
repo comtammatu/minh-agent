@@ -87,7 +87,7 @@ function mockStrategy(id: string, name: string): IStrategy {
   return {
     id,
     name,
-    patternTypes: ['ema-rsi' as PatternType],
+    patternTypes: ['smc-sd' as PatternType],
     scan: () => null,
     minCandles: () => 10,
     clearState: () => {},
@@ -104,8 +104,8 @@ describe('/strategy command', () => {
 
     // Register 2 strategies
     const registry = getStrategyRegistry()
-    registry.register(mockStrategy('layered', 'Layered PA/SMC'))
-    registry.register(mockStrategy('quant', 'Quant EMA/RSI'))
+    registry.register(mockStrategy('smc-sd', 'Layered PA/SMC'))
+    registry.register(mockStrategy('alpha', 'Quant EMA/RSI'))
 
     registerBuiltinCommands()
   })
@@ -117,41 +117,41 @@ describe('/strategy command', () => {
     expect(result).toContain('Strategies')
     expect(result).toContain('Layered PA/SMC')
     expect(result).toContain('Quant EMA/RSI')
-    expect(result).toContain('layered')
-    expect(result).toContain('quant')
+    expect(result).toContain('smc\\-sd')
+    expect(result).toContain('alpha')
   })
 
   test('pause disables a strategy', () => {
     const handler = findCommand('strategy')!
-    const result = handler.handler('pause quant', 123) as string
+    const result = handler.handler('pause alpha', 123) as string
 
     expect(result).toContain('disabled')
-    expect(getStrategyRegistry().isEnabled('quant')).toBe(false)
+    expect(getStrategyRegistry().isEnabled('alpha')).toBe(false)
   })
 
   test('pause blocks if open positions (E30)', () => {
     // Add fake open position for quant
-    mockPositions.set('BTC:quant', { strategyId: 'quant' })
+    mockPositions.set('BTC:alpha', { strategyId: 'alpha' })
 
     const handler = findCommand('strategy')!
-    const result = handler.handler('pause quant', 123) as string
+    const result = handler.handler('pause alpha', 123) as string
 
     expect(result).toContain('Cannot disable')
     expect(result).toContain('1')
     expect(result).toContain('open position')
     // Strategy should still be enabled
-    expect(getStrategyRegistry().isEnabled('quant')).toBe(true)
+    expect(getStrategyRegistry().isEnabled('alpha')).toBe(true)
   })
 
   test('resume enables a disabled strategy', () => {
     const registry = getStrategyRegistry()
-    registry.disable('quant')
+    registry.disable('alpha')
 
     const handler = findCommand('strategy')!
-    const result = handler.handler('resume quant', 123) as string
+    const result = handler.handler('resume alpha', 123) as string
 
     expect(result).toContain('enabled')
-    expect(registry.isEnabled('quant')).toBe(true)
+    expect(registry.isEnabled('alpha')).toBe(true)
   })
 
   test('pause unknown strategy returns error', () => {
@@ -170,17 +170,17 @@ describe('/strategy command', () => {
 
   test('pause already disabled strategy returns message', () => {
     const registry = getStrategyRegistry()
-    registry.disable('quant')
+    registry.disable('alpha')
 
     const handler = findCommand('strategy')!
-    const result = handler.handler('pause quant', 123) as string
+    const result = handler.handler('pause alpha', 123) as string
 
     expect(result).toContain('already disabled')
   })
 
   test('resume already enabled strategy returns message', () => {
     const handler = findCommand('strategy')!
-    const result = handler.handler('resume layered', 123) as string
+    const result = handler.handler('resume smc-sd', 123) as string
 
     expect(result).toContain('already enabled')
   })

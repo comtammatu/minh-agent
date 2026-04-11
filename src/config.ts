@@ -126,15 +126,6 @@ export const VP_VALUE_AREA_PCT = 0.7
 
 // Pattern TTL in bars (how long a setup stays active before expiring)
 export const PATTERN_TTL_BARS: Record<string, number> = {
-  'order-block': 20,
-  'fvg': 10,
-  'spring': 15,
-  'demand-zone': 25,
-  'breakout': 5,
-  'vsa-signal': 8,
-  'price-action': 6,
-  'volume-profile': 12,
-  'ema-rsi': 1,
   'smc-sd': 12,
 }
 
@@ -655,7 +646,7 @@ export const STRUCTURE_STOP_ATR_BUFFER = 1.0
 export const MAX_STOP_DISTANCE_PCT = 0.10
 
 /** Maximum SL distance % for strategy signal emission. Reject trades with SL > this.
- * Applied in SMC-SD and Quant scan — prevents oversized 4h ATR stops. */
+ * Applied in SMC-SD scan — prevents oversized 4h ATR stops. */
 export const MAX_TRADE_SL_PCT = 0.07
 
 /** Maximum leverage warning threshold. */
@@ -795,57 +786,16 @@ export const WF_CONFIDENCE_LEVEL = 0.95
 /** Walk-forward: minimum fraction of OOS windows with positive expectancy. */
 export const WF_MIN_WINDOW_CONSISTENCY = 0.5
 
-// ─── Quant Baseline Strategy ────────────────────────────────────────────────
-
-/** EMA fast period for trend filter. */
-export const QUANT_EMA_FAST = 50
-
-/** EMA slow period for trend filter. */
-export const QUANT_EMA_SLOW = 200
-
-/** RSI period. */
-export const QUANT_RSI_PERIOD = 14
-
-/** RSI oversold threshold — buy signal in uptrend.
- * Lowered from 35 to 30: stricter pullback = higher quality entries. */
-export const QUANT_RSI_OVERSOLD = 30
-
-/** RSI overbought threshold — sell signal in downtrend.
- * Raised from 65 to 70: stricter overbought = higher quality entries. */
-export const QUANT_RSI_OVERBOUGHT = 70
-
-/** Minimum fractional gap between EMA50 and EMA200 to confirm trend (chop filter). */
-export const QUANT_MIN_EMA_SEPARATION_PCT = 0.003
-
-/** Minimum bars between Quant signals on same coin/interval (cooldown dedup). */
-export const QUANT_DEDUP_BARS = 5
-
-/** ATR multiplier for stop loss distance. */
-export const QUANT_ATR_SL_MULT = 2.0
-
-/** ATR multiplier for take profit distance.
- * 3.0 = 1.5R with SL_MULT 2.0. Wider TPs (4.0+) drop WR below profitability. */
-export const QUANT_ATR_TP_MULT = 3.0
-
-/** Minimum ADX value to confirm trending market (filter chop). Lower = more signals. */
-export const QUANT_ADX_MIN = 18
-
 // ─── Strategy Enable/Disable ─────────────────────────────────────────────────
 
 /**
  * Which strategies to enable at startup.
  * Env: `ENABLED_STRATEGIES` — comma-separated list of strategy IDs.
- * Valid IDs: layered, quant, smc-sd
- *
- * Examples:
- *   ENABLED_STRATEGIES=smc-sd          → only SMC+SD (ICT)
- *   ENABLED_STRATEGIES=smc-sd,quant    → SMC+SD and Quant
- *   ENABLED_STRATEGIES=layered,quant,smc-sd → all (default)
- *   (unset)                            → all strategies enabled
+ * Default: smc-sd only.
  */
 export function getEnabledStrategies(): string[] {
   const raw = process.env['ENABLED_STRATEGIES']
-  if (!raw || raw.trim() === '') return ['layered', 'quant', 'smc-sd']  // default: all
+  if (!raw || raw.trim() === '') return ['smc-sd']
   return raw.split(',').map(s => s.trim()).filter(s => s.length > 0)
 }
 
@@ -859,14 +809,10 @@ export const PORTFOLIO_RISK = {
   maxTotalConcurrent: 6,
   /** Per-strategy capital allocation as fraction of total account (must sum ≤ 1.0). */
   strategyAllocations: {
-    layered: 0.35,
-    quant: 0.35,
-    'smc-sd': 0.30,
+    'smc-sd': 1.0,
   } as Record<string, number>,
   /** Per-strategy max concurrent positions. */
   strategyMaxConcurrent: {
-    layered: 3,
-    quant: 3,
     'smc-sd': 10,
   } as Record<string, number>,
 } as const
@@ -919,12 +865,10 @@ export const PAPER_DEFAULT_BALANCE_PER_WALLET = 100
  * Env: `PAPER_BALANCE_LAYERED`, `PAPER_BALANCE_QUANT`, `PAPER_BALANCE_SMC_SD` (USD each).
  * Unset → {@link PAPER_DEFAULT_BALANCE_PER_WALLET} each.
  */
-export const PAPER_WALLET_STRATEGY_IDS = ['layered', 'quant', 'smc-sd'] as const
+export const PAPER_WALLET_STRATEGY_IDS = ['smc-sd'] as const
 export type PaperWalletStrategyId = (typeof PAPER_WALLET_STRATEGY_IDS)[number]
 
 const PAPER_BALANCE_ENV: Record<string, string> = {
-  layered: 'PAPER_BALANCE_LAYERED',
-  quant: 'PAPER_BALANCE_QUANT',
   'smc-sd': 'PAPER_BALANCE_SMC_SD',
 }
 

@@ -32,8 +32,8 @@ import {
   oteZone,
   detectFVG,
 } from '../../../indicators/smc.js'
-import { isAtZone } from '../layered/layers/confirm.js'
-import { computeStructureTargets } from '../layered/layers/trigger.js'
+import { isAtZone } from '../../shared/zone-utils.js'
+import { computeStructureTargets } from '../../shared/zone-utils.js'
 import { applyRegimeModifier } from '../../shared/regime.js'
 import { detectRegime, atr, adx, volumeRatio } from '../../../indicators/core.js'
 import { detectVSA } from '../../../indicators/vsa.js'

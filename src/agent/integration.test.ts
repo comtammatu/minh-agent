@@ -66,7 +66,7 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
     detectedAt: Date.now(),
     detectedAtBar: 0,
     expiresAtBar: 100,
-    type: 'order-block',
+    type: 'smc-sd',
     side: 'long',
     confidence: 0.85,
     entryPrice: 50000,
@@ -87,7 +87,7 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
 }
 
 /** Get coin state from snapshot. Key is `coin:strategyId` (Sprint 4.5). */
-function getCoinState(agent: TradingAgent, coin: string, strategyId: string = 'layered') {
+function getCoinState(agent: TradingAgent, coin: string, strategyId: string = 'smc-sd') {
   return agent.getSnapshot().coins[`${coin}:${strategyId}`]
 }
 
@@ -257,7 +257,7 @@ describe('End-to-end integration', () => {
 
   it('multiple coins run independently', () => {
     const btcSetup = makeSetup({ coin: 'BTC', id: 'BTC|15m|order-block|long' })
-    const ethSetup = makeSetup({ coin: 'ETH', id: 'ETH|15m|fvg|short', side: 'short', type: 'fvg' })
+    const ethSetup = makeSetup({ coin: 'ETH', id: 'ETH|15m|fvg|short', side: 'short', type: 'smc-sd' })
 
     pipelineEmitter.emit('setup', btcSetup)
     pipelineEmitter.emit('setup', ethSetup)
