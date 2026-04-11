@@ -326,3 +326,727 @@
 2026-04-11T19:00:42.013Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
 2026-04-11T19:00:51.797Z [INFO ] [bybit-exec] getAccountState OK: equity=250.83
 2026-04-11T19:00:51.948Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:01:01.387Z [WARN ] [health] DEGRADED — rss=532.0MB
+2026-04-11T19:01:01.387Z [WARN ] [health] RSS WARNING: 532.0MB
+2026-04-11T19:01:01.835Z [INFO ] [bybit-exec] getAccountState OK: equity=250.12
+2026-04-11T19:01:01.985Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:01:11.797Z [INFO ] [bybit-exec] getAccountState OK: equity=248.83
+2026-04-11T19:01:12.031Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:01:21.792Z [INFO ] [bybit-exec] getAccountState OK: equity=248.74
+2026-04-11T19:01:21.993Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:01:31.394Z [WARN ] [health] DEGRADED — rss=533.1MB
+2026-04-11T19:01:31.394Z [WARN ] [health] RSS WARNING: 533.1MB
+2026-04-11T19:01:31.818Z [INFO ] [bybit-exec] getAccountState OK: equity=248.72
+2026-04-11T19:01:32.003Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:01:41.781Z [INFO ] [bybit-exec] getAccountState OK: equity=249.14
+2026-04-11T19:01:42.031Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:01:51.843Z [INFO ] [bybit-exec] getAccountState OK: equity=248.94
+2026-04-11T19:01:52.011Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:02:01.395Z [WARN ] [health] DEGRADED — rss=555.5MB
+2026-04-11T19:02:01.395Z [WARN ] [health] RSS WARNING: 555.5MB
+2026-04-11T19:02:01.797Z [INFO ] [bybit-exec] getAccountState OK: equity=248.96
+2026-04-11T19:02:02.063Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:02:11.786Z [INFO ] [bybit-exec] getAccountState OK: equity=248.47
+2026-04-11T19:02:11.967Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:02:21.877Z [INFO ] [bybit-exec] getAccountState OK: equity=247.96
+2026-04-11T19:02:22.065Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:02:31.435Z [WARN ] [health] DEGRADED — rss=581.5MB
+2026-04-11T19:02:31.435Z [WARN ] [health] RSS WARNING: 581.5MB
+2026-04-11T19:02:31.821Z [INFO ] [bybit-exec] getAccountState OK: equity=247.37
+2026-04-11T19:02:32.032Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:02:41.838Z [INFO ] [bybit-exec] getAccountState OK: equity=246.95
+2026-04-11T19:02:42.026Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:02:52.033Z [INFO ] [bybit-exec] getAccountState OK: equity=246.75
+2026-04-11T19:02:52.735Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:03:01.456Z [WARN ] [health] DEGRADED — rss=601.4MB
+2026-04-11T19:03:01.456Z [WARN ] [health] RSS WARNING: 601.4MB
+2026-04-11T19:03:01.967Z [INFO ] [bybit-exec] getAccountState OK: equity=246.94
+2026-04-11T19:03:02.166Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:03:11.983Z [INFO ] [bybit-exec] getAccountState OK: equity=246.70
+2026-04-11T19:03:12.228Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:03:21.964Z [INFO ] [bybit-exec] getAccountState OK: equity=246.77
+2026-04-11T19:03:22.104Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:03:31.460Z [WARN ] [health] DEGRADED — rss=603.1MB
+2026-04-11T19:03:31.460Z [WARN ] [health] RSS WARNING: 603.1MB
+2026-04-11T19:03:31.968Z [INFO ] [bybit-exec] getAccountState OK: equity=246.87
+2026-04-11T19:03:32.225Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:03:41.972Z [INFO ] [bybit-exec] getAccountState OK: equity=247.08
+2026-04-11T19:03:42.120Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:03:52.059Z [INFO ] [bybit-exec] getAccountState OK: equity=246.89
+2026-04-11T19:03:52.225Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:04:01.465Z [WARN ] [health] DEGRADED — rss=624.4MB
+2026-04-11T19:04:01.465Z [WARN ] [health] RSS WARNING: 624.4MB
+2026-04-11T19:04:01.980Z [INFO ] [bybit-exec] getAccountState OK: equity=246.90
+2026-04-11T19:04:02.185Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:04:12.026Z [INFO ] [bybit-exec] getAccountState OK: equity=247.16
+2026-04-11T19:04:12.231Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:04:21.992Z [INFO ] [bybit-exec] getAccountState OK: equity=247.09
+2026-04-11T19:04:22.175Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:04:31.467Z [WARN ] [health] DEGRADED — rss=647.9MB
+2026-04-11T19:04:31.467Z [WARN ] [health] RSS WARNING: 647.9MB
+2026-04-11T19:04:31.973Z [INFO ] [bybit-exec] getAccountState OK: equity=247.68
+2026-04-11T19:04:32.127Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:04:42.002Z [INFO ] [bybit-exec] getAccountState OK: equity=247.94
+2026-04-11T19:04:42.160Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:04:52.002Z [INFO ] [bybit-exec] getAccountState OK: equity=247.98
+2026-04-11T19:04:52.166Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:05:01.467Z [WARN ] [health] DEGRADED — rss=666.4MB
+2026-04-11T19:05:01.468Z [WARN ] [health] RSS WARNING: 666.4MB
+2026-04-11T19:05:02.011Z [INFO ] [bybit-exec] getAccountState OK: equity=247.53
+2026-04-11T19:05:02.183Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:05:12.033Z [INFO ] [bybit-exec] getAccountState OK: equity=247.81
+2026-04-11T19:05:12.221Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:05:22.008Z [INFO ] [bybit-exec] getAccountState OK: equity=247.79
+2026-04-11T19:05:22.246Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:05:31.469Z [WARN ] [health] DEGRADED — rss=686.1MB
+2026-04-11T19:05:31.469Z [WARN ] [health] RSS WARNING: 686.1MB
+2026-04-11T19:05:31.526Z [INFO ] [order-manager] Order timeout: 9bf7be10-4aa1-4aa1-90a4-452054702d33 CC age=331s
+2026-04-11T19:05:31.691Z [ERROR] [bybit-exec] cancelOrder failed: order not exists or too late to cancel [CCUSDT orderId=7]
+2026-04-11T19:05:31.691Z [INFO ] [order-manager] Retrying cancel by cloid for 9bf7be10-4aa1-4aa1-90a4-452054702d33
+2026-04-11T19:05:31.733Z [INFO ] [bybit-exec] cancelByCloid OK: CCUSDT cloid=0x36d690ff...
+2026-04-11T19:05:31.739Z [INFO ] [order-manager] Order cancelled: 9bf7be10-4aa1-4aa1-90a4-452054702d33 reason=timeout
+2026-04-11T19:05:31.739Z [INFO ] [agent] CC       ENTERING → IDLE | smc-sd short
+2026-04-11T19:05:31.739Z [INFO ] [agent] CC       SKIP Order timeout
+2026-04-11T19:05:31.739Z [INFO ] [order-manager] Order timeout: c2538338-4e7d-4f91-8b59-9b927da7b171 JUP age=331s
+2026-04-11T19:05:31.773Z [ERROR] [bybit-exec] cancelOrder failed: order not exists or too late to cancel [JUPUSDT orderId=95764]
+2026-04-11T19:05:31.773Z [INFO ] [order-manager] Retrying cancel by cloid for c2538338-4e7d-4f91-8b59-9b927da7b171
+2026-04-11T19:05:31.834Z [INFO ] [bybit-exec] cancelByCloid OK: JUPUSDT cloid=0x8adc14dd...
+2026-04-11T19:05:31.839Z [INFO ] [order-manager] Order cancelled: c2538338-4e7d-4f91-8b59-9b927da7b171 reason=timeout
+2026-04-11T19:05:31.839Z [INFO ] [agent] JUP      ENTERING → IDLE | smc-sd long
+2026-04-11T19:05:31.839Z [INFO ] [agent] JUP      SKIP Order timeout
+2026-04-11T19:05:32.038Z [INFO ] [bybit-exec] getAccountState OK: equity=247.74
+2026-04-11T19:05:32.122Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:05:42.067Z [INFO ] [bybit-exec] getAccountState OK: equity=250.33
+2026-04-11T19:05:42.238Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:05:52.031Z [INFO ] [bybit-exec] getAccountState OK: equity=251.24
+2026-04-11T19:05:52.086Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:06:01.471Z [WARN ] [health] DEGRADED — rss=694.2MB
+2026-04-11T19:06:01.472Z [WARN ] [health] RSS WARNING: 694.2MB
+2026-04-11T19:06:02.311Z [INFO ] [bybit-exec] getAccountState OK: equity=250.64
+2026-04-11T19:06:02.422Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:06:12.070Z [INFO ] [bybit-exec] getAccountState OK: equity=251.25
+2026-04-11T19:06:12.111Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:06:22.103Z [INFO ] [bybit-exec] getAccountState OK: equity=253.04
+2026-04-11T19:06:22.144Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:06:31.475Z [WARN ] [health] DEGRADED — rss=682.2MB
+2026-04-11T19:06:31.475Z [WARN ] [health] RSS WARNING: 682.2MB
+2026-04-11T19:06:32.039Z [INFO ] [bybit-exec] getAccountState OK: equity=250.78
+2026-04-11T19:06:32.086Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:06:42.042Z [INFO ] [bybit-exec] getAccountState OK: equity=249.94
+2026-04-11T19:06:42.083Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:06:52.076Z [INFO ] [bybit-exec] getAccountState OK: equity=250.33
+2026-04-11T19:06:52.144Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:07:02.091Z [INFO ] [bybit-exec] getAccountState OK: equity=250.23
+2026-04-11T19:07:02.151Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:07:12.082Z [INFO ] [bybit-exec] getAccountState OK: equity=250.23
+2026-04-11T19:07:12.149Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:07:22.083Z [INFO ] [bybit-exec] getAccountState OK: equity=250.28
+2026-04-11T19:07:22.150Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:07:32.110Z [INFO ] [bybit-exec] getAccountState OK: equity=249.98
+2026-04-11T19:07:32.149Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:07:42.104Z [INFO ] [bybit-exec] getAccountState OK: equity=249.22
+2026-04-11T19:07:42.239Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:07:52.084Z [INFO ] [bybit-exec] getAccountState OK: equity=249.94
+2026-04-11T19:07:52.189Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:08:02.074Z [INFO ] [bybit-exec] getAccountState OK: equity=250.01
+2026-04-11T19:08:02.132Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:08:12.190Z [INFO ] [bybit-exec] getAccountState OK: equity=250.07
+2026-04-11T19:08:12.287Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:08:22.092Z [INFO ] [bybit-exec] getAccountState OK: equity=249.95
+2026-04-11T19:08:22.140Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:08:32.107Z [INFO ] [bybit-exec] getAccountState OK: equity=250.48
+2026-04-11T19:08:32.158Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:08:42.218Z [INFO ] [bybit-exec] getAccountState OK: equity=250.17
+2026-04-11T19:08:42.358Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:08:52.096Z [INFO ] [bybit-exec] getAccountState OK: equity=250.97
+2026-04-11T19:08:52.153Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:09:02.117Z [INFO ] [bybit-exec] getAccountState OK: equity=250.40
+2026-04-11T19:09:02.161Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:09:12.122Z [INFO ] [bybit-exec] getAccountState OK: equity=250.04
+2026-04-11T19:09:12.184Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:09:22.150Z [INFO ] [bybit-exec] getAccountState OK: equity=250.01
+2026-04-11T19:09:22.204Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:09:32.131Z [INFO ] [bybit-exec] getAccountState OK: equity=250.16
+2026-04-11T19:09:32.184Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:09:42.133Z [INFO ] [bybit-exec] getAccountState OK: equity=250.44
+2026-04-11T19:09:42.178Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:09:52.139Z [INFO ] [bybit-exec] getAccountState OK: equity=250.57
+2026-04-11T19:09:52.225Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:10:02.263Z [INFO ] [bybit-exec] getAccountState OK: equity=251.04
+2026-04-11T19:10:02.373Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:10:12.149Z [INFO ] [bybit-exec] getAccountState OK: equity=250.98
+2026-04-11T19:10:12.200Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:10:22.188Z [INFO ] [bybit-exec] getAccountState OK: equity=250.57
+2026-04-11T19:10:22.238Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:10:32.171Z [INFO ] [bybit-exec] getAccountState OK: equity=250.49
+2026-04-11T19:10:32.212Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:10:42.201Z [INFO ] [bybit-exec] getAccountState OK: equity=250.55
+2026-04-11T19:10:42.251Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:10:52.238Z [INFO ] [bybit-exec] getAccountState OK: equity=250.20
+2026-04-11T19:10:52.291Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:11:02.222Z [INFO ] [bybit-exec] getAccountState OK: equity=249.97
+2026-04-11T19:11:02.283Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:11:12.193Z [INFO ] [bybit-exec] getAccountState OK: equity=249.42
+2026-04-11T19:11:12.257Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:11:22.230Z [INFO ] [bybit-exec] getAccountState OK: equity=249.31
+2026-04-11T19:11:22.272Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:11:32.286Z [INFO ] [bybit-exec] getAccountState OK: equity=249.19
+2026-04-11T19:11:32.410Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:11:42.251Z [INFO ] [bybit-exec] getAccountState OK: equity=249.18
+2026-04-11T19:11:42.304Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:11:52.329Z [INFO ] [bybit-exec] getAccountState OK: equity=249.54
+2026-04-11T19:11:52.402Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:12:02.264Z [INFO ] [bybit-exec] getAccountState OK: equity=249.16
+2026-04-11T19:12:02.371Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:12:12.283Z [INFO ] [bybit-exec] getAccountState OK: equity=248.64
+2026-04-11T19:12:12.369Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:12:22.335Z [INFO ] [bybit-exec] getAccountState OK: equity=248.50
+2026-04-11T19:12:22.414Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:12:32.283Z [INFO ] [bybit-exec] getAccountState OK: equity=248.33
+2026-04-11T19:12:32.334Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:12:42.293Z [INFO ] [bybit-exec] getAccountState OK: equity=248.14
+2026-04-11T19:12:42.366Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:12:52.318Z [INFO ] [bybit-exec] getAccountState OK: equity=247.70
+2026-04-11T19:12:52.385Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:13:02.289Z [INFO ] [bybit-exec] getAccountState OK: equity=247.69
+2026-04-11T19:13:02.343Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:13:12.287Z [INFO ] [bybit-exec] getAccountState OK: equity=247.65
+2026-04-11T19:13:12.330Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:13:22.307Z [INFO ] [bybit-exec] getAccountState OK: equity=248.20
+2026-04-11T19:13:22.367Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:13:32.352Z [INFO ] [bybit-exec] getAccountState OK: equity=248.32
+2026-04-11T19:13:32.397Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:13:42.336Z [INFO ] [bybit-exec] getAccountState OK: equity=248.21
+2026-04-11T19:13:42.496Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:13:52.330Z [INFO ] [bybit-exec] getAccountState OK: equity=248.27
+2026-04-11T19:13:52.401Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:14:02.386Z [INFO ] [bybit-exec] getAccountState OK: equity=248.52
+2026-04-11T19:14:02.427Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:14:12.337Z [INFO ] [bybit-exec] getAccountState OK: equity=248.32
+2026-04-11T19:14:12.379Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:14:22.329Z [INFO ] [bybit-exec] getAccountState OK: equity=248.38
+2026-04-11T19:14:22.373Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:14:32.312Z [INFO ] [bybit-exec] getAccountState OK: equity=248.19
+2026-04-11T19:14:32.367Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:14:42.337Z [INFO ] [bybit-exec] getAccountState OK: equity=248.47
+2026-04-11T19:14:42.393Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:14:52.350Z [INFO ] [bybit-exec] getAccountState OK: equity=248.47
+2026-04-11T19:14:52.393Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:15:02.370Z [INFO ] [bybit-exec] getAccountState OK: equity=248.24
+2026-04-11T19:15:02.412Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:15:12.338Z [INFO ] [bybit-exec] getAccountState OK: equity=248.74
+2026-04-11T19:15:12.400Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:15:22.371Z [INFO ] [bybit-exec] getAccountState OK: equity=249.69
+2026-04-11T19:15:22.422Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:15:32.392Z [INFO ] [bybit-exec] getAccountState OK: equity=250.55
+2026-04-11T19:15:32.538Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:15:42.414Z [INFO ] [bybit-exec] getAccountState OK: equity=250.32
+2026-04-11T19:15:42.469Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:15:52.486Z [INFO ] [bybit-exec] getAccountState OK: equity=250.22
+2026-04-11T19:15:52.565Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:16:01.634Z [WARN ] [health] DEGRADED — rss=524.6MB
+2026-04-11T19:16:01.634Z [WARN ] [health] RSS WARNING: 524.6MB
+2026-04-11T19:16:02.454Z [INFO ] [bybit-exec] getAccountState OK: equity=250.24
+2026-04-11T19:16:02.518Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:16:12.437Z [INFO ] [bybit-exec] getAccountState OK: equity=250.36
+2026-04-11T19:16:12.480Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:16:22.395Z [INFO ] [bybit-exec] getAccountState OK: equity=250.31
+2026-04-11T19:16:22.444Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:16:32.421Z [INFO ] [bybit-exec] getAccountState OK: equity=250.14
+2026-04-11T19:16:32.461Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:16:42.439Z [INFO ] [bybit-exec] getAccountState OK: equity=250.59
+2026-04-11T19:16:42.486Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:16:52.434Z [INFO ] [bybit-exec] getAccountState OK: equity=250.72
+2026-04-11T19:16:52.475Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:17:02.458Z [INFO ] [bybit-exec] getAccountState OK: equity=250.89
+2026-04-11T19:17:02.505Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:17:12.446Z [INFO ] [bybit-exec] getAccountState OK: equity=252.25
+2026-04-11T19:17:12.501Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:17:22.425Z [INFO ] [bybit-exec] getAccountState OK: equity=253.01
+2026-04-11T19:17:22.470Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:17:32.429Z [INFO ] [bybit-exec] getAccountState OK: equity=252.96
+2026-04-11T19:17:32.492Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:17:42.457Z [INFO ] [bybit-exec] getAccountState OK: equity=253.04
+2026-04-11T19:17:42.597Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:17:52.430Z [INFO ] [bybit-exec] getAccountState OK: equity=253.33
+2026-04-11T19:17:52.498Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:18:02.513Z [INFO ] [bybit-exec] getAccountState OK: equity=253.26
+2026-04-11T19:18:02.562Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:18:12.438Z [INFO ] [bybit-exec] getAccountState OK: equity=253.58
+2026-04-11T19:18:12.488Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:18:22.432Z [INFO ] [bybit-exec] getAccountState OK: equity=253.55
+2026-04-11T19:18:22.478Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:18:32.432Z [INFO ] [bybit-exec] getAccountState OK: equity=253.98
+2026-04-11T19:18:32.477Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:18:42.469Z [INFO ] [bybit-exec] getAccountState OK: equity=253.89
+2026-04-11T19:18:42.514Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:18:52.458Z [INFO ] [bybit-exec] getAccountState OK: equity=253.51
+2026-04-11T19:18:52.511Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:19:02.479Z [INFO ] [bybit-exec] getAccountState OK: equity=253.35
+2026-04-11T19:19:02.542Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:19:12.536Z [INFO ] [bybit-exec] getAccountState OK: equity=252.94
+2026-04-11T19:19:12.578Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:19:22.489Z [INFO ] [bybit-exec] getAccountState OK: equity=251.62
+2026-04-11T19:19:22.536Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:19:32.502Z [INFO ] [bybit-exec] getAccountState OK: equity=251.28
+2026-04-11T19:19:32.547Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:19:42.533Z [INFO ] [bybit-exec] getAccountState OK: equity=250.97
+2026-04-11T19:19:42.600Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:19:52.493Z [INFO ] [bybit-exec] getAccountState OK: equity=250.43
+2026-04-11T19:19:52.671Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:20:02.554Z [INFO ] [bybit-exec] getAccountState OK: equity=250.52
+2026-04-11T19:20:02.609Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:20:12.594Z [INFO ] [bybit-exec] getAccountState OK: equity=249.46
+2026-04-11T19:20:12.649Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:20:22.580Z [INFO ] [bybit-exec] getAccountState OK: equity=249.75
+2026-04-11T19:20:22.622Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:20:32.529Z [INFO ] [bybit-exec] getAccountState OK: equity=249.60
+2026-04-11T19:20:32.572Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:20:42.525Z [INFO ] [bybit-exec] getAccountState OK: equity=249.49
+2026-04-11T19:20:42.567Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:20:52.558Z [INFO ] [bybit-exec] getAccountState OK: equity=249.55
+2026-04-11T19:20:52.616Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:21:02.549Z [INFO ] [bybit-exec] getAccountState OK: equity=249.61
+2026-04-11T19:21:02.599Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:21:12.569Z [INFO ] [bybit-exec] getAccountState OK: equity=249.67
+2026-04-11T19:21:12.610Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:21:22.567Z [INFO ] [bybit-exec] getAccountState OK: equity=249.29
+2026-04-11T19:21:22.620Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:21:32.609Z [INFO ] [bybit-exec] getAccountState OK: equity=249.28
+2026-04-11T19:21:32.659Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:21:42.692Z [INFO ] [bybit-exec] getAccountState OK: equity=248.82
+2026-04-11T19:21:42.766Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:21:52.590Z [INFO ] [bybit-exec] getAccountState OK: equity=248.64
+2026-04-11T19:21:52.668Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:22:02.672Z [INFO ] [bybit-exec] getAccountState OK: equity=248.98
+2026-04-11T19:22:02.728Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:22:12.672Z [INFO ] [bybit-exec] getAccountState OK: equity=248.82
+2026-04-11T19:22:12.753Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:22:22.612Z [INFO ] [bybit-exec] getAccountState OK: equity=248.92
+2026-04-11T19:22:22.662Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:22:32.617Z [INFO ] [bybit-exec] getAccountState OK: equity=249.72
+2026-04-11T19:22:32.719Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:22:42.630Z [INFO ] [bybit-exec] getAccountState OK: equity=250.38
+2026-04-11T19:22:42.672Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:22:52.616Z [INFO ] [bybit-exec] getAccountState OK: equity=250.19
+2026-04-11T19:22:52.665Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:23:02.622Z [INFO ] [bybit-exec] getAccountState OK: equity=250.24
+2026-04-11T19:23:02.686Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:23:12.650Z [INFO ] [bybit-exec] getAccountState OK: equity=250.72
+2026-04-11T19:23:12.691Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:23:22.626Z [INFO ] [bybit-exec] getAccountState OK: equity=250.32
+2026-04-11T19:23:22.709Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:23:32.679Z [INFO ] [bybit-exec] getAccountState OK: equity=250.67
+2026-04-11T19:23:32.883Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:23:42.642Z [INFO ] [bybit-exec] getAccountState OK: equity=250.53
+2026-04-11T19:23:42.704Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:23:52.707Z [INFO ] [bybit-exec] getAccountState OK: equity=250.68
+2026-04-11T19:23:52.753Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:24:02.646Z [INFO ] [bybit-exec] getAccountState OK: equity=250.77
+2026-04-11T19:24:02.742Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:24:12.722Z [INFO ] [bybit-exec] getAccountState OK: equity=251.04
+2026-04-11T19:24:12.782Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:24:22.650Z [INFO ] [bybit-exec] getAccountState OK: equity=250.96
+2026-04-11T19:24:22.706Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:24:31.734Z [WARN ] [health] DEGRADED — rss=520.0MB
+2026-04-11T19:24:31.734Z [WARN ] [health] RSS WARNING: 520.0MB
+2026-04-11T19:24:32.683Z [INFO ] [bybit-exec] getAccountState OK: equity=251.42
+2026-04-11T19:24:32.743Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:24:42.720Z [INFO ] [bybit-exec] getAccountState OK: equity=251.05
+2026-04-11T19:24:42.774Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:24:52.780Z [INFO ] [bybit-exec] getAccountState OK: equity=251.88
+2026-04-11T19:24:52.880Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:25:01.756Z [WARN ] [health] DEGRADED — rss=545.7MB
+2026-04-11T19:25:01.756Z [WARN ] [health] RSS WARNING: 545.7MB
+2026-04-11T19:25:02.687Z [INFO ] [bybit-exec] getAccountState OK: equity=252.36
+2026-04-11T19:25:02.773Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:25:12.729Z [INFO ] [bybit-exec] getAccountState OK: equity=252.50
+2026-04-11T19:25:12.834Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:25:22.718Z [INFO ] [bybit-exec] getAccountState OK: equity=252.58
+2026-04-11T19:25:22.761Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:25:32.691Z [INFO ] [bybit-exec] getAccountState OK: equity=252.74
+2026-04-11T19:25:32.733Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:25:42.696Z [INFO ] [bybit-exec] getAccountState OK: equity=253.47
+2026-04-11T19:25:42.811Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:25:52.689Z [INFO ] [bybit-exec] getAccountState OK: equity=253.85
+2026-04-11T19:25:52.743Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:26:02.766Z [INFO ] [bybit-exec] getAccountState OK: equity=255.38
+2026-04-11T19:26:02.815Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:26:12.710Z [INFO ] [bybit-exec] getAccountState OK: equity=255.69
+2026-04-11T19:26:12.769Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:26:22.744Z [INFO ] [bybit-exec] getAccountState OK: equity=255.51
+2026-04-11T19:26:22.848Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:26:31.759Z [WARN ] [health] DEGRADED — rss=515.7MB
+2026-04-11T19:26:31.759Z [WARN ] [health] RSS WARNING: 515.7MB
+2026-04-11T19:26:32.757Z [INFO ] [bybit-exec] getAccountState OK: equity=255.22
+2026-04-11T19:26:32.801Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:26:42.717Z [INFO ] [bybit-exec] getAccountState OK: equity=254.95
+2026-04-11T19:26:42.764Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:26:52.718Z [INFO ] [bybit-exec] getAccountState OK: equity=255.36
+2026-04-11T19:26:52.773Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:27:02.734Z [INFO ] [bybit-exec] getAccountState OK: equity=255.63
+2026-04-11T19:27:02.785Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:27:12.725Z [INFO ] [bybit-exec] getAccountState OK: equity=255.90
+2026-04-11T19:27:12.773Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:27:22.741Z [INFO ] [bybit-exec] getAccountState OK: equity=255.72
+2026-04-11T19:27:22.792Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:27:32.727Z [INFO ] [bybit-exec] getAccountState OK: equity=256.16
+2026-04-11T19:27:32.800Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:27:42.733Z [INFO ] [bybit-exec] getAccountState OK: equity=255.83
+2026-04-11T19:27:42.805Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:27:52.742Z [INFO ] [bybit-exec] getAccountState OK: equity=255.86
+2026-04-11T19:27:52.874Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:28:02.738Z [INFO ] [bybit-exec] getAccountState OK: equity=256.05
+2026-04-11T19:28:02.804Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:28:12.804Z [INFO ] [bybit-exec] getAccountState OK: equity=256.26
+2026-04-11T19:28:12.848Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:28:22.777Z [INFO ] [bybit-exec] getAccountState OK: equity=256.41
+2026-04-11T19:28:22.822Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:28:32.788Z [INFO ] [bybit-exec] getAccountState OK: equity=256.07
+2026-04-11T19:28:32.835Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:28:42.758Z [INFO ] [bybit-exec] getAccountState OK: equity=255.24
+2026-04-11T19:28:42.809Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:28:52.765Z [INFO ] [bybit-exec] getAccountState OK: equity=255.45
+2026-04-11T19:28:52.814Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:29:02.850Z [INFO ] [bybit-exec] getAccountState OK: equity=257.02
+2026-04-11T19:29:02.912Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:29:12.868Z [INFO ] [bybit-exec] getAccountState OK: equity=256.76
+2026-04-11T19:29:12.932Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:29:22.887Z [INFO ] [bybit-exec] getAccountState OK: equity=256.60
+2026-04-11T19:29:22.929Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:29:32.831Z [INFO ] [bybit-exec] getAccountState OK: equity=256.72
+2026-04-11T19:29:32.896Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:29:42.862Z [INFO ] [bybit-exec] getAccountState OK: equity=256.55
+2026-04-11T19:29:43.058Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:29:52.850Z [INFO ] [bybit-exec] getAccountState OK: equity=256.19
+2026-04-11T19:29:52.911Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:30:02.968Z [INFO ] [bybit-exec] getAccountState OK: equity=256.25
+2026-04-11T19:30:03.068Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:30:12.890Z [INFO ] [bybit-exec] getAccountState OK: equity=257.00
+2026-04-11T19:30:12.954Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:30:22.895Z [INFO ] [bybit-exec] getAccountState OK: equity=257.46
+2026-04-11T19:30:22.941Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:30:32.882Z [INFO ] [bybit-exec] getAccountState OK: equity=257.67
+2026-04-11T19:30:32.991Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:30:42.904Z [INFO ] [bybit-exec] getAccountState OK: equity=257.99
+2026-04-11T19:30:42.947Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:30:52.891Z [INFO ] [bybit-exec] getAccountState OK: equity=258.27
+2026-04-11T19:30:52.940Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:31:02.930Z [INFO ] [bybit-exec] getAccountState OK: equity=259.94
+2026-04-11T19:31:03.011Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:31:12.908Z [INFO ] [bybit-exec] getAccountState OK: equity=259.59
+2026-04-11T19:31:12.956Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:31:22.892Z [INFO ] [bybit-exec] getAccountState OK: equity=261.00
+2026-04-11T19:31:22.931Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:31:31.863Z [WARN ] [health] DEGRADED — rss=512.9MB
+2026-04-11T19:31:31.863Z [WARN ] [health] RSS WARNING: 512.9MB
+2026-04-11T19:31:32.936Z [INFO ] [bybit-exec] getAccountState OK: equity=260.58
+2026-04-11T19:31:32.980Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:31:42.918Z [INFO ] [bybit-exec] getAccountState OK: equity=260.52
+2026-04-11T19:31:42.982Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:31:53.036Z [INFO ] [bybit-exec] getAccountState OK: equity=261.63
+2026-04-11T19:31:53.102Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:32:02.965Z [INFO ] [bybit-exec] getAccountState OK: equity=260.67
+2026-04-11T19:32:03.018Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:32:13.057Z [INFO ] [bybit-exec] getAccountState OK: equity=259.84
+2026-04-11T19:32:13.135Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:32:22.964Z [INFO ] [bybit-exec] getAccountState OK: equity=258.95
+2026-04-11T19:32:23.022Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:32:32.985Z [INFO ] [bybit-exec] getAccountState OK: equity=257.99
+2026-04-11T19:32:33.028Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:32:42.975Z [INFO ] [bybit-exec] getAccountState OK: equity=259.87
+2026-04-11T19:32:43.031Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:32:52.974Z [INFO ] [bybit-exec] getAccountState OK: equity=259.85
+2026-04-11T19:32:53.040Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:33:02.976Z [INFO ] [bybit-exec] getAccountState OK: equity=259.94
+2026-04-11T19:33:03.018Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:33:12.976Z [INFO ] [bybit-exec] getAccountState OK: equity=259.38
+2026-04-11T19:33:13.043Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:33:23.017Z [INFO ] [bybit-exec] getAccountState OK: equity=258.97
+2026-04-11T19:33:23.063Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:33:33.011Z [INFO ] [bybit-exec] getAccountState OK: equity=258.48
+2026-04-11T19:33:33.061Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:33:43.030Z [INFO ] [bybit-exec] getAccountState OK: equity=258.43
+2026-04-11T19:33:43.134Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:33:53.026Z [INFO ] [bybit-exec] getAccountState OK: equity=258.41
+2026-04-11T19:33:53.095Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:34:03.160Z [INFO ] [bybit-exec] getAccountState OK: equity=258.11
+2026-04-11T19:34:03.205Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:34:13.022Z [INFO ] [bybit-exec] getAccountState OK: equity=258.02
+2026-04-11T19:34:13.075Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:34:23.017Z [INFO ] [bybit-exec] getAccountState OK: equity=257.99
+2026-04-11T19:34:23.082Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:34:33.013Z [INFO ] [bybit-exec] getAccountState OK: equity=257.65
+2026-04-11T19:34:33.104Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:34:43.034Z [INFO ] [bybit-exec] getAccountState OK: equity=258.03
+2026-04-11T19:34:43.093Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:34:53.043Z [INFO ] [bybit-exec] getAccountState OK: equity=258.15
+2026-04-11T19:34:53.088Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:35:03.062Z [INFO ] [bybit-exec] getAccountState OK: equity=258.31
+2026-04-11T19:35:03.114Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:35:13.023Z [INFO ] [bybit-exec] getAccountState OK: equity=257.94
+2026-04-11T19:35:13.065Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:35:23.030Z [INFO ] [bybit-exec] getAccountState OK: equity=257.56
+2026-04-11T19:35:23.088Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:35:33.083Z [INFO ] [bybit-exec] getAccountState OK: equity=258.07
+2026-04-11T19:35:33.131Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:35:43.037Z [INFO ] [bybit-exec] getAccountState OK: equity=258.00
+2026-04-11T19:35:43.085Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:35:53.044Z [INFO ] [bybit-exec] getAccountState OK: equity=257.96
+2026-04-11T19:35:53.188Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:36:03.040Z [INFO ] [bybit-exec] getAccountState OK: equity=258.18
+2026-04-11T19:36:03.082Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:36:13.132Z [INFO ] [bybit-exec] getAccountState OK: equity=258.15
+2026-04-11T19:36:13.172Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:36:23.086Z [INFO ] [bybit-exec] getAccountState OK: equity=257.70
+2026-04-11T19:36:23.139Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:36:33.068Z [INFO ] [bybit-exec] getAccountState OK: equity=257.54
+2026-04-11T19:36:33.126Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:36:43.150Z [INFO ] [bybit-exec] getAccountState OK: equity=257.54
+2026-04-11T19:36:43.197Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:36:53.130Z [INFO ] [bybit-exec] getAccountState OK: equity=257.47
+2026-04-11T19:36:53.187Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:37:01.918Z [WARN ] [health] DEGRADED — rss=534.8MB
+2026-04-11T19:37:01.918Z [WARN ] [health] RSS WARNING: 534.8MB
+2026-04-11T19:37:03.142Z [INFO ] [bybit-exec] getAccountState OK: equity=257.43
+2026-04-11T19:37:03.204Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:37:13.162Z [INFO ] [bybit-exec] getAccountState OK: equity=257.30
+2026-04-11T19:37:13.229Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:37:23.163Z [INFO ] [bybit-exec] getAccountState OK: equity=257.34
+2026-04-11T19:37:23.211Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:37:33.181Z [INFO ] [bybit-exec] getAccountState OK: equity=257.32
+2026-04-11T19:37:33.223Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:37:43.182Z [INFO ] [bybit-exec] getAccountState OK: equity=257.28
+2026-04-11T19:37:43.293Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:37:53.160Z [INFO ] [bybit-exec] getAccountState OK: equity=256.98
+2026-04-11T19:37:53.230Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:38:03.214Z [INFO ] [bybit-exec] getAccountState OK: equity=257.57
+2026-04-11T19:38:03.294Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:38:13.171Z [INFO ] [bybit-exec] getAccountState OK: equity=257.84
+2026-04-11T19:38:13.216Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:38:23.162Z [INFO ] [bybit-exec] getAccountState OK: equity=257.81
+2026-04-11T19:38:23.210Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:38:33.189Z [INFO ] [bybit-exec] getAccountState OK: equity=258.05
+2026-04-11T19:38:33.244Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:38:43.176Z [INFO ] [bybit-exec] getAccountState OK: equity=258.11
+2026-04-11T19:38:43.224Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:38:53.181Z [INFO ] [bybit-exec] getAccountState OK: equity=257.58
+2026-04-11T19:38:53.245Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:39:03.222Z [INFO ] [bybit-exec] getAccountState OK: equity=257.59
+2026-04-11T19:39:03.264Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:39:13.178Z [INFO ] [bybit-exec] getAccountState OK: equity=257.39
+2026-04-11T19:39:13.231Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:39:23.196Z [INFO ] [bybit-exec] getAccountState OK: equity=258.18
+2026-04-11T19:39:23.234Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:39:33.174Z [INFO ] [bybit-exec] getAccountState OK: equity=258.44
+2026-04-11T19:39:33.358Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:39:43.193Z [INFO ] [bybit-exec] getAccountState OK: equity=258.50
+2026-04-11T19:39:43.256Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:39:53.329Z [INFO ] [bybit-exec] getAccountState OK: equity=258.20
+2026-04-11T19:39:53.377Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:40:03.196Z [INFO ] [bybit-exec] getAccountState OK: equity=258.72
+2026-04-11T19:40:03.255Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:40:13.269Z [INFO ] [bybit-exec] getAccountState OK: equity=259.02
+2026-04-11T19:40:13.308Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:40:23.238Z [INFO ] [bybit-exec] getAccountState OK: equity=258.99
+2026-04-11T19:40:23.298Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:40:33.233Z [INFO ] [bybit-exec] getAccountState OK: equity=259.42
+2026-04-11T19:40:33.274Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:40:43.265Z [INFO ] [bybit-exec] getAccountState OK: equity=259.57
+2026-04-11T19:40:43.350Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:40:53.256Z [INFO ] [bybit-exec] getAccountState OK: equity=259.49
+2026-04-11T19:40:53.354Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:41:01.957Z [WARN ] [health] DEGRADED — rss=527.5MB
+2026-04-11T19:41:01.957Z [WARN ] [health] RSS WARNING: 527.5MB
+2026-04-11T19:41:03.269Z [INFO ] [bybit-exec] getAccountState OK: equity=259.56
+2026-04-11T19:41:03.313Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:41:13.242Z [INFO ] [bybit-exec] getAccountState OK: equity=259.67
+2026-04-11T19:41:13.282Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:41:23.254Z [INFO ] [bybit-exec] getAccountState OK: equity=259.56
+2026-04-11T19:41:23.317Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:41:33.241Z [INFO ] [bybit-exec] getAccountState OK: equity=259.48
+2026-04-11T19:41:33.323Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:41:43.253Z [INFO ] [bybit-exec] getAccountState OK: equity=259.44
+2026-04-11T19:41:43.427Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:41:53.270Z [INFO ] [bybit-exec] getAccountState OK: equity=259.75
+2026-04-11T19:41:53.315Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:42:03.351Z [INFO ] [bybit-exec] getAccountState OK: equity=259.85
+2026-04-11T19:42:03.390Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:42:13.286Z [INFO ] [bybit-exec] getAccountState OK: equity=259.65
+2026-04-11T19:42:13.329Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:42:23.284Z [INFO ] [bybit-exec] getAccountState OK: equity=259.34
+2026-04-11T19:42:23.326Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:42:33.274Z [INFO ] [bybit-exec] getAccountState OK: equity=259.68
+2026-04-11T19:42:33.318Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:42:43.280Z [INFO ] [bybit-exec] getAccountState OK: equity=259.83
+2026-04-11T19:42:43.333Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:42:53.294Z [INFO ] [bybit-exec] getAccountState OK: equity=259.59
+2026-04-11T19:42:53.343Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:43:03.262Z [INFO ] [bybit-exec] getAccountState OK: equity=259.50
+2026-04-11T19:43:03.304Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:43:13.274Z [INFO ] [bybit-exec] getAccountState OK: equity=259.27
+2026-04-11T19:43:13.335Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:43:23.258Z [INFO ] [bybit-exec] getAccountState OK: equity=259.32
+2026-04-11T19:43:23.312Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:43:33.299Z [INFO ] [bybit-exec] getAccountState OK: equity=259.34
+2026-04-11T19:43:33.341Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:43:43.314Z [INFO ] [bybit-exec] getAccountState OK: equity=259.86
+2026-04-11T19:43:43.362Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:43:53.280Z [INFO ] [bybit-exec] getAccountState OK: equity=259.79
+2026-04-11T19:43:53.412Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:44:03.299Z [INFO ] [bybit-exec] getAccountState OK: equity=259.63
+2026-04-11T19:44:03.348Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:44:13.399Z [INFO ] [bybit-exec] getAccountState OK: equity=259.69
+2026-04-11T19:44:13.438Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:44:23.315Z [INFO ] [bybit-exec] getAccountState OK: equity=259.73
+2026-04-11T19:44:23.355Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:44:33.323Z [INFO ] [bybit-exec] getAccountState OK: equity=259.75
+2026-04-11T19:44:33.376Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:44:43.302Z [INFO ] [bybit-exec] getAccountState OK: equity=260.07
+2026-04-11T19:44:43.343Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:44:53.307Z [INFO ] [bybit-exec] getAccountState OK: equity=260.06
+2026-04-11T19:44:53.351Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:45:03.329Z [INFO ] [bybit-exec] getAccountState OK: equity=259.87
+2026-04-11T19:45:03.381Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:45:13.311Z [INFO ] [bybit-exec] getAccountState OK: equity=260.00
+2026-04-11T19:45:13.351Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:45:23.345Z [INFO ] [bybit-exec] getAccountState OK: equity=259.21
+2026-04-11T19:45:23.390Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:45:33.347Z [INFO ] [bybit-exec] getAccountState OK: equity=259.35
+2026-04-11T19:45:33.416Z [INFO ] [bybit-exec] getPositions OK: 10 open position(s)
+2026-04-11T19:45:43.340Z [INFO ] [bybit-exec] getAccountState OK: equity=258.97
+2026-04-11T19:45:43.396Z [INFO ] [bybit-exec] getPositions OK: 11 open position(s)
+2026-04-11T19:45:53.367Z [INFO ] [bybit-exec] getAccountState OK: equity=257.28
+2026-04-11T19:45:53.413Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:46:03.484Z [INFO ] [bybit-exec] getAccountState OK: equity=257.33
+2026-04-11T19:46:03.541Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:46:13.358Z [INFO ] [bybit-exec] getAccountState OK: equity=256.31
+2026-04-11T19:46:13.420Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:46:23.448Z [INFO ] [bybit-exec] getAccountState OK: equity=256.39
+2026-04-11T19:46:23.489Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:46:33.370Z [INFO ] [bybit-exec] getAccountState OK: equity=256.74
+2026-04-11T19:46:33.418Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:46:43.380Z [INFO ] [bybit-exec] getAccountState OK: equity=256.48
+2026-04-11T19:46:43.443Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:46:53.360Z [INFO ] [bybit-exec] getAccountState OK: equity=256.67
+2026-04-11T19:46:53.434Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:47:03.373Z [INFO ] [bybit-exec] getAccountState OK: equity=257.01
+2026-04-11T19:47:03.415Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:47:13.362Z [INFO ] [bybit-exec] getAccountState OK: equity=256.58
+2026-04-11T19:47:13.431Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:47:23.410Z [INFO ] [bybit-exec] getAccountState OK: equity=256.49
+2026-04-11T19:47:23.459Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:47:33.424Z [INFO ] [bybit-exec] getAccountState OK: equity=257.11
+2026-04-11T19:47:33.481Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:47:43.427Z [INFO ] [bybit-exec] getAccountState OK: equity=257.48
+2026-04-11T19:47:43.488Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:47:53.439Z [INFO ] [bybit-exec] getAccountState OK: equity=258.99
+2026-04-11T19:47:53.543Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:48:03.435Z [INFO ] [bybit-exec] getAccountState OK: equity=258.65
+2026-04-11T19:48:03.505Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:48:13.506Z [INFO ] [bybit-exec] getAccountState OK: equity=258.30
+2026-04-11T19:48:13.554Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:48:23.465Z [INFO ] [bybit-exec] getAccountState OK: equity=258.72
+2026-04-11T19:48:23.533Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:48:33.457Z [INFO ] [bybit-exec] getAccountState OK: equity=258.58
+2026-04-11T19:48:33.500Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:48:43.438Z [INFO ] [bybit-exec] getAccountState OK: equity=258.44
+2026-04-11T19:48:43.478Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:48:53.459Z [INFO ] [bybit-exec] getAccountState OK: equity=258.52
+2026-04-11T19:48:53.544Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:49:03.537Z [INFO ] [bybit-exec] getAccountState OK: equity=258.43
+2026-04-11T19:49:03.578Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:49:13.482Z [INFO ] [bybit-exec] getAccountState OK: equity=257.39
+2026-04-11T19:49:13.532Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:49:23.521Z [INFO ] [bybit-exec] getAccountState OK: equity=257.05
+2026-04-11T19:49:23.576Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:49:33.511Z [INFO ] [bybit-exec] getAccountState OK: equity=257.27
+2026-04-11T19:49:33.551Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:49:43.538Z [INFO ] [bybit-exec] getAccountState OK: equity=256.97
+2026-04-11T19:49:43.647Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:49:53.522Z [INFO ] [bybit-exec] getAccountState OK: equity=256.54
+2026-04-11T19:49:53.573Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:50:03.613Z [INFO ] [bybit-exec] getAccountState OK: equity=256.49
+2026-04-11T19:50:03.653Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:50:13.557Z [INFO ] [bybit-exec] getAccountState OK: equity=257.20
+2026-04-11T19:50:13.614Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:50:23.547Z [INFO ] [bybit-exec] getAccountState OK: equity=257.12
+2026-04-11T19:50:23.602Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:50:33.559Z [INFO ] [bybit-exec] getAccountState OK: equity=258.69
+2026-04-11T19:50:33.598Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:50:43.540Z [INFO ] [bybit-exec] getAccountState OK: equity=259.41
+2026-04-11T19:50:43.603Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:50:53.618Z [INFO ] [bybit-exec] getAccountState OK: equity=259.18
+2026-04-11T19:50:53.662Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:51:03.562Z [INFO ] [bybit-exec] getAccountState OK: equity=259.28
+2026-04-11T19:51:03.624Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:51:13.593Z [INFO ] [bybit-exec] getAccountState OK: equity=258.86
+2026-04-11T19:51:13.641Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:51:23.572Z [INFO ] [bybit-exec] getAccountState OK: equity=258.27
+2026-04-11T19:51:23.664Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:51:33.629Z [INFO ] [bybit-exec] getAccountState OK: equity=258.54
+2026-04-11T19:51:33.789Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:51:43.599Z [INFO ] [bybit-exec] getAccountState OK: equity=258.84
+2026-04-11T19:51:43.740Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:51:53.576Z [INFO ] [bybit-exec] getAccountState OK: equity=258.94
+2026-04-11T19:51:53.687Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:52:03.615Z [INFO ] [bybit-exec] getAccountState OK: equity=258.74
+2026-04-11T19:52:03.690Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:52:13.642Z [INFO ] [bybit-exec] getAccountState OK: equity=258.64
+2026-04-11T19:52:13.708Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:52:23.635Z [INFO ] [bybit-exec] getAccountState OK: equity=258.86
+2026-04-11T19:52:23.675Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:52:33.612Z [INFO ] [bybit-exec] getAccountState OK: equity=257.53
+2026-04-11T19:52:33.674Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:52:43.641Z [INFO ] [bybit-exec] getAccountState OK: equity=256.84
+2026-04-11T19:52:43.693Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:52:53.672Z [INFO ] [bybit-exec] getAccountState OK: equity=256.94
+2026-04-11T19:52:53.726Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:53:03.648Z [INFO ] [bybit-exec] getAccountState OK: equity=256.11
+2026-04-11T19:53:03.689Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:53:13.685Z [INFO ] [bybit-exec] getAccountState OK: equity=257.22
+2026-04-11T19:53:13.768Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:53:23.669Z [INFO ] [bybit-exec] getAccountState OK: equity=257.65
+2026-04-11T19:53:23.723Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:53:33.645Z [INFO ] [bybit-exec] getAccountState OK: equity=257.56
+2026-04-11T19:53:33.687Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:53:43.674Z [INFO ] [bybit-exec] getAccountState OK: equity=257.27
+2026-04-11T19:53:43.782Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:53:53.671Z [INFO ] [bybit-exec] getAccountState OK: equity=256.61
+2026-04-11T19:53:53.715Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:54:03.746Z [INFO ] [bybit-exec] getAccountState OK: equity=256.81
+2026-04-11T19:54:03.811Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:54:13.647Z [INFO ] [bybit-exec] getAccountState OK: equity=257.01
+2026-04-11T19:54:13.717Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:54:23.668Z [INFO ] [bybit-exec] getAccountState OK: equity=256.94
+2026-04-11T19:54:23.726Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:54:33.702Z [INFO ] [bybit-exec] getAccountState OK: equity=256.80
+2026-04-11T19:54:33.767Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:54:43.689Z [INFO ] [bybit-exec] getAccountState OK: equity=256.95
+2026-04-11T19:54:43.731Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:54:53.691Z [INFO ] [bybit-exec] getAccountState OK: equity=257.36
+2026-04-11T19:54:53.739Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:55:03.729Z [INFO ] [bybit-exec] getAccountState OK: equity=258.67
+2026-04-11T19:55:03.792Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:55:13.714Z [INFO ] [bybit-exec] getAccountState OK: equity=259.72
+2026-04-11T19:55:13.800Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:55:23.735Z [INFO ] [bybit-exec] getAccountState OK: equity=259.50
+2026-04-11T19:55:23.786Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:55:33.716Z [INFO ] [bybit-exec] getAccountState OK: equity=259.40
+2026-04-11T19:55:33.779Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:55:43.719Z [INFO ] [bybit-exec] getAccountState OK: equity=258.74
+2026-04-11T19:55:43.769Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:55:53.825Z [INFO ] [bybit-exec] getAccountState OK: equity=258.78
+2026-04-11T19:55:53.892Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:56:03.719Z [INFO ] [bybit-exec] getAccountState OK: equity=258.19
+2026-04-11T19:56:03.771Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:56:13.769Z [INFO ] [bybit-exec] getAccountState OK: equity=257.74
+2026-04-11T19:56:13.809Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:56:23.721Z [INFO ] [bybit-exec] getAccountState OK: equity=257.55
+2026-04-11T19:56:23.808Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:56:33.769Z [INFO ] [bybit-exec] getAccountState OK: equity=257.38
+2026-04-11T19:56:33.820Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:56:43.738Z [INFO ] [bybit-exec] getAccountState OK: equity=256.99
+2026-04-11T19:56:43.798Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:56:53.738Z [INFO ] [bybit-exec] getAccountState OK: equity=256.62
+2026-04-11T19:56:53.781Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
