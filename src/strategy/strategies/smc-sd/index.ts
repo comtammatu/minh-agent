@@ -61,6 +61,7 @@ import {
   SMC_AMD_JUDAS_BONUS, SMC_AMD_SL_ATR_BUFFER, SMC_AMD_MIN_RANGE_BARS,
   SMC_LIQUIDATION_VOLUME_RATIO, SMC_LIQUIDATION_WICK_ATR_MULT, SMC_LIQUIDATION_CONFIDENCE_MULT,
   SMC_WEEKEND_VOLUME_RATIO_THRESHOLD, SMC_WEEKEND_CONFIDENCE_MULT,
+  SL_WICK_ATR_MULT,
 } from '../../../config.js'
 
 // ── Module-level state ──────────────────────────────────────────────────────
@@ -286,9 +287,10 @@ export class SmcSdStrategy implements IStrategy {
 
         // SL: zone boundary + wide ATR buffer (swing — absorbs 4h wick noise)
         const entry = candle.c
+        const slMult = (strategyParams?.SL_WICK_ATR_MULT ?? SL_WICK_ATR_MULT) / SL_WICK_ATR_MULT
         const sl = side === 'long'
-          ? z.bottom - atrVal * SMC_4H_SWING_SL_ATR_BUFFER
-          : z.top + atrVal * SMC_4H_SWING_SL_ATR_BUFFER
+          ? z.bottom - atrVal * SMC_4H_SWING_SL_ATR_BUFFER * slMult
+          : z.top + atrVal * SMC_4H_SWING_SL_ATR_BUFFER * slMult
         const risk = Math.abs(entry - sl)
         if (risk <= 0 || risk / entry > MAX_TRADE_SL_PCT) continue
 
@@ -297,7 +299,7 @@ export class SmcSdStrategy implements IStrategy {
         if (Math.abs(tp1 - entry) / risk < SMC_4H_SWING_MIN_RR) continue
 
         // Confidence
-        let confidence = SMC_4H_SWING_CONFIDENCE_BASE
+        let confidence = strategyParams?.SMC_DRILLDOWN_CONFIDENCE_BASE ?? SMC_4H_SWING_CONFIDENCE_BASE
         if (recentBreak.kind === 'choch') confidence += 0.10
         if (z.origin === 'breaker-block') confidence += SMC_ICT_BREAKER_BLOCK_BONUS
         if (z.origin === 'inversion-fvg') confidence += SMC_ICT_INVERSION_FVG_BONUS
@@ -430,9 +432,10 @@ export class SmcSdStrategy implements IStrategy {
 
     // SL: beyond Judas sweep wick + ATR buffer
     const entry = candle.c
+    const slMult = (strategyParams?.SL_WICK_ATR_MULT ?? SL_WICK_ATR_MULT) / SL_WICK_ATR_MULT
     const sl = side === 'long'
-      ? judas.sweepLevel - atrVal * SMC_AMD_SL_ATR_BUFFER
-      : judas.sweepLevel + atrVal * SMC_AMD_SL_ATR_BUFFER
+      ? judas.sweepLevel - atrVal * SMC_AMD_SL_ATR_BUFFER * slMult
+      : judas.sweepLevel + atrVal * SMC_AMD_SL_ATR_BUFFER * slMult
 
     // TP: opposite side of accumulation range + extension
     const risk = Math.abs(entry - sl)
@@ -450,7 +453,7 @@ export class SmcSdStrategy implements IStrategy {
     if (reward / risk < SMC_AMD_MIN_RR) return null
 
     // Confidence
-    let confidence = SMC_AMD_CONFIDENCE_BASE
+    let confidence = strategyParams?.SMC_DRILLDOWN_CONFIDENCE_BASE ?? SMC_AMD_CONFIDENCE_BASE
     confidence += SMC_AMD_JUDAS_BONUS
     if (confirmBreak.kind === 'choch') confidence += SMC_DRILLDOWN_CHOCH_BONUS
     if (isDisplacementCandle(candles, idx, atrVal, SMC_ICT_DISPLACEMENT_BODY_ATR)) confidence += 0.08
@@ -512,13 +515,14 @@ export class SmcSdStrategy implements IStrategy {
 
     // SL: 15m swing structure + ATR buffer
     const pivots = findPivots(candles, idx, 3, tol)
+    const slMult = (strategyParams?.SL_WICK_ATR_MULT ?? SL_WICK_ATR_MULT) / SL_WICK_ATR_MULT
     let sl: number
     if (side === 'long') {
       const lows = pivots.filter(p => p.kind === 'low' && p.index <= idx).slice(-3)
-      sl = (lows.length > 0 ? Math.min(...lows.map(p => p.price)) : candle.l) - atrVal * SMC_15M_SCALP_SL_ATR_BUFFER
+      sl = (lows.length > 0 ? Math.min(...lows.map(p => p.price)) : candle.l) - atrVal * SMC_15M_SCALP_SL_ATR_BUFFER * slMult
     } else {
       const highs = pivots.filter(p => p.kind === 'high' && p.index <= idx).slice(-3)
-      sl = (highs.length > 0 ? Math.max(...highs.map(p => p.price)) : candle.h) + atrVal * SMC_15M_SCALP_SL_ATR_BUFFER
+      sl = (highs.length > 0 ? Math.max(...highs.map(p => p.price)) : candle.h) + atrVal * SMC_15M_SCALP_SL_ATR_BUFFER * slMult
     }
     const risk = Math.abs(entry - sl)
     if (risk <= 0 || risk / entry > MAX_TRADE_SL_PCT) return null
@@ -528,7 +532,7 @@ export class SmcSdStrategy implements IStrategy {
     if (Math.abs(tp1 - entry) / risk < SMC_15M_SCALP_MIN_RR) return null
 
     // Confidence
-    let confidence = SMC_15M_SCALP_CONFIDENCE_BASE
+    let confidence = strategyParams?.SMC_DRILLDOWN_CONFIDENCE_BASE ?? SMC_15M_SCALP_CONFIDENCE_BASE
     if (poi.ltfBreakKind === 'choch') confidence += SMC_DRILLDOWN_CHOCH_BONUS  // 15m CHoCH > BOS
     if (poi.breakKind === 'choch') confidence += 0.05                           // 4h CHoCH > BOS
     if (poi.strength > 0.7) confidence += 0.05
@@ -642,13 +646,14 @@ export class SmcSdStrategy implements IStrategy {
 
     // SL: 5m swing structure (ultra-tight)
     const pivots5m = findPivots(candles, idx, 3, tol)
+    const slMult = (strategyParams?.SL_WICK_ATR_MULT ?? SL_WICK_ATR_MULT) / SL_WICK_ATR_MULT
     let sl: number
     if (side === 'long') {
       const lows = pivots5m.filter(p => p.kind === 'low' && p.index <= idx).slice(-3)
-      sl = (lows.length > 0 ? Math.min(...lows.map(p => p.price)) : candle.l) - atrVal * SMC_5M_SL_ATR_BUFFER
+      sl = (lows.length > 0 ? Math.min(...lows.map(p => p.price)) : candle.l) - atrVal * SMC_5M_SL_ATR_BUFFER * slMult
     } else {
       const highs = pivots5m.filter(p => p.kind === 'high' && p.index <= idx).slice(-3)
-      sl = (highs.length > 0 ? Math.max(...highs.map(p => p.price)) : candle.h) + atrVal * SMC_5M_SL_ATR_BUFFER
+      sl = (highs.length > 0 ? Math.max(...highs.map(p => p.price)) : candle.h) + atrVal * SMC_5M_SL_ATR_BUFFER * slMult
     }
 
     // TP: 4h structure targets — context.htfCandles = 1h (HTF_MAP['5m']='1h')
@@ -686,7 +691,7 @@ export class SmcSdStrategy implements IStrategy {
     if (reward / risk < SMC_5M_MIN_RR) return null
 
     // ── D. CONFIDENCE ──────────────────────────────────────────────────
-    let confidence = SMC_5M_CONFIDENCE_BASE
+    let confidence = strategyParams?.SMC_DRILLDOWN_CONFIDENCE_BASE ?? SMC_5M_CONFIDENCE_BASE
 
     // Entry quality
     if (bounceQuality === 'fvg') confidence += 0.10
@@ -881,7 +886,8 @@ export class SmcSdStrategy implements IStrategy {
 
     // SL/TP
     const entry = candle.c
-    const sl = side === 'long' ? bestZone.bottom - atrVal * STRUCTURE_STOP_ATR_BUFFER : bestZone.top + atrVal * STRUCTURE_STOP_ATR_BUFFER
+    const slMult = (strategyParams?.SL_WICK_ATR_MULT ?? SL_WICK_ATR_MULT) / SL_WICK_ATR_MULT
+    const sl = side === 'long' ? bestZone.bottom - atrVal * STRUCTURE_STOP_ATR_BUFFER * slMult : bestZone.top + atrVal * STRUCTURE_STOP_ATR_BUFFER * slMult
     const { tp1, tp2 } = computeStructureTargets(candles, idx, entry, sl, side)
     const pools = findLiquidityPools(candles, idx, { tolerance: tol })
     if (pools.length > 0) {
