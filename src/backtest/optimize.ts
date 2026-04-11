@@ -55,12 +55,25 @@ export interface TrialResult {
   numWindows: number
   durationMs: number
   error?: string
+  /** OOS trade counts per scan mode (e.g. { '15m_drilldown': 12, '1h_same_tf': 4 }). */
+  tradesByMode?: Record<string, number>
 }
 
 export interface HoldoutResult extends TrialResult {
   holdoutPF: number
   holdoutMaxDD: number
   holdoutTrades: number
+  /** Holdout trade counts per scan mode. */
+  holdoutTradesByMode?: Record<string, number>
+}
+
+/** Infer scan mode label from candle interval (used for breakdown reporting). */
+export function inferScanMode(interval: CandleInterval): string {
+  if (interval === '15m') return '15m_drilldown'
+  if (interval === '1h') return '1h_same_tf'
+  if (interval === '5m') return '5m_micro'
+  if (interval === '4h') return '4h_poi'
+  return 'unknown'
 }
 
 export interface OptimizeRunResult {
@@ -149,6 +162,13 @@ export function runTrial(
   try {
     const result: WalkForwardResult = walkForward(trainCandles, wfConfigWithParams)
 
+    const oosTrades = result.windows.flatMap(w => w.testTrades ?? [])
+    const tradesByMode = oosTrades.reduce((acc, t) => {
+      const mode = inferScanMode(t.interval)
+      acc[mode] = (acc[mode] ?? 0) + 1
+      return acc
+    }, {} as Record<string, number>)
+
     return {
       trialIndex,
       params,
@@ -159,6 +179,7 @@ export function runTrial(
       tradeCount: result.oosMetrics.totalTrades,
       numWindows: result.windows.length,
       durationMs: Date.now() - start,
+      tradesByMode,
     }
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err)
@@ -213,11 +234,18 @@ export function validateHoldout(
 
     try {
       const result = walkForward(holdoutCandles, wfConfigWithParams)
+      const holdoutOosTrades = result.windows.flatMap(w => w.testTrades ?? [])
+      const holdoutTradesByMode = holdoutOosTrades.reduce((acc, t) => {
+        const mode = inferScanMode(t.interval)
+        acc[mode] = (acc[mode] ?? 0) + 1
+        return acc
+      }, {} as Record<string, number>)
       results.push({
         ...trial,
         holdoutPF: result.oosMetrics.profitFactor,
         holdoutMaxDD: result.oosMetrics.maxDrawdown,
         holdoutTrades: result.oosMetrics.totalTrades,
+        holdoutTradesByMode,
       })
     } catch (err) {
       log.warn('optimizer', `Holdout validation failed for trial ${trial.trialIndex}: ${err instanceof Error ? err.message : String(err)}`)
@@ -254,8 +282,8 @@ export function formatConsoleTable(topN: HoldoutResult[]): string {
   const lines: string[] = [
     '',
     '=== TOP PARAMETER COMBINATIONS ===',
-    `${'#'.padStart(3)}  ${'OOS PF'.padStart(7)}  ${'OOS Exp'.padStart(8)}  ${'MaxDD'.padStart(6)}  ${'WR'.padStart(5)}  ${'Trades'.padStart(6)}  ${'Hold PF'.padStart(8)}  ${'Hold DD'.padStart(8)}  ${'Hold #'.padStart(6)}  Params`,
-    '-'.repeat(120),
+    `${'#'.padStart(3)}  ${'OOS PF'.padStart(7)}  ${'OOS Exp'.padStart(8)}  ${'MaxDD'.padStart(6)}  ${'WR'.padStart(5)}  ${'Trades'.padStart(6)}  ${'Hold PF'.padStart(8)}  ${'Hold DD'.padStart(8)}  ${'Hold #'.padStart(6)}  ${'Hold Modes'.padEnd(32)}  Params`,
+    '-'.repeat(155),
   ]
 
   for (let i = 0; i < topN.length; i++) {
@@ -264,12 +292,15 @@ export function formatConsoleTable(topN: HoldoutResult[]): string {
       .map(([k, v]) => `${k}=${typeof v === 'number' ? v.toFixed(2) : v}`)
       .join(' ')
 
+    const modeStr = t.holdoutTradesByMode
+      ? Object.entries(t.holdoutTradesByMode).map(([m, n]) => `${m}:${n}`).join(' ')
+      : ''
     lines.push(
-      `${(i + 1).toString().padStart(3)}  ${t.oosPF.toFixed(2).padStart(7)}  ${('$' + t.oosExpectancy.toFixed(2)).padStart(8)}  ${(t.maxDD * 100).toFixed(1).padStart(5)}%  ${(t.winRate * 100).toFixed(0).padStart(4)}%  ${t.tradeCount.toString().padStart(6)}  ${t.holdoutPF.toFixed(2).padStart(8)}  ${(t.holdoutMaxDD * 100).toFixed(1).padStart(7)}%  ${t.holdoutTrades.toString().padStart(6)}  ${paramStr}`
+      `${(i + 1).toString().padStart(3)}  ${t.oosPF.toFixed(2).padStart(7)}  ${('$' + t.oosExpectancy.toFixed(2)).padStart(8)}  ${(t.maxDD * 100).toFixed(1).padStart(5)}%  ${(t.winRate * 100).toFixed(0).padStart(4)}%  ${t.tradeCount.toString().padStart(6)}  ${t.holdoutPF.toFixed(2).padStart(8)}  ${(t.holdoutMaxDD * 100).toFixed(1).padStart(7)}%  ${t.holdoutTrades.toString().padStart(6)}  ${modeStr.padEnd(32)}  ${paramStr}`
     )
   }
 
-  lines.push('=' .repeat(120))
+  lines.push('='.repeat(155))
   return lines.join('\n')
 }
 
@@ -393,6 +424,14 @@ async function main() {
   if (totalCandles === 0) {
     log.error('optimizer', 'No candle data. Aborting.')
     process.exit(1)
+  }
+  // Warn if any coin failed to fetch — silent degradation guard
+  const expectedSeries = coins.length * (TIMEFRAMES.length + extraHTFs.length)
+  if (allCandles.size < expectedSeries) {
+    log.warn('optimizer', `Only ${allCandles.size}/${expectedSeries} series loaded — some coins may have failed`)
+    const loadedCoins = new Set([...allCandles.keys()].map(k => k.split('|')[0] ?? ''))
+    const missingCoins = coins.filter(c => !loadedCoins.has(c))
+    if (missingCoins.length > 0) log.warn('optimizer', `Missing coins: ${missingCoins.join(', ')}`)
   }
   log.info('optimizer', `Total: ${totalCandles} candles across ${allCandles.size} series`)
 

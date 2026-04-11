@@ -1074,8 +1074,9 @@ export const BYBIT_BACKFILL_CONCURRENCY = 3
 /** Parameter search space for optimizer random sampling.
  * Each field maps to a StrategyParams key with min/max/step bounds.
  * Optimizer generates random values within these bounds, steps optional.
- * Note: SL_WICK_ATR_MULT and SMC_DRILLDOWN_CONFIDENCE_BASE are defined in config
- * but not all may be wired into strategy code — optimizer will detect no effect. */
+ * Params: MIN_CONFIDENCE, REGIME_MULT_COUNTER, REGIME_MULT_NEUTRAL,
+ *   SMC_DRILLDOWN_CONFIDENCE_BASE (15m scan base), SL_WICK_ATR_MULT,
+ *   SMC_MIN_RR, SMC_1H_CONFIDENCE_BASE (1h scan base). */
 export const PARAM_SCHEMA = {
   MIN_CONFIDENCE: { min: 0.40, max: 0.80, step: 0.05, type: 'float' as const },
   REGIME_MULT_COUNTER: { min: 0.10, max: 0.50, step: 0.05, type: 'float' as const },
@@ -1083,4 +1084,5 @@ export const PARAM_SCHEMA = {
   SMC_DRILLDOWN_CONFIDENCE_BASE: { min: 0.50, max: 0.80, step: 0.05, type: 'float' as const },
   SL_WICK_ATR_MULT: { min: 0.3, max: 1.0, step: 0.1, type: 'float' as const },
   SMC_MIN_RR: { min: 1.5, max: 4.0, step: 0.5, type: 'float' as const },
+  SMC_1H_CONFIDENCE_BASE: { min: 0.50, max: 0.75, step: 0.05, type: 'float' as const },
 } as const

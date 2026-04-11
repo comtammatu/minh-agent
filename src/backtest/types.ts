@@ -23,6 +23,8 @@ export interface StrategyParams {
   SMC_DRILLDOWN_CONFIDENCE_BASE?: number
   SL_WICK_ATR_MULT?: number
   SMC_MIN_RR?: number
+  /** Confidence base for scan1hSameTF (1H BOS/CHoCH same-TF entries). Default 0.65. */
+  SMC_1H_CONFIDENCE_BASE?: number
 }
 
 export interface BacktestConfig {

@@ -122,9 +122,10 @@ describe('optimize', () => {
     const trials = generateTrials(PARAM_SCHEMA, 50)
     expect(trials.length).toBe(50)
 
-    // Each trial should have all 6 keys
+    // Each trial should have all keys (matches PARAM_SCHEMA key count)
+    const schemaKeyCount = Object.keys(PARAM_SCHEMA).length
     for (const trial of trials) {
-      expect(Object.keys(trial).length).toBe(6)
+      expect(Object.keys(trial).length).toBe(schemaKeyCount)
     }
   })
 

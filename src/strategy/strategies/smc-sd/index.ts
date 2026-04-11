@@ -851,8 +851,9 @@ export class SmcSdStrategy implements IStrategy {
     const adxVal = adx(candles, idx)
     if (!isNaN(adxVal) && adxVal < 18) return null
 
-    // Confidence
-    let confidence = 0.65
+    // Confidence (base tunable via SMC_1H_CONFIDENCE_BASE optimizer param)
+    const _base1h = strategyParams?.SMC_1H_CONFIDENCE_BASE
+    let confidence = (typeof _base1h === 'number' && isFinite(_base1h) && _base1h > 0) ? _base1h : 0.65
     if (recentBreak.kind === 'choch') confidence += 0.10
     if (bounceQuality === 'displacement') confidence += 0.12
     else if (bounceQuality === 'sweep') confidence += 0.10
