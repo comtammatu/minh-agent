@@ -1050,3 +1050,270 @@
 2026-04-11T19:56:43.798Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
 2026-04-11T19:56:53.738Z [INFO ] [bybit-exec] getAccountState OK: equity=256.62
 2026-04-11T19:56:53.781Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:57:03.747Z [INFO ] [bybit-exec] getAccountState OK: equity=257.87
+2026-04-11T19:57:03.788Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:57:13.746Z [INFO ] [bybit-exec] getAccountState OK: equity=259.07
+2026-04-11T19:57:13.793Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:57:23.769Z [INFO ] [bybit-exec] getAccountState OK: equity=258.72
+2026-04-11T19:57:23.828Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:57:32.231Z [WARN ] [health] DEGRADED — rss=531.2MB
+2026-04-11T19:57:32.231Z [WARN ] [health] RSS WARNING: 531.2MB
+2026-04-11T19:57:33.762Z [INFO ] [bybit-exec] getAccountState OK: equity=259.55
+2026-04-11T19:57:33.812Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:57:43.741Z [INFO ] [bybit-exec] getAccountState OK: equity=260.68
+2026-04-11T19:57:43.800Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:57:53.758Z [INFO ] [bybit-exec] getAccountState OK: equity=261.18
+2026-04-11T19:57:53.825Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:58:02.240Z [WARN ] [health] DEGRADED — rss=556.3MB
+2026-04-11T19:58:02.240Z [WARN ] [health] RSS WARNING: 556.3MB
+2026-04-11T19:58:03.886Z [INFO ] [bybit-exec] getAccountState OK: equity=261.60
+2026-04-11T19:58:03.925Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:58:13.757Z [INFO ] [bybit-exec] getAccountState OK: equity=261.50
+2026-04-11T19:58:13.802Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:58:23.816Z [INFO ] [bybit-exec] getAccountState OK: equity=261.59
+2026-04-11T19:58:23.855Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:58:32.241Z [WARN ] [health] DEGRADED — rss=577.4MB
+2026-04-11T19:58:32.241Z [WARN ] [health] RSS WARNING: 577.4MB
+2026-04-11T19:58:33.801Z [INFO ] [bybit-exec] getAccountState OK: equity=261.36
+2026-04-11T19:58:33.850Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:58:43.774Z [INFO ] [bybit-exec] getAccountState OK: equity=261.58
+2026-04-11T19:58:43.817Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:58:53.811Z [INFO ] [bybit-exec] getAccountState OK: equity=262.00
+2026-04-11T19:58:53.855Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:59:02.246Z [WARN ] [health] DEGRADED — rss=600.8MB
+2026-04-11T19:59:02.246Z [WARN ] [health] RSS WARNING: 600.8MB
+2026-04-11T19:59:03.818Z [INFO ] [bybit-exec] getAccountState OK: equity=262.01
+2026-04-11T19:59:03.870Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:59:13.832Z [INFO ] [bybit-exec] getAccountState OK: equity=262.39
+2026-04-11T19:59:13.891Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:59:23.814Z [INFO ] [bybit-exec] getAccountState OK: equity=262.64
+2026-04-11T19:59:23.874Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:59:32.250Z [WARN ] [health] DEGRADED — rss=620.0MB
+2026-04-11T19:59:32.250Z [WARN ] [health] RSS WARNING: 620.0MB
+2026-04-11T19:59:33.830Z [INFO ] [bybit-exec] getAccountState OK: equity=262.70
+2026-04-11T19:59:33.871Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:59:43.816Z [INFO ] [bybit-exec] getAccountState OK: equity=263.55
+2026-04-11T19:59:43.920Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T19:59:54.059Z [INFO ] [bybit-exec] getAccountState OK: equity=263.57
+2026-04-11T19:59:54.154Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:00:00.342Z [INFO ] [agent] ARB      IDLE → ENTERING | smc-sd long
+2026-04-11T20:00:00.344Z [INFO ] [pipeline] ⚡ SETUP | ARB 4H [BB] | LONG smc-sd at fvg | A (4/7) | conf:0.87 | BULL | entry:0.1148 sl:0.1068 tp:0.1387 | R:R 1:3.00 | ttl:12bars | [smc-sd]
+2026-04-11T20:00:00.356Z [INFO ] [order-manager] Order created: 796a223c-b3a4-4896-9dfb-dff193976146 ARB long @ 0.11481 strategy=smc-sd [cloid=0x97d3ad58...]
+2026-04-11T20:00:00.428Z [INFO ] [bybit-svc] Loaded 30 risk tiers for ARBUSDT
+2026-04-11T20:00:00.508Z [INFO ] [bybit-svc] setLeverage: ARBUSDT already at 50x
+2026-04-11T20:00:00.510Z [INFO ] [bybit-exec] submitOrder: ARBUSDT Buy Limit qty=826.6 price=0.11481 posIdx=1 sl=0.10683872463173846 tp=0.1387238261047846 step=0.1 rawSize=826.6335476235186
+2026-04-11T20:00:00.551Z [INFO ] [bybit-exec] placeOrder OK: ARBUSDT Buy orderId=aee5a6e7-f23f-46ff-86a5-6f0b0b997051
+2026-04-11T20:00:00.556Z [INFO ] [order-manager] Order submitted: 796a223c-b3a4-4896-9dfb-dff193976146 exchangeId=aee5a6e7-f23f-46ff-86a5-6f0b0b997051
+2026-04-11T20:00:00.969Z [INFO ] [agent] H        IDLE → ENTERING | smc-sd long
+2026-04-11T20:00:00.970Z [INFO ] [pipeline] ⚡ SETUP | H 4H [BB] | LONG smc-sd at fvg | A (4/7) | conf:0.87 | BULL | entry:0.1040 sl:0.0989 tp:0.1188 | R:R 1:2.85 | ttl:12bars | [smc-sd]
+2026-04-11T20:00:00.977Z [INFO ] [order-manager] Order created: 61a9de1d-7810-4b67-9376-7f98442a99c9 H long @ 0.10404 strategy=smc-sd [cloid=0x0a9df8e8...]
+2026-04-11T20:00:01.016Z [INFO ] [bybit-svc] Loaded 30 risk tiers for HUSDT
+2026-04-11T20:00:01.055Z [INFO ] [bybit-svc] setLeverage: HUSDT already at 20x
+2026-04-11T20:00:01.055Z [INFO ] [bybit-exec] submitOrder: HUSDT Buy Limit qty=1270 price=0.10404 posIdx=1 sl=0.09885876802578664 tp=0.11879 step=10 rawSize=1271.7677319881873
+2026-04-11T20:00:01.117Z [ERROR] [bybit-exec] placeOrder failed: retCode=10001 StopLoss:9885000 set for Buy position should lower than base_price:9412000??LastPrice [HUSDT]
+2026-04-11T20:00:01.123Z [ERROR] [order-manager] Order rejected by exchange: StopLoss:9885000 set for Buy position should lower than base_price:9412000??LastPrice
+2026-04-11T20:00:01.123Z [INFO ] [agent] H        ENTERING → IDLE | smc-sd long
+2026-04-11T20:00:01.123Z [INFO ] [agent] H        SKIP Order rejected: StopLoss:9885000 set for Buy position should lower than base_price:9412000??LastPrice
+2026-04-11T20:00:02.252Z [WARN ] [health] DEGRADED — rss=626.5MB
+2026-04-11T20:00:02.252Z [WARN ] [health] RSS WARNING: 626.5MB
+2026-04-11T20:00:03.885Z [INFO ] [bybit-exec] getAccountState OK: equity=265.43
+2026-04-11T20:00:04.014Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:00:13.941Z [INFO ] [bybit-exec] getAccountState OK: equity=266.31
+2026-04-11T20:00:14.062Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:00:23.858Z [INFO ] [bybit-exec] getAccountState OK: equity=265.57
+2026-04-11T20:00:23.959Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:00:32.253Z [WARN ] [health] DEGRADED — rss=648.4MB
+2026-04-11T20:00:32.253Z [WARN ] [health] RSS WARNING: 648.4MB
+2026-04-11T20:00:33.883Z [INFO ] [bybit-exec] getAccountState OK: equity=264.70
+2026-04-11T20:00:33.982Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:00:43.860Z [INFO ] [bybit-exec] getAccountState OK: equity=264.08
+2026-04-11T20:00:43.948Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:00:53.871Z [INFO ] [bybit-exec] getAccountState OK: equity=264.02
+2026-04-11T20:00:54.012Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:01:02.254Z [WARN ] [health] DEGRADED — rss=669.1MB
+2026-04-11T20:01:02.254Z [WARN ] [health] RSS WARNING: 669.1MB
+2026-04-11T20:01:03.895Z [INFO ] [bybit-exec] getAccountState OK: equity=264.89
+2026-04-11T20:01:04.034Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:01:13.877Z [INFO ] [bybit-exec] getAccountState OK: equity=265.11
+2026-04-11T20:01:13.985Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:01:23.891Z [INFO ] [bybit-exec] getAccountState OK: equity=264.58
+2026-04-11T20:01:24.007Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:01:32.259Z [WARN ] [health] DEGRADED — rss=710.5MB
+2026-04-11T20:01:32.259Z [WARN ] [health] RSS WARNING: 710.5MB
+2026-04-11T20:01:33.912Z [INFO ] [bybit-exec] getAccountState OK: equity=262.90
+2026-04-11T20:01:34.028Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:01:43.923Z [INFO ] [bybit-exec] getAccountState OK: equity=262.01
+2026-04-11T20:01:44.115Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:01:53.953Z [INFO ] [bybit-exec] getAccountState OK: equity=261.33
+2026-04-11T20:01:54.106Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:02:02.271Z [WARN ] [health] DEGRADED — rss=732.0MB
+2026-04-11T20:02:02.271Z [WARN ] [health] RSS WARNING: 732.0MB
+2026-04-11T20:02:04.031Z [INFO ] [bybit-exec] getAccountState OK: equity=261.73
+2026-04-11T20:02:04.126Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:02:13.991Z [INFO ] [bybit-exec] getAccountState OK: equity=261.94
+2026-04-11T20:02:14.112Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:02:24.017Z [INFO ] [bybit-exec] getAccountState OK: equity=260.13
+2026-04-11T20:02:24.124Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:02:32.272Z [WARN ] [health] DEGRADED — rss=754.0MB
+2026-04-11T20:02:32.272Z [WARN ] [health] RSS WARNING: 754.0MB
+2026-04-11T20:02:34.016Z [INFO ] [bybit-exec] getAccountState OK: equity=260.49
+2026-04-11T20:02:34.133Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:02:44.058Z [INFO ] [bybit-exec] getAccountState OK: equity=259.57
+2026-04-11T20:02:44.146Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:02:54.062Z [INFO ] [bybit-exec] getAccountState OK: equity=258.13
+2026-04-11T20:02:54.164Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:03:02.273Z [WARN ] [health] DEGRADED — rss=778.9MB
+2026-04-11T20:03:02.273Z [WARN ] [health] RSS WARNING: 778.9MB
+2026-04-11T20:03:04.065Z [INFO ] [bybit-exec] getAccountState OK: equity=255.96
+2026-04-11T20:03:04.193Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:03:14.057Z [INFO ] [bybit-exec] getAccountState OK: equity=256.43
+2026-04-11T20:03:14.298Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:03:24.042Z [INFO ] [bybit-exec] getAccountState OK: equity=256.33
+2026-04-11T20:03:24.205Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:03:32.279Z [WARN ] [health] DEGRADED — rss=798.4MB
+2026-04-11T20:03:32.279Z [WARN ] [health] RSS WARNING: 798.4MB
+2026-04-11T20:03:34.145Z [INFO ] [bybit-exec] getAccountState OK: equity=255.34
+2026-04-11T20:03:34.317Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:03:44.078Z [INFO ] [bybit-exec] getAccountState OK: equity=254.91
+2026-04-11T20:03:44.211Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:03:54.099Z [INFO ] [bybit-exec] getAccountState OK: equity=253.45
+2026-04-11T20:03:54.212Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:04:02.280Z [WARN ] [health] DEGRADED — rss=795.8MB
+2026-04-11T20:04:02.280Z [WARN ] [health] RSS WARNING: 795.8MB
+2026-04-11T20:04:04.089Z [INFO ] [bybit-exec] getAccountState OK: equity=253.32
+2026-04-11T20:04:04.191Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:04:14.065Z [INFO ] [bybit-exec] getAccountState OK: equity=252.80
+2026-04-11T20:04:14.183Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:04:24.081Z [INFO ] [bybit-exec] getAccountState OK: equity=253.37
+2026-04-11T20:04:24.176Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:04:32.281Z [WARN ] [health] DEGRADED — rss=818.7MB
+2026-04-11T20:04:32.281Z [WARN ] [health] RSS WARNING: 818.7MB
+2026-04-11T20:04:34.072Z [INFO ] [bybit-exec] getAccountState OK: equity=253.19
+2026-04-11T20:04:34.206Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:04:44.076Z [INFO ] [bybit-exec] getAccountState OK: equity=253.66
+2026-04-11T20:04:44.191Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:04:54.072Z [INFO ] [bybit-exec] getAccountState OK: equity=253.77
+2026-04-11T20:04:54.172Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:05:02.282Z [WARN ] [health] DEGRADED — rss=842.0MB
+2026-04-11T20:05:02.282Z [WARN ] [health] RSS WARNING: 842.0MB
+2026-04-11T20:05:04.076Z [INFO ] [bybit-exec] getAccountState OK: equity=253.35
+2026-04-11T20:05:04.175Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:05:14.111Z [INFO ] [bybit-exec] getAccountState OK: equity=254.57
+2026-04-11T20:05:14.211Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:05:24.082Z [INFO ] [bybit-exec] getAccountState OK: equity=253.96
+2026-04-11T20:05:24.272Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:05:32.004Z [INFO ] [order-manager] Order timeout: 796a223c-b3a4-4896-9dfb-dff193976146 ARB age=332s
+2026-04-11T20:05:32.042Z [INFO ] [bybit-exec] cancelOrder OK: ARBUSDT orderId=aee5a6e7-f23f-46ff-86a5-6f0b0b997051
+2026-04-11T20:05:32.050Z [INFO ] [order-manager] Order cancelled: 796a223c-b3a4-4896-9dfb-dff193976146 reason=timeout
+2026-04-11T20:05:32.050Z [INFO ] [agent] ARB      ENTERING → IDLE | smc-sd long
+2026-04-11T20:05:32.050Z [INFO ] [agent] ARB      SKIP Order timeout
+2026-04-11T20:05:32.304Z [WARN ] [health] DEGRADED — rss=862.0MB
+2026-04-11T20:05:32.305Z [WARN ] [health] RSS WARNING: 862.0MB
+2026-04-11T20:05:34.071Z [INFO ] [bybit-exec] getAccountState OK: equity=253.98
+2026-04-11T20:05:34.159Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:05:44.172Z [INFO ] [bybit-exec] getAccountState OK: equity=253.57
+2026-04-11T20:05:44.238Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:05:54.087Z [INFO ] [bybit-exec] getAccountState OK: equity=253.49
+2026-04-11T20:05:54.157Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:06:02.305Z [WARN ] [health] DEGRADED — rss=885.2MB
+2026-04-11T20:06:02.306Z [WARN ] [health] RSS WARNING: 885.2MB
+2026-04-11T20:06:04.141Z [INFO ] [bybit-exec] getAccountState OK: equity=254.27
+2026-04-11T20:06:04.191Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:06:14.132Z [INFO ] [bybit-exec] getAccountState OK: equity=254.03
+2026-04-11T20:06:14.182Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:06:24.149Z [INFO ] [bybit-exec] getAccountState OK: equity=254.12
+2026-04-11T20:06:24.215Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:06:32.307Z [WARN ] [health] DEGRADED — rss=904.2MB
+2026-04-11T20:06:32.307Z [WARN ] [health] RSS WARNING: 904.2MB
+2026-04-11T20:06:34.133Z [INFO ] [bybit-exec] getAccountState OK: equity=254.30
+2026-04-11T20:06:34.179Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:06:44.125Z [INFO ] [bybit-exec] getAccountState OK: equity=253.43
+2026-04-11T20:06:44.165Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:06:54.128Z [INFO ] [bybit-exec] getAccountState OK: equity=253.65
+2026-04-11T20:06:54.169Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:07:02.331Z [WARN ] [health] DEGRADED — rss=926.4MB
+2026-04-11T20:07:02.331Z [WARN ] [health] RSS WARNING: 926.4MB
+2026-04-11T20:07:04.152Z [INFO ] [bybit-exec] getAccountState OK: equity=254.12
+2026-04-11T20:07:04.193Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:07:14.127Z [INFO ] [bybit-exec] getAccountState OK: equity=255.02
+2026-04-11T20:07:14.191Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:07:24.141Z [INFO ] [bybit-exec] getAccountState OK: equity=254.57
+2026-04-11T20:07:24.208Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:07:32.332Z [WARN ] [health] DEGRADED — rss=947.5MB
+2026-04-11T20:07:32.332Z [WARN ] [health] RSS WARNING: 947.5MB
+2026-04-11T20:07:34.180Z [INFO ] [bybit-exec] getAccountState OK: equity=254.68
+2026-04-11T20:07:34.308Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:07:44.207Z [INFO ] [bybit-exec] getAccountState OK: equity=255.38
+2026-04-11T20:07:44.296Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:07:54.237Z [INFO ] [bybit-exec] getAccountState OK: equity=255.62
+2026-04-11T20:07:54.276Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:08:02.333Z [WARN ] [health] DEGRADED — rss=967.8MB
+2026-04-11T20:08:02.333Z [WARN ] [health] RSS WARNING: 967.8MB
+2026-04-11T20:08:04.174Z [INFO ] [bybit-exec] getAccountState OK: equity=257.51
+2026-04-11T20:08:04.227Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:08:14.174Z [INFO ] [bybit-exec] getAccountState OK: equity=257.77
+2026-04-11T20:08:14.234Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:08:24.216Z [INFO ] [bybit-exec] getAccountState OK: equity=257.74
+2026-04-11T20:08:24.263Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:08:32.357Z [WARN ] [health] DEGRADED — rss=988.5MB
+2026-04-11T20:08:32.357Z [WARN ] [health] RSS WARNING: 988.5MB
+2026-04-11T20:08:34.204Z [INFO ] [bybit-exec] getAccountState OK: equity=257.32
+2026-04-11T20:08:34.246Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:08:44.201Z [INFO ] [bybit-exec] getAccountState OK: equity=257.87
+2026-04-11T20:08:44.302Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:08:54.225Z [INFO ] [bybit-exec] getAccountState OK: equity=258.60
+2026-04-11T20:08:54.267Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:09:02.358Z [WARN ] [health] DEGRADED — rss=1010.0MB
+2026-04-11T20:09:02.358Z [WARN ] [health] RSS WARNING: 1010.0MB
+2026-04-11T20:09:04.225Z [INFO ] [bybit-exec] getAccountState OK: equity=257.48
+2026-04-11T20:09:04.315Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:09:14.223Z [INFO ] [bybit-exec] getAccountState OK: equity=258.10
+2026-04-11T20:09:14.288Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:09:24.223Z [INFO ] [bybit-exec] getAccountState OK: equity=257.83
+2026-04-11T20:09:24.387Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:09:32.360Z [WARN ] [health] DEGRADED — rss=779.6MB
+2026-04-11T20:09:32.360Z [WARN ] [health] RSS WARNING: 779.6MB
+2026-04-11T20:09:34.298Z [INFO ] [bybit-exec] getAccountState OK: equity=258.23
+2026-04-11T20:09:34.346Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:09:44.346Z [INFO ] [bybit-exec] getAccountState OK: equity=258.16
+2026-04-11T20:09:44.385Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:09:54.239Z [INFO ] [bybit-exec] getAccountState OK: equity=259.09
+2026-04-11T20:09:54.357Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:10:02.378Z [WARN ] [health] DEGRADED — rss=808.4MB
+2026-04-11T20:10:02.378Z [WARN ] [health] RSS WARNING: 808.4MB
+2026-04-11T20:10:04.290Z [INFO ] [bybit-exec] getAccountState OK: equity=258.67
+2026-04-11T20:10:04.358Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:10:14.289Z [INFO ] [bybit-exec] getAccountState OK: equity=259.29
+2026-04-11T20:10:14.330Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:10:24.286Z [INFO ] [bybit-exec] getAccountState OK: equity=258.09
+2026-04-11T20:10:24.348Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:10:32.379Z [WARN ] [health] DEGRADED — rss=847.8MB
+2026-04-11T20:10:32.379Z [WARN ] [health] RSS WARNING: 847.8MB
+2026-04-11T20:10:34.326Z [INFO ] [bybit-exec] getAccountState OK: equity=257.83
+2026-04-11T20:10:34.381Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:10:44.302Z [INFO ] [bybit-exec] getAccountState OK: equity=258.64
+2026-04-11T20:10:44.343Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:10:54.290Z [INFO ] [bybit-exec] getAccountState OK: equity=257.93
+2026-04-11T20:10:54.343Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:11:02.380Z [WARN ] [health] DEGRADED — rss=869.1MB
+2026-04-11T20:11:02.380Z [WARN ] [health] RSS WARNING: 869.1MB
+2026-04-11T20:11:04.294Z [INFO ] [bybit-exec] getAccountState OK: equity=258.31
+2026-04-11T20:11:04.348Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:11:14.342Z [INFO ] [bybit-exec] getAccountState OK: equity=257.84
+2026-04-11T20:11:14.488Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:11:24.339Z [INFO ] [bybit-exec] getAccountState OK: equity=257.82
+2026-04-11T20:11:24.388Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:11:32.381Z [WARN ] [health] DEGRADED — rss=890.0MB
+2026-04-11T20:11:32.381Z [WARN ] [health] RSS WARNING: 890.0MB
+2026-04-11T20:11:34.408Z [INFO ] [bybit-exec] getAccountState OK: equity=257.08
+2026-04-11T20:11:34.447Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:11:44.381Z [INFO ] [bybit-exec] getAccountState OK: equity=257.03
+2026-04-11T20:11:44.431Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:11:54.374Z [INFO ] [bybit-exec] getAccountState OK: equity=257.05
+2026-04-11T20:11:54.423Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:12:02.397Z [WARN ] [health] DEGRADED — rss=911.2MB
+2026-04-11T20:12:02.397Z [WARN ] [health] RSS WARNING: 911.2MB
+2026-04-11T20:12:04.370Z [INFO ] [bybit-exec] getAccountState OK: equity=255.73
+2026-04-11T20:12:04.412Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
+2026-04-11T20:12:14.367Z [INFO ] [bybit-exec] getAccountState OK: equity=255.78
+2026-04-11T20:12:14.421Z [INFO ] [bybit-exec] getPositions OK: 12 open position(s)
