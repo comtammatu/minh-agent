@@ -62,6 +62,7 @@ import {
   SMC_LIQUIDATION_VOLUME_RATIO, SMC_LIQUIDATION_WICK_ATR_MULT, SMC_LIQUIDATION_CONFIDENCE_MULT,
   SMC_WEEKEND_VOLUME_RATIO_THRESHOLD, SMC_WEEKEND_CONFIDENCE_MULT,
   SL_WICK_ATR_MULT,
+  SMC_1H_BOS_PENALTY, SMC_1H_MIN_VOLUME_RATIO, SMC_1H_MIN_ADX,
 } from '../../../config.js'
 
 // ── Module-level state ──────────────────────────────────────────────────────
@@ -766,6 +767,8 @@ export class SmcSdStrategy implements IStrategy {
   private scan1hSameTF(coin: string, interval: CandleInterval, candles: Candle[], idx: number, context?: StrategyContext, strategyParams?: StrategyParams): Signal | null {
     const atrVal = atr(candles, idx, 14)
     if (isNaN(atrVal) || atrVal <= 0) return null
+    const volRatio = volumeRatio(candles, idx, 20)
+    if (!isNaN(volRatio) && volRatio < SMC_1H_MIN_VOLUME_RATIO) return null
     const tol = atrVal * SMC_PRICE_TOLERANCE_ATR_MULT
 
     const breaks = detectStructureBreaks(candles, idx, { tolerance: tol })
@@ -785,6 +788,9 @@ export class SmcSdStrategy implements IStrategy {
                      (side === 'short' && htfBias.bias === 'bullish' && htfBias.confidence > 0.7)
       }
     }
+
+    // Hard-block counter-trend BOS (CHoCH allowed — it IS a reversal signal)
+    if (htfOpposed && recentBreak.kind === 'bos') return null
 
     // P/D filter
     const pivots = findPivots(candles, idx, 5, tol)
@@ -835,26 +841,27 @@ export class SmcSdStrategy implements IStrategy {
     if (side === 'long') {
       const we = candle.l <= bestZone.top + tol, ca = candle.c > bestZone.top - tol, bc = candle.c > candle.o
       if (we && ca && hasDisplacement && bc) { isBounce = true; bounceQuality = 'displacement' }
-      else if (proximity.throughZone && ca) { if (!SMC_ICT_REQUIRE_SWEEP_FOR_THROUGH) { isBounce = true; bounceQuality = 'sweep' } else { const sw = detectLiquiditySweep(candles, idx, { lookback: 20, wickRatio: 0.4 }); if (sw?.direction === 'bullish') { isBounce = true; bounceQuality = 'sweep' } } }
-      else if (we && ca) isBounce = true
+      else if (proximity.throughZone && ca && bc) { if (!SMC_ICT_REQUIRE_SWEEP_FOR_THROUGH) { isBounce = true; bounceQuality = 'sweep' } else { const sw = detectLiquiditySweep(candles, idx, { lookback: 20, wickRatio: 0.4 }); if (sw?.direction === 'bullish') { isBounce = true; bounceQuality = 'sweep' } } }
+      else if (we && ca && bc) isBounce = true
       else if (proximity.wickTouch && bc) isBounce = true
     } else {
       const we = candle.h >= bestZone.bottom - tol, cb = candle.c < bestZone.bottom + tol, bc = candle.c < candle.o
       if (we && cb && hasDisplacement && bc) { isBounce = true; bounceQuality = 'displacement' }
-      else if (proximity.throughZone && cb) { if (!SMC_ICT_REQUIRE_SWEEP_FOR_THROUGH) { isBounce = true; bounceQuality = 'sweep' } else { const sw = detectLiquiditySweep(candles, idx, { lookback: 20, wickRatio: 0.4 }); if (sw?.direction === 'bearish') { isBounce = true; bounceQuality = 'sweep' } } }
-      else if (we && cb) isBounce = true
+      else if (proximity.throughZone && cb && bc) { if (!SMC_ICT_REQUIRE_SWEEP_FOR_THROUGH) { isBounce = true; bounceQuality = 'sweep' } else { const sw = detectLiquiditySweep(candles, idx, { lookback: 20, wickRatio: 0.4 }); if (sw?.direction === 'bearish') { isBounce = true; bounceQuality = 'sweep' } } }
+      else if (we && cb && bc) isBounce = true
       else if (proximity.wickTouch && bc) isBounce = true
     }
     if (!isBounce) return null
 
     if (candle.h - candle.l > 0 && Math.abs(candle.c - candle.o) / (candle.h - candle.l) < SMC_MIN_BODY_RATIO) return null
     const adxVal = adx(candles, idx)
-    if (!isNaN(adxVal) && adxVal < 18) return null
+    if (!isNaN(adxVal) && adxVal < SMC_1H_MIN_ADX) return null
 
     // Confidence (base tunable via SMC_1H_CONFIDENCE_BASE optimizer param)
     const _base1h = strategyParams?.SMC_1H_CONFIDENCE_BASE
     let confidence = (typeof _base1h === 'number' && isFinite(_base1h) && _base1h > 0) ? _base1h : 0.65
     if (recentBreak.kind === 'choch') confidence += 0.10
+    if (recentBreak.kind === 'bos') confidence -= SMC_1H_BOS_PENALTY
     if (bounceQuality === 'displacement') confidence += 0.12
     else if (bounceQuality === 'sweep') confidence += 0.10
     else confidence += 0.05
@@ -869,7 +876,6 @@ export class SmcSdStrategy implements IStrategy {
     if (bestZone.strength > 0.8) confidence += 0.05
     if (!isNaN(adxVal) && adxVal > 30) confidence += 0.08
     else if (!isNaN(adxVal) && adxVal > 25) confidence += 0.05
-    const volRatio = volumeRatio(candles, idx, 20)
     if (!isNaN(volRatio) && volRatio > 2.0) confidence += 0.08
     else if (!isNaN(volRatio) && volRatio > 1.5) confidence += 0.05
     if (detectVSA(candles, idx).some(s => s.direction === (side === 'long' ? 'bullish' : 'bearish'))) confidence += 0.05

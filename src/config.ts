@@ -396,6 +396,14 @@ export const SMC_LIQUIDATION_WICK_ATR_MULT = 3.0
  * not 0.0 (sometimes cascade creates valid entry after the flush completes). */
 export const SMC_LIQUIDATION_CONFIDENCE_MULT = 0.4
 
+// ─── scan1hSameTF Quality Filters (Eng Review 2026-04-12) ──────────────────
+/** BOS confidence penalty — BOS is continuation, lower conviction than CHoCH reversal. */
+export const SMC_1H_BOS_PENALTY = 0.15
+/** Minimum volume ratio (vs 20-bar avg) to accept 1H signal. Below = low-conviction noise. */
+export const SMC_1H_MIN_VOLUME_RATIO = 0.7
+/** Minimum ADX for 1H signal. Raised 18→20: trending filter was too loose. */
+export const SMC_1H_MIN_ADX = 20
+
 // ─── P2: Weekend Volume Filter ───────────────────────────────────────────────
 // Crypto volume Fri-Sun = 30-50% of weekday. Low-volume BOS/CHoCH has higher
 // false-break rate because thin books allow easier manipulation.
