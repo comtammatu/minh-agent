@@ -15,6 +15,7 @@
 
 import type { Candle, CandleInterval, Signal, PatternType, SignalSide, StrategyContext, KeyZone } from '../../../types.js'
 import type { IStrategy } from '../../registry.js'
+import type { StrategyParams } from '../../../backtest/types.js'
 import {
   detectStructureBreaks,
   findPivots,
@@ -197,24 +198,24 @@ export class SmcSdStrategy implements IStrategy {
   readonly name = 'SMC + S&D Zone Bounce (ICT)'
   readonly patternTypes: ReadonlyArray<PatternType> = ['smc-sd']
 
-  scan(coin: string, interval: CandleInterval, candles: Candle[], idx: number, context?: StrategyContext): Signal | null {
+  scan(coin: string, interval: CandleInterval, candles: Candle[], idx: number, context?: StrategyContext, strategyParams?: StrategyParams): Signal | null {
     if (idx < MIN_CANDLES_FOR_SCAN) return null
     if (SMC_SD_SKIP_INTERVALS.includes(interval)) return null
     if (SMC_COIN_BLACKLIST.includes(coin)) return null
 
     // ── 4-MODE ROUTING ──────────────────────────────────────────────
-    if (interval === '4h') return this.scan4hPOI(coin, candles, idx)
-    if (interval === '15m') return this.scan15mConfirm(coin, candles, idx)
-    if (interval === '5m') return this.scan5mMicroEntry(coin, candles, idx, context)
+    if (interval === '4h') return this.scan4hPOI(coin, candles, idx, strategyParams)
+    if (interval === '15m') return this.scan15mConfirm(coin, candles, idx, strategyParams)
+    if (interval === '5m') return this.scan5mMicroEntry(coin, candles, idx, context, strategyParams)
     // 1h (and others): same-TF analysis
-    return this.scan1hSameTF(coin, interval, candles, idx, context)
+    return this.scan1hSameTF(coin, interval, candles, idx, context, strategyParams)
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 4h MODE: POI REGISTRATION
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private scan4hPOI(coin: string, candles: Candle[], idx: number): Signal | null {
+  private scan4hPOI(coin: string, candles: Candle[], idx: number, strategyParams?: StrategyParams): Signal | null {
     const atrVal = atr(candles, idx, 14)
     if (isNaN(atrVal) || atrVal <= 0) return null
     const tol = atrVal * SMC_PRICE_TOLERANCE_ATR_MULT
@@ -311,12 +312,12 @@ export class SmcSdStrategy implements IStrategy {
         if (!isNaN(volRatioVal) && volRatioVal > 1.5) confidence += 0.05
 
         const regime = detectRegime(candles, idx)
-        confidence = applyRegimeModifier(confidence, side, regime)
+        confidence = applyRegimeModifier(confidence, side, regime, strategyParams)
 
         if (isLiquidationCascade(candles, idx, atrVal)) confidence *= SMC_LIQUIDATION_CONFIDENCE_MULT
         confidence *= getWeekendMultiplier(candle.t, candles, idx)
 
-        if (confidence < MIN_CONFIDENCE) continue
+        if (confidence < (strategyParams?.MIN_CONFIDENCE ?? MIN_CONFIDENCE)) continue
 
         // Dedup (zone-aware)
         const dedupKey = `${coin}|4h`
@@ -345,7 +346,7 @@ export class SmcSdStrategy implements IStrategy {
   // 15m MODE: POI CONFIRMATION + AMD (Judas Swing → SIGNAL)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private scan15mConfirm(coin: string, candles: Candle[], idx: number): Signal | null {
+  private scan15mConfirm(coin: string, candles: Candle[], idx: number, strategyParams?: StrategyParams): Signal | null {
     const candle = candles[idx]!
     const nowMs = candle.t
     const atrVal = atr(candles, idx, 14)
@@ -464,8 +465,8 @@ export class SmcSdStrategy implements IStrategy {
     if (detectVSA(candles, idx).some(s => s.direction === (side === 'long' ? 'bullish' : 'bearish'))) confidence += 0.05
 
     const regime = detectRegime(candles, idx)
-    confidence = applyRegimeModifier(confidence, side, regime)
-    if (confidence < MIN_CONFIDENCE) return null
+    confidence = applyRegimeModifier(confidence, side, regime, strategyParams)
+    if (confidence < (strategyParams?.MIN_CONFIDENCE ?? MIN_CONFIDENCE)) return null
 
     // Dedup
     const dedupKey = `${coin}|15m-amd`
@@ -544,12 +545,12 @@ export class SmcSdStrategy implements IStrategy {
     if (detectVSA(candles, idx).some(s => s.direction === (side === 'long' ? 'bullish' : 'bearish'))) confidence += 0.05
 
     const regime = detectRegime(candles, idx)
-    confidence = applyRegimeModifier(confidence, side, regime)
+    confidence = applyRegimeModifier(confidence, side, regime, strategyParams)
 
     if (isLiquidationCascade(candles, idx, atrVal)) confidence *= SMC_LIQUIDATION_CONFIDENCE_MULT
     confidence *= getWeekendMultiplier(candle.t, candles, idx)
 
-    if (confidence < MIN_CONFIDENCE) return null
+    if (confidence < (strategyParams?.MIN_CONFIDENCE ?? MIN_CONFIDENCE)) return null
 
     // Dedup (zone-aware, separate key from POI-confirmation path)
     const dedupKey = `${coin}|15m-scalp`
@@ -576,7 +577,7 @@ export class SmcSdStrategy implements IStrategy {
   // 5m MODE: MICRO-ENTRY at confirmed POI (tightest SL + widest TP)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private scan5mMicroEntry(coin: string, candles: Candle[], idx: number, context?: StrategyContext): Signal | null {
+  private scan5mMicroEntry(coin: string, candles: Candle[], idx: number, context?: StrategyContext, strategyParams?: StrategyParams): Signal | null {
     const pool = confirmedPOIs.get(coin)
     if (!pool || pool.length === 0) return null
 
@@ -717,7 +718,7 @@ export class SmcSdStrategy implements IStrategy {
 
     // Regime
     const regime = detectRegime(candles, idx)
-    confidence = applyRegimeModifier(confidence, side, regime)
+    confidence = applyRegimeModifier(confidence, side, regime, strategyParams)
 
     // P2: liquidation cascade discount
     if (isLiquidationCascade(candles, idx, atrVal)) confidence *= SMC_LIQUIDATION_CONFIDENCE_MULT
@@ -725,7 +726,7 @@ export class SmcSdStrategy implements IStrategy {
     // P2: weekend low-volume discount
     confidence *= getWeekendMultiplier(candle.t, candles, idx)
 
-    if (confidence < MIN_CONFIDENCE) return null
+    if (confidence < (strategyParams?.MIN_CONFIDENCE ?? MIN_CONFIDENCE)) return null
 
     // ── E. DEDUP + SIGNAL (zone-aware) ────────────────────────────────
     const dedupKey = `${coin}|5m`
@@ -756,7 +757,7 @@ export class SmcSdStrategy implements IStrategy {
   // 1h MODE: SAME-TF ANALYSIS (existing ICT v3, unchanged)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private scan1hSameTF(coin: string, interval: CandleInterval, candles: Candle[], idx: number, context?: StrategyContext): Signal | null {
+  private scan1hSameTF(coin: string, interval: CandleInterval, candles: Candle[], idx: number, context?: StrategyContext, strategyParams?: StrategyParams): Signal | null {
     const atrVal = atr(candles, idx, 14)
     if (isNaN(atrVal) || atrVal <= 0) return null
     const tol = atrVal * SMC_PRICE_TOLERANCE_ATR_MULT
@@ -867,7 +868,7 @@ export class SmcSdStrategy implements IStrategy {
     if (detectVSA(candles, idx).some(s => s.direction === (side === 'long' ? 'bullish' : 'bearish'))) confidence += 0.05
     let killzoneName = 'off-session'
     if (SMC_ICT_KILLZONE_ENABLED) { const kz = getKillzoneBonus(candle.t); killzoneName = kz.name; confidence += kz.inKillzone ? kz.bonus : -SMC_ICT_KILLZONE_PENALTY }
-    confidence = applyRegimeModifier(confidence, side, detectRegime(candles, idx))
+    confidence = applyRegimeModifier(confidence, side, detectRegime(candles, idx), strategyParams)
 
     // P2: liquidation cascade discount
     if (isLiquidationCascade(candles, idx, atrVal)) confidence *= SMC_LIQUIDATION_CONFIDENCE_MULT
@@ -875,7 +876,7 @@ export class SmcSdStrategy implements IStrategy {
     // P2: weekend low-volume discount
     confidence *= getWeekendMultiplier(candle.t, candles, idx)
 
-    if (confidence < MIN_CONFIDENCE) return null
+    if (confidence < (strategyParams?.MIN_CONFIDENCE ?? MIN_CONFIDENCE)) return null
 
     // SL/TP
     const entry = candle.c
@@ -887,7 +888,7 @@ export class SmcSdStrategy implements IStrategy {
       if (op.length > 0) { const n = side === 'long' ? op.reduce((a, b) => a.level < b.level ? a : b) : op.reduce((a, b) => a.level > b.level ? a : b); if (Math.abs(tp1 - entry) > 0 && Math.abs(n.level - entry) <= Math.abs(tp1 - entry)) confidence += SMC_ICT_LIQUIDITY_POOL_TP_BONUS }
     }
     const riskAmt = Math.abs(entry - sl)
-    if (riskAmt / entry > MAX_TRADE_SL_PCT || riskAmt <= 0 || Math.abs(tp1 - entry) / riskAmt < SMC_MIN_RR) return null
+    if (riskAmt / entry > MAX_TRADE_SL_PCT || riskAmt <= 0 || Math.abs(tp1 - entry) / riskAmt < (strategyParams?.SMC_MIN_RR ?? SMC_MIN_RR)) return null
 
     // P2: zone-aware dedup
     const dedupKey = `${coin}|${interval}`

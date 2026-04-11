@@ -13,6 +13,18 @@ import type { PipelineStats } from '../strategy/diagnostics.js'
 export type StrategyType = 'smc-sd'
 export type ExitMode = 'multi' | 'single'
 
+/** Per-trial strategy parameter overrides for optimizer.
+ * All fields optional — undefined = use config.ts default.
+ * Live trading path never sets this (strategyParams = undefined). */
+export interface StrategyParams {
+  MIN_CONFIDENCE?: number
+  REGIME_MULT_COUNTER?: number
+  REGIME_MULT_NEUTRAL?: number
+  SMC_DRILLDOWN_CONFIDENCE_BASE?: number
+  SL_WICK_ATR_MULT?: number
+  SMC_MIN_RR?: number
+}
+
 export interface BacktestConfig {
   /** Coins to replay. */
   coins: string[]
@@ -28,6 +40,8 @@ export interface BacktestConfig {
   strategy?: StrategyType
   /** Exit mode. 'multi' = TP1/TP2/trailing partials (default). 'single' = one SL + one TP, 100% close. */
   exitMode?: ExitMode
+  /** Parameter overrides for optimizer trials. Undefined = use config.ts defaults. */
+  strategyParams?: StrategyParams
 }
 
 // ─── Partial Close Detail ──────────────────────────────────────────────────

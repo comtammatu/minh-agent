@@ -26,6 +26,7 @@ import {
   onCandleTick,
   getPipelineEmitter,
   clearPipelineState,
+  setActiveStrategyParams,
 } from '../strategy/orchestrator.js'
 import { getPipelineStats } from '../strategy/diagnostics.js'
 import { getStrategyRegistry } from '../strategy/registry.js'
@@ -50,6 +51,7 @@ export function runBacktest(
   clearOnPersist()  // prevent DB writes during backtest
   getStrategyRegistry().clearAllState()  // reset per-strategy dedup (critical for walk-forward isolation)
   getStrategyRegistry().activateOnly(config.strategy ?? 'smc-sd')
+  setActiveStrategyParams(config.strategyParams ?? null)
 
   const slippage = config.slippagePct ?? BACKTEST_SLIPPAGE_PCT
   const commission = config.commissionPct ?? BACKTEST_COMMISSION_PCT
@@ -118,6 +120,7 @@ export function runBacktest(
     // ── Cleanup: remove listener + reset state ──────────────────────────
     emitter.off('setup', onSetup)
     getStrategyRegistry().activateOnly(null)  // restore fan-out
+    setActiveStrategyParams(null)
     clearPipelineState()
     clearStore()
   }
@@ -194,6 +197,7 @@ export async function runBacktestAsync(
   clearStore()
   clearOnPersist()
   getStrategyRegistry().activateOnly(config.strategy ?? 'smc-sd')
+  setActiveStrategyParams(config.strategyParams ?? null)
 
   const slippage = config.slippagePct ?? BACKTEST_SLIPPAGE_PCT
   const commission = config.commissionPct ?? BACKTEST_COMMISSION_PCT
@@ -257,6 +261,7 @@ export async function runBacktestAsync(
   } finally {
     emitter.off('setup', onSetup)
     getStrategyRegistry().activateOnly(null)  // restore fan-out
+    setActiveStrategyParams(null)
     clearPipelineState()
     clearStore()
   }

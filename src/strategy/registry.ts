@@ -15,6 +15,7 @@
  */
 
 import type { Candle, CandleInterval, Signal, PatternType, StrategyContext } from '../types.js'
+import type { StrategyParams } from '../backtest/types.js'
 import { log } from '../lib/logger.js'
 
 // ─── IStrategy Interface ────────────────────────────────────────────────────
@@ -46,7 +47,7 @@ export interface IStrategy {
    * and return null — they use the legacy void-return pattern.
    * New strategies should return Signal for registry-managed emit.
    */
-  scan(coin: string, interval: CandleInterval, candles: Candle[], idx: number, context?: StrategyContext): Signal | null
+  scan(coin: string, interval: CandleInterval, candles: Candle[], idx: number, context?: StrategyContext, strategyParams?: StrategyParams): Signal | null
 
   /** Minimum candles needed before scan() produces valid results. */
   minCandles(): number
@@ -157,6 +158,7 @@ export class StrategyRegistry {
     candles: Candle[],
     idx: number,
     context?: StrategyContext,
+    strategyParams?: StrategyParams,
   ): Array<{ strategyId: string; signal: Signal }> {
     const results: Array<{ strategyId: string; signal: Signal }> = []
 
@@ -172,7 +174,7 @@ export class StrategyRegistry {
       if (candles.length < strategy.minCandles()) continue
 
       try {
-        const signal = strategy.scan(coin, interval, candles, idx, context)
+        const signal = strategy.scan(coin, interval, candles, idx, context, strategyParams)
         if (signal !== null) {
           results.push({ strategyId: id, signal })
         }

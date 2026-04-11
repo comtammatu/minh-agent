@@ -30,11 +30,25 @@ import {
   getEffectivePaperTrade,
   PAPER_WALLET_STRATEGY_IDS,
 } from '../config.js'
+import type { StrategyParams } from '../backtest/types.js'
 import { getPaperTracker } from '../agent/paper-tracker.js'
 import { log } from '../lib/logger.js'
 import { EventEmitter } from 'events'
 
 // ── Module-level state ──────────────────────────────────────────────────────
+
+/** Per-trial strategy params set by backtest engine. null = live trading (use config.ts defaults). */
+let activeStrategyParams: StrategyParams | null = null
+
+/** Set active strategy params (called by backtest engine before/after run). */
+export function setActiveStrategyParams(params: StrategyParams | null): void {
+  activeStrategyParams = params
+}
+
+/** Get active strategy params (for testing). */
+export function getActiveStrategyParams(): StrategyParams | null {
+  return activeStrategyParams
+}
 
 const activeSetups = new Map<string, ActiveSetup>()
 
@@ -103,7 +117,7 @@ function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry:
     lastUpdateAt: Date.now(),
   })
 
-  const signalResults = registry.runAll(coin, interval, candles, idx, context)
+  const signalResults = registry.runAll(coin, interval, candles, idx, context, activeStrategyParams ?? undefined)
 
   for (const { strategyId, signal } of signalResults) {
     const id = setupId(coin, interval, signal.type, strategyId)
