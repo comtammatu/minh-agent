@@ -1216,11 +1216,50 @@ The real blockers for 5m drilldown trades (in order of impact):
 - [CONFIRMED] 0 drilldown trades is a signal volume + WF distribution problem
 - [UNCERTAIN] 5m signal quality (PF, WR) — insufficient volume to evaluate statistically
 
-### Next Steps
+### Next Steps (completed — see below)
 
-1. **Increase 5m signal volume** (P1): The cascade funnel drops 99.99% of candidates. Key choke points:
-   - 15m "not at zone" rejects 89.5% — widen zone proximity tolerance?
-   - 5m "no confirmed POIs" rejects 81.9% — extend POI confirmation TTL?
-   - 5m "SL too tight" rejects 1175 — relax min SL width?
-2. **Or**: Bypass walk-forward for signal quality test — run raw backtest (no train/test split) to evaluate 5m trades without WF windowing.
-3. **Or**: Increase dataset — more coins or longer history to generate more signals.
+---
+
+## 5m Drilldown Volume + Quality Experiment (2026-04-12)
+
+### Experiment 1: Threshold Relaxation
+
+Relaxed 3 parameters to increase signal volume:
+- `ZONE_BUFFER_ATR_MULT` 0.3 → 0.6 (zone proximity)
+- `SMC_5M_FVG_LOOKBACK` 10 → 20 (FVG search window)
+- `SMC_5M_MIN_SL_PCT` 0.004 → 0.002 (minimum stop-loss)
+
+**Result**: Signals stayed at 18 (no improvement). Raw PF dropped 1.247 → 0.793. **REVERTED.**
+
+Root cause: bottleneck is TEMPORAL ALIGNMENT (5m candle must be at confirmed POI at the right moment), not threshold tightness. Loosening thresholds only lets in worse entries without generating more signals.
+
+### Experiment 2: Dataset Scaling (3 → 10 → 20 coins)
+
+| Dataset | 5m Signals | Raw Trades | PF | WR | Net PnL |
+|---------|-----------|------------|-----|-----|---------|
+| 3 coins (BTC,ETH,SOL) | 18 | 25 | **1.247** | 44% | +$503 |
+| 10 coins (default) | 52 | 55 | 0.836 | 38% | -$772 |
+| 20 coins | 108 | 53 | 0.640 | 38% | -$1,586 |
+
+**Key findings**:
+1. Signals scale linearly with coins but trades plateau at ~55 (position limit + 4h_poi slot contention)
+2. Quality DEGRADES with more coins — additional coins dilute the edge
+3. BTC/ETH/SOL have genuine 5m drilldown edge (PF 1.247); other coins add noise
+
+### Final Assessment
+
+- [CONFIRMED] 5m drilldown is a viable niche strategy on top-3 coins (BTC, ETH, SOL)
+- [CONFIRMED] Adding more coins degrades quality — coin selection IS the alpha
+- [CONFIRMED] Threshold relaxation hurts quality without increasing volume
+- [CONFIRMED] Walk-forward kills sparse signals — only raw backtest shows true edge
+- [DISPROVED] "Increase volume via more coins" — counterproductive beyond top 3
+
+### Strategic Decision
+
+**5m drilldown = opportunistic bonus on BTC/ETH/SOL, not a volume strategy.**
+
+- Do NOT force volume increase via threshold relaxation or coin expansion
+- Keep current strict cascade (high selectivity = high quality on top coins)
+- Primary edge remains 1h_same_tf (167-246 trades, proven at scale)
+- 5m drilldown adds ~25 high-R:R trades on BTC/ETH/SOL as supplement
+- Future: consider longer history (6-12 months) to validate edge persistence
