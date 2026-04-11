@@ -147,6 +147,8 @@ export interface WalkForwardWindow {
   trainMetrics: BacktestMetrics
   /** Metrics from test (out-of-sample) period. */
   testMetrics: BacktestMetrics
+  /** OOS trades from test period (avoids re-running backtest for bootstrap CI). */
+  testTrades?: BacktestTrade[]
 }
 
 /** Bootstrap confidence interval for expectancy. */
