@@ -1263,3 +1263,60 @@ Root cause: bottleneck is TEMPORAL ALIGNMENT (5m candle must be at confirmed POI
 - Primary edge remains 1h_same_tf (167-246 trades, proven at scale)
 - 5m drilldown adds ~25 high-R:R trades on BTC/ETH/SOL as supplement
 - Future: consider longer history (6-12 months) to validate edge persistence
+
+---
+
+## Evolution Phase 2 — 1h_same_tf Edge Diagnosis (2026-04-12)
+
+### Instrumentation
+
+Extended `src/backtest/run-drilldown-diag.ts` (diagnostic only — no engine/strategy changes):
+
+| Output | Purpose |
+|--------|---------|
+| **OOS per-coin (1h)** | Walk-forward OOS trades with `interval === '1h'` grouped by coin: trades, PF, WR, net PnL; lists profitable vs losing coins |
+| **RAW 1H BACKTEST (no WF)** | `disabledScanModes: ['5m_micro', '15m_drilldown', '4h_poi']` — isolates 1h_same_tf; full-sample per-coin table with heuristic tiers (A/B/C+/C-) |
+| **Top-3 vs Rest** | Aggregated PF, WR, trades, net PnL for BTC+ETH+SOL vs all other coins on raw 1h |
+| **Decision line** | Auto-summary: whether a Top-3-only universe is supported by *this* raw run |
+| **Deep dive (conditional)** | If Top-3 **raw** 1h PF < 1 (finite): breakdown by `exitReason`, by `confluenceGrade`, and max consecutive losing trades (exit time order) |
+
+Walk-forward trial now uses `walkForward()` once (same as `runTrial`) so OOS trades are available without a second WF pass.
+
+### How to run
+
+```bash
+bun run src/backtest/run-drilldown-diag.ts [coins]
+```
+
+Re-run after data or config changes; numbers are live from Bybit.
+
+### Per-coin quality tiers (raw 1h — heuristic labels)
+
+| Tier | Rule (diagnostic) |
+|------|-------------------|
+| **A (strong)** | PF ≥ 1.25 and WR ≥ 40% |
+| **B (ok)** | PF ≥ 1.0 |
+| **C+ (marginal)** | PF < 1.0 but net PnL > 0 |
+| **C- (losing)** | net PnL ≤ 0 |
+
+Tiers are **not** production gates — they summarize console output for triage.
+
+### Root cause of PF < 1 (hypothesis framework)
+
+Interpretation uses **both** WF OOS and raw full-sample:
+
+1. **If raw 1h aggregate PF < 1 but WF is worse** — windowing / OOS regime may amplify losses; still treat strategy logic as suspect.
+2. **If raw 1h Top-3 PF ≥ 1 but rest drags aggregate** — coin selection is a strong lever; test a reduced universe in WF (do not hardcode until validated).
+3. **If Top-3 raw 1h PF < 1** — problem is not only “bad alts”; inspect deep-dive: dominant `exitReason` (e.g. `sl_hit` vs `trail_stop`), whether B/C grades dominate losses, and long loss streaks (regime / clustering).
+4. **If rest outperforms Top-3 on raw 1h** — do **not** restrict to BTC/ETH/SOL on this evidence alone; prefer explicit per-coin allowlist from the per-coin table.
+
+### Recommended next actions (no strategy edits in this session)
+
+1. Run the diagnostic on the default 10-coin set and capture tables into the session log.
+2. If coin filter is supported by data → **WF experiment**: same params, coins = Top-3 only vs full universe; compare OOS PF and trade count.
+3. If deep dive shows B/C grades dominate losses → **grade filter experiment** (config or scan filter) before changing exits.
+4. If `sl_hit` dominates with short streaks → revisit stop placement / volatility regime; if long streaks → regime filter or exposure cap discussion.
+
+### Test suite note
+
+`bun test --run`: project currently reports **6 failing tests** in `src/feed/bybit/bybit-rest.test.ts` (live API / network dependent). No new failures introduced by this diagnostic-only change.
