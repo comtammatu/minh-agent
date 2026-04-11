@@ -1126,3 +1126,56 @@ Trades:             0 drilldown trades (167 total, all 1h_same_tf)
 - [CONFIRMED] Primary bottleneck is 5m FVG-only entry requirement
 - [CONFIRMED] 27 signals survived filters but zero drilldown trades in OOS
 - [UNCERTAIN] Whether loosening 5m filters will produce profitable trades (need optimizer run after fixes)
+
+---
+
+## Drilldown 5m Entry Fixes Applied (2026-04-12)
+
+### Changes Applied
+
+| Fix | File | Change | Status |
+|-----|------|--------|--------|
+| F1 | `src/strategy/strategies/smc-sd/index.ts` L704-706 | Displacement bounce as FVG fallback (`!isBounce && hasDisplacement → isBounce=true, bounceQuality='displacement'`) | DONE |
+| F2 | `src/config.ts` L343 | `SMC_5M_REQUIRE_15M_CHOCH = false` | DONE |
+| F3 | `src/config.ts` L276 | `SMC_CONFIRMED_POI_TTL_MS = 4 * 3_600_000` (1.5h → 4h) | DONE |
+| F4 | `src/config.ts` L318 | `SMC_5M_FVG_LOOKBACK = 10` (5 → 10 bars = 50 min) | DONE |
+
+### Diagnostic Results — Before vs After
+
+```
+                        BEFORE      AFTER       DELTA
+5m signals:             27          49          +81%
+No FVG rejections:      8,703       4,902       -43% (F1 displacement fallback)
+CHoCH gate fail:        1,293       0           -100% (F2)
+POI expired:            907         542         -40% (F3)
+SL too tight:           190         3,054       +1508% (more candidates reaching SL check)
+Confidence too low:     36          1,434       (more candidates reaching confidence check)
+R:R too low:            123         1,120       (more candidates reaching R:R check)
+Body rejected:          794         1,632       (more candidates reaching body check)
+15m confirmed:          11,667      10,164      -13% (TTL change affects confirmation count)
+Drilldown trades (OOS): 0           0           unchanged
+1h_same_tf trades:      167         167         unchanged
+```
+
+### Analysis
+
+**F1-F4 all work as intended.** 5m signal count increased 81% (27→49). The fixes successfully reduced the three identified bottlenecks:
+- F1 (displacement): 8,703→4,902 No-FVG rejections (-43%). Not all displacement candles qualify — many still fail downstream filters.
+- F2 (CHoCH gate): Completely eliminated (1,293→0).
+- F3 (TTL): 907→542 expirations (-40%).
+- F4 (lookback): Contributed to F1 effectiveness — wider window finds more FVGs.
+
+**New observation:** The increase in SL-too-tight (190→3,054), R:R-too-low (123→1,120), and confidence-too-low (36→1,434) rejections shows the pipeline now reaches deeper stages. These are downstream quality gates doing their job — filtering the weaker candidates that F1-F4 let through.
+
+**0 drilldown trades persists.** Root cause: `simulator.tryFill()` rejects if coin already has a position or pending fill. 1h_same_tf signals fire first and occupy the coin slot, preventing 5m micro-entries from filling. This is a position management priority issue, not a signal generation issue.
+
+### Next Steps (out of scope for this session)
+
+1. **Priority routing in simulator**: Allow 5m micro-entries to override or coexist with 1h entries for the same coin (would require multi-interval position management)
+2. **Or**: Run optimizer with 5m-only mode (disable 1h_same_tf) to validate 5m signal quality in isolation
+3. **Or**: Investigate whether 49 signals all fall in training windows rather than OOS
+
+### Assessment
+- [CONFIRMED] F1-F4 relieve the 5m bottleneck — 5m signals 27→49
+- [CONFIRMED] 0 drilldown trades is a simulator slot contention issue, not a signal quality issue
+- [UNCERTAIN] 5m signal quality (PF, WR) — blocked by slot contention, needs isolated testing

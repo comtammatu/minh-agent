@@ -701,8 +701,9 @@ export class SmcSdStrategy implements IStrategy {
       }
     }
 
-    // 5m: FVG only. Wick/displacement entries are noise on 5m micro-TF.
-    // ICT: after 15m CHoCH, the first 5m FVG IS the entry — nothing else.
+    // Fallback: displacement candle as entry when no FVG found.
+    // Wick-only entries remain blocked — too noisy on 5m micro-TF.
+    if (!isBounce && hasDisplacement) { isBounce = true; bounceQuality = 'displacement' }
     if (!isBounce) { diag.scan5m_no_fvg++; return null }
 
     // Body quality

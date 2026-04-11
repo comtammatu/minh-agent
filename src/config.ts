@@ -273,7 +273,7 @@ export const SMC_DRILLDOWN_MAX_POIS = 10
 /** Confirmed POI TTL in ms. Raised 1h→1.5h: 15m CHoCH can happen near bar end,
  * giving only 30-45min for 5m FVG to appear — too short. 1.5h = 18 bars on 5m.
  * Conservative increase (was 4h → 96% SL rate, so not reverting far). */
-export const SMC_CONFIRMED_POI_TTL_MS = 1.5 * 3_600_000
+export const SMC_CONFIRMED_POI_TTL_MS = 4 * 3_600_000
 
 /** Max confirmed POIs per coin. */
 export const SMC_CONFIRMED_POI_MAX = 5
@@ -315,7 +315,7 @@ export const SMC_15M_SCALP_CONFIDENCE_BASE = 0.68
 // ─── ICT 5m Micro-Entry ─────────────────────────────────────────────────────
 
 /** 5m bars to look for FVG entry after confirmed POI. */
-export const SMC_5M_FVG_LOOKBACK = 5
+export const SMC_5M_FVG_LOOKBACK = 10
 
 /** ATR buffer for 5m swing stop.
  * Raised 0.3→0.5: 0.3 ATR on BTC ≈ $150 buffer — crypto wick noise + spread
@@ -340,7 +340,7 @@ export const SMC_5M_MIN_SL_PCT = 0.004
  * 5m FVG alone at 4h POI has ~22% WR. Adding 15m CHoCH requirement ensures
  * lower-timeframe structure has shifted before micro-entry. The confirmedPOI
  * already has ltfBreakKind from the 15m scan — use it as a hard gate. */
-export const SMC_5M_REQUIRE_15M_CHOCH = true
+export const SMC_5M_REQUIRE_15M_CHOCH = false
 
 // ─── ICT AMD (Power of Three) ───────────────────────────────────────────────
 
