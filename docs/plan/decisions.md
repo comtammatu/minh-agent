@@ -999,3 +999,47 @@ CEO hard stop applies: re-run 10-coin optimizer after fixes. Holdout PF < 1.1 wi
 ### TODOS Added
 - [P2] Debug drilldown cascade — why 4H→15m→5m fires zero times
 - [P3] Investigate multiplicative confidence scoring model
+
+---
+
+## scan1hSameTF Fix Implementation Results (2026-04-12)
+
+### Session: Evolution Phase 2 — scan1hSameTF Quality Fixes
+
+**All 6 fixes implemented + 18 unit tests pass.**
+
+| Fix | Status | Notes |
+|-----|--------|-------|
+| 1a: bc on wick-entry | ✅ DONE | Lines 839, 845 — `&& bc` added |
+| 1b: bc on throughZone | ✅ DONE | Lines 838, 844 — `&& bc` added |
+| 2: BOS penalty -0.15 | ✅ DONE | After CHoCH bonus line — `SMC_1H_BOS_PENALTY` |
+| 3: HTF opposed BOS block | ✅ DONE | After HTF alignment block — hard return null |
+| 4: Volume floor 0.7 | ✅ DONE | Early return after ATR, DRY reuse |
+| 5: ADX 18→20 | ✅ DONE | `SMC_1H_MIN_ADX` config constant |
+
+### Config Constants Added
+```ts
+export const SMC_1H_BOS_PENALTY = 0.15
+export const SMC_1H_MIN_VOLUME_RATIO = 0.7
+export const SMC_1H_MIN_ADX = 20
+```
+
+### Tests: 18/18 pass
+- Test file: `test/strategy/smc-sd-1h-filters.test.ts`
+- Uses real BTC fixture data (`test/fixtures/smc.json`) — long BOS at idx 191
+- Reversed fixture for short BOS signals
+- HTF context from fixture slices (bearish conf 0.9 at first 141 candles)
+- Full suite: 1112 pass, 6 pre-existing bybit-rest failures (unrelated)
+
+### Optimizer Verification (1-trial, 10 coins)
+- **Trades: 1** (trades > 0 ✓, hard stop N/A — < 40 trades)
+- **PF: 0.00, DD: 1.5%**
+- Signals fire across all 10 coins on 4H, 15M, 5M modes
+- **Zero 1H signals** in this trial — expected, filters now strict
+- Result: `results/optimize-2026-04-11T19-25-51-168Z.json`
+
+### Assessment
+- Fixes didn't kill all signals (4H/15M still fire normally)
+- 1H trade volume collapsed (expected — 1H was 100% of trades, now heavily filtered)
+- Hard stop rule: trades < 40 → inconclusive, need multi-trial run to evaluate
+- **Next step**: Run 200-trial optimizer to check if 1H trades survive with better quality. If holdout PF < 1.1 with 40+ trades → escalate to P2 (drilldown debug)
