@@ -13,6 +13,7 @@ import type { Candle, CandleInterval } from '../types.js'
 import type { BacktestConfig, WalkForwardConfig } from './types.js'
 import { fetchBybitCandlesBatched } from '../feed/bybit/bybit-rest.js'
 import { runTrial } from './optimize.js'
+import { runBacktest } from './engine.js'
 import { getStrategyRegistry } from '../strategy/registry.js'
 import { SmcSdStrategy } from '../strategy/strategies/smc-sd/index.js'
 import { getDrilldownDiagnostics, resetDrilldownDiagnostics } from '../strategy/strategies/smc-sd/index.js'
@@ -216,6 +217,46 @@ async function main() {
   console.log(`  Isolated 5m:  ${isoResult.tradeCount} trades (PF ${isoResult.oosPF.toFixed(3)})`)
   const delta = isoResult.tradeCount - (result.tradesByMode?.['5m_micro'] ?? 0)
   console.log(`  5m trades unlocked by removing contention: ${delta}`)
+
+  console.log('\n' + '='.repeat(60))
+
+  // ── RAW 5M BACKTEST (no walk-forward, all data) ──
+  console.log('\n\n' + '='.repeat(60))
+  console.log('  RAW 5M BACKTEST (no WF)')
+  console.log('='.repeat(60))
+
+  resetDrilldownDiagnostics()
+  log.info('diag', 'Running raw 5m backtest (no walk-forward, all candle data)...')
+  const rawStart = Date.now()
+  const rawResult = runBacktest(allCandles, isolatedConfig)
+  const rawElapsed = ((Date.now() - rawStart) / 1000).toFixed(1)
+
+  const rawMetrics = rawResult.metrics
+  const rawTrades = rawResult.trades
+
+  console.log('\n── RAW 5M BACKTEST (no WF) ──')
+  console.log(`  Trade count: ${rawMetrics.totalTrades}`)
+  console.log(`  PF:          ${rawMetrics.profitFactor === Infinity ? 'Inf' : rawMetrics.profitFactor.toFixed(3)}`)
+  console.log(`  Win rate:    ${(rawMetrics.winRate * 100).toFixed(1)}%`)
+  console.log(`  Max DD:      ${(rawMetrics.maxDrawdown * 100).toFixed(1)}%`)
+  console.log(`  Net PnL:     $${rawMetrics.netPnl.toFixed(2)}`)
+  console.log(`  Expectancy:  $${rawMetrics.expectancy.toFixed(2)}`)
+  console.log(`  Elapsed:     ${rawElapsed}s`)
+
+  if (rawTrades.length > 0 && rawTrades.length < 20) {
+    console.log('\n── INDIVIDUAL TRADES ──')
+    for (const t of rawTrades) {
+      const pnlSign = t.pnl >= 0 ? '+' : ''
+      console.log(
+        `  ${t.coin} ${t.side.toUpperCase()} ${t.interval} | ` +
+        `entry=${t.entryPrice.toFixed(2)} exit=${t.exitPrice.toFixed(2)} | ` +
+        `pnl=${pnlSign}${(t.pnlPct * 100).toFixed(2)}% ($${pnlSign}${t.pnl.toFixed(2)}) | ` +
+        `reason=${t.exitReason}`
+      )
+    }
+  } else if (rawTrades.length >= 20) {
+    console.log(`\n  (${rawTrades.length} trades — too many to list individually)`)
+  }
 
   console.log('\n' + '='.repeat(60))
 }
