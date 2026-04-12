@@ -6,7 +6,7 @@
  * S10: Also mocks ExchangeService (replaces old stubs).
  */
 
-import { describe, it, expect, beforeEach, mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 
 // Mock the DB connection BEFORE importing OrderManager
 mock.module('../db/connection.js', () => {
@@ -127,8 +127,10 @@ describe('generateCloid', () => {
 describe('OrderManager', () => {
   let om: OrderManager
   let dispatchedEvents: Array<{ coin: string; event: AgentEvent }>
+  const originalActiveExchange = process.env.ACTIVE_EXCHANGE
 
   beforeEach(() => {
+    process.env.ACTIVE_EXCHANGE = 'HL'
     resetOrderManager()
     mockOrderSuccess = true
     mockCancelSuccess = true
@@ -138,6 +140,14 @@ describe('OrderManager', () => {
     om.setAgentDispatch((coin, event) => {
       dispatchedEvents.push({ coin, event })
     })
+  })
+
+  afterEach(() => {
+    if (originalActiveExchange === undefined) {
+      delete process.env.ACTIVE_EXCHANGE
+    } else {
+      process.env.ACTIVE_EXCHANGE = originalActiveExchange
+    }
   })
 
   it('getOrder returns null for malformed order ids without hitting DB', async () => {

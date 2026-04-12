@@ -65,6 +65,16 @@ function clampPositiveFinite(n: number, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback
 }
 
+function isBybitLiveMode(): boolean {
+  if (getEffectivePaperTrade()) return false
+  try {
+    return getActiveExchange() === 'BB'
+  } catch {
+    // Backward-compat for tests/scripts that don't set ACTIVE_EXCHANGE.
+    return false
+  }
+}
+
 /**
  * HL "market" is an IOC-like aggressive limit that requires a reference price.
  * Use latest L2 mid when available to avoid stale-candle price rejects.
@@ -352,10 +362,17 @@ export class OrderManager {
     this.exchangePool = pool
   }
 
-  /** Get exchange service for a strategy. Falls back to HL singleton if no pool or pool init failed. */
+  /**
+   * Get exchange service for a strategy.
+   * Fallback to HL singleton is allowed only for HL/paper paths.
+   * BB live mode must never silently route to HL singleton.
+   */
   private getExchangeForStrategy(strategyId: string, exchange?: ExchangeId): IExchangeService {
     if (this.exchangePool?.isInitialized()) {
       return this.exchangePool.get(strategyId, exchange)
+    }
+    if (isBybitLiveMode()) {
+      throw new Error('OrderManager: ExchangePool must be initialized in BB live mode (HL fallback blocked)')
     }
     return getExchangeService()
   }
