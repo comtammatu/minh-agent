@@ -1313,10 +1313,63 @@ Interpretation uses **both** WF OOS and raw full-sample:
 ### Recommended next actions (no strategy edits in this session)
 
 1. Run the diagnostic on the default 10-coin set and capture tables into the session log.
-2. If coin filter is supported by data → **WF experiment**: same params, coins = Top-3 only vs full universe; compare OOS PF and trade count.
+2. ~~If coin filter is supported by data → **WF experiment**: same params, coins = Top-3 only vs full universe; compare OOS PF and trade count.~~ **Done** — see *WF universe compare* below.
 3. If deep dive shows B/C grades dominate losses → **grade filter experiment** (config or scan filter) before changing exits.
 4. If `sl_hit` dominates with short streaks → revisit stop placement / volatility regime; if long streaks → regime filter or exposure cap discussion.
 
+### WF universe compare (2026-04-12) — technical log
+
+**Script (repeatable):** `bun run src/backtest/run-wf-universe-compare.ts [baselineCoins] [subsetCoins]`  
+Default: baseline = 10-coin list (same as `run-drilldown-diag.ts`); subset = `BTC,ETH,SOL`.  
+**Strategy params:** `{}` (all defaults from `config.ts`). **WF windows:** 30d train / 7d test / 7d step (same as optimizer/drilldown).
+
+**Subset B criterion (logged in run):** Tier-1 liquidity **Top-3** (BTC, ETH, SOL) — aligns with raw “Top-3 vs Rest” diagnostics for a direct WF cross-check.
+
+| Run | Universe | OOS PF | OOS Max DD | OOS trades | OOS wins | WR | WF windows | `tradesByMode` (OOS) |
+|-----|----------|--------|------------|------------|----------|-----|------------|------------------------|
+| **A** | BTC,ETH,SOL,AVAX,LINK,ARB,APT,BNB,DOT,ATOM | 0.926 | 44.9% | 178 | 82 | 46.1% | 281 | `1h_same_tf`: 178 |
+| **B** | BTC,ETH,SOL | 1.280 | 21.2% | 68 | 27 | 39.7% | 281 | `1h_same_tf`: 68 |
+
+**Artifact:** `results/wf-universe-compare-2026-04-12T06-28-14-472Z.json` (timestamp may differ per run).
+
+**Decision (short):**
+
+- **Does subset B improve OOS?** Yes on PF and drawdown: B clears PF > 1 OOS; A is below 1. Max DD is roughly halved on B. Both runs are **100% `1h_same_tf`** OOS — no other scan mode contributed in this window set.
+- **Enough trades to trust B?** Partially. **178 vs 68** OOS trades: B is **thinner**; do not treat Top-3-only as fully validated on sample size alone. Use B as *evidence that universe expansion hurts WF OOS*, not as a final production allowlist without more history or param stability checks.
+- **Raw vs WF:** Raw 10-coin (no WF) had “Rest not worse than Top-3” on aggregate PF; **WF OOS** shows the opposite — **full 10-coin basket loses OOS** while **Top-3 stays above 1.0**. Conclusion: **do not lock universe on raw full-sample alone**; **walk-forward OOS must be part of the decision**. Thin per-coin samples and `PF = Inf` in raw runs remain a separate issue; WF aggregates are still the stricter gate here.
+
+### WF universe compare — extended history + mid-tier + locked params (2026-04-12)
+
+**Script:** `run-wf-universe-compare.ts` — supports `WF_COMPARE_EXTENDED_HISTORY=1` (longer 1h/4h/5m/15m pulls) and `WF_COMPARE_STRATEGY_PARAMS` (JSON overrides). Export `WF_COMPARE_SUBSET_MID6` constant: `BTC,ETH,SOL,AVAX,LINK,BNB`.
+
+**Candle profile (extended):** 5m 12k, 15m 24k, 1h/4h 7k each, 1d 3k (vs default 8.64k/17.28k/5k/5k/2k). **WF windows unchanged:** 30d train / 7d test / 7d step.
+
+| Run | Params | A: 10-coin | B: subset | Notes |
+|-----|--------|------------|-----------|--------|
+| **1** | `{}` default | OOS PF **0.781**, MaxDD **43.2%**, **245** trades, 311 WFs, `1h_same_tf`:245 | Top-3: PF **1.173**, MaxDD **18.6%**, **92** trades, `1h_same_tf`:92 | Extended history vs prior default run (281 WFs, 178/68 trades) — **more OOS trades**, same pattern: **Top-3 > 1.0**, full basket **< 1.0** |
+| **2** | `{}` default | (same A as run 1) | **Mid-6** BTC,ETH,SOL,AVAX,LINK,BNB: PF **0.336**, MaxDD **560.8%**, **168** trades, `1h_same_tf`:168 | **Worse than both Top-3 and 10-coin** on PF; Max DD **not reliable** (exploded — likely thin OOS + equity path). **Do not** adopt this 6-coin list on this evidence alone. |
+| **3** | Locked “Day-8 #7 style”: `MIN_CONFIDENCE` 0.7, `SL_WICK_ATR_MULT` 0.6, `SMC_DRILLDOWN_CONFIDENCE_BASE` 0.7, `SMC_MIN_RR` 2 | OOS PF **0.863**, MaxDD **31.8%**, **214** trades | Top-3: PF **2.340**, MaxDD **7.1%**, **76** trades | Tighter filters **raise** Top-3 OOS PF and **cut DD**; **10-coin still below 1.0** OOS. **76** Top-3 trades — still modest sample. |
+
+**Artifacts:** `results/wf-universe-compare-2026-04-12T07-05-18-587Z.json` (run 1), `...07-08-48-419Z.json` (run 2), `...07-12-02-323Z.json` (run 3).
+
+**Decision (short):**
+
+- **Extended history** reinforces the earlier conclusion: **WF OOS prefers Top-3 over full 10** for PF/DD at default params; more candles increased OOS trade counts (directional stability).
+- **Mid-tier 6 (AVAX+LINK+BNB vs ARB+APT+DOT+ATOM)** — **rejected** for now: this specific mid list **underperforms** and shows **broken DD metric**; if revisiting mid-tier, pick coins from a **liquidity-ranked** list and re-check metrics.
+- **Locked params** (optimizer-style tight RR/conf) — **amplifies Top-3 vs rest split**; does **not** rescue 10-coin OOS PF above 1. Treat as **sensitivity check**, not production tuning, until holdout/validation matches optimizer workflow.
+
+**Next (post this session):** Grade filter / `exitReason` breakdown (checklist) remains open; P2 drilldown only when changing simulator scope.
+
+### Next steps (post–WF universe compare, 2026-04-12+)
+
+Priorities for the next sessions (English technical log):
+
+1. ~~**Strengthen evidence on universe choice** — Re-run with more history / locked params~~ **Partially done** — see *WF universe compare — extended history + mid-tier + locked params* above.
+2. ~~**Mid-tier universe experiments**~~ **Done (one list)** — see run 2; **negative result** for `BTC,ETH,SOL,AVAX,LINK,BNB` vs baseline; try different mid-tier selection if needed.
+3. **Entry-quality experiments (if diagnostics point there)** — **Grade filter** or **`exitReason` / `sl_hit` analysis** before further engine changes; aligns with remaining items under *Recommended next actions* above.
+4. **Drilldown path (P2)** — Only when ready to touch **simulator / multi-mode priority** or **isolated 5m runs**; not blocking short-term if focus stays on `1h_same_tf`.
+5. **Test hygiene (optional)** — Mock or gate **`src/feed/bybit/bybit-rest.test.ts`** live calls so `bun test --run` is stable in CI; **6 failures** are network-dependent as of 2026-04-12.
+
 ### Test suite note
 
-`bun test --run`: project currently reports **6 failing tests** in `src/feed/bybit/bybit-rest.test.ts` (live API / network dependent). No new failures introduced by this diagnostic-only change.
+`bun test --run` (2026-04-12): **1112 pass, 6 fail.** Failures are **`fetchBybitCandles` / `fetchBybitCandlesBatched`** cases in `src/feed/bybit/bybit-rest.test.ts` (live API / network dependent). No change to that file in this session; scope not expanded to fix unrelated REST tests.
