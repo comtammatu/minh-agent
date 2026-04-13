@@ -1,8 +1,10 @@
 # Minh (明) — Sprint 4.5: ISOLATE — Multi-Strategy Architecture + Agent Wallets
 
+Historical note: this sprint plan is preserved for project history. The current `main` runtime keeps the multi-strategy state/risk model, but the per-strategy wallet plan was superseded by the single shared wallet architecture introduced in Sprint 4.5 S12.
+
 ## Goal
 
-Refactor system architecture to support **multiple trading strategies running simultaneously**, each with its own Hyperliquid agent wallet, independent risk management, and per-strategy PnL tracking. Make adding new strategies (e.g., SMC+S&D zone bounce) a 3-step process: implement interface, register, add wallet.
+Refactor system architecture to support **multiple trading strategies running simultaneously**, each with independent risk management and per-strategy PnL tracking. Historical plan note: the original per-strategy Hyperliquid agent wallet design was later retired on `main` in favor of one shared wallet per process.
 
 **Sprint 4.5 = ISOLATE. Each strategy operates independently on shared market data.**
 
@@ -35,9 +37,9 @@ Sprint 7: REMEMBER II🔲 → Memory intelligence (Graph + HyDE + Learning)
 |---|----------|--------|-----------|
 | V1 | Strategy dispatch | **Fan-out registry** | Replace global `activeStrategy` mutable. All registered strategies run per tick. No switch/case |
 | V2 | Agent state key | **`coin:strategyId`** | Same coin can be traded by different strategies simultaneously (independent signals) |
-| V3 | Exchange isolation | **Agent wallet per strategy** | Each strategy signs with own HL agent wallet. Software-enforced capital allocation (HL agent wallets share main account balance) |
+| V3 | Exchange isolation | **Agent wallet per strategy** | Historical plan only. Superseded on `main` by single shared wallet routing plus software-level strategy isolation |
 | V4 | DB migration | **`strategy_id TEXT DEFAULT 'layered'`** | Additive columns on existing tables. Zero data migration. Backward compatible |
-| V5 | Single-strategy compat | **Feature flag via `STRATEGY_WALLETS` env** | No env var = single wallet mode (Sprint 4 behavior unchanged) |
+| V5 | Single-strategy compat | **Feature flag via `STRATEGY_WALLETS` env** | Historical plan only. Superseded: `STRATEGY_WALLETS` was removed from the active runtime |
 | V6 | Risk isolation | **Per-strategy CB + portfolio cap** | Each strategy has own daily PnL limit + circuit breakers. Global exposure cap prevents over-leverage |
 | V7 | Correlation guard | **Cross-strategy allowed (independent)** | Different strategies CAN hold same coin same direction. They're independent signals |
 | V8 | Capital allocation | **Fixed % per strategy in config** | e.g., quant=40%, smc-sd=60%. PositionSizer uses allocated capital, not total balance |
@@ -171,10 +173,10 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 | Item | Description | Files |
 |------|-------------|-------|
 | ExchangeService params | Constructor accepts wallet config (not just env) | `src/execution/exchange-service.ts` |
-| ExchangePool | Factory: `Map<strategyId, ExchangeService>` | `src/execution/exchange-pool.ts` (NEW) |
-| Wallet config | Parse `STRATEGY_WALLETS` JSON env var | `src/config.ts` |
-| Single-wallet fallback | No env → shared instance for all strategies | `src/execution/exchange-pool.ts` |
-| Tests | Pool creates separate instances, single-wallet compat | `test/exchange-pool.test.ts` (NEW) |
+| ExchangePool | Historical plan: `Map<strategyId, ExchangeService>` | Superseded on `main` by shared exchange service routing |
+| Wallet config | Historical plan: parse `STRATEGY_WALLETS` JSON env var | Superseded on `main`; env removed |
+| Single-wallet fallback | Historical plan: no env → shared instance for all strategies | Superseded by always-single-wallet runtime |
+| Tests | Historical plan coverage for pool isolation | Preserved for record; current runtime tests target shared-pool behavior |
 
 #### S5: Agent State Machine — Per-Strategy
 
@@ -270,8 +272,8 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 - [x] All existing tests pass unchanged — 1023 pass (S3)
 
 ### Phase 4.5B: Isolation
-- [x] `ExchangePool` creates per-strategy ExchangeService instances (S4)
-- [x] Single-wallet mode (no `STRATEGY_WALLETS` env) backward compatible (S4)
+- [x] Historical S4 plan completed at the time, later superseded by single shared ExchangePool routing on `main`
+- [x] Historical single-wallet fallback completed at the time, later simplified into the only active runtime mode
 - [x] Agent state keyed by `coin:strategyId` (S5)
 - [x] Per-strategy `GlobalContext` (dailyPnl, circuit breakers independent) (S5)
 - [x] `PortfolioRiskManager` enforces global exposure cap (S6)

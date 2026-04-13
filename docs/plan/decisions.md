@@ -161,15 +161,17 @@ Preliminary decisions for Sprint 3 — Intelligence + Scale. Final review after 
 
 Decisions made during Sprint 4.5 planning — refactoring from single-strategy to multi-strategy architecture.
 
+Historical note: parts of this plan were later superseded by Sprint 4.5 S12 and follow-up cleanup on `main`. The current runtime keeps multi-strategy state/risk isolation, but execution now uses a single shared exchange wallet per process and no longer uses `STRATEGY_WALLETS`.
+
 ### CEO Review
 
 | # | Decision | Choice | Rationale |
 |---|----------|--------|-----------|
 | V1 | Strategy dispatch | **Fan-out registry** | Replace global `activeStrategy` mutable. All registered strategies run per tick. No switch/case |
 | V2 | Agent state key | **`coin:strategyId`** | Same coin can be traded by different strategies simultaneously (independent signals) |
-| V3 | Exchange isolation | **Agent wallet per strategy** | Each strategy signs with own HL agent wallet. Software-enforced capital allocation (HL agent wallets share main account balance) |
+| V3 | Exchange isolation | **Agent wallet per strategy** | Historical plan. Superseded on `main` by a single shared exchange wallet per process; strategy isolation now happens in agent state/risk, not wallet routing |
 | V4 | DB migration | **`strategy_id TEXT DEFAULT 'layered'`** | Additive columns on existing tables. Zero data migration. Backward compatible |
-| V5 | Single-strategy compat | **Feature flag via `STRATEGY_WALLETS` env** | No env var = single wallet mode (Sprint 4 behavior unchanged) |
+| V5 | Single-strategy compat | **Feature flag via `STRATEGY_WALLETS` env** | Historical plan. Superseded: `STRATEGY_WALLETS` was removed; current runtime is always single shared wallet per process |
 | V6 | Risk isolation | **Per-strategy CB + portfolio cap** | Each strategy has own daily PnL limit + circuit breakers. Global exposure cap prevents over-leverage |
 | V7 | Correlation guard | **Cross-strategy allowed (independent)** | Different strategies CAN hold same coin same direction. They're independent signals |
 | V8 | Capital allocation | **Fixed % per strategy in config** | e.g., quant=40%, smc-sd=60%. PositionSizer uses allocated capital, not total balance |
@@ -178,7 +180,7 @@ Decisions made during Sprint 4.5 planning — refactoring from single-strategy t
 
 | # | Issue | Choice | Rationale |
 |---|-------|--------|-----------|
-| E25 | ExchangeService parameterization | **Constructor injection** with optional WalletConfig | Minimal diff, explicit > clever. Fallback to env if no config |
+| E25 | ExchangeService parameterization | **Constructor injection** with optional WalletConfig | Historical plan. Current runtime uses environment-based single-wallet services; per-strategy wallet injection is no longer active |
 | E26 | Setup event routing | **Single emitter + strategyId in ActiveSetup** | DRY — one emitter, agent filters by setup.strategyId |
 | E27 | PipelineStats isolation | **Per-strategy stats Map** | Explicit, no stat inflation. Backtest + dashboard filter by strategy |
 | E28 | Agent file structure | **Extract orchestrator to separate file** | 776L + new per-strategy logic warrants split |
@@ -485,9 +487,9 @@ Sprint 4 DoD: ALL 16/16 CONFIRMED. 936 tests pass.
 |---|----------|--------|-----------|
 | V1 | Strategy dispatch | **Fan-out registry** (replace global `activeStrategy` mutable) | All registered strategies run per tick. No switch/case, no global state |
 | V2 | Agent state key | **`coin:strategyId`** | Same coin can be traded by different strategies simultaneously (independent signals) |
-| V3 | Exchange isolation | **Agent wallet per strategy** (software-enforced capital allocation) | HL agent wallets share main account balance. ExchangePool keyed by strategyId |
+| V3 | Exchange isolation | **Agent wallet per strategy** (software-enforced capital allocation) | Historical review snapshot. Superseded on `main` by single shared wallet routing in S12 |
 | V4 | DB migration | **`strategy_id TEXT DEFAULT 'layered'`** on existing tables | Zero data migration. Existing rows auto-tagged 'layered'. Additive columns |
-| V5 | Single-strategy compat | **Feature flag via `STRATEGY_WALLETS` env** | No env var = single wallet mode (Sprint 4 behavior unchanged) |
+| V5 | Single-strategy compat | **Feature flag via `STRATEGY_WALLETS` env** | Historical review snapshot. Superseded: current runtime no longer exposes `STRATEGY_WALLETS` |
 | V6 | Risk isolation | **Per-strategy CB + portfolio cap** | Each strategy has own daily PnL limit + circuit breakers. Global exposure cap |
 | V7 | Correlation guard | **Cross-strategy allowed (independent)** | Different strategies CAN hold same coin. They're independent signals |
 | V8 | Capital allocation | **Fixed % per strategy in config** | PositionSizer uses allocated capital fraction, not total balance |
@@ -495,7 +497,7 @@ Sprint 4 DoD: ALL 16/16 CONFIRMED. 936 tests pass.
 ### CEO Review Findings
 - Architecture: 0 issues — registry + pool patterns clean
 - Errors: 7 paths mapped, 1 GAP resolved (signal validation in registry.runAll)
-- Security: 1 item — don't log STRATEGY_WALLETS JSON (contains private keys)
+- Security: 1 historical item — don't log `STRATEGY_WALLETS` JSON (kept for record; env removed from current runtime)
 - Edge cases: 6 mapped, 1 GAP resolved (strategy removal blocked if open positions)
 - Failure modes: 8 mapped, 0 critical gaps
 
@@ -569,11 +571,13 @@ Mode: **BIG CHANGE** — full interactive review.
 
 ### S4 — Exchange Pool + Per-Strategy Wallets (2026-04-06)
 
+Historical note: this session log is preserved as-implemented at the time. The per-strategy wallet portion was later retired by S12.
+
 **Completed:**
-- `src/config.ts`: WalletConfig type + parseStrategyWallets() — parses STRATEGY_WALLETS JSON env with strict validation (0x prefix, address length, object shape)
-- `src/execution/exchange-service.ts`: Constructor injection with optional WalletConfig (E25). Falls back to PRIVATE_KEY/ACCOUNT_ADDRESS env when no config provided. Backward compatible.
-- `src/execution/exchange-pool.ts` (NEW): ExchangePool factory — Map<strategyId, ExchangeService>. Single-wallet fallback (V5). Unknown strategyId returns shared instance. Eager init (fail-fast).
-- `test/exchange-pool.test.ts` (NEW): 27 tests — parseStrategyWallets validation (8), ExchangeService with WalletConfig (3), ExchangePool single-wallet mode (4), multi-wallet mode (7), lifecycle (3), singleton (2)
+- Historical implementation snapshot: `src/config.ts` contained `WalletConfig` + `parseStrategyWallets()` for `STRATEGY_WALLETS`
+- Historical implementation snapshot: `src/execution/exchange-service.ts` accepted optional `WalletConfig`
+- Historical implementation snapshot: `src/execution/exchange-pool.ts` used `Map<strategyId, ExchangeService>` with single-wallet fallback
+- Historical implementation snapshot: `test/exchange-pool.test.ts` covered both multi-wallet and single-wallet paths
 
 **Design decisions:**
 - ExchangePool.get() returns shared fallback for unknown strategyId (defensive, don't crash on new strategy without wallet)
@@ -640,7 +644,7 @@ Mode: **BIG CHANGE** — full interactive review.
 - PositionMonitor equity sync: best-effort try/catch in syncWithExchange() — non-fatal if getAccountState() fails (e.g., paper mode without wallet).
 - API strategy filter uses SQL `IS NULL OR =` pattern — null means "all strategies" (no filter).
 
-**Backward compat verified:** Single-wallet mode (no STRATEGY_WALLETS env) uses ExchangePool.getShared() fallback. Order.strategyId defaults to 'layered'. All 1094 existing tests pass unchanged.
+**Backward compat verified:** Historical note: this session still referenced `STRATEGY_WALLETS`. Current `main` no longer exposes that env; ExchangePool is a single shared wallet, and `Order.strategyId` still defaults to `'layered'`.
 
 **Tests:** 1105 pass (11 new), 0 fail.
 
@@ -649,6 +653,8 @@ Mode: **BIG CHANGE** — full interactive review.
 ## Sprint 4.5 Close Summary (2026-04-06)
 
 **Sprint 4.5: ISOLATE — Multi-Strategy Architecture + Agent Wallets**
+
+Historical note: the multi-strategy state model remains, but the per-strategy wallet portion was later retired in favor of a single shared wallet per process.
 
 10/10 sessions DONE. All DoD items CONFIRMED.
 
@@ -668,7 +674,7 @@ Mode: **BIG CHANGE** — full interactive review.
 - No regressions in Sprint 1-4 functionality
 
 ### Architecture Decisions (V1-V8, E25-E30)
-All logged in detail above. Key choices: fan-out registry (V1), coin:strategyId agent state key (V2), agent wallet per strategy (V3), fixed % capital allocation (V8).
+All logged in detail above. Historical highlight: fan-out registry (V1), coin:strategyId agent state key (V2), and fixed % capital allocation (V8) remain relevant; wallet-per-strategy (V3) was later superseded by S12.
 
 ### Next
 Sprint 5: ADVISE (gated on >= 100 closed trades). Sprint 6-7: Memory layers.
@@ -686,7 +692,7 @@ Sprint 5: ADVISE (gated on >= 100 closed trades). Sprint 6-7: Memory layers.
 | E33 | applyContextUpdate vs applyEventContext | **Tách thành 2 methods**: `applyEventContext(event)` + `applyActionContext(action)` | Critical bug: `applyContextUpdate` chạy trong `for (action of filteredActions)` loop → `order_submitted` event returns `actions: []` → loop never runs → `ctx.pendingOrderId` never set → live orders orphaned. Fix: event context mutations run once per dispatch regardless of action count |
 | E34 | ACTIVE_EXCHANGE model | **Mutual exclusive per process** (`ACTIVE_EXCHANGE=HL` or `BB`) | Considered running HL + Bybit simultaneously in one process. Rejected: doubles WS connections, doubles feed memory, complicates coin-selector (different coin universes). Separate process per exchange is cleaner |
 | E35 | Funding rate refresh | **`BYBIT_FUNDING_REFRESH_MS` constant** in config.ts | Magic number `4 * 60 * 60 * 1000` inline in index.ts. Named constant follows CLAUDE.md "no magic numbers" rule |
-| E36 | Bybit dead man's switch | **No-op `scheduleCancel()`** with warning + TODO | HL has native scheduleCancel endpoint. Bybit has no equivalent. Current no-op logs warning. Known gap: cleanup() should cancel open orders on exit (deferred to S13 or dedicated safety sprint) |
+| E36 | Bybit dead man's switch | **No native endpoint; runtime cancel-all on shutdown** | HL has native `scheduleCancel`. Bybit still does not, so current runtime mitigates via `cleanup()` cancel-all plus `SIGINT`/`SIGTERM` shutdown handlers |
 
 ### Session Log
 

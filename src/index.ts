@@ -15,7 +15,7 @@
  *  10. Start coin refresh loop (1h interval)
  *  11. setInterval: STATUS line every 60s
  *  12. setInterval: staleness check every 30s
- *  SIGINT: stop sync → close WS → close DB → exit
+ *  SIGINT/SIGTERM: stop sync → cancel open Bybit orders (live) → close WS → close DB → exit
  */
 
 import {
@@ -103,6 +103,10 @@ import type { CandleInterval } from './types.js'
 // Initialised inside main() after exchange selection.
 // Module-level so coin lifecycle helpers can reference it without prop-drilling.
 let feed: IExchangeFeed
+
+type ShutdownSafeExchange = {
+  cancelAllOpenOrders?: () => Promise<{ success: boolean; error: string | null }>
+}
 
 // ── TUI log file sink — captures all log output while TUI runs ───────────────
 let tuiLogStream: WriteStream | null = null
@@ -542,7 +546,7 @@ async function main(): Promise<void> {
   const activeIds = registry.getEnabledIds()
   log.info('startup', `STRAT | ${activeIds.length}/${registry.size} enabled: ${activeIds.join(', ')}${enabledIds.length < 3 ? ' (env: ENABLED_STRATEGIES=' + enabledIds.join(',') + ')' : ''}`)
 
-  // 7c. Init ExchangePool (Sprint 4.5: per-strategy wallets or shared fallback)
+  // 7c. Init ExchangePool (single shared exchange wallet/service per process)
   const pool = getExchangePool()
   try {
     await pool.init()
@@ -738,10 +742,20 @@ async function cleanup(reason: 'reconnect' | 'shutdown' = 'reconnect'): Promise<
   await feed.closeAll()
   if (getActiveExchange() === 'BB') {
     if (reason === 'shutdown' && !getEffectivePaperTrade()) {
-      log.warn(
-        'shutdown',
-        'Bybit live mode has no native dead man switch here; cleanup closes feeds only. Review open orders on the exchange until cancel-all-on-exit is implemented.',
-      )
+      try {
+        const pool = getExchangePool()
+        if (pool.isInitialized()) {
+          const svc = pool.getShared() as ShutdownSafeExchange
+          if (typeof svc.cancelAllOpenOrders === 'function') {
+            const result = await svc.cancelAllOpenOrders()
+            if (!result.success) {
+              log.error('shutdown', `Bybit cancel-all-on-exit failed: ${result.error}`)
+            }
+          }
+        }
+      } catch (err) {
+        log.error('shutdown', `Bybit cancel-all-on-exit exception: ${err instanceof Error ? err.message : err}`)
+      }
     }
     closeAllBybitTrades()
     closeAllBybitTicker()
@@ -752,17 +766,23 @@ async function cleanup(reason: 'reconnect' | 'shutdown' = 'reconnect'): Promise<
 /** Run main() with exponential backoff reconnection on failure. */
 async function runWithReconnect(): Promise<never> {
   let delay = WS_RECONNECT_INITIAL_MS
+  let shuttingDown = false
 
-  // SIGINT handler — register once, outside retry loop
-  process.on('SIGINT', async () => {
-    log.info('shutdown', 'Closing connections...')
+  const handleShutdown = async (signal: 'SIGINT' | 'SIGTERM') => {
+    if (shuttingDown) return
+    shuttingDown = true
+    log.info('shutdown', `Received ${signal}; closing connections...`)
     getHealthMonitor().stopPeriodicCheck()
     getPositionMonitor().stopSync()
     await cleanup('shutdown')
     await closeDb()
     log.info('shutdown', 'Minh stopped gracefully.')
     process.exit(0)
-  })
+  }
+
+  // Shutdown handlers — register once, outside retry loop
+  process.on('SIGINT', () => { void handleShutdown('SIGINT') })
+  process.on('SIGTERM', () => { void handleShutdown('SIGTERM') })
 
   while (true) {
     try {

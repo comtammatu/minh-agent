@@ -46,7 +46,7 @@ function findMatchingTracked(
 
 /**
  * Build a TUI position map: one row per non-zero HL asset position, enriched from
- * {@link PositionMonitor} when the bot is tracking the same coin (and strategy in multi-wallet).
+ * {@link PositionMonitor} when the bot is tracking the same coin/strategy locally.
  * Tracked positions missing from the last exchange snapshot are still shown (stale poll).
  */
 export function mergeExchangeAndTrackedForTui(

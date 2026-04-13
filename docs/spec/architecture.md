@@ -1,12 +1,12 @@
 # Minh (明) — Architecture
 
-> **v4.5.0 (Sprint 4.5 complete, 2026-04-06)** — Autonomous trading agent with multi-strategy isolation.
+> **v4.5.2 (post-S12 cleanup, 2026-04-13)** — Autonomous trading agent with multi-strategy state/risk isolation and a single shared exchange wallet per process.
 >
 > - Sprint 1: Layered analysis engine (scanner pipeline, indicators, invalidation)
 > - Sprint 2: Agent execution (state machine, order manager, position monitor, circuit breakers, HL exchange, PostgreSQL/TimescaleDB)
 > - Sprint 3: Backtest engine, analytics metrics, SSE streaming, dashboard MVP (React + Vite)
 > - Sprint 4: Telegram bot (command interface), backtest-from-browser, comparison view, journal detail, mobile layout, dark/light theme
-> - Sprint 4.5: Multi-strategy architecture (IStrategy interface, StrategyRegistry fan-out, per-strategy agent wallets, ExchangePool, PortfolioRiskManager, dashboard strategy selector, Telegram /strategy commands)
+> - Sprint 4.5: Multi-strategy architecture (IStrategy interface, StrategyRegistry fan-out, shared ExchangePool, PortfolioRiskManager, dashboard strategy selector, Telegram /strategy commands)
 
 ## System Overview — Layered Decision Framework (Sprint 1)
 
@@ -333,7 +333,7 @@ types.ts (0 deps)
     ├── agent/trading-orchestrator.ts ── per-strategy state dispatch (Sprint 4.5)
     │
     ├── execution/exchange-service.ts ── HL ExchangeClient (place/cancel/modify)
-    ├── execution/exchange-pool.ts ──── per-strategy wallet routing (Sprint 4.5)
+    ├── execution/exchange-pool.ts ──── shared exchange service routing (single wallet per process)
     │
     ├── backtest/engine.ts ── backtest orchestrator
     ├── backtest/simulator.ts ── fill simulation (paper trade)
@@ -520,17 +520,17 @@ StrategyRegistry.runAll() — fan-out to ALL registered strategies
 | `StrategyRegistry` | `src/strategy/registry.ts` | Register/fan-out/activate strategies |
 | `LayeredStrategyAdapter` | `src/strategy/strategies/layered/index.ts` | Wraps existing 5-layer pipeline |
 | `QuantStrategyAdapter` | `src/strategy/strategies/quant/index.ts` | Wraps EMA+RSI quant pipeline |
-| `ExchangePool` | `src/execution/exchange-pool.ts` | Per-strategy HL agent wallet routing |
+| `ExchangePool` | `src/execution/exchange-pool.ts` | Shared exchange service routing for the active exchange |
 | `PortfolioRiskManager` | `src/agent/portfolio-risk.ts` | Global exposure cap, per-strategy allocation |
 | `TradingOrchestrator` | `src/agent/trading-orchestrator.ts` | Per-strategy state, coin:strategyId keying |
 
 ### Isolation Model
 
 - **State**: Agent state keyed by `coin:strategyId` — same coin can be traded by different strategies independently
-- **Execution**: Each strategy signs with own HL agent wallet via `ExchangePool`
+- **Execution**: All strategies share one exchange wallet per process via `ExchangePool`; isolation is enforced in agent state/risk instead of per-strategy wallet routing
 - **Risk**: Per-strategy circuit breakers + daily PnL limits. `PortfolioRiskManager` enforces global exposure cap
 - **DB**: `strategy_id TEXT DEFAULT 'layered'` on orders, positions, trade_journal tables
 - **API**: All endpoints accept `?strategy=` filter. `GET /api/strategies` lists registered strategies
 - **Dashboard**: Global strategy selector dropdown filters all pages
 - **Telegram**: `/strategy list|pause|resume` commands (E30: block disable if open positions)
-- **Backward compat**: No `STRATEGY_WALLETS` env = single-wallet mode (Sprint 4 behavior unchanged)
+- **Backward compat**: Historical `STRATEGY_WALLETS` planning was retired; current runtime is always single-wallet per process

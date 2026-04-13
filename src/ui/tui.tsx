@@ -75,7 +75,7 @@ export interface TuiDataSources {
   getPaperStats: () => PaperStats | null
   /** Live: closed-trade stats per strategy (DB); null in paper or before first fetch. */
   getLiveStrategyWalletStats: () => LiveStrategyWalletStats | null
-  /** Live: HL {@link AccountState} per strategy (one main account each in multi-wallet mode). */
+  /** Live: cached account state per strategy view for the shared runtime wallet. */
   getLiveAccountStatesByStrategy: () => ReadonlyMap<string, AccountState> | null
   getAssetPrice: (coin: string) => AssetPrice | null
   getActiveSetups: () => ActiveSetup[]

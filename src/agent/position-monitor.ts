@@ -191,7 +191,7 @@ export function reconcilePositions(
   const exchangeCoins = new Set(exchangeSnapshots.map(s => s.coin))
 
   for (const [, pos] of tracked) {
-    // Match by coin; when HL rows are tagged (multi-wallet), require strategyId too.
+    // Match by coin; when rows are tagged with strategyId, require it as well.
     const snap = exchangeSnapshots.find(s => {
       if (s.coin !== pos.coin) return false
       if (s.strategyId !== undefined && s.strategyId !== pos.strategyId) return false

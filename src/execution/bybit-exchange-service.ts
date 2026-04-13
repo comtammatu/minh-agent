@@ -608,6 +608,36 @@ export class BybitExchangeService {
     log.warn('bybit-svc', 'scheduleCancel not supported on Bybit — use heartbeat cancellation instead')
   }
 
+  /**
+   * Cancel all open linear orders on the account.
+   * Used during live shutdown because Bybit does not provide a dead man's switch.
+   */
+  async cancelAllOpenOrders(): Promise<OrderResult> {
+    this.ensureInit()
+
+    try {
+      await acquireExec()
+      const resp = await this.client!.cancelAllOrders({
+        category: 'linear',
+        settleCoin: 'USDT',
+      })
+
+      if (resp.retCode !== 0) {
+        const errMsg = resp.retMsg ?? `Bybit cancelAllOrders error ${resp.retCode}`
+        log.error('bybit-exec', `cancelAllOpenOrders failed: ${errMsg}`)
+        return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: errMsg }
+      }
+
+      const cancelledCount = resp.result?.list?.length ?? 0
+      log.warn('bybit-exec', `cancelAllOpenOrders OK: cancelled ${cancelledCount} open order(s)`)
+      return { success: true, oid: null, avgPx: null, totalSz: null, status: 'cancelled', error: null }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.error('bybit-exec', `cancelAllOpenOrders exception: ${msg}`)
+      throw err
+    }
+  }
+
   /** Get max leverage for a coin (from getInstrumentsInfo). Returns undefined if unknown. */
   getMaxLeverage(coin: string): number | undefined {
     return this.maxLeverageMap.get(coin)
@@ -800,20 +830,28 @@ export class BybitExchangeService {
 
   /**
    * Modify trigger order (trail stop SL update).
-   * Not yet implemented for Bybit — logs warning and returns failure.
-   * TODO: implement via Bybit amendOrder with updated stopLoss.
+   * Bybit manages protection at position level, so a "trigger modify" maps
+   * to setTradingStop on the underlying position rather than amending an order.
    */
   async modifyTrigger(
-    _coin: string,
+    coin: string,
     _oid: number,
-    _side: 'long' | 'short',
+    side: 'long' | 'short',
     _newTriggerPrice: number,
     _size: number,
     _isMarket: boolean,
-    _tpsl: 'tp' | 'sl',
+    tpsl: 'tp' | 'sl',
   ): Promise<OrderResult> {
-    log.warn('bybit-svc', 'modifyTrigger not yet implemented on Bybit — trail stop updates are no-ops')
-    return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: 'modifyTrigger not yet implemented on Bybit' }
+    const positionSide: 'long' | 'short' = side === 'short' ? 'long' : 'short'
+    const result = await this.updatePositionStop({
+      coin,
+      positionSide,
+      triggerPrice: _newTriggerPrice,
+      tpsl,
+    })
+
+    if (!result.success) return result
+    return { ...result, status: 'modified' }
   }
 
   /**

@@ -146,7 +146,7 @@ describe('PaperTracker', () => {
   })
 })
 
-// ── Per-strategy registry (multi-wallet paper) ─────────────────────────────
+// ── Per-strategy registry ───────────────────────────────────────────────────
 
 describe('getPaperTracker (per strategy)', () => {
   beforeEach(() => {

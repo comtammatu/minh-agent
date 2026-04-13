@@ -522,12 +522,12 @@ Kế hoạch gốc (refactor `exchanges/` directories) **không thực hiện** 
 3. **Magic number** — `ticker.symbol.slice(0, -4)` → `slice(0, -'USDT'.length)`. `4 * 60 * 60 * 1000` → `BYBIT_FUNDING_REFRESH_MS`.
 4. **Dead code** — `isMultiWallet()` always returns `false` nhưng 3 branches trong `index.ts` vẫn check → đã xóa.
 
-### Known gaps (deferred)
+### Closed follow-ups
 
-- Bybit không có dead man's switch — cần implement cancel-all-orders trong `cleanup()` + SIGTERM handler (xem /cso finding #1)
-- `modifyTrigger` không được implement trên Bybit (trail stop = no-op)
-- `getFillAggregateByCloid` không được implement (fill price estimate only)
-- Stale multi-account env vars trong `.env.example` (`PRIVATE_KEY_LAYERED`, `STRATEGY_WALLETS`, `BYBIT_STRATEGY_KEYS`) — cần cleanup
+- Bybit vẫn không có dead man's switch native, nhưng runtime hiện đã cancel-all open orders trong shutdown path (`cleanup()` + `SIGINT`/`SIGTERM`)
+- `modifyTrigger` đã được map sang position-level `setTradingStop`, không còn là no-op
+- `getFillAggregateByCloid` hiện dùng `getHistoricOrders` để aggregate fill theo `orderLinkId`
+- Stale multi-account env vars đã được dọn khỏi runtime/docs chính; historical planning docs vẫn được giữ nhưng đã được đánh dấu superseded
 
 ### Test coverage (1148 pass sau S12)
 

@@ -346,7 +346,7 @@ describe('reconcilePositions', () => {
     }
   })
 
-  it('matches exchange row by strategyId when snapshots are tagged (multi-wallet)', () => {
+  it('matches exchange row by strategyId when snapshots are tagged', () => {
     const tracked = new Map<string, PositionState>()
     tracked.set('pos-q', makePosition({ positionId: 'pos-q', coin: 'BTC', strategyId: 'alpha' }))
     // Exchange has BTC for layered only — quant position missing on its account

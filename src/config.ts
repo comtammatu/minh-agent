@@ -923,7 +923,7 @@ const PAPER_BALANCE_ENV: Record<string, string> = {
 }
 
 /**
- * Initial USD balance for the paper wallet of a strategy (multi-wallet paper = real-money parity).
+ * Initial USD balance for the per-strategy paper tracker.
  */
 export function getPaperInitialBalance(strategyId: string): number {
   const envKey = PAPER_BALANCE_ENV[strategyId]

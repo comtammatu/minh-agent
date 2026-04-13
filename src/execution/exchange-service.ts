@@ -94,6 +94,12 @@ export interface IExchangeService {
    */
   updatePositionStop?(params: UpdatePositionStopParams): Promise<OrderResult>
 
+  /**
+   * Cancel all currently open orders on the active account (exchange-specific, optional).
+   * Used on live shutdown paths when the exchange has no native dead man's switch.
+   */
+  cancelAllOpenOrders?(): Promise<OrderResult>
+
   /** Query account summary. Updates cached accountValue. */
   getAccountState(): Promise<AccountState>
 

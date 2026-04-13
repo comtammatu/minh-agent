@@ -203,7 +203,7 @@ export interface ExchangePositionSnapshot {
   liquidationPrice: number | null
   /** Cross/isolated leverage from HL `position.leverage.value` when present. */
   leverage?: number
-  /** When set (multi-wallet), reconciliation matches this row to {@link PositionState.strategyId}. */
+  /** When set, reconciliation matches this row to {@link PositionState.strategyId}. */
   strategyId?: string
   /** Stop-loss price set on the exchange (Bybit: stopLoss field). */
   slPrice?: number

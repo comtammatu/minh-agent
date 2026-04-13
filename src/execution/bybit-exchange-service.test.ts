@@ -94,6 +94,9 @@ let mockGetWalletBalance = mock(() =>
 let mockSetTradingStop = mock(() =>
   Promise.resolve({ retCode: 0, retMsg: 'OK', result: {} }),
 )
+let mockCancelAllOrders = mock(() =>
+  Promise.resolve({ retCode: 0, retMsg: 'OK', result: { list: [], success: '1' } }),
+)
 let mockGetHistoricOrders = mock(() =>
   Promise.resolve({ retCode: 0, retMsg: 'OK', result: { list: [] } }),
 )
@@ -109,6 +112,7 @@ mock.module('bybit-api', () => ({
     getInstrumentsInfo = mockGetInstrumentsInfo
     getTickers = mockGetTickers
     setTradingStop = mockSetTradingStop
+    cancelAllOrders = mockCancelAllOrders
     getHistoricOrders = mockGetHistoricOrders
   },
 }))
@@ -206,6 +210,9 @@ describe('BybitExchangeService', () => {
     )
     mockSetTradingStop = mock(() =>
       Promise.resolve({ retCode: 0, retMsg: 'OK', result: {} }),
+    )
+    mockCancelAllOrders = mock(() =>
+      Promise.resolve({ retCode: 0, retMsg: 'OK', result: { list: [], success: '1' } }),
     )
     mockGetHistoricOrders = mock(() =>
       Promise.resolve({ retCode: 0, retMsg: 'OK', result: { list: [] } }),
@@ -529,6 +536,47 @@ describe('BybitExchangeService', () => {
     expect(() => svc.scheduleCancel(Date.now() + 60_000)).not.toThrow()
   })
 
+  describe('cancelAllOpenOrders', () => {
+    it('bulk-cancels all open linear orders successfully', async () => {
+      mockCancelAllOrders = mock(() =>
+        Promise.resolve({
+          retCode: 0,
+          retMsg: 'OK',
+          result: {
+            list: [{ orderId: 'bb-1' }, { orderId: 'bb-2' }],
+            success: '1',
+          },
+        }),
+      )
+
+      const { BybitExchangeService } = await import('./bybit-exchange-service.js')
+      const svc = new BybitExchangeService()
+      await svc.init()
+
+      const result = await svc.cancelAllOpenOrders()
+      expect(result.success).toBe(true)
+      expect(result.status).toBe('cancelled')
+
+      const payload = (mockCancelAllOrders.mock.calls[0] as [Record<string, string>])[0]
+      expect(payload['category']).toBe('linear')
+      expect(payload['settleCoin']).toBe('USDT')
+    })
+
+    it('returns failure when Bybit rejects bulk cancel', async () => {
+      mockCancelAllOrders = mock(() =>
+        Promise.resolve({ retCode: 10001, retMsg: 'Bulk cancel failed', result: { list: [], success: '0' } }),
+      )
+
+      const { BybitExchangeService } = await import('./bybit-exchange-service.js')
+      const svc = new BybitExchangeService()
+      await svc.init()
+
+      const result = await svc.cancelAllOpenOrders()
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('Bulk cancel failed')
+    })
+  })
+
   // ── cancelByCloid ─────────────────────────────────────────────────────────
 
   describe('cancelByCloid', () => {
@@ -669,6 +717,37 @@ describe('BybitExchangeService', () => {
       expect(payload['symbol']).toBe('SOLUSDT')
       expect(payload['positionIdx']).toBe(1)
       expect(payload['stopLoss']).toBe('120')
+    })
+  })
+
+  describe('modifyTrigger', () => {
+    it('maps trigger update to position-level stop update for the underlying long position', async () => {
+      const { BybitExchangeService } = await import('./bybit-exchange-service.js')
+      const svc = new BybitExchangeService()
+      await svc.init()
+
+      const result = await svc.modifyTrigger('SOL', 12345, 'short', 118, 10, true, 'sl')
+
+      expect(result.success).toBe(true)
+      expect(result.status).toBe('modified')
+      const payload = (mockSetTradingStop.mock.calls[0] as [Record<string, string | number>])[0]
+      expect(payload['symbol']).toBe('SOLUSDT')
+      expect(payload['positionIdx']).toBe(1)
+      expect(payload['stopLoss']).toBe('118')
+    })
+
+    it('surfaces position-level stop update failures', async () => {
+      mockSetTradingStop = mock(() =>
+        Promise.resolve({ retCode: 10001, retMsg: 'Cannot update stop', result: {} }),
+      )
+
+      const { BybitExchangeService } = await import('./bybit-exchange-service.js')
+      const svc = new BybitExchangeService()
+      await svc.init()
+
+      const result = await svc.modifyTrigger('ETH', 12345, 'long', 3200, 0.5, true, 'tp')
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('Cannot update stop')
     })
   })
 

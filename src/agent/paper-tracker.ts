@@ -1,7 +1,7 @@
 /**
  * Paper P&L Tracker — simulated balance for PAPER_TRADE mode.
  *
- * One {@link PaperTracker} per strategy (mirrors multi-wallet ExchangePool in live mode).
+ * One {@link PaperTracker} per strategy so paper state stays isolated by strategy.
  * Balances start at {@link getPaperInitialBalance} per strategy (env overrides).
  *
  * Enhanced with multi-TP exit system (P2 upgrade):
