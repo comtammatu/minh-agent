@@ -56,7 +56,7 @@ import {
   computeEntryLeverageForTargetMargin,
   computePositionSize,
 } from './exits.js'
-import { DEFAULT_RISK_PERCENT, SIMULATED_ACCOUNT, TARGET_MARGIN_PCT, getActiveExchange, ATR_TRAIL_MULTIPLIER } from '../config.js'
+import { DEFAULT_RISK_PERCENT, SIMULATED_ACCOUNT, TARGET_MARGIN_PCT, getActiveExchange, tryGetActiveExchange, ATR_TRAIL_MULTIPLIER } from '../config.js'
 
 /** Default strategy ID for backward compatibility (single-strategy mode). */
 const DEFAULT_STRATEGY = 'smc-sd'
@@ -72,12 +72,7 @@ function clampPositiveFinite(n: number, fallback: number): number {
 
 function isBybitLiveMode(): boolean {
   if (getEffectivePaperTrade()) return false
-  try {
-    return getActiveExchange() === 'BB'
-  } catch {
-    // Backward-compat for tests/scripts that don't set ACTIVE_EXCHANGE.
-    return false
-  }
+  return tryGetActiveExchange() === 'BB'
 }
 
 type PositionStopUpdateExchange = IExchangeService & {

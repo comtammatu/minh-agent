@@ -33,7 +33,7 @@ import {
   EXCHANGE_SYNC_INTERVAL_MS,
   PAPER_WALLET_STRATEGY_IDS,
   TRAIL_UPDATE_THRESHOLD,
-  getActiveExchange,
+  tryGetActiveExchange,
 } from '../config.js'
 import { getHLExchangeService as getExchangeService } from '../execution/hl-exchange-service.js'
 import type { IExchangeService as ExchangeService, AccountState } from '../execution/exchange-service.js'
@@ -47,12 +47,7 @@ import { getOrderManager } from './order-manager.js'
 
 function isBybitLiveMode(): boolean {
   if (getEffectivePaperTrade()) return false
-  try {
-    return getActiveExchange() === 'BB'
-  } catch {
-    // Backward-compat for tests/scripts that don't set ACTIVE_EXCHANGE.
-    return false
-  }
+  return tryGetActiveExchange() === 'BB'
 }
 
 /**

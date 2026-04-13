@@ -721,8 +721,8 @@ async function main(): Promise<void> {
   })
 }
 
-/** Clean up intervals, WS connections, refresh loop, polling, agent sync, TUI, and DB before reconnect. */
-async function cleanup(): Promise<void> {
+/** Clean up intervals, WS connections, refresh loop, polling, agent sync, and TUI before reconnect/shutdown. */
+async function cleanup(reason: 'reconnect' | 'shutdown' = 'reconnect'): Promise<void> {
   clearTuiSink()
   tuiLogStream?.end()
   tuiLogStream = null
@@ -737,6 +737,12 @@ async function cleanup(): Promise<void> {
   await stopOiFeed()
   await feed.closeAll()
   if (getActiveExchange() === 'BB') {
+    if (reason === 'shutdown' && !getEffectivePaperTrade()) {
+      log.warn(
+        'shutdown',
+        'Bybit live mode has no native dead man switch here; cleanup closes feeds only. Review open orders on the exchange until cancel-all-on-exit is implemented.',
+      )
+    }
     closeAllBybitTrades()
     closeAllBybitTicker()
   }
@@ -752,7 +758,7 @@ async function runWithReconnect(): Promise<never> {
     log.info('shutdown', 'Closing connections...')
     getHealthMonitor().stopPeriodicCheck()
     getPositionMonitor().stopSync()
-    await cleanup()
+    await cleanup('shutdown')
     await closeDb()
     log.info('shutdown', 'Minh stopped gracefully.')
     process.exit(0)

@@ -870,9 +870,6 @@ export const PORTFOLIO_RISK = {
   } as Record<string, number>,
 } as const
 
-// ─── Strategy Wallets (Sprint 4.5 S4) ────────────────────────────────────────
-
-
 // ─── Paper Trade Mode ─────────────────────────────────────────────────────────
 
 /** Paper trade mode: simulate fills instead of calling HL exchange. */
@@ -1038,6 +1035,16 @@ export function getActiveExchange(): ExchangeId {
   if (!raw) throw new Error('ACTIVE_EXCHANGE env is required. Set to HL or BB.')
   if (raw !== 'HL' && raw !== 'BB') throw new Error(`Unknown ACTIVE_EXCHANGE: "${raw}". Valid values: HL, BB`)
   return raw
+}
+
+/**
+ * Best-effort exchange lookup for tests, scripts, and backward-compat runtime paths.
+ * Returns null when ACTIVE_EXCHANGE is missing or invalid instead of throwing.
+ */
+export function tryGetActiveExchange(): ExchangeId | null {
+  const raw = process.env['ACTIVE_EXCHANGE']
+  if (raw === 'HL' || raw === 'BB') return raw
+  return null
 }
 
 // ── Bybit-specific config ──────────────────────────────────────────────────

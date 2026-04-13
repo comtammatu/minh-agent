@@ -63,17 +63,21 @@ Edit `.env` with your values:
 # Database
 DATABASE_URL=postgres://minh:minh_dev@localhost:5432/minh
 
-# Hyperliquid Agent Wallet
+# Exchange selection (one exchange per process)
+ACTIVE_EXCHANGE=HL
+
+# Hyperliquid live trading
 PRIVATE_KEY=0x...your_agent_wallet_private_key...
 ACCOUNT_ADDRESS=0x...your_main_account_address...
+
+# Bybit live trading (only when ACTIVE_EXCHANGE=BB)
+BYBIT_API_KEY=
+BYBIT_API_SECRET=
 
 # Logging
 LOG_LEVEL=INFO
 
 # === OPTIONAL ===
-
-# HTTP API auth token (protects /api endpoints)
-MINH_API_TOKEN=your_secret_token
 
 # Telegram alerts
 TELEGRAM_BOT_TOKEN=
@@ -94,6 +98,7 @@ PAPER_SLIPPAGE_PCT=0.0005
 6. Copy your main account address → `ACCOUNT_ADDRESS`
 
 > **IMPORTANT**: Start with `PAPER_TRADE=true` to test without risking real funds.
+> The current architecture is single-wallet and single-exchange per process. Old multi-wallet env vars are intentionally removed from `.env.example`.
 
 ---
 
@@ -106,6 +111,16 @@ bun test --run
 ```
 
 All tests should pass. If database tests fail, ensure TimescaleDB is running (Step 2).
+
+## Step 4.5 — Verify Performance Gate
+
+This repo now treats pipeline latency as a maintained quality gate.
+
+```bash
+ACTIVE_EXCHANGE=HL bun run bench:pipeline:ci
+```
+
+This should pass on a healthy local setup. CI compares against a GitHub-hosted-runner baseline, so local numbers will usually be faster.
 
 ---
 
@@ -163,6 +178,7 @@ Watch for:
 | `bun run src/index.ts` | Start the engine |
 | `bun test` | Run tests (watch mode) |
 | `bun test --run` | Run tests (single run) |
+| `ACTIVE_EXCHANGE=HL bun run bench:pipeline:ci` | Run pipeline latency budget gate |
 | `docker-compose up -d` | Start TimescaleDB |
 | `docker-compose down` | Stop TimescaleDB |
 | `docker-compose logs -f` | View DB logs |
@@ -177,12 +193,10 @@ All trading thresholds and parameters live in `src/config.ts`. Key settings:
 |---------|---------|-------------|
 | `TOP_COINS_LIMIT` | 15 | Number of coins to track (by OI) |
 | `TIMEFRAMES` | 1m,5m,15m,1h,4h,1d | Candle timeframes |
-| `MIN_CONFIDENCE` | 0.4 | Minimum setup confidence to alert |
-| `maxRiskPerTrade` | 1% | Max risk per trade (% of account) |
-| `maxConcurrentPositions` | 3 | Max open positions |
-| `maxDailyLoss` | 3% | Daily loss → pause trading |
-| `SERVER_PORT` | 3000 | HTTP API port |
-| `PAPER_TRADE` | false | Simulate fills (no real orders) |
+| `MIN_CONFIDENCE` | 0.58 | Minimum setup confidence to alert |
+| `RISK_PER_POSITION` | 2% | Max equity at risk per trade |
+| `ACTIVE_EXCHANGE` | HL | Exchange for this process (`HL` or `BB`) |
+| `PAPER_TRADE` | true in example | Simulate fills (no real orders) |
 
 ---
 
@@ -247,3 +261,5 @@ Hyperliquid REST (backfill) + WS (live)
 ```
 
 For full architecture details, see `docs/spec/architecture.md`.
+
+Contributor workflow and CI expectations are documented in `CONTRIBUTING.md`.
