@@ -13,10 +13,33 @@ import {
   BYBIT_BACKFILL_CANDLE_COUNTS,
   BYBIT_INTERVAL_MAP,
 } from '../../config.js'
-import { acquire } from './bybit-rate-limiter.js'
+import { acquire as acquireRateLimit } from './bybit-rate-limiter.js'
 import { log } from '../../lib/logger.js'
 
-const client = new RestClientV5({ testnet: false })
+type BybitRestClient = Pick<RestClientV5, 'getKline' | 'getTickers'>
+type AcquireFn = () => Promise<void>
+
+function createDefaultClient(): BybitRestClient {
+  return new RestClientV5({ testnet: false })
+}
+
+let client: BybitRestClient = createDefaultClient()
+let acquireFn: AcquireFn = acquireRateLimit
+
+/**
+ * Test hook: override Bybit REST dependencies to keep tests deterministic.
+ * Production path should never call this.
+ */
+export function __setBybitRestTestDeps(deps: { client?: BybitRestClient; acquire?: AcquireFn }): void {
+  if (deps.client) client = deps.client
+  if (deps.acquire) acquireFn = deps.acquire
+}
+
+/** Reset test overrides to production dependencies. */
+export function __resetBybitRestTestDeps(): void {
+  client = createDefaultClient()
+  acquireFn = acquireRateLimit
+}
 
 // ─── Funding Rate Cache ───────────────────────────────────────────────────────
 
@@ -117,7 +140,7 @@ export async function fetchBybitCandles(
 
   while (attempt <= maxRetries) {
     try {
-      await acquire()
+      await acquireFn()
       const response = await client.getKline({
         category: 'linear',
         symbol,

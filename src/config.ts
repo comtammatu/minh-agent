@@ -273,7 +273,7 @@ export const SMC_DRILLDOWN_MAX_POIS = 10
 /** Confirmed POI TTL in ms. Raised 1h→1.5h: 15m CHoCH can happen near bar end,
  * giving only 30-45min for 5m FVG to appear — too short. 1.5h = 18 bars on 5m.
  * Conservative increase (was 4h → 96% SL rate, so not reverting far). */
-export const SMC_CONFIRMED_POI_TTL_MS = 1.5 * 3_600_000
+export const SMC_CONFIRMED_POI_TTL_MS = 4 * 3_600_000
 
 /** Max confirmed POIs per coin. */
 export const SMC_CONFIRMED_POI_MAX = 5
@@ -315,7 +315,7 @@ export const SMC_15M_SCALP_CONFIDENCE_BASE = 0.68
 // ─── ICT 5m Micro-Entry ─────────────────────────────────────────────────────
 
 /** 5m bars to look for FVG entry after confirmed POI. */
-export const SMC_5M_FVG_LOOKBACK = 5
+export const SMC_5M_FVG_LOOKBACK = 10
 
 /** ATR buffer for 5m swing stop.
  * Raised 0.3→0.5: 0.3 ATR on BTC ≈ $150 buffer — crypto wick noise + spread
@@ -340,7 +340,7 @@ export const SMC_5M_MIN_SL_PCT = 0.004
  * 5m FVG alone at 4h POI has ~22% WR. Adding 15m CHoCH requirement ensures
  * lower-timeframe structure has shifted before micro-entry. The confirmedPOI
  * already has ltfBreakKind from the 15m scan — use it as a hard gate. */
-export const SMC_5M_REQUIRE_15M_CHOCH = true
+export const SMC_5M_REQUIRE_15M_CHOCH = false
 
 // ─── ICT AMD (Power of Three) ───────────────────────────────────────────────
 
@@ -395,6 +395,18 @@ export const SMC_LIQUIDATION_WICK_ATR_MULT = 3.0
 /** Confidence multiplier applied when cascade detected. 0.4 = heavy discount;
  * not 0.0 (sometimes cascade creates valid entry after the flush completes). */
 export const SMC_LIQUIDATION_CONFIDENCE_MULT = 0.4
+
+// ─── scan1hSameTF Quality Filters (Eng Review 2026-04-12) ──────────────────
+/** BOS confidence penalty — BOS is continuation, lower conviction than CHoCH reversal. */
+export const SMC_1H_BOS_PENALTY = 0.15
+/** Minimum volume ratio (vs 20-bar avg) to accept 1H signal. Below = low-conviction noise. */
+export const SMC_1H_MIN_VOLUME_RATIO = 0.7
+/** Minimum ADX for 1H signal. Raised 18→20: trending filter was too loose. */
+export const SMC_1H_MIN_ADX = 20
+/** Core coin allowlist for 1H same-TF mode.
+ * Walk-forward OOS shows edge concentration on top-tier liquidity coins.
+ * Empty array disables this gate. */
+export const SMC_1H_ALLOWED_COINS = ['BTC', 'ETH', 'SOL'] as const
 
 // ─── P2: Weekend Volume Filter ───────────────────────────────────────────────
 // Crypto volume Fri-Sun = 30-50% of weekday. Low-volume BOS/CHoCH has higher
@@ -532,6 +544,47 @@ export const TIMEFRAME_MS: Record<CandleInterval, number> = {
   '1h': 3_600_000,
   '4h': 14_400_000,
   '1d': 86_400_000,
+} as const
+
+/**
+ * Watchlist/status refresh cadence by timeframe.
+ * Setup detection still runs on every closed candle; only status recomputation is throttled.
+ */
+export const STATUS_UPDATE_EVERY_BARS: Record<CandleInterval, number> = {
+  '1m': 6,
+  '5m': 3,
+  '15m': 2,
+  '1h': 1,
+  '4h': 1,
+  '1d': 1,
+} as const
+
+// ─── Pipeline Benchmark CI Budget ─────────────────────────────────────────
+
+export type PipelineBenchmarkMetricMode = 'raw' | 'robust'
+
+export const PIPELINE_BENCH_CI_BASELINE_PATH = 'results/baselines/pipeline-benchmark-baseline.json'
+
+export const PIPELINE_BENCH_CI_COINS = [
+  'BTC', 'ETH', 'SOL', 'AVAX', 'LINK', 'ARB', 'APT', 'BNB', 'DOT', 'ATOM',
+] as const
+
+export const PIPELINE_BENCH_CI_TIMEFRAMES = ['5m', '15m', '1h', '4h'] as const satisfies readonly CandleInterval[]
+
+export const PIPELINE_BENCH_CI_BARS_PER_SERIES = 1_200
+export const PIPELINE_BENCH_CI_WARMUP_RUNS = 2
+export const PIPELINE_BENCH_CI_MEASURED_RUNS = 9
+export const PIPELINE_BENCH_CI_TRIM_RATIO = 0.01
+
+/** Compare robust metrics by default to reduce CI flakes from scheduler/GC spikes. */
+export const PIPELINE_BENCH_CI_METRIC_MODE: PipelineBenchmarkMetricMode = 'robust'
+
+/** Max allowed regression vs baseline before CI fails.
+ * Keep p95 strict, but allow more p99 headroom on hosted GitHub runners
+ * where tail latency shows materially higher scheduler variance. */
+export const PIPELINE_BENCH_CI_MAX_REGRESSION = {
+  p95Pct: 0.10,
+  p99Pct: 0.25,
 } as const
 
 // ─── Max Holding Period (P0 fix) ──────────────────────────────────────────
@@ -952,7 +1005,7 @@ export const TELEGRAM_BOT = {
   /** /closeall confirmation timeout (seconds). User must /confirm within this window. */
   closeallConfirmTimeoutSec: 30,
   /**
-   * IANA timezone for đầu ngày / cuối ngày reports (journal stats use local calendar day).
+   * IANA timezone for morning/evening daily reports (journal stats use local calendar day).
    * Default UTC. Example: `Asia/Ho_Chi_Minh`.
    */
   reportTimezone: process.env.TELEGRAM_REPORT_TZ?.trim() || 'UTC',
@@ -1068,3 +1121,36 @@ export function getDefaultCoins(exchange: ExchangeId): string[] {
 
 /** Max concurrent REST backfill requests for Bybit. */
 export const BYBIT_BACKFILL_CONCURRENCY = 3
+
+// ─── Parameter Optimizer Schema (Evolution Phase 1) ──────────────────────
+
+/** Parameter search space for optimizer random sampling.
+ * Each field maps to a StrategyParams key with min/max/step bounds.
+ * Optimizer generates random values within these bounds, steps optional.
+ * Params: MIN_CONFIDENCE, REGIME_MULT_COUNTER, REGIME_MULT_NEUTRAL,
+ *   SMC_DRILLDOWN_CONFIDENCE_BASE (15m scan base), SL_WICK_ATR_MULT,
+ *   SMC_MIN_RR, SMC_1H_CONFIDENCE_BASE (1h scan base). */
+export const PARAM_SCHEMA = {
+  MIN_CONFIDENCE: { min: 0.40, max: 0.80, step: 0.05, type: 'float' as const },
+  REGIME_MULT_COUNTER: { min: 0.10, max: 0.50, step: 0.05, type: 'float' as const },
+  REGIME_MULT_NEUTRAL: { min: 0.60, max: 1.00, step: 0.05, type: 'float' as const },
+  SMC_DRILLDOWN_CONFIDENCE_BASE: { min: 0.50, max: 0.80, step: 0.05, type: 'float' as const },
+  SL_WICK_ATR_MULT: { min: 0.3, max: 1.0, step: 0.1, type: 'float' as const },
+  SMC_MIN_RR: { min: 1.5, max: 4.0, step: 0.5, type: 'float' as const },
+  SMC_1H_CONFIDENCE_BASE: { min: 0.50, max: 0.75, step: 0.05, type: 'float' as const },
+} as const
+
+/** Optimizer: fraction of trials selected as holdout-validation candidates. */
+export const OPTIMIZER_CANDIDATE_FRACTION = 0.20
+/** Optimizer: lower bound for number of holdout candidates. */
+export const OPTIMIZER_CANDIDATE_MIN = 10
+/** Optimizer: upper bound for number of holdout candidates. */
+export const OPTIMIZER_CANDIDATE_MAX = 40
+/** Optimizer candidate scoring: target OOS trades before trade-factor saturates. */
+export const OPTIMIZER_SELECTION_OOS_TRADE_TARGET = 40
+/** Optimizer final objective: minimum holdout PF considered robust. */
+export const OPTIMIZER_HOLDOUT_MIN_PF = 1.1
+/** Optimizer final objective: minimum holdout trades considered robust. */
+export const OPTIMIZER_HOLDOUT_MIN_TRADES = 40
+/** Optimizer final objective: target holdout trades before trade-factor saturates. */
+export const OPTIMIZER_HOLDOUT_TRADE_TARGET = 40

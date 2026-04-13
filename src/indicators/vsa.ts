@@ -6,7 +6,6 @@
  */
 
 import type { Candle, VSASignalType } from '../types.js'
-import { volumeRatio, atr } from './core.js'
 
 export interface VSASignal {
   type: VSASignalType
@@ -24,6 +23,38 @@ const upperWick = (c: Candle) => c.h - Math.max(c.o, c.c)
 const isBullish = (c: Candle) => c.c > c.o
 const isBearish = (c: Candle) => c.c < c.o
 
+function computeVsaInputs(candles: Candle[], idx: number, lookback: number): { volRatio: number, atrValue: number } {
+  let atrSeed = 0
+  let atrValue = NaN
+  let previousVolumeSum = 0
+  const volumeStart = idx - lookback
+
+  for (let i = 1; i <= idx; i++) {
+    const current = candles[i]!
+    const previous = candles[i - 1]!
+    const tr = Math.max(
+      current.h - current.l,
+      Math.abs(current.h - previous.c),
+      Math.abs(current.l - previous.c),
+    )
+
+    if (i <= lookback) {
+      atrSeed += tr
+      if (i === lookback) atrValue = atrSeed / lookback
+    } else {
+      atrValue = (atrValue * (lookback - 1) + tr) / lookback
+    }
+
+    if (i >= volumeStart && i < idx) previousVolumeSum += current.v
+  }
+
+  const avgVolume = previousVolumeSum / lookback
+  return {
+    volRatio: avgVolume === 0 ? 0 : candles[idx]!.v / avgVolume,
+    atrValue,
+  }
+}
+
 // ─── Detection ────────────────────────────────────────────────────────────────
 
 /**
@@ -38,8 +69,7 @@ export function detectVSA(
   if (idx < lb) return []
 
   const c = candles[idx]!
-  const volR = volumeRatio(candles, idx, lb)
-  const atrVal = atr(candles, idx, lb)
+  const { volRatio: volR, atrValue: atrVal } = computeVsaInputs(candles, idx, lb)
 
   if (isNaN(volR) || isNaN(atrVal) || atrVal === 0) return []
 

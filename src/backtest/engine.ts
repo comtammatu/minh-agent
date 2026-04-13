@@ -26,12 +26,14 @@ import {
   onCandleTick,
   getPipelineEmitter,
   clearPipelineState,
+  setActiveStrategyParams,
 } from '../strategy/orchestrator.js'
 import { getPipelineStats } from '../strategy/diagnostics.js'
 import { getStrategyRegistry } from '../strategy/registry.js'
 import { clearStore, clearOnPersist, getCandles } from '../feed/store.js'
 import { atr } from '../indicators/core.js'
 import { BACKTEST_SLIPPAGE_PCT, BACKTEST_COMMISSION_PCT, ATR_TRAIL_MULTIPLIER, INDICATOR_WINDOW, BACKTEST_CHUNK_SIZE } from '../config.js'
+import { inferScanMode } from './optimize.js'
 
 /**
  * Run a backtest on historical candle data.
@@ -50,6 +52,7 @@ export function runBacktest(
   clearOnPersist()  // prevent DB writes during backtest
   getStrategyRegistry().clearAllState()  // reset per-strategy dedup (critical for walk-forward isolation)
   getStrategyRegistry().activateOnly(config.strategy ?? 'smc-sd')
+  setActiveStrategyParams(config.strategyParams ?? null)
 
   const slippage = config.slippagePct ?? BACKTEST_SLIPPAGE_PCT
   const commission = config.commissionPct ?? BACKTEST_COMMISSION_PCT
@@ -64,6 +67,9 @@ export function runBacktest(
   let currentCoin: string = ''
 
   const onSetup = (setup: ActiveSetup) => {
+    // Skip disabled scan modes (for isolated testing)
+    if (config.disabledScanModes?.includes(inferScanMode(setup.interval))) return
+
     // Compute ATR at fill time from store (candles already appended)
     const storeCandles = getCandles(setup.coin, setup.interval, INDICATOR_WINDOW)
     const idx = storeCandles.length - 2  // closed candle (same as pipeline)
@@ -118,6 +124,7 @@ export function runBacktest(
     // ── Cleanup: remove listener + reset state ──────────────────────────
     emitter.off('setup', onSetup)
     getStrategyRegistry().activateOnly(null)  // restore fan-out
+    setActiveStrategyParams(null)
     clearPipelineState()
     clearStore()
   }
@@ -194,6 +201,7 @@ export async function runBacktestAsync(
   clearStore()
   clearOnPersist()
   getStrategyRegistry().activateOnly(config.strategy ?? 'smc-sd')
+  setActiveStrategyParams(config.strategyParams ?? null)
 
   const slippage = config.slippagePct ?? BACKTEST_SLIPPAGE_PCT
   const commission = config.commissionPct ?? BACKTEST_COMMISSION_PCT
@@ -204,6 +212,9 @@ export async function runBacktestAsync(
   let currentBarIndex = 0
 
   const onSetup = (setup: ActiveSetup) => {
+    // Skip disabled scan modes (for isolated testing)
+    if (config.disabledScanModes?.includes(inferScanMode(setup.interval))) return
+
     const storeCandles = getCandles(setup.coin, setup.interval, INDICATOR_WINDOW)
     const idx = storeCandles.length - 2
     const atrVal = idx >= 14 ? atr(storeCandles, idx, 14) : 0
@@ -257,6 +268,7 @@ export async function runBacktestAsync(
   } finally {
     emitter.off('setup', onSetup)
     getStrategyRegistry().activateOnly(null)  // restore fan-out
+    setActiveStrategyParams(null)
     clearPipelineState()
     clearStore()
   }

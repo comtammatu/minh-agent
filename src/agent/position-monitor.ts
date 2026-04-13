@@ -33,6 +33,7 @@ import {
   EXCHANGE_SYNC_INTERVAL_MS,
   PAPER_WALLET_STRATEGY_IDS,
   TRAIL_UPDATE_THRESHOLD,
+  getActiveExchange,
 } from '../config.js'
 import { getHLExchangeService as getExchangeService } from '../execution/hl-exchange-service.js'
 import type { IExchangeService as ExchangeService, AccountState } from '../execution/exchange-service.js'
@@ -43,6 +44,16 @@ import { getPaperTracker, getTotalPaperBalance } from './paper-tracker.js'
 import { getOrderManager } from './order-manager.js'
 
 // ─── Exchange Query (S10: real HL clearinghouseState) ──────────────────────
+
+function isBybitLiveMode(): boolean {
+  if (getEffectivePaperTrade()) return false
+  try {
+    return getActiveExchange() === 'BB'
+  } catch {
+    // Backward-compat for tests/scripts that don't set ACTIVE_EXCHANGE.
+    return false
+  }
+}
 
 /**
  * Query exchange for current positions via ExchangeService.
@@ -55,6 +66,9 @@ export async function queryExchangePositions(): Promise<ExchangePositionSnapshot
 
     const pool = getExchangePool()
     if (!pool.isInitialized()) {
+      if (isBybitLiveMode()) {
+        throw new Error('PositionMonitor: ExchangePool must be initialized in BB live mode (HL fallback blocked)')
+      }
       return await getExchangeService().getPositions()
     }
 
@@ -474,6 +488,9 @@ export class PositionMonitor {
               this.onEquityUpdate?.(st.effectiveBalance)
             }
           } else {
+            if (isBybitLiveMode()) {
+              throw new Error('PositionMonitor: ExchangePool must be initialized in BB live mode (HL fallback blocked)')
+            }
             const accountState = await getExchangeService().getAccountState()
             this.lastAccountState = accountState
             this.onEquityUpdate?.(accountState.effectiveBalance)

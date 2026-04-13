@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'bun:test'
-import { appendCandle, setCandles, getCandles, candleCount, clearStore } from '../src/feed/store.js'
+import { appendCandle, setCandles, getCandles, getCandlesInto, candleCount, clearStore } from '../src/feed/store.js'
 import { MAX_IN_MEMORY_CANDLES_BY_INTERVAL } from '../src/config.js'
 import type { Candle } from '../src/types.js'
 
@@ -97,6 +97,35 @@ describe('store', () => {
     it('returns all when count > stored', () => {
       setCandles('BTC', '1m', [makeCandle(1), makeCandle(2)])
       expect(getCandles('BTC', '1m', 100).length).toBe(2)
+    })
+  })
+
+  describe('getCandlesInto', () => {
+    it('reuses target array and copies last N candles', () => {
+      setCandles('BTC', '1m', [1, 2, 3, 4, 5].map(t => makeCandle(t)))
+      const target: Candle[] = [makeCandle(999)]  // should be replaced
+
+      const out = getCandlesInto('BTC', '1m', 3, target)
+
+      expect(out).toBe(target)
+      expect(out.length).toBe(3)
+      expect(out[0]!.t).toBe(3)
+      expect(out[2]!.t).toBe(5)
+    })
+
+    it('clears target when key not found', () => {
+      const target: Candle[] = [makeCandle(1)]
+      const out = getCandlesInto('DOGE', '1h', 10, target)
+      expect(out).toEqual([])
+      expect(target).toEqual([])
+    })
+
+    it('copies all candles when count exceeds stored', () => {
+      setCandles('ETH', '5m', [makeCandle(10), makeCandle(20)])
+      const out = getCandlesInto('ETH', '5m', 100, [])
+      expect(out.length).toBe(2)
+      expect(out[0]!.t).toBe(10)
+      expect(out[1]!.t).toBe(20)
     })
   })
 

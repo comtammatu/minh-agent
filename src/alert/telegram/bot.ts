@@ -263,7 +263,7 @@ async function routeCallback(
   if (rest === 'paper_off') {
     setPaperTradeRuntimeOverride(false)
     await sendTelegramAlert(
-      'Paper trade: *OFF* \\(live\\)\\. \\/paper reset để reset override\\.',
+      'Paper trade: *OFF* \\(live\\)\\. \\/paper reset để khôi phục override\\.',
       fetchFn,
       { parseMode: 'MarkdownV2' },
     )

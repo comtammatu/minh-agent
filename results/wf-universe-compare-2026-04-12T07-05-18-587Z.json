@@ -1,0 +1,63 @@
+{
+  "generatedAt": "2026-04-12T07:05:18.585Z",
+  "fixedParams": {},
+  "candleProfile": "extended",
+  "candleCounts": {
+    "1m": 500,
+    "5m": 12000,
+    "15m": 24000,
+    "1h": 7000,
+    "4h": 7000,
+    "1d": 3000
+  },
+  "wfWindows": {
+    "trainWindowMs": 2592000000,
+    "testWindowMs": 604800000,
+    "stepMs": 604800000
+  },
+  "runA": {
+    "label": "A_baseline_10",
+    "coins": [
+      "BTC",
+      "ETH",
+      "SOL",
+      "AVAX",
+      "LINK",
+      "ARB",
+      "APT",
+      "BNB",
+      "DOT",
+      "ATOM"
+    ],
+    "subsetCriterion": "Full 10-coin baseline",
+    "oosPF": 0.7811957326429224,
+    "oosMaxDD": 0.4323608587277632,
+    "oosTrades": 245,
+    "oosWins": 105,
+    "oosWinRate": 0.42857142857142855,
+    "numWindows": 311,
+    "tradesByMode": {
+      "1h_same_tf": 245
+    },
+    "durationMs": 66006
+  },
+  "runB": {
+    "label": "B_subset",
+    "coins": [
+      "BTC",
+      "ETH",
+      "SOL"
+    ],
+    "subsetCriterion": "Tier-1 liquidity Top-3 (BTC, ETH, SOL) — same criterion as raw Top-3 vs Rest diagnostics",
+    "oosPF": 1.1728473144096987,
+    "oosMaxDD": 0.1855854901563064,
+    "oosTrades": 92,
+    "oosWins": 34,
+    "oosWinRate": 0.3695652173913043,
+    "numWindows": 311,
+    "tradesByMode": {
+      "1h_same_tf": 92
+    },
+    "durationMs": 19626
+  }
+}

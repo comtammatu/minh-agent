@@ -13,6 +13,20 @@ import type { PipelineStats } from '../strategy/diagnostics.js'
 export type StrategyType = 'smc-sd'
 export type ExitMode = 'multi' | 'single'
 
+/** Per-trial strategy parameter overrides for optimizer.
+ * All fields optional — undefined = use config.ts default.
+ * Live trading path never sets this (strategyParams = undefined). */
+export interface StrategyParams {
+  MIN_CONFIDENCE?: number
+  REGIME_MULT_COUNTER?: number
+  REGIME_MULT_NEUTRAL?: number
+  SMC_DRILLDOWN_CONFIDENCE_BASE?: number
+  SL_WICK_ATR_MULT?: number
+  SMC_MIN_RR?: number
+  /** Confidence base for scan1hSameTF (1H BOS/CHoCH same-TF entries). Default 0.65. */
+  SMC_1H_CONFIDENCE_BASE?: number
+}
+
 export interface BacktestConfig {
   /** Coins to replay. */
   coins: string[]
@@ -28,6 +42,10 @@ export interface BacktestConfig {
   strategy?: StrategyType
   /** Exit mode. 'multi' = TP1/TP2/trailing partials (default). 'single' = one SL + one TP, 100% close. */
   exitMode?: ExitMode
+  /** Parameter overrides for optimizer trials. Undefined = use config.ts defaults. */
+  strategyParams?: StrategyParams
+  /** Scan modes to disable (e.g. ['1h_same_tf'] to test drilldown in isolation). */
+  disabledScanModes?: string[]
 }
 
 // ─── Partial Close Detail ──────────────────────────────────────────────────
@@ -147,6 +165,8 @@ export interface WalkForwardWindow {
   trainMetrics: BacktestMetrics
   /** Metrics from test (out-of-sample) period. */
   testMetrics: BacktestMetrics
+  /** OOS trades from test period (avoids re-running backtest for bootstrap CI). */
+  testTrades?: BacktestTrade[]
 }
 
 /** Bootstrap confidence interval for expectancy. */

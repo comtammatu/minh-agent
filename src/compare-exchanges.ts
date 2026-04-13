@@ -32,7 +32,7 @@ import {
 } from './feed/store.js'
 import { StrategyRegistry } from './strategy/registry.js'
 import { SmcSdStrategy } from './strategy/strategies/smc-sd/index.js'
-import { getPipelineEmitter, getActiveSetupsMap, getStatusState } from './strategy/orchestrator.js'
+import { getPipelineEmitter, clearPipelineState } from './strategy/orchestrator.js'
 import type {
   Candle,
   CandleInterval,
@@ -282,9 +282,7 @@ function runStrategiesForExchange(exchangeId: ExchangeId): CollectedSignal[] {
   emitter.removeListener('setup', onSetup)
 
   // Clear module-level orchestrator state to avoid contamination
-  const activeSetups = getActiveSetupsMap()
-  activeSetups.clear()
-  getStatusState().clear()
+  clearPipelineState()
 
   return collected
 }

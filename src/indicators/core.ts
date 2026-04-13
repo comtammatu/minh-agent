@@ -33,16 +33,64 @@ function trueRange(candles: Candle[], idx: number): number {
   return Math.max(c.h - c.l, Math.abs(c.h - p.c), Math.abs(c.l - p.c))
 }
 
+function trueRangeFromPair(current: Candle, previous: Candle): number {
+  const highLow = current.h - current.l
+  const highPrevClose = Math.abs(current.h - previous.c)
+  const lowPrevClose = Math.abs(current.l - previous.c)
+  return Math.max(highLow, highPrevClose, lowPrevClose)
+}
+
+function atrPair(candles: Candle[], idx: number, shortPeriod: number, longPeriod: number): [number, number] {
+  if (idx < Math.max(shortPeriod, longPeriod)) return [NaN, NaN]
+
+  let shortSeed = 0
+  let longSeed = 0
+  let shortVal = NaN
+  let longVal = NaN
+
+  for (let i = 1; i <= idx; i++) {
+    const current = candles[i]!
+    const previous = candles[i - 1]!
+    const tr = trueRangeFromPair(current, previous)
+
+    if (i <= shortPeriod) {
+      shortSeed += tr
+      if (i === shortPeriod) shortVal = shortSeed / shortPeriod
+    } else {
+      shortVal = (shortVal * (shortPeriod - 1) + tr) / shortPeriod
+    }
+
+    if (i <= longPeriod) {
+      longSeed += tr
+      if (i === longPeriod) longVal = longSeed / longPeriod
+    } else {
+      longVal = (longVal * (longPeriod - 1) + tr) / longPeriod
+    }
+  }
+
+  return [shortVal, longVal]
+}
+
 export function atr(candles: Candle[], idx: number, period: number): number {
   if (idx < period) return NaN
-  // Seed: average of first `period` true ranges
-  let val = 0
-  for (let i = 1; i <= period; i++) val += trueRange(candles, i)
-  val /= period
-  // Wilder's smoothing
-  for (let i = period + 1; i <= idx; i++) {
-    val = (val * (period - 1) + trueRange(candles, i)) / period
+
+  let seed = 0
+  let val = NaN
+
+  for (let i = 1; i <= idx; i++) {
+    const current = candles[i]!
+    const previous = candles[i - 1]!
+    const tr = trueRangeFromPair(current, previous)
+
+    if (i <= period) {
+      seed += tr
+      if (i === period) val = seed / period
+      continue
+    }
+
+    val = (val * (period - 1) + tr) / period
   }
+
   return val
 }
 
@@ -87,12 +135,51 @@ export function volumeTrend(candles: Candle[], idx: number, lookback: number = 1
   return (second - first) / first
 }
 
+function computeRegimeInputs(
+  candles: Candle[],
+  idx: number,
+): {
+  sma7: number
+  sma30: number
+  atr7: number
+  atr30: number
+  volTrend10: number
+} {
+  const sma7Start = idx - 6
+  const sma30Start = idx - 29
+  const volStart = idx - 9
+  const volMid = idx - 5
+
+  let sumSma7 = 0
+  let sumSma30 = 0
+  let firstVol = 0
+  let secondVol = 0
+
+  for (let i = sma30Start; i <= idx; i++) {
+    const candle = candles[i]!
+    const close = candle.c
+    if (i >= sma7Start) sumSma7 += close
+    sumSma30 += close
+
+    if (i >= volStart && i <= volMid) firstVol += candle.v
+    else if (i > volMid) secondVol += candle.v
+  }
+
+  const [atr7, atr30] = atrPair(candles, idx, 7, 30)
+  return {
+    sma7: sumSma7 / 7,
+    sma30: sumSma30 / 30,
+    atr7,
+    atr30,
+    volTrend10: firstVol === 0 ? (secondVol > 0 ? 1 : 0) : (secondVol - firstVol) / firstVol,
+  }
+}
+
 // ─── ADX ──────────────────────────────────────────────────────────────────────
 
 export function adx(candles: Candle[], idx: number, period: number = 14): number {
   if (idx < period * 2) return NaN
 
-  // Build DX series from bar 1 → idx
   let pDM = 0, mDM = 0, tr14 = 0
 
   // Seed first `period` bars
@@ -104,7 +191,9 @@ export function adx(candles: Candle[], idx: number, period: number = 14): number
     tr14 += trueRange(candles, i)
   }
 
-  const dxArr: number[] = []
+  let dxSeedSum = 0
+  let dxCount = 0
+  let adxVal = NaN
 
   for (let i = period + 1; i <= idx; i++) {
     const c = candles[i]!, p = candles[i - 1]!
@@ -113,23 +202,25 @@ export function adx(candles: Candle[], idx: number, period: number = 14): number
     mDM = mDM - mDM / period + ((dn > up && dn > 0) ? dn : 0)
     tr14 = tr14 - tr14 / period + trueRange(candles, i)
 
-    if (tr14 === 0) { dxArr.push(0); continue }
-    const pdi = pDM / tr14 * 100
-    const mdi = mDM / tr14 * 100
-    const sum = pdi + mdi
-    dxArr.push(sum === 0 ? 0 : Math.abs(pdi - mdi) / sum * 100)
+    let dx = 0
+    if (tr14 !== 0) {
+      const pdi = pDM / tr14 * 100
+      const mdi = mDM / tr14 * 100
+      const sum = pdi + mdi
+      dx = sum === 0 ? 0 : Math.abs(pdi - mdi) / sum * 100
+    }
+
+    if (dxCount < period) {
+      dxSeedSum += dx
+      dxCount++
+      if (dxCount === period) adxVal = dxSeedSum / period
+      continue
+    }
+
+    adxVal = (adxVal * (period - 1) + dx) / period
   }
 
-  if (dxArr.length < period) return NaN
-
-  // ADX: Wilder's smoothing of DX
-  let adxVal = 0
-  for (let i = 0; i < period; i++) adxVal += dxArr[i]!
-  adxVal /= period
-  for (let i = period; i < dxArr.length; i++) {
-    adxVal = (adxVal * (period - 1) + dxArr[i]!) / period
-  }
-  return adxVal
+  return dxCount < period ? NaN : adxVal
 }
 
 // ─── Regime detection ─────────────────────────────────────────────────────────
@@ -148,13 +239,10 @@ export function adx(candles: Candle[], idx: number, period: number = 14): number
 export function detectRegime(candles: Candle[], idx: number): MarketRegime {
   if (idx < 49) return 'SIDEWAYS'
 
-  const s7 = sma(candles, idx, 7)
-  const s30 = sma(candles, idx, 30)
+  const { sma7: s7, sma30: s30, atr7, atr30, volTrend10 } = computeRegimeInputs(candles, idx)
   if (isNaN(s7) || isNaN(s30) || s30 === 0) return 'SIDEWAYS'
   const smaRatio = s7 / s30
 
-  const atr7 = atr(candles, idx, 7)
-  const atr30 = atr(candles, idx, 30)
   if (isNaN(atr7) || isNaN(atr30)) return 'SIDEWAYS'
   const atrRatio = atr30 > 0 ? atr7 / atr30 : 1
 
@@ -165,16 +253,14 @@ export function detectRegime(candles: Candle[], idx: number): MarketRegime {
   // ADX threshold lowered from 20 to 15: was classifying too many mild trends as SIDEWAYS
   if (!isNaN(adxVal) && adxVal < 15) return 'SIDEWAYS'
 
-  const volTrend = volumeTrend(candles, idx, 10)
-
   // Relaxed SMA ratio thresholds: 1.005/0.995 instead of 1.01/0.99
   // Crypto trends often show mild SMA divergence but still trend strongly
   if (smaRatio > 1.005) {
-    if ((!isNaN(adxVal) && adxVal > 20) || smaRatio > 1.015 || volTrend > 0.1) return 'BULL'
+    if ((!isNaN(adxVal) && adxVal > 20) || smaRatio > 1.015 || volTrend10 > 0.1) return 'BULL'
     return 'SIDEWAYS'
   }
   if (smaRatio < 0.995) {
-    if ((!isNaN(adxVal) && adxVal > 20) || smaRatio < 0.985 || volTrend > 0.1) return 'BEAR'
+    if ((!isNaN(adxVal) && adxVal > 20) || smaRatio < 0.985 || volTrend10 > 0.1) return 'BEAR'
     return 'SIDEWAYS'
   }
   return 'SIDEWAYS'

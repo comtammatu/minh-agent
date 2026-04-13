@@ -14,6 +14,7 @@ import { fetchBybitCandlesBatched } from '../feed/bybit/bybit-rest.js'
 import { runBacktest } from './engine.js'
 import { walkForward } from './walk-forward.js'
 import { formatExpectancyReport, formatMetricsSummary } from './report.js'
+import { formatGateReport } from './walk-forward.js'
 import { formatPipelineStats } from '../strategy/diagnostics.js'
 import { getStrategyRegistry } from '../strategy/registry.js'
 import { SmcSdStrategy } from '../strategy/strategies/smc-sd/index.js'
@@ -36,7 +37,9 @@ import { log } from '../lib/logger.js'
  * Note: Bybit uses 1000PEPE/1000BONK notation for micro-price coins — excluded.
  * Coins that fail to fetch (delisted, low volume) are skipped automatically.
  */
-const COINS = [
+const COINS = process.env['BENCH_COINS']
+  ? process.env['BENCH_COINS'].split(',')
+  : [
   // Mega caps
   'BTC', 'ETH', 'SOL', 'BNB', 'XRP',
   // Large caps
@@ -216,6 +219,9 @@ function runStrategyBacktest(
   console.log('\n' + formatExpectancyReport(wfResult))
   console.log('\n' + formatMetricsSummary(wfResult.isMetrics, 'IS'))
   console.log(formatMetricsSummary(wfResult.oosMetrics, 'OOS'))
+
+  // Print detailed gate report for debugging
+  console.log('\n' + formatGateReport(wfResult))
 
   if (wfResult.passesGate) {
     log.info('bb-backtest', `${strategy}: GATE PASSED`)

@@ -13,30 +13,57 @@ import type {
   MarketRegime,
   StrategyContext,
 } from '../types.js'
-import { appendCandle, getCandles } from '../feed/store.js'
+import { appendCandle, getCandles, getCandlesInto } from '../feed/store.js'
 import { getStrategyRegistry, type StrategyRegistry } from './registry.js'
 import { computeExpiresAtBar, setupId } from './shared/invalidation.js'
 import { getOrCreateStats, resetPipelineStats } from './diagnostics.js'
-import { detectRegime } from '../indicators/core.js'
 import { determineBias } from './shared/bias.js'
-import { findPivots } from '../indicators/smc.js'
+import {
+  clearIndicatorCache,
+  clearIndicatorCacheForCoin,
+  getCachedPivots3,
+  getCachedRegime,
+  getCachedStructureBreaks,
+  getCachedWyckoff,
+} from './shared/indicator-cache.js'
 import {
   MIN_CANDLES_FOR_SCAN,
   INDICATOR_WINDOW,
   TIMEFRAMES,
   SIGNAL_TIMEFRAMES,
   HTF_MAP,
+  TIMEFRAME_MS,
+  STATUS_UPDATE_EVERY_BARS,
   getActiveExchange,
   getEffectivePaperTrade,
   PAPER_WALLET_STRATEGY_IDS,
 } from '../config.js'
+import type { StrategyParams } from '../backtest/types.js'
 import { getPaperTracker } from '../agent/paper-tracker.js'
 import { log } from '../lib/logger.js'
 import { EventEmitter } from 'events'
 
 // ── Module-level state ──────────────────────────────────────────────────────
 
+/** Per-trial strategy params set by backtest engine. null = live trading (use config.ts defaults). */
+let activeStrategyParams: StrategyParams | null = null
+
+/** Set active strategy params (called by backtest engine before/after run). */
+export function setActiveStrategyParams(params: StrategyParams | null): void {
+  activeStrategyParams = params
+}
+
+/** Get active strategy params (for testing). */
+export function getActiveStrategyParams(): StrategyParams | null {
+  return activeStrategyParams
+}
+
 const activeSetups = new Map<string, ActiveSetup>()
+const activeSetupCounts = new Map<string, number>()
+const lastStatusUpdateBarClock = new Map<string, number>()
+const statusRefreshCounts = new Map<string, number>()
+const scanCandlesBuffers = new Map<string, Candle[]>()
+const htfCandlesBuffers = new Map<string, Candle[]>()
 
 /**
  * Pipeline EventEmitter (R10).
@@ -65,48 +92,152 @@ export interface StatusSnapshot {
 
 const statusState = new Map<string, StatusSnapshot>()
 
-/**
- * Run all strategies on the last fully closed bar (idx = length - 2), same as WS path.
- * Used after REST/PG backfill so bias/status/setups appear without waiting for the next TF close.
- */
-function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry: StrategyRegistry): void {
-  const maxMin = Math.max(INDICATOR_WINDOW, ...registry.getAll().map(s => s.minCandles()))
-  const activeExchange = getActiveExchange()
-  const candles = getCandles(coin, interval, maxMin + 2)
-  if (candles.length < MIN_CANDLES_FOR_SCAN + 1) return
+function statusKey(coin: string, interval: CandleInterval): string {
+  return `${coin}|${interval}`
+}
 
-  const idx = candles.length - 2
+function setupCountKey(setup: ActiveSetup): string {
+  return statusKey(setup.coin, setup.interval)
+}
 
-  // Build HTF context for ICT top-down analysis (SMC-SD uses this)
-  const htfInterval = HTF_MAP[interval]
-  const htfCandles = htfInterval !== interval ? getCandles(coin, htfInterval, Math.max(maxMin + 2, INDICATOR_WINDOW)) : []
-  let context: StrategyContext | undefined
-  if (htfInterval !== interval && htfCandles.length >= MIN_CANDLES_FOR_SCAN) {
-    context = { htfCandles, htfInterval }
+function incrementActiveSetupCount(key: string): void {
+  activeSetupCounts.set(key, (activeSetupCounts.get(key) ?? 0) + 1)
+}
+
+function decrementActiveSetupCount(key: string): void {
+  const next = (activeSetupCounts.get(key) ?? 0) - 1
+  if (next <= 0) {
+    activeSetupCounts.delete(key)
+    return
   }
+  activeSetupCounts.set(key, next)
+}
 
-  // Update statusState with regime/bias so TUI watchlist shows data regardless of which strategy is active.
-  const sk = `${coin}|${interval}`
-  const confirmedSlice = candles.slice(0, idx + 1)
-  const regime = detectRegime(confirmedSlice, idx)
-  const pivots = findPivots(confirmedSlice, idx, 3)
-  const bias = determineBias(confirmedSlice, idx, htfCandles, pivots)
-  const activeCount = Array.from(activeSetups.values()).filter(s => s.coin === coin && s.interval === interval).length
+function activeSetupCount(coin: string, interval: CandleInterval): number {
+  return activeSetupCounts.get(statusKey(coin, interval)) ?? 0
+}
+
+function removeSetupById(id: string): void {
+  const existing = activeSetups.get(id)
+  if (!existing) return
+  activeSetups.delete(id)
+  decrementActiveSetupCount(setupCountKey(existing))
+}
+
+function requiredScanWindow(registry: StrategyRegistry): number {
+  return Math.max(INDICATOR_WINDOW, registry.getMaxRunnableMinCandles())
+}
+
+function getOrCreateScanBuffer(coin: string, interval: CandleInterval): Candle[] {
+  const sk = statusKey(coin, interval)
+  let buf = scanCandlesBuffers.get(sk)
+  if (!buf) {
+    buf = []
+    scanCandlesBuffers.set(sk, buf)
+  }
+  return buf
+}
+
+function getOrCreateHtfBuffer(coin: string, interval: CandleInterval): Candle[] {
+  const sk = statusKey(coin, interval)
+  let buf = htfCandlesBuffers.get(sk)
+  if (!buf) {
+    buf = []
+    htfCandlesBuffers.set(sk, buf)
+  }
+  return buf
+}
+
+function barClockFor(timestampMs: number, interval: CandleInterval): number {
+  return Math.floor(timestampMs / TIMEFRAME_MS[interval])
+}
+
+function shouldRefreshStatus(sk: string, interval: CandleInterval, barClock: number): boolean {
+  const prev = lastStatusUpdateBarClock.get(sk)
+  if (prev === undefined) return true
+  return barClock - prev >= STATUS_UPDATE_EVERY_BARS[interval]
+}
+
+function refreshStatusSnapshot(
+  coin: string,
+  interval: CandleInterval,
+  candles: Candle[],
+  idx: number,
+  htfCandles: Candle[],
+): void {
+  const sk = statusKey(coin, interval)
+  const barClock = barClockFor(candles[idx]!.t, interval)
+  if (!shouldRefreshStatus(sk, interval, barClock)) return
+
+  // Status/watchlist path: compute at a separate cadence from setup detection.
+  const regime = getCachedRegime(coin, interval, candles, idx)
+  const pivots = getCachedPivots3(coin, interval, candles, idx)
+  const wyckoff = getCachedWyckoff(coin, interval, candles, idx)
+  const breaks = getCachedStructureBreaks(coin, interval, candles, idx, { pivots })
+  const htfInterval = HTF_MAP[interval]
+  const htfIdx = htfCandles.length - 1
+  const htfBreaks = htfCandles.length >= MIN_CANDLES_FOR_SCAN && htfInterval !== interval
+    ? getCachedStructureBreaks(coin, htfInterval, htfCandles, htfIdx)
+    : undefined
+  const htfWyckoff = htfCandles.length >= MIN_CANDLES_FOR_SCAN && htfInterval !== interval
+    ? getCachedWyckoff(coin, htfInterval, htfCandles, htfIdx)
+    : undefined
+  const bias = determineBias(candles, idx, htfCandles, pivots, { breaks, htfBreaks, wyckoff, htfWyckoff })
+  const existing = statusState.get(sk)
   statusState.set(sk, {
     coin,
     interval,
     regime,
     bias: bias?.bias ?? 'neutral',
     biasConfidence: bias?.confidence ?? 0,
-    confluenceGrade: null,
-    activeCount,
+    confluenceGrade: existing?.confluenceGrade ?? null,
+    activeCount: activeSetupCount(coin, interval),
     lastUpdateAt: Date.now(),
   })
+  lastStatusUpdateBarClock.set(sk, barClock)
+  statusRefreshCounts.set(sk, (statusRefreshCounts.get(sk) ?? 0) + 1)
+}
 
-  const signalResults = registry.runAll(coin, interval, candles, idx, context)
+/**
+ * Run all strategies on the last fully closed bar (idx = length - 2), same as WS path.
+ * Used after REST/PG backfill so bias/status/setups appear without waiting for the next TF close.
+ */
+function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry: StrategyRegistry): void {
+  const maxMin = requiredScanWindow(registry)
+  const activeExchange = getActiveExchange()
+  const candles = getCandlesInto(
+    coin,
+    interval,
+    maxMin + 2,
+    getOrCreateScanBuffer(coin, interval),
+  )
+  if (candles.length < MIN_CANDLES_FOR_SCAN + 1) return
+
+  const idx = candles.length - 2
+
+  // Build HTF context for ICT top-down analysis (SMC-SD uses this)
+  const htfInterval = HTF_MAP[interval]
+  const htfCandles = htfInterval !== interval
+    ? getCandlesInto(
+      coin,
+      htfInterval,
+      Math.max(maxMin + 2, INDICATOR_WINDOW),
+      getOrCreateHtfBuffer(coin, htfInterval),
+    )
+    : []
+  let context: StrategyContext | undefined
+  if (htfInterval !== interval && htfCandles.length >= MIN_CANDLES_FOR_SCAN) {
+    context = { htfCandles, htfInterval }
+  }
+
+  refreshStatusSnapshot(coin, interval, candles, idx, htfCandles)
+
+  const signalResults = registry.runAll(coin, interval, candles, idx, context, activeStrategyParams ?? undefined)
 
   for (const { strategyId, signal } of signalResults) {
+    const sk = statusKey(coin, interval)
     const id = setupId(coin, interval, signal.type, strategyId)
+    const existingSetup = activeSetups.get(id)
     const setup: ActiveSetup = {
       ...signal,
       id,
@@ -119,6 +250,9 @@ function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry:
       exchange: activeExchange,
     }
     activeSetups.set(id, setup)
+    if (!existingSetup) {
+      incrementActiveSetupCount(sk)
+    }
     const stats = getOrCreateStats(strategyId)
     stats.setupsTracked++
     pipelineEmitter.emit('setup', setup)
@@ -126,7 +260,11 @@ function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry:
     // Promote confluenceGrade in statusState when a setup is detected
     const existing = statusState.get(sk)
     if (existing && signal.confluenceGrade) {
-      statusState.set(sk, { ...existing, confluenceGrade: signal.confluenceGrade, activeCount: existing.activeCount + 1 })
+      statusState.set(sk, {
+        ...existing,
+        confluenceGrade: signal.confluenceGrade,
+        activeCount: activeSetupCount(coin, interval),
+      })
     }
 
     const rrRaw = Math.abs(signal.tpPrice - signal.entryPrice) / Math.abs(signal.entryPrice - signal.slPrice)
@@ -150,7 +288,7 @@ function fmtP(n: number): string {
 
 /** Seed WS dedup map so the first live tick matches `prevTs === candle.t` for the current bar. */
 function seedLastCandleTsFromStore(coin: string, interval: CandleInterval): void {
-  const sk = `${coin}|${interval}`
+  const sk = statusKey(coin, interval)
   const candles = getCandles(coin, interval, 2)
   if (candles.length === 0) return
   lastCandleTs.set(sk, candles[candles.length - 1].t)
@@ -162,7 +300,7 @@ function seedLastCandleTsFromStore(coin: string, interval: CandleInterval): void
  */
 export function bootstrapPipelineFromStore(coins: readonly string[]): void {
   const registry = getStrategyRegistry()
-  if (registry.getAll().length === 0) {
+  if (registry.size === 0) {
     log.warn('pipeline', 'bootstrapPipelineFromStore: no strategies registered — skipping')
     return
   }
@@ -206,7 +344,7 @@ export function onCandleTick(
   }
 
   // ── Closed-candle gate ──────────────────────────────────────────────────
-  const sk = `${coin}|${interval}`
+  const sk = statusKey(coin, interval)
   const prevTs = lastCandleTs.get(sk)
 
   if (prevTs === candle.t) return  // same candle still forming
@@ -245,9 +383,17 @@ export function clearCoinState(coin: string): void {
   const prefix = `${coin}|`
   // Setup keys are "strategyId:coin|interval|type" — match ":coin|" anywhere in key
   const setupNeedle = `:${coin}|`
-  for (const k of activeSetups.keys()) { if (k.includes(setupNeedle)) activeSetups.delete(k) }
+  for (const k of activeSetups.keys()) {
+    if (k.includes(setupNeedle)) removeSetupById(k)
+  }
   for (const k of statusState.keys()) { if (k.startsWith(prefix)) statusState.delete(k) }
   for (const k of lastCandleTs.keys()) { if (k.startsWith(prefix)) lastCandleTs.delete(k) }
+  for (const k of activeSetupCounts.keys()) { if (k.startsWith(prefix)) activeSetupCounts.delete(k) }
+  for (const k of lastStatusUpdateBarClock.keys()) { if (k.startsWith(prefix)) lastStatusUpdateBarClock.delete(k) }
+  for (const k of statusRefreshCounts.keys()) { if (k.startsWith(prefix)) statusRefreshCounts.delete(k) }
+  for (const k of scanCandlesBuffers.keys()) { if (k.startsWith(prefix)) scanCandlesBuffers.delete(k) }
+  for (const k of htfCandlesBuffers.keys()) { if (k.startsWith(prefix)) htfCandlesBuffers.delete(k) }
+  clearIndicatorCacheForCoin(coin)
 }
 
 /**
@@ -258,14 +404,20 @@ export function clearPipelineState(strategyId?: string): void {
   if (strategyId) {
     // Granular: clear only setups belonging to this strategy + its stats
     for (const [id] of activeSetups) {
-      if (id.startsWith(`${strategyId}:`)) activeSetups.delete(id)
+      if (id.startsWith(`${strategyId}:`)) removeSetupById(id)
     }
     resetPipelineStats(strategyId)
   } else {
     // Full clear
     activeSetups.clear()
+    activeSetupCounts.clear()
     statusState.clear()
     lastCandleTs.clear()
+    lastStatusUpdateBarClock.clear()
+    statusRefreshCounts.clear()
+    scanCandlesBuffers.clear()
+    htfCandlesBuffers.clear()
+    clearIndicatorCache()
     resetPipelineStats()
   }
 }
@@ -277,6 +429,11 @@ export function clearPipelineState(strategyId?: string): void {
 /** Get the mutable statusState map (for pipeline.ts to update during runPipeline). */
 export function getStatusState(): Map<string, StatusSnapshot> {
   return statusState
+}
+
+/** Get status refresh count for a specific coin/tf (used by tests/benchmark diagnostics). */
+export function getStatusRefreshCount(coin: string, interval: CandleInterval): number {
+  return statusRefreshCounts.get(statusKey(coin, interval)) ?? 0
 }
 
 /** Get the mutable activeSetups map (for pipeline.ts to read/write during runPipeline). */

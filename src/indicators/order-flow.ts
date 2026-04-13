@@ -44,9 +44,9 @@ export function computeDelta(trades: RawTrade[]): { delta: number; buyVol: numbe
  */
 export function cumulativeDelta(history: DeltaState[], n: number): number {
   if (history.length === 0) return 0
-  const slice = history.slice(-n)
   let cum = 0
-  for (const d of slice) cum += d.delta
+  const start = Math.max(0, history.length - n)
+  for (let i = start; i < history.length; i++) cum += history[i]!.delta
   return cum
 }
 
@@ -237,13 +237,18 @@ export function buildVolumeProfile(
   if (hi === lo) return null
 
   const binSize = (hi - lo) / numBins
-  const bins: VPBin[] = Array.from({ length: numBins }, (_, i) => ({
-    priceLevel: lo + binSize * (i + 0.5),
-    volume: 0,
-  }))
+  const bins: VPBin[] = []
+  for (let i = 0; i < numBins; i++) {
+    bins.push({
+      priceLevel: lo + binSize * (i + 0.5),
+      volume: 0,
+    })
+  }
 
+  let totalVol = 0
   for (let i = startIdx; i <= endIdx; i++) {
     const c = candles[i]!
+    totalVol += c.v
     const lowBin = Math.max(0, Math.floor((c.l - lo) / binSize))
     const highBin = Math.min(numBins - 1, Math.floor((c.h - lo) / binSize))
     const binsSpanned = highBin - lowBin + 1
@@ -258,8 +263,8 @@ export function buildVolumeProfile(
   const vah = bins[vahIdx]!.priceLevel + binSize / 2
   const val = bins[valIdx]!.priceLevel - binSize / 2
 
-  const totalVol = bins.reduce((s, b) => s + b.volume, 0)
   const avgVol = totalVol / numBins
+  const lvnThreshold = avgVol * 0.5
   const hvn: number[] = []
   for (let i = 1; i < bins.length - 1; i++) {
     const v = bins[i]!.volume
@@ -268,7 +273,6 @@ export function buildVolumeProfile(
     }
   }
 
-  const lvnThreshold = avgVol * 0.5
   const lvn: number[] = []
   let zoneStart = -1
   for (let i = 1; i < bins.length - 1; i++) {

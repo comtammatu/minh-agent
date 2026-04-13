@@ -15,17 +15,12 @@
 
 import type { Candle, CandleInterval, Signal, PatternType, SignalSide, StrategyContext, KeyZone } from '../../../types.js'
 import type { IStrategy } from '../../registry.js'
+import type { StrategyParams } from '../../../backtest/types.js'
 import {
-  detectStructureBreaks,
-  findPivots,
   premiumDiscount,
-  compileKeyZones,
-  htfStructureBias,
   isDisplacementCandle,
   findLiquidityPools,
   detectLiquiditySweep,
-  detectBreakerBlocks,
-  detectInversionFVGs,
   findConfirmingBreak,
   detectSessionRange,
   detectJudasSwing,
@@ -35,8 +30,19 @@ import {
 import { isAtZone } from '../../shared/zone-utils.js'
 import { computeStructureTargets } from '../../shared/zone-utils.js'
 import { applyRegimeModifier } from '../../shared/regime.js'
-import { detectRegime, atr, adx, volumeRatio } from '../../../indicators/core.js'
-import { detectVSA } from '../../../indicators/vsa.js'
+import {
+  getCachedBreakerBlocks50,
+  getCachedAdx14,
+  getCachedAtr14,
+  getCachedHtfStructureBias,
+  getCachedInversionFVGs,
+  getCachedKeyZones,
+  getCachedPivots,
+  getCachedRegime,
+  getCachedStructureBreaks,
+  getCachedVsa,
+  getCachedVolumeRatio20,
+} from '../../shared/indicator-cache.js'
 import {
   SMC_BREAK_LOOKBACK, SMC_DEDUP_BARS, SMC_SD_SKIP_INTERVALS, SMC_COIN_BLACKLIST,
   SMC_PRICE_TOLERANCE_ATR_MULT, SMC_MIN_BODY_RATIO, SMC_MIN_ZONE_STRENGTH,
@@ -60,6 +66,9 @@ import {
   SMC_AMD_JUDAS_BONUS, SMC_AMD_SL_ATR_BUFFER, SMC_AMD_MIN_RANGE_BARS,
   SMC_LIQUIDATION_VOLUME_RATIO, SMC_LIQUIDATION_WICK_ATR_MULT, SMC_LIQUIDATION_CONFIDENCE_MULT,
   SMC_WEEKEND_VOLUME_RATIO_THRESHOLD, SMC_WEEKEND_CONFIDENCE_MULT,
+  SL_WICK_ATR_MULT,
+  SMC_1H_BOS_PENALTY, SMC_1H_MIN_VOLUME_RATIO, SMC_1H_MIN_ADX, SMC_1H_ALLOWED_COINS,
+  TIMEFRAME_MS,
 } from '../../../config.js'
 
 // ── Module-level state ──────────────────────────────────────────────────────
@@ -67,7 +76,7 @@ import {
 /** Zone-aware dedup state: track last signal's zone so we allow re-entry
  * once price has exited and returned to the zone (new test = new opportunity). */
 interface DedupState {
-  lastBar: number
+  lastBarClock: number
   zoneTop: number | null
   zoneBottom: number | null
 }
@@ -98,11 +107,73 @@ interface ConfirmedPOI extends HtfPOI {
 }
 
 const confirmedPOIs = new Map<string, ConfirmedPOI[]>()
+const smc1hAllowedCoinSet: ReadonlySet<string> = new Set(SMC_1H_ALLOWED_COINS)
+const MS_PER_HOUR = 60 * 60 * 1000
+const MS_PER_DAY = 24 * MS_PER_HOUR
+const UNIX_EPOCH_UTC_DAY = 4 // 1970-01-01 UTC was Thursday (4)
+
+// ── Drilldown cascade diagnostics ──────────────────────────────────────────
+
+export interface DrilldownDiagnostics {
+  // 4H stage
+  scan4h_calls: number
+  scan4h_no_break: number
+  scan4h_no_zones: number
+  scan4h_pois_registered: number
+  scan4h_swing_signals: number
+  // 15m stage
+  scan15m_calls: number
+  scan15m_no_htf_pois: number
+  scan15m_pois_expired: number
+  scan15m_pois_checked: number
+  scan15m_not_at_zone: number
+  scan15m_no_confirm_break: number
+  scan15m_already_confirmed: number
+  scan15m_confirmed: number
+  scan15m_scalp_signals: number
+  // 5m stage
+  scan5m_calls: number
+  scan5m_no_confirmed_pois: number
+  scan5m_pois_expired: number
+  scan5m_not_at_zone: number
+  scan5m_no_fvg: number
+  scan5m_body_rejected: number
+  scan5m_sl_too_wide: number
+  scan5m_sl_too_tight: number
+  scan5m_require_choch_fail: number
+  scan5m_rr_too_low: number
+  scan5m_confidence_too_low: number
+  scan5m_signals: number
+}
+
+const diag: DrilldownDiagnostics = {
+  scan4h_calls: 0, scan4h_no_break: 0, scan4h_no_zones: 0,
+  scan4h_pois_registered: 0, scan4h_swing_signals: 0,
+  scan15m_calls: 0, scan15m_no_htf_pois: 0, scan15m_pois_expired: 0,
+  scan15m_pois_checked: 0, scan15m_not_at_zone: 0,
+  scan15m_no_confirm_break: 0, scan15m_already_confirmed: 0,
+  scan15m_confirmed: 0, scan15m_scalp_signals: 0,
+  scan5m_calls: 0, scan5m_no_confirmed_pois: 0, scan5m_pois_expired: 0,
+  scan5m_not_at_zone: 0, scan5m_no_fvg: 0,
+  scan5m_body_rejected: 0, scan5m_sl_too_wide: 0, scan5m_sl_too_tight: 0,
+  scan5m_require_choch_fail: 0, scan5m_rr_too_low: 0,
+  scan5m_confidence_too_low: 0, scan5m_signals: 0,
+}
+
+export function getDrilldownDiagnostics(): DrilldownDiagnostics {
+  return { ...diag }
+}
+
+export function resetDrilldownDiagnostics(): void {
+  for (const key of Object.keys(diag) as (keyof DrilldownDiagnostics)[]) {
+    diag[key] = 0
+  }
+}
 
 // ── Killzone helper ─────────────────────────────────────────────────────────
 
 function getKillzoneBonus(timestampMs: number): { inKillzone: boolean; bonus: number; name: string } {
-  const hourUTC = new Date(timestampMs).getUTCHours()
+  const hourUTC = utcHour(timestampMs)
   for (const kz of SMC_ICT_KILLZONES) {
     if (kz.startUTC <= kz.endUTC) {
       if (hourUTC >= kz.startUTC && hourUTC < kz.endUTC) return { inKillzone: true, bonus: kz.bonus, name: kz.name }
@@ -121,10 +192,8 @@ function getKillzoneBonus(timestampMs: number): { inKillzone: boolean; bonus: nu
  * These are forced-selling artifacts, NOT genuine ICT price action.
  * Pure function — zero I/O.
  */
-function isLiquidationCascade(candles: Candle[], idx: number, atrVal: number): boolean {
-  const candle = candles[idx]!
+function isLiquidationCascade(candle: Candle, atrVal: number, volRatio: number): boolean {
   const wickSize = candle.h - candle.l
-  const volRatio = volumeRatio(candles, idx, 20)
   return (
     wickSize > atrVal * SMC_LIQUIDATION_WICK_ATR_MULT &&
     !isNaN(volRatio) &&
@@ -140,12 +209,28 @@ function isLiquidationCascade(candles: Candle[], idx: number, atrVal: number): b
  * Returns 1.0 on weekdays or when volume is normal.
  * Pure function — zero I/O.
  */
-function getWeekendMultiplier(timestampMs: number, candles: Candle[], idx: number): number {
-  const day = new Date(timestampMs).getUTCDay()  // 0=Sun, 6=Sat
+function getWeekendMultiplier(timestampMs: number, volRatio: number): number {
+  const day = utcDay(timestampMs)  // 0=Sun, 6=Sat
   if (day !== 0 && day !== 6) return 1.0
-  const volRatio = volumeRatio(candles, idx, 20)
   if (isNaN(volRatio) || volRatio >= SMC_WEEKEND_VOLUME_RATIO_THRESHOLD) return 1.0
   return SMC_WEEKEND_CONFIDENCE_MULT
+}
+
+function utcHour(timestampMs: number): number {
+  return Math.floor(timestampMs / MS_PER_HOUR) % 24
+}
+
+function utcDay(timestampMs: number): number {
+  return (Math.floor(timestampMs / MS_PER_DAY) + UNIX_EPOCH_UTC_DAY) % 7
+}
+
+function hasDirectionalSweepWick(candle: Candle, side: SignalSide, minWickRatio: number): boolean {
+  const range = candle.h - candle.l
+  if (range <= 0) return false
+  if (side === 'long') {
+    return (Math.min(candle.o, candle.c) - candle.l) / range > minWickRatio
+  }
+  return (candle.h - Math.max(candle.o, candle.c)) / range > minWickRatio
 }
 
 // ── Zone-aware dedup helpers ─────────────────────────────────────────────────
@@ -156,38 +241,38 @@ function getWeekendMultiplier(timestampMs: number, candles: Candle[], idx: numbe
  */
 function isDuplicateSignal(
   key: string,
-  idx: number,
-  currentPrice: number,
+  currentBarClock: number,
   newZoneTop: number | null,
   newZoneBottom: number | null,
+  dedupBars: number = SMC_DEDUP_BARS,
 ): boolean {
   const state = lastSignalState.get(key)
   if (!state) return false
 
-  const timePassed = idx - state.lastBar
+  const barsPassed = currentBarClock - state.lastBarClock
 
   // Zone overlap check: do the new signal's zone and the last signal's zone share price range?
   // Overlapping zones = same area being tested again → apply full dedup.
   // Non-overlapping zones = genuinely different level → apply half dedup (shorter cooldown).
-  //
-  // Bug avoided: do NOT compare currentPrice against old zone top/bottom.
-  // currentPrice is AT the new zone, so it will appear "outside" any zone at a different price
-  // level, incorrectly bypassing dedup. Compare ZONES to ZONES instead.
   if (
     state.zoneTop !== null && state.zoneBottom !== null &&
     newZoneTop !== null && newZoneBottom !== null
   ) {
     const zonesOverlap = newZoneTop > state.zoneBottom && newZoneBottom < state.zoneTop
-    const dedupBars = zonesOverlap ? SMC_DEDUP_BARS : Math.ceil(SMC_DEDUP_BARS / 2)
-    return timePassed <= dedupBars
+    const windowBars = zonesOverlap ? dedupBars : Math.ceil(dedupBars / 2)
+    return barsPassed <= windowBars
   }
 
   // No zone info → standard time-based dedup
-  return timePassed <= SMC_DEDUP_BARS
+  return barsPassed <= dedupBars
 }
 
-function recordSignal(key: string, idx: number, zoneTop: number | null, zoneBottom: number | null): void {
-  lastSignalState.set(key, { lastBar: idx, zoneTop, zoneBottom })
+function recordSignal(key: string, barClock: number, zoneTop: number | null, zoneBottom: number | null): void {
+  lastSignalState.set(key, { lastBarClock: barClock, zoneTop, zoneBottom })
+}
+
+function barClockFor(timestampMs: number, interval: CandleInterval): number {
+  return Math.floor(timestampMs / TIMEFRAME_MS[interval])
 }
 
 // ── Strategy ────────────────────────────────────────────────────────────────
@@ -197,72 +282,130 @@ export class SmcSdStrategy implements IStrategy {
   readonly name = 'SMC + S&D Zone Bounce (ICT)'
   readonly patternTypes: ReadonlyArray<PatternType> = ['smc-sd']
 
-  scan(coin: string, interval: CandleInterval, candles: Candle[], idx: number, context?: StrategyContext): Signal | null {
+  scan(coin: string, interval: CandleInterval, candles: Candle[], idx: number, context?: StrategyContext, strategyParams?: StrategyParams): Signal | null {
     if (idx < MIN_CANDLES_FOR_SCAN) return null
     if (SMC_SD_SKIP_INTERVALS.includes(interval)) return null
     if (SMC_COIN_BLACKLIST.includes(coin)) return null
 
     // ── 4-MODE ROUTING ──────────────────────────────────────────────
-    if (interval === '4h') return this.scan4hPOI(coin, candles, idx)
-    if (interval === '15m') return this.scan15mConfirm(coin, candles, idx)
-    if (interval === '5m') return this.scan5mMicroEntry(coin, candles, idx, context)
+    if (interval === '4h') return this.scan4hPOI(coin, candles, idx, strategyParams)
+    if (interval === '15m') return this.scan15mConfirm(coin, candles, idx, strategyParams)
+    if (interval === '5m') return this.scan5mMicroEntry(coin, candles, idx, context, strategyParams)
     // 1h (and others): same-TF analysis
-    return this.scan1hSameTF(coin, interval, candles, idx, context)
+    return this.scan1hSameTF(coin, interval, candles, idx, context, strategyParams)
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 4h MODE: POI REGISTRATION
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private scan4hPOI(coin: string, candles: Candle[], idx: number): Signal | null {
-    const atrVal = atr(candles, idx, 14)
+  private scan4hPOI(coin: string, candles: Candle[], idx: number, strategyParams?: StrategyParams): Signal | null {
+    diag.scan4h_calls++
+    const atrVal = getCachedAtr14(coin, '4h', candles, idx)
     if (isNaN(atrVal) || atrVal <= 0) return null
     const tol = atrVal * SMC_PRICE_TOLERANCE_ATR_MULT
 
-    const breaks = detectStructureBreaks(candles, idx, { tolerance: tol })
-    const recentBreak = breaks.filter(b => idx - b.index <= SMC_BREAK_LOOKBACK).at(-1)
-    if (!recentBreak) return null
+    const breaks = getCachedStructureBreaks(coin, '4h', candles, idx, { tolerance: tol })
+    let recentBreak = null as (typeof breaks)[number] | null
+    for (let i = breaks.length - 1; i >= 0; i--) {
+      const b = breaks[i]!
+      if (idx - b.index <= SMC_BREAK_LOOKBACK) {
+        recentBreak = b
+        break
+      }
+    }
+    if (!recentBreak) { diag.scan4h_no_break++; return null }
 
     const direction = recentBreak.direction
-    const { demandZones, supplyZones } = compileKeyZones(candles, idx, tol)
-    const rawZones: KeyZone[] = [...(direction === 'bullish' ? demandZones : supplyZones)]
+    const zoneType = direction === 'bullish' ? 'demand' : 'supply'
+    const { demandZones, supplyZones } = getCachedKeyZones(coin, '4h', candles, idx, tol)
+    const zones: KeyZone[] = []
 
-    if (SMC_ICT_BREAKER_BLOCK_ENABLED) {
-      for (const bb of detectBreakerBlocks(candles, idx)) {
-        if (bb.type === (direction === 'bullish' ? 'demand' : 'supply'))
-          rawZones.push({ type: bb.type, top: bb.top, bottom: bb.bottom, strength: 0.85, origin: 'breaker-block', createdAtIdx: bb.index })
+    const pushZoneCandidate = (
+      top: number,
+      bottom: number,
+      strength: number,
+      origin: KeyZone['origin'],
+      createdAtIdx: number,
+    ): void => {
+      if (idx - createdAtIdx > ZONE_MAX_AGE) return
+      if (strength < SMC_MIN_ZONE_STRENGTH) return
+      if (zones.length === SMC_DRILLDOWN_MAX_POIS && zones[zones.length - 1]!.strength >= strength) return
+
+      let insertAt = zones.length
+      while (insertAt > 0 && zones[insertAt - 1]!.strength < strength) {
+        insertAt--
+      }
+      zones.splice(insertAt, 0, {
+        type: zoneType,
+        top,
+        bottom,
+        strength,
+        origin,
+        createdAtIdx,
+      })
+      if (zones.length > SMC_DRILLDOWN_MAX_POIS) {
+        zones.length = SMC_DRILLDOWN_MAX_POIS
       }
     }
-    if (SMC_ICT_INVERSION_FVG_ENABLED) {
-      for (const inv of detectInversionFVGs(candles, idx, tol)) {
-        if (inv.type === (direction === 'bullish' ? 'demand' : 'supply'))
-          rawZones.push({ type: inv.type, top: inv.top, bottom: inv.bottom, strength: 0.75, origin: 'inversion-fvg', createdAtIdx: inv.index })
-      }
+
+    for (const z of (direction === 'bullish' ? demandZones : supplyZones)) {
+      pushZoneCandidate(z.top, z.bottom, z.strength, z.origin, z.createdAtIdx)
     }
 
-    const zones = rawZones
-      .filter(z => idx - z.createdAtIdx <= ZONE_MAX_AGE && z.strength >= SMC_MIN_ZONE_STRENGTH)
-      .sort((a, b) => b.strength - a.strength)
-      .slice(0, SMC_DRILLDOWN_MAX_POIS)
-    if (zones.length === 0) return null
+    const weakestZoneStrength = zones.length === SMC_DRILLDOWN_MAX_POIS
+      ? zones[zones.length - 1]!.strength
+      : -Infinity
+
+    if (SMC_ICT_BREAKER_BLOCK_ENABLED && weakestZoneStrength < 0.85) {
+      for (const bb of getCachedBreakerBlocks50(coin, '4h', candles, idx)) {
+        if (bb.type !== zoneType) continue
+        pushZoneCandidate(bb.top, bb.bottom, 0.85, 'breaker-block', bb.index)
+      }
+    }
+    if (SMC_ICT_INVERSION_FVG_ENABLED && weakestZoneStrength < 0.75) {
+      for (const inv of getCachedInversionFVGs(coin, '4h', candles, idx, tol)) {
+        if (inv.type !== zoneType) continue
+        pushZoneCandidate(inv.top, inv.bottom, 0.75, 'inversion-fvg', inv.index)
+      }
+    }
+    if (zones.length === 0) { diag.scan4h_no_zones++; return null }
 
     const nowMs = candles[idx]!.t
-    const newPOIs: HtfPOI[] = zones.map(z => ({
-      coin, direction, breakKind: recentBreak.kind,
-      zoneTop: z.top, zoneBottom: z.bottom, zoneOrigin: z.origin,
-      strength: z.strength, createdAtMs: nowMs, breakLevel: recentBreak.level,
-    }))
-
-    const existing = (htfPOIs.get(coin) ?? []).filter(p => nowMs - p.createdAtMs < SMC_HTF_POI_TTL_MS)
-    htfPOIs.set(coin, [...existing, ...newPOIs].slice(-SMC_DRILLDOWN_MAX_POIS))
+    const activePois: HtfPOI[] = []
+    for (const p of (htfPOIs.get(coin) ?? [])) {
+      if (nowMs - p.createdAtMs < SMC_HTF_POI_TTL_MS) activePois.push(p)
+    }
+    for (const z of zones) {
+      activePois.push({
+        coin,
+        direction,
+        breakKind: recentBreak.kind,
+        zoneTop: z.top,
+        zoneBottom: z.bottom,
+        zoneOrigin: z.origin,
+        strength: z.strength,
+        createdAtMs: nowMs,
+        breakLevel: recentBreak.level,
+      })
+    }
+    if (activePois.length > SMC_DRILLDOWN_MAX_POIS) {
+      activePois.splice(0, activePois.length - SMC_DRILLDOWN_MAX_POIS)
+    }
+    htfPOIs.set(coin, activePois)
+    diag.scan4h_pois_registered += zones.length
 
     // ── 4h SWING SIGNAL: emit if price is currently AT a zone ─────────────
     if (SMC_4H_SWING_ENABLED) {
       const candle = candles[idx]!
       const side: SignalSide = direction === 'bullish' ? 'long' : 'short'
+      const hasDisplacement = isDisplacementCandle(candles, idx, atrVal, SMC_ICT_DISPLACEMENT_BODY_ATR)
+      const kz = SMC_ICT_KILLZONE_ENABLED ? getKillzoneBonus(candle.t) : { inKillzone: false, bonus: 0, name: 'off-session' }
+      let cachedVolRatioVal: number | undefined
+      let cachedRegime: ReturnType<typeof getCachedRegime> | undefined
+
       for (const z of zones) {
-        const zoneKey: KeyZone = { type: direction === 'bullish' ? 'demand' : 'supply', top: z.top, bottom: z.bottom, strength: z.strength, origin: z.origin, createdAtIdx: z.createdAtIdx }
-        const prox = isAtZone(candle, zoneKey, atrVal)
+        const prox = isAtZone(candle, z, atrVal)
         if (!prox.atZone) continue
 
         // Bounce: close must have entered zone from correct direction
@@ -284,45 +427,48 @@ export class SmcSdStrategy implements IStrategy {
         if (candleRange > 0 && bodySize / candleRange < SMC_MIN_BODY_RATIO) continue
 
         // SL: zone boundary + wide ATR buffer (swing — absorbs 4h wick noise)
-        const entry = candle.c
-        const sl = side === 'long'
-          ? z.bottom - atrVal * SMC_4H_SWING_SL_ATR_BUFFER
-          : z.top + atrVal * SMC_4H_SWING_SL_ATR_BUFFER
+      const entry = candle.c
+      const slMult = (strategyParams?.SL_WICK_ATR_MULT ?? SL_WICK_ATR_MULT) / SL_WICK_ATR_MULT
+      const sl = side === 'long'
+        ? z.bottom - atrVal * SMC_4H_SWING_SL_ATR_BUFFER * slMult
+        : z.top + atrVal * SMC_4H_SWING_SL_ATR_BUFFER * slMult
         const risk = Math.abs(entry - sl)
         if (risk <= 0 || risk / entry > MAX_TRADE_SL_PCT) continue
 
         // TP: 4h structure swing targets
-        const { tp1, tp2 } = computeStructureTargets(candles, idx, entry, sl, side)
+        const opposingZones = side === 'long' ? supplyZones : demandZones
+        const { tp1, tp2 } = computeStructureTargets(candles, idx, entry, sl, side, opposingZones, undefined, atrVal)
         if (Math.abs(tp1 - entry) / risk < SMC_4H_SWING_MIN_RR) continue
 
         // Confidence
-        let confidence = SMC_4H_SWING_CONFIDENCE_BASE
+        let confidence = strategyParams?.SMC_DRILLDOWN_CONFIDENCE_BASE ?? SMC_4H_SWING_CONFIDENCE_BASE
         if (recentBreak.kind === 'choch') confidence += 0.10
         if (z.origin === 'breaker-block') confidence += SMC_ICT_BREAKER_BLOCK_BONUS
         if (z.origin === 'inversion-fvg') confidence += SMC_ICT_INVERSION_FVG_BONUS
         if (z.strength > 0.6) confidence += 0.05
         if (z.strength > 0.8) confidence += 0.05
-        if (isDisplacementCandle(candles, idx, atrVal, SMC_ICT_DISPLACEMENT_BODY_ATR)) confidence += 0.08
+        if (hasDisplacement) confidence += 0.08
 
-        const kz = SMC_ICT_KILLZONE_ENABLED ? getKillzoneBonus(candle.t) : { inKillzone: false, bonus: 0, name: 'off-session' }
         confidence += kz.inKillzone ? kz.bonus : -SMC_ICT_KILLZONE_PENALTY
 
-        const volRatioVal = volumeRatio(candles, idx, 20)
+        const volRatioVal = cachedVolRatioVal ?? (cachedVolRatioVal = getCachedVolumeRatio20(coin, '4h', candles, idx))
         if (!isNaN(volRatioVal) && volRatioVal > 1.5) confidence += 0.05
 
-        const regime = detectRegime(candles, idx)
-        confidence = applyRegimeModifier(confidence, side, regime)
+        const regime = cachedRegime ?? (cachedRegime = getCachedRegime(coin, '4h', candles, idx))
+        confidence = applyRegimeModifier(confidence, side, regime, strategyParams)
 
-        if (isLiquidationCascade(candles, idx, atrVal)) confidence *= SMC_LIQUIDATION_CONFIDENCE_MULT
-        confidence *= getWeekendMultiplier(candle.t, candles, idx)
+        if (isLiquidationCascade(candle, atrVal, volRatioVal)) confidence *= SMC_LIQUIDATION_CONFIDENCE_MULT
+        confidence *= getWeekendMultiplier(candle.t, volRatioVal)
 
-        if (confidence < MIN_CONFIDENCE) continue
+        if (confidence < (strategyParams?.MIN_CONFIDENCE ?? MIN_CONFIDENCE)) continue
 
         // Dedup (zone-aware)
         const dedupKey = `${coin}|4h`
-        if (isDuplicateSignal(dedupKey, idx, entry, z.top, z.bottom)) continue
-        recordSignal(dedupKey, idx, z.top, z.bottom)
+        const currentBarClock = barClockFor(candle.t, '4h')
+        if (isDuplicateSignal(dedupKey, currentBarClock, z.top, z.bottom)) continue
+        recordSignal(dedupKey, currentBarClock, z.top, z.bottom)
 
+        diag.scan4h_swing_signals++
         return {
           type: 'smc-sd', side,
           confidence: Math.min(confidence, 1),
@@ -345,48 +491,76 @@ export class SmcSdStrategy implements IStrategy {
   // 15m MODE: POI CONFIRMATION + AMD (Judas Swing → SIGNAL)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private scan15mConfirm(coin: string, candles: Candle[], idx: number): Signal | null {
+  private scan15mConfirm(coin: string, candles: Candle[], idx: number, strategyParams?: StrategyParams): Signal | null {
+    diag.scan15m_calls++
     const candle = candles[idx]!
     const nowMs = candle.t
-    const atrVal = atr(candles, idx, 14)
+    const currentBarClock = barClockFor(nowMs, '15m')
+    const atrVal = getCachedAtr14(coin, '15m', candles, idx)
     if (isNaN(atrVal) || atrVal <= 0) return null
     const tol = atrVal * SMC_PRICE_TOLERANCE_ATR_MULT
 
     // ── Part 1: POI Confirmation (for 5m micro-entry) ──────────────────
     const pois = htfPOIs.get(coin)
-    if (pois && pois.length > 0) {
-      const activePOIs = pois.filter(p => nowMs - p.createdAtMs < SMC_HTF_POI_TTL_MS)
+    if (!pois || pois.length === 0) {
+      diag.scan15m_no_htf_pois++
+    } else {
+      const activePOIs: HtfPOI[] = []
+      let expiredCount = 0
+      for (const poi of pois) {
+        if (nowMs - poi.createdAtMs < SMC_HTF_POI_TTL_MS) activePOIs.push(poi)
+        else expiredCount++
+      }
+      diag.scan15m_pois_expired += expiredCount
       htfPOIs.set(coin, activePOIs)
 
       for (const poi of activePOIs) {
+        diag.scan15m_pois_checked++
         const poiZone: KeyZone = {
           type: poi.direction === 'bullish' ? 'demand' : 'supply',
           top: poi.zoneTop, bottom: poi.zoneBottom,
           strength: poi.strength, origin: poi.zoneOrigin, createdAtIdx: 0,
         }
         const prox = isAtZone(candle, poiZone, atrVal)
-        if (!prox.atZone) continue
+        if (!prox.atZone) { diag.scan15m_not_at_zone++; continue }
 
         const confirmBreak = findConfirmingBreak(candles, idx, SMC_LTF_CHOCH_LOOKBACK, poi.direction, tol)
-        if (!confirmBreak) continue
+        if (!confirmBreak) { diag.scan15m_no_confirm_break++; continue }
 
         const existing = confirmedPOIs.get(coin) ?? []
-        const alreadyConfirmed = existing.some(cp =>
-          Math.abs(cp.zoneTop - poi.zoneTop) < atrVal * 0.1 &&
-          Math.abs(cp.zoneBottom - poi.zoneBottom) < atrVal * 0.1
-        )
-        if (!alreadyConfirmed) {
-          const pool = existing.filter(p => nowMs - p.confirmedAtMs < SMC_CONFIRMED_POI_TTL_MS)
-          const fresh: ConfirmedPOI = { ...poi, confirmedAtMs: nowMs, ltfBreakKind: confirmBreak.kind }
-          confirmedPOIs.set(coin, [...pool, fresh].slice(-SMC_CONFIRMED_POI_MAX))
-
-          // ── 15m SCALP SIGNAL: emit on fresh confirmation ─────────────────
-          // 4h POI + 15m CHoCH = dual-TF confirmation → emit scalp signal now.
-          // TP uses 15m structure targets (realistic for scalp, not 4h range).
-          if (SMC_15M_SCALP_ENABLED) {
-            const scalpSignal = this.emit15mScalpSignal(coin, candles, idx, fresh, atrVal, tol)
-            if (scalpSignal) return scalpSignal
+        const zoneEpsilon = atrVal * 0.1
+        let alreadyConfirmed = false
+        for (const cp of existing) {
+          if (
+            Math.abs(cp.zoneTop - poi.zoneTop) < zoneEpsilon &&
+            Math.abs(cp.zoneBottom - poi.zoneBottom) < zoneEpsilon
+          ) {
+            alreadyConfirmed = true
+            break
           }
+        }
+        if (alreadyConfirmed) { diag.scan15m_already_confirmed++; continue }
+
+        const pool: ConfirmedPOI[] = []
+        for (const confirmed of existing) {
+          if (nowMs - confirmed.confirmedAtMs < SMC_CONFIRMED_POI_TTL_MS) {
+            pool.push(confirmed)
+          }
+        }
+        const fresh: ConfirmedPOI = { ...poi, confirmedAtMs: nowMs, ltfBreakKind: confirmBreak.kind }
+        pool.push(fresh)
+        if (pool.length > SMC_CONFIRMED_POI_MAX) {
+          pool.splice(0, pool.length - SMC_CONFIRMED_POI_MAX)
+        }
+        confirmedPOIs.set(coin, pool)
+        diag.scan15m_confirmed++
+
+        // ── 15m SCALP SIGNAL: emit on fresh confirmation ─────────────────
+        // 4h POI + 15m CHoCH = dual-TF confirmation → emit scalp signal now.
+        // TP uses 15m structure targets (realistic for scalp, not 4h range).
+        if (SMC_15M_SCALP_ENABLED) {
+          const scalpSignal = this.emit15mScalpSignal(coin, candles, idx, fresh, atrVal, tol, strategyParams)
+          if (scalpSignal) { diag.scan15m_scalp_signals++; return scalpSignal }
         }
       }
     }
@@ -395,10 +569,17 @@ export class SmcSdStrategy implements IStrategy {
     if (!SMC_AMD_ENABLED) return null
 
     // Check if current time is within a manipulation window
-    const hourUTC = new Date(nowMs).getUTCHours()
-    const activeWindow = SMC_AMD_MANIPULATION_WINDOWS.find(w =>
-      w.start <= w.end ? (hourUTC >= w.start && hourUTC < w.end) : (hourUTC >= w.start || hourUTC < w.end)
-    )
+    const hourUTC = utcHour(nowMs)
+    let activeWindow: (typeof SMC_AMD_MANIPULATION_WINDOWS)[number] | undefined
+    for (const w of SMC_AMD_MANIPULATION_WINDOWS) {
+      const inWindow = w.start <= w.end
+        ? (hourUTC >= w.start && hourUTC < w.end)
+        : (hourUTC >= w.start || hourUTC < w.end)
+      if (inWindow) {
+        activeWindow = w
+        break
+      }
+    }
     if (!activeWindow) return null
 
     // Detect accumulation range (Asia session)
@@ -429,9 +610,10 @@ export class SmcSdStrategy implements IStrategy {
 
     // SL: beyond Judas sweep wick + ATR buffer
     const entry = candle.c
+    const slMult = (strategyParams?.SL_WICK_ATR_MULT ?? SL_WICK_ATR_MULT) / SL_WICK_ATR_MULT
     const sl = side === 'long'
-      ? judas.sweepLevel - atrVal * SMC_AMD_SL_ATR_BUFFER
-      : judas.sweepLevel + atrVal * SMC_AMD_SL_ATR_BUFFER
+      ? judas.sweepLevel - atrVal * SMC_AMD_SL_ATR_BUFFER * slMult
+      : judas.sweepLevel + atrVal * SMC_AMD_SL_ATR_BUFFER * slMult
 
     // TP: opposite side of accumulation range + extension
     const risk = Math.abs(entry - sl)
@@ -449,7 +631,7 @@ export class SmcSdStrategy implements IStrategy {
     if (reward / risk < SMC_AMD_MIN_RR) return null
 
     // Confidence
-    let confidence = SMC_AMD_CONFIDENCE_BASE
+    let confidence = strategyParams?.SMC_DRILLDOWN_CONFIDENCE_BASE ?? SMC_AMD_CONFIDENCE_BASE
     confidence += SMC_AMD_JUDAS_BONUS
     if (confirmBreak.kind === 'choch') confidence += SMC_DRILLDOWN_CHOCH_BONUS
     if (isDisplacementCandle(candles, idx, atrVal, SMC_ICT_DISPLACEMENT_BODY_ATR)) confidence += 0.08
@@ -459,19 +641,24 @@ export class SmcSdStrategy implements IStrategy {
     if (kz.inKillzone) confidence += kz.bonus
 
     // Volume + VSA
-    const volRatio = volumeRatio(candles, idx, 20)
+    const volRatio = getCachedVolumeRatio20(coin, '15m', candles, idx)
     if (!isNaN(volRatio) && volRatio > 1.5) confidence += 0.05
-    if (detectVSA(candles, idx).some(s => s.direction === (side === 'long' ? 'bullish' : 'bearish'))) confidence += 0.05
+    const targetVsaDirection = side === 'long' ? 'bullish' : 'bearish'
+    for (const signal of getCachedVsa(coin, '15m', candles, idx)) {
+      if (signal.direction === targetVsaDirection) {
+        confidence += 0.05
+        break
+      }
+    }
 
-    const regime = detectRegime(candles, idx)
-    confidence = applyRegimeModifier(confidence, side, regime)
-    if (confidence < MIN_CONFIDENCE) return null
+    const regime = getCachedRegime(coin, '15m', candles, idx)
+    confidence = applyRegimeModifier(confidence, side, regime, strategyParams)
+    if (confidence < (strategyParams?.MIN_CONFIDENCE ?? MIN_CONFIDENCE)) return null
 
     // Dedup
     const dedupKey = `${coin}|15m-amd`
-    const lastBar = lastSignalBar.get(dedupKey)
-    if (lastBar !== undefined && idx - lastBar <= SMC_DEDUP_BARS * 3) return null  // wider dedup for AMD
-    lastSignalBar.set(dedupKey, idx)
+    if (isDuplicateSignal(dedupKey, currentBarClock, null, null, SMC_DEDUP_BARS * 3)) return null
+    recordSignal(dedupKey, currentBarClock, null, null)
 
     return {
       type: 'smc-sd', side,
@@ -496,6 +683,7 @@ export class SmcSdStrategy implements IStrategy {
   private emit15mScalpSignal(
     coin: string, candles: Candle[], idx: number,
     poi: ConfirmedPOI, atrVal: number, tol: number,
+    strategyParams?: StrategyParams,
   ): Signal | null {
     const candle = candles[idx]!
     const side: SignalSide = poi.direction === 'bullish' ? 'long' : 'short'
@@ -509,24 +697,41 @@ export class SmcSdStrategy implements IStrategy {
     if (side === 'short' && candle.c >= candle.o) return null
 
     // SL: 15m swing structure + ATR buffer
-    const pivots = findPivots(candles, idx, 3, tol)
+    const pivots = getCachedPivots(coin, '15m', candles, idx, 3, tol)
+    const slMult = (strategyParams?.SL_WICK_ATR_MULT ?? SL_WICK_ATR_MULT) / SL_WICK_ATR_MULT
     let sl: number
     if (side === 'long') {
-      const lows = pivots.filter(p => p.kind === 'low' && p.index <= idx).slice(-3)
-      sl = (lows.length > 0 ? Math.min(...lows.map(p => p.price)) : candle.l) - atrVal * SMC_15M_SCALP_SL_ATR_BUFFER
+      let lowsFound = 0
+      let swingLow = candle.l
+      for (let i = pivots.length - 1; i >= 0 && lowsFound < 3; i--) {
+        const pivot = pivots[i]!
+        if (pivot.kind !== 'low' || pivot.index > idx) continue
+        if (lowsFound === 0 || pivot.price < swingLow) swingLow = pivot.price
+        lowsFound++
+      }
+      sl = swingLow - atrVal * SMC_15M_SCALP_SL_ATR_BUFFER * slMult
     } else {
-      const highs = pivots.filter(p => p.kind === 'high' && p.index <= idx).slice(-3)
-      sl = (highs.length > 0 ? Math.max(...highs.map(p => p.price)) : candle.h) + atrVal * SMC_15M_SCALP_SL_ATR_BUFFER
+      let highsFound = 0
+      let swingHigh = candle.h
+      for (let i = pivots.length - 1; i >= 0 && highsFound < 3; i--) {
+        const pivot = pivots[i]!
+        if (pivot.kind !== 'high' || pivot.index > idx) continue
+        if (highsFound === 0 || pivot.price > swingHigh) swingHigh = pivot.price
+        highsFound++
+      }
+      sl = swingHigh + atrVal * SMC_15M_SCALP_SL_ATR_BUFFER * slMult
     }
     const risk = Math.abs(entry - sl)
     if (risk <= 0 || risk / entry > MAX_TRADE_SL_PCT) return null
 
     // TP: 15m structure targets (scalp — NOT 4h range which is too distant)
-    const { tp1, tp2 } = computeStructureTargets(candles, idx, entry, sl, side)
+    const zones = getCachedKeyZones(coin, '15m', candles, idx, tol)
+    const opposingZones = side === 'long' ? zones.supplyZones : zones.demandZones
+    const { tp1, tp2 } = computeStructureTargets(candles, idx, entry, sl, side, opposingZones, undefined, atrVal)
     if (Math.abs(tp1 - entry) / risk < SMC_15M_SCALP_MIN_RR) return null
 
     // Confidence
-    let confidence = SMC_15M_SCALP_CONFIDENCE_BASE
+    let confidence = strategyParams?.SMC_DRILLDOWN_CONFIDENCE_BASE ?? SMC_15M_SCALP_CONFIDENCE_BASE
     if (poi.ltfBreakKind === 'choch') confidence += SMC_DRILLDOWN_CHOCH_BONUS  // 15m CHoCH > BOS
     if (poi.breakKind === 'choch') confidence += 0.05                           // 4h CHoCH > BOS
     if (poi.strength > 0.7) confidence += 0.05
@@ -539,22 +744,29 @@ export class SmcSdStrategy implements IStrategy {
       confidence += kz.inKillzone ? kz.bonus : -SMC_ICT_KILLZONE_PENALTY
     }
 
-    const volRatioVal = volumeRatio(candles, idx, 20)
+    const volRatioVal = getCachedVolumeRatio20(coin, '15m', candles, idx)
     if (!isNaN(volRatioVal) && volRatioVal > 1.5) confidence += 0.05
-    if (detectVSA(candles, idx).some(s => s.direction === (side === 'long' ? 'bullish' : 'bearish'))) confidence += 0.05
+    const targetVsaDirection = side === 'long' ? 'bullish' : 'bearish'
+    for (const signal of getCachedVsa(coin, '15m', candles, idx)) {
+      if (signal.direction === targetVsaDirection) {
+        confidence += 0.05
+        break
+      }
+    }
 
-    const regime = detectRegime(candles, idx)
-    confidence = applyRegimeModifier(confidence, side, regime)
+    const regime = getCachedRegime(coin, '15m', candles, idx)
+    confidence = applyRegimeModifier(confidence, side, regime, strategyParams)
 
-    if (isLiquidationCascade(candles, idx, atrVal)) confidence *= SMC_LIQUIDATION_CONFIDENCE_MULT
-    confidence *= getWeekendMultiplier(candle.t, candles, idx)
+    if (isLiquidationCascade(candle, atrVal, volRatioVal)) confidence *= SMC_LIQUIDATION_CONFIDENCE_MULT
+    confidence *= getWeekendMultiplier(candle.t, volRatioVal)
 
-    if (confidence < MIN_CONFIDENCE) return null
+    if (confidence < (strategyParams?.MIN_CONFIDENCE ?? MIN_CONFIDENCE)) return null
 
     // Dedup (zone-aware, separate key from POI-confirmation path)
     const dedupKey = `${coin}|15m-scalp`
-    if (isDuplicateSignal(dedupKey, idx, entry, poi.zoneTop, poi.zoneBottom)) return null
-    recordSignal(dedupKey, idx, poi.zoneTop, poi.zoneBottom)
+    const currentBarClock = barClockFor(candle.t, '15m')
+    if (isDuplicateSignal(dedupKey, currentBarClock, poi.zoneTop, poi.zoneBottom)) return null
+    recordSignal(dedupKey, currentBarClock, poi.zoneTop, poi.zoneBottom)
 
     return {
       type: 'smc-sd', side,
@@ -576,19 +788,26 @@ export class SmcSdStrategy implements IStrategy {
   // 5m MODE: MICRO-ENTRY at confirmed POI (tightest SL + widest TP)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private scan5mMicroEntry(coin: string, candles: Candle[], idx: number, context?: StrategyContext): Signal | null {
+  private scan5mMicroEntry(coin: string, candles: Candle[], idx: number, context?: StrategyContext, strategyParams?: StrategyParams): Signal | null {
+    diag.scan5m_calls++
     const pool = confirmedPOIs.get(coin)
-    if (!pool || pool.length === 0) return null
+    if (!pool || pool.length === 0) { diag.scan5m_no_confirmed_pois++; return null }
 
     const candle = candles[idx]!
     const nowMs = candle.t
+    const currentBarClock = barClockFor(nowMs, '5m')
 
     // Expire stale confirmed POIs
-    const active = pool.filter(p => nowMs - p.confirmedAtMs < SMC_CONFIRMED_POI_TTL_MS)
-    if (active.length === 0) { confirmedPOIs.set(coin, []); return null }
+    const active: ConfirmedPOI[] = []
+    for (const poi of pool) {
+      if (nowMs - poi.confirmedAtMs < SMC_CONFIRMED_POI_TTL_MS) {
+        active.push(poi)
+      }
+    }
+    if (active.length === 0) { diag.scan5m_pois_expired++; confirmedPOIs.set(coin, []); return null }
     confirmedPOIs.set(coin, active)
 
-    const atrVal = atr(candles, idx, 14)
+    const atrVal = getCachedAtr14(coin, '5m', candles, idx)
     if (isNaN(atrVal) || atrVal <= 0) return null
     const tol = atrVal * SMC_PRICE_TOLERANCE_ATR_MULT
 
@@ -603,7 +822,7 @@ export class SmcSdStrategy implements IStrategy {
       const prox = isAtZone(candle, poiZone, atrVal)
       if (prox.atZone) { bestPOI = poi; break }
     }
-    if (!bestPOI) return null
+    if (!bestPOI) { diag.scan5m_not_at_zone++; return null }
 
     const side: SignalSide = bestPOI.direction === 'bullish' ? 'long' : 'short'
 
@@ -626,40 +845,56 @@ export class SmcSdStrategy implements IStrategy {
       }
     }
 
-    // 5m: FVG only. Wick/displacement entries are noise on 5m micro-TF.
-    // ICT: after 15m CHoCH, the first 5m FVG IS the entry — nothing else.
-    if (!isBounce) return null
+    // Fallback: displacement candle as entry when no FVG found.
+    // Wick-only entries remain blocked — too noisy on 5m micro-TF.
+    if (!isBounce && hasDisplacement) { isBounce = true; bounceQuality = 'displacement' }
+    if (!isBounce) { diag.scan5m_no_fvg++; return null }
 
     // Body quality
     const bodySize = Math.abs(candle.c - candle.o)
     const candleRange = candle.h - candle.l
-    if (candleRange > 0 && bodySize / candleRange < SMC_MIN_BODY_RATIO) return null
+    if (candleRange > 0 && bodySize / candleRange < SMC_MIN_BODY_RATIO) { diag.scan5m_body_rejected++; return null }
 
     // ── C. MIXED-TF SL/TP ─────────────────────────────────────────────
     const entry = candle.c
 
     // SL: 5m swing structure (ultra-tight)
-    const pivots5m = findPivots(candles, idx, 3, tol)
+    const pivots5m = getCachedPivots(coin, '5m', candles, idx, 3, tol)
+    const slMult = (strategyParams?.SL_WICK_ATR_MULT ?? SL_WICK_ATR_MULT) / SL_WICK_ATR_MULT
     let sl: number
     if (side === 'long') {
-      const lows = pivots5m.filter(p => p.kind === 'low' && p.index <= idx).slice(-3)
-      sl = (lows.length > 0 ? Math.min(...lows.map(p => p.price)) : candle.l) - atrVal * SMC_5M_SL_ATR_BUFFER
+      let lowsFound = 0
+      let swingLow = candle.l
+      for (let i = pivots5m.length - 1; i >= 0 && lowsFound < 3; i--) {
+        const pivot = pivots5m[i]!
+        if (pivot.kind !== 'low' || pivot.index > idx) continue
+        if (lowsFound === 0 || pivot.price < swingLow) swingLow = pivot.price
+        lowsFound++
+      }
+      sl = swingLow - atrVal * SMC_5M_SL_ATR_BUFFER * slMult
     } else {
-      const highs = pivots5m.filter(p => p.kind === 'high' && p.index <= idx).slice(-3)
-      sl = (highs.length > 0 ? Math.max(...highs.map(p => p.price)) : candle.h) + atrVal * SMC_5M_SL_ATR_BUFFER
+      let highsFound = 0
+      let swingHigh = candle.h
+      for (let i = pivots5m.length - 1; i >= 0 && highsFound < 3; i--) {
+        const pivot = pivots5m[i]!
+        if (pivot.kind !== 'high' || pivot.index > idx) continue
+        if (highsFound === 0 || pivot.price > swingHigh) swingHigh = pivot.price
+        highsFound++
+      }
+      sl = swingHigh + atrVal * SMC_5M_SL_ATR_BUFFER * slMult
     }
 
     // TP: 4h structure targets — context.htfCandles = 1h (HTF_MAP['5m']='1h')
     // For 4h targets, compute from POI break level + risk-based fallback
     const risk = Math.abs(entry - sl)
-    if (risk <= 0 || risk / entry > MAX_TRADE_SL_PCT) return null
+    if (risk <= 0 || risk / entry > MAX_TRADE_SL_PCT) { diag.scan5m_sl_too_wide++; return null }
 
     // P3-B: Minimum SL distance — ultra-tight stops are noise on 5m
     const slPct = risk / entry
-    if (slPct < SMC_5M_MIN_SL_PCT) return null
+    if (slPct < SMC_5M_MIN_SL_PCT) { diag.scan5m_sl_too_tight++; return null }
 
     // P3-B: Require 15m CHoCH confirmation (not just BOS)
-    if (SMC_5M_REQUIRE_15M_CHOCH && bestPOI.ltfBreakKind !== 'choch') return null
+    if (SMC_5M_REQUIRE_15M_CHOCH && bestPOI.ltfBreakKind !== 'choch') { diag.scan5m_require_choch_fail++; return null }
 
     const dir = side === 'long' ? 1 : -1
     let tp1: number
@@ -668,7 +903,11 @@ export class SmcSdStrategy implements IStrategy {
     // Try to get 4h targets via context (may be 1h candles from HTF_MAP)
     if (context?.htfCandles && context.htfCandles.length >= MIN_CANDLES_FOR_SCAN) {
       const htfIdx = context.htfCandles.length - 2
-      const targets = computeStructureTargets(context.htfCandles, htfIdx, entry, sl, side)
+      const htfInterval: CandleInterval = '1h'
+      const htfZones = getCachedKeyZones(coin, htfInterval, context.htfCandles, htfIdx)
+      const htfAtrVal = getCachedAtr14(coin, htfInterval, context.htfCandles, htfIdx)
+      const opposingZones = side === 'long' ? htfZones.supplyZones : htfZones.demandZones
+      const targets = computeStructureTargets(context.htfCandles, htfIdx, entry, sl, side, opposingZones, undefined, htfAtrVal)
       tp1 = targets.tp1
       tp2 = targets.tp2
       // Ensure minimum R:R
@@ -681,10 +920,10 @@ export class SmcSdStrategy implements IStrategy {
 
     // R:R check
     const reward = Math.abs(tp1 - entry)
-    if (reward / risk < SMC_5M_MIN_RR) return null
+    if (reward / risk < SMC_5M_MIN_RR) { diag.scan5m_rr_too_low++; return null }
 
     // ── D. CONFIDENCE ──────────────────────────────────────────────────
-    let confidence = SMC_5M_CONFIDENCE_BASE
+    let confidence = strategyParams?.SMC_DRILLDOWN_CONFIDENCE_BASE ?? SMC_5M_CONFIDENCE_BASE
 
     // Entry quality
     if (bounceQuality === 'fvg') confidence += 0.10
@@ -710,31 +949,35 @@ export class SmcSdStrategy implements IStrategy {
     }
 
     // Volume + VSA
-    const volRatio = volumeRatio(candles, idx, 20)
+    const volRatio = getCachedVolumeRatio20(coin, '5m', candles, idx)
     if (!isNaN(volRatio) && volRatio > 1.5) confidence += 0.05
-    const vsaSignals = detectVSA(candles, idx)
+    const vsaSignals = getCachedVsa(coin, '5m', candles, idx)
     if (vsaSignals.some(s => s.direction === (side === 'long' ? 'bullish' : 'bearish'))) confidence += 0.05
 
     // Regime
-    const regime = detectRegime(candles, idx)
-    confidence = applyRegimeModifier(confidence, side, regime)
+    const regime = getCachedRegime(coin, '5m', candles, idx)
+    confidence = applyRegimeModifier(confidence, side, regime, strategyParams)
 
     // P2: liquidation cascade discount
-    if (isLiquidationCascade(candles, idx, atrVal)) confidence *= SMC_LIQUIDATION_CONFIDENCE_MULT
+    if (isLiquidationCascade(candle, atrVal, volRatio)) confidence *= SMC_LIQUIDATION_CONFIDENCE_MULT
 
     // P2: weekend low-volume discount
-    confidence *= getWeekendMultiplier(candle.t, candles, idx)
+    confidence *= getWeekendMultiplier(candle.t, volRatio)
 
-    if (confidence < MIN_CONFIDENCE) return null
+    if (confidence < (strategyParams?.MIN_CONFIDENCE ?? MIN_CONFIDENCE)) { diag.scan5m_confidence_too_low++; return null }
 
     // ── E. DEDUP + SIGNAL (zone-aware) ────────────────────────────────
     const dedupKey = `${coin}|5m`
-    if (isDuplicateSignal(dedupKey, idx, entry, bestPOI.zoneTop, bestPOI.zoneBottom)) return null
-    recordSignal(dedupKey, idx, bestPOI.zoneTop, bestPOI.zoneBottom)
+    if (isDuplicateSignal(dedupKey, currentBarClock, bestPOI.zoneTop, bestPOI.zoneBottom)) return null
+    recordSignal(dedupKey, currentBarClock, bestPOI.zoneTop, bestPOI.zoneBottom)
 
     // Remove consumed confirmed POI
-    const remaining = (confirmedPOIs.get(coin) ?? []).filter(p => p !== bestPOI)
+    const remaining: ConfirmedPOI[] = []
+    for (const poi of (confirmedPOIs.get(coin) ?? [])) {
+      if (poi !== bestPOI) remaining.push(poi)
+    }
     confirmedPOIs.set(coin, remaining)
+    diag.scan5m_signals++
 
     return {
       type: 'smc-sd', side,
@@ -756,15 +999,30 @@ export class SmcSdStrategy implements IStrategy {
   // 1h MODE: SAME-TF ANALYSIS (existing ICT v3, unchanged)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private scan1hSameTF(coin: string, interval: CandleInterval, candles: Candle[], idx: number, context?: StrategyContext): Signal | null {
-    const atrVal = atr(candles, idx, 14)
+  private scan1hSameTF(coin: string, interval: CandleInterval, candles: Candle[], idx: number, context?: StrategyContext, strategyParams?: StrategyParams): Signal | null {
+    if (smc1hAllowedCoinSet.size > 0 && !smc1hAllowedCoinSet.has(coin)) return null
+    const atrVal = getCachedAtr14(coin, interval, candles, idx)
     if (isNaN(atrVal) || atrVal <= 0) return null
+    const volRatio = getCachedVolumeRatio20(coin, interval, candles, idx)
+    if (!isNaN(volRatio) && volRatio < SMC_1H_MIN_VOLUME_RATIO) return null
     const tol = atrVal * SMC_PRICE_TOLERANCE_ATR_MULT
 
-    const breaks = detectStructureBreaks(candles, idx, { tolerance: tol })
-    const recentBreak = breaks.filter(b => idx - b.index <= SMC_BREAK_LOOKBACK).at(-1)
+    const breaks = getCachedStructureBreaks(coin, interval, candles, idx, { tolerance: tol })
+    let recentBreak: (typeof breaks)[number] | null = null
+    for (let i = breaks.length - 1; i >= 0; i--) {
+      const candidate = breaks[i]!
+      if (idx - candidate.index <= SMC_BREAK_LOOKBACK) {
+        recentBreak = candidate
+        break
+      }
+    }
     if (!recentBreak) return null
     const side: SignalSide = recentBreak.direction === 'bullish' ? 'long' : 'short'
+    const targetZoneType = side === 'long' ? 'demand' : 'supply'
+    const targetVsaDirection = side === 'long' ? 'bullish' : 'bearish'
+    const candle = candles[idx]!
+    const candleRange = candle.h - candle.l
+    if (candleRange > 0 && Math.abs(candle.c - candle.o) / candleRange < SMC_MIN_BODY_RATIO) return null
 
     // HTF alignment (soft)
     let htfAligned = false
@@ -772,52 +1030,103 @@ export class SmcSdStrategy implements IStrategy {
     if (SMC_ICT_HTF_ALIGNMENT && context?.htfCandles && context.htfCandles.length >= MIN_CANDLES_FOR_SCAN) {
       const htfIdx = context.htfCandles.length - 2
       if (htfIdx >= MIN_CANDLES_FOR_SCAN) {
-        const htfBias = htfStructureBias(context.htfCandles, htfIdx)
+        const htfBias = getCachedHtfStructureBias(coin, context.htfInterval ?? interval, context.htfCandles, htfIdx)
         htfAligned = (side === 'long' && htfBias.bias === 'bullish') || (side === 'short' && htfBias.bias === 'bearish')
         htfOpposed = (side === 'long' && htfBias.bias === 'bearish' && htfBias.confidence > 0.7) ||
                      (side === 'short' && htfBias.bias === 'bullish' && htfBias.confidence > 0.7)
       }
     }
 
+    // Hard-block counter-trend BOS (CHoCH allowed — it IS a reversal signal)
+    if (htfOpposed && recentBreak.kind === 'bos') return null
+
     // P/D filter
-    const pivots = findPivots(candles, idx, 5, tol)
-    const highs = pivots.filter(p => p.kind === 'high'), lows = pivots.filter(p => p.kind === 'low')
-    if (highs.length === 0 || lows.length === 0) return null
-    const pd = premiumDiscount(Math.max(...highs.slice(-3).map(p => p.price)), Math.min(...lows.slice(-3).map(p => p.price)), candles[idx]!.c)
+    const pivots = getCachedPivots(coin, interval, candles, idx, 5, tol)
+    const recentHighPrices: number[] = []
+    const recentLowPrices: number[] = []
+    let highCount = 0
+    let lowCount = 0
+    for (const pivot of pivots) {
+      if (pivot.kind === 'high') {
+        highCount++
+        recentHighPrices.push(pivot.price)
+        if (recentHighPrices.length > 3) recentHighPrices.shift()
+      } else {
+        lowCount++
+        recentLowPrices.push(pivot.price)
+        if (recentLowPrices.length > 3) recentLowPrices.shift()
+      }
+    }
+    if (highCount === 0 || lowCount === 0) return null
+    let recentHighMax = recentHighPrices[0]!
+    for (let i = 1; i < recentHighPrices.length; i++) {
+      const price = recentHighPrices[i]!
+      if (price > recentHighMax) recentHighMax = price
+    }
+    let recentLowMin = recentLowPrices[0]!
+    for (let i = 1; i < recentLowPrices.length; i++) {
+      const price = recentLowPrices[i]!
+      if (price < recentLowMin) recentLowMin = price
+    }
+    const pd = premiumDiscount(recentHighMax, recentLowMin, candle.c)
     if ((side === 'long' && pd === 'premium') || (side === 'short' && pd === 'discount')) return null
 
     // OTE
     let inOTE = false
     if (SMC_ICT_OTE_FILTER) {
-      if (side === 'long' && lows.length > 0) {
-        const ote = oteZone(Math.min(...lows.slice(-3).map(p => p.price)), recentBreak.level)
-        if (ote) inOTE = candles[idx]!.c >= ote.bottom && candles[idx]!.c <= ote.top
-      } else if (side === 'short' && highs.length > 0) {
-        const ote = oteZone(Math.max(...highs.slice(-3).map(p => p.price)), recentBreak.level)
-        if (ote) inOTE = candles[idx]!.c >= ote.bottom && candles[idx]!.c <= ote.top
+      if (side === 'long' && recentLowPrices.length > 0) {
+        const ote = oteZone(recentLowMin, recentBreak.level)
+        if (ote) inOTE = candle.c >= ote.bottom && candle.c <= ote.top
+      } else if (side === 'short' && recentHighPrices.length > 0) {
+        const ote = oteZone(recentHighMax, recentBreak.level)
+        if (ote) inOTE = candle.c >= ote.bottom && candle.c <= ote.top
       }
     }
 
     // Zones (+ Breaker + Inversion)
-    const { demandZones, supplyZones } = compileKeyZones(candles, idx, tol)
-    const rawZones: KeyZone[] = [...(side === 'long' ? demandZones : supplyZones)]
-    if (SMC_ICT_BREAKER_BLOCK_ENABLED) for (const bb of detectBreakerBlocks(candles, idx)) {
-      if (bb.type === (side === 'long' ? 'demand' : 'supply')) rawZones.push({ type: bb.type, top: bb.top, bottom: bb.bottom, strength: 0.85, origin: 'breaker-block', createdAtIdx: bb.index })
-    }
-    if (SMC_ICT_INVERSION_FVG_ENABLED) for (const inv of detectInversionFVGs(candles, idx, tol)) {
-      if (inv.type === (side === 'long' ? 'demand' : 'supply')) rawZones.push({ type: inv.type, top: inv.top, bottom: inv.bottom, strength: 0.75, origin: 'inversion-fvg', createdAtIdx: inv.index })
-    }
-    const zones = rawZones.filter(z => idx - z.createdAtIdx <= ZONE_MAX_AGE)
-    if (zones.length === 0) return null
+    const { demandZones, supplyZones } = getCachedKeyZones(coin, interval, candles, idx, tol)
 
     // Zone proximity
-    const candle = candles[idx]!
     let bestZone: KeyZone | null = null
     let proximity = { atZone: false, wickTouch: false, nearZone: false, throughZone: false }
-    for (const z of zones) {
-      if (z.strength < SMC_MIN_ZONE_STRENGTH) continue
+    const tryAcceptZone = (z: KeyZone): boolean => {
+      if (idx - z.createdAtIdx > ZONE_MAX_AGE) return false
+      if (z.strength < SMC_MIN_ZONE_STRENGTH) return false
       const prox = isAtZone(candle, z, atrVal)
-      if (prox.atZone) { bestZone = z; proximity = prox; break }
+      if (!prox.atZone) return false
+      bestZone = z
+      proximity = prox
+      return true
+    }
+    const primaryZones = side === 'long' ? demandZones : supplyZones
+    for (const z of primaryZones) {
+      if (tryAcceptZone(z)) break
+    }
+    if (!bestZone && SMC_ICT_BREAKER_BLOCK_ENABLED) {
+      for (const bb of getCachedBreakerBlocks50(coin, interval, candles, idx)) {
+        if (bb.type !== targetZoneType) continue
+        if (tryAcceptZone({
+          type: bb.type,
+          top: bb.top,
+          bottom: bb.bottom,
+          strength: 0.85,
+          origin: 'breaker-block',
+          createdAtIdx: bb.index,
+        })) break
+      }
+    }
+    if (!bestZone && SMC_ICT_INVERSION_FVG_ENABLED) {
+      for (const inv of getCachedInversionFVGs(coin, interval, candles, idx, tol)) {
+        if (inv.type !== targetZoneType) continue
+        if (tryAcceptZone({
+          type: inv.type,
+          top: inv.top,
+          bottom: inv.bottom,
+          strength: 0.75,
+          origin: 'inversion-fvg',
+          createdAtIdx: inv.index,
+        })) break
+      }
     }
     if (!bestZone) return null
 
@@ -826,27 +1135,62 @@ export class SmcSdStrategy implements IStrategy {
     let bounceQuality: 'displacement' | 'wick' | 'sweep' = 'wick'
     const hasDisplacement = isDisplacementCandle(candles, idx, atrVal, SMC_ICT_DISPLACEMENT_BODY_ATR)
     if (side === 'long') {
-      const we = candle.l <= bestZone.top + tol, ca = candle.c > bestZone.top - tol, bc = candle.c > candle.o
-      if (we && ca && hasDisplacement && bc) { isBounce = true; bounceQuality = 'displacement' }
-      else if (proximity.throughZone && ca) { if (!SMC_ICT_REQUIRE_SWEEP_FOR_THROUGH) { isBounce = true; bounceQuality = 'sweep' } else { const sw = detectLiquiditySweep(candles, idx, { lookback: 20, wickRatio: 0.4 }); if (sw?.direction === 'bullish') { isBounce = true; bounceQuality = 'sweep' } } }
-      else if (we && ca) isBounce = true
-      else if (proximity.wickTouch && bc) isBounce = true
+      const we = candle.l <= bestZone.top + tol
+      const ca = candle.c > bestZone.top - tol
+      const bc = candle.c > candle.o
+      if (we && ca && hasDisplacement && bc) {
+        isBounce = true
+        bounceQuality = 'displacement'
+      } else if (proximity.throughZone && ca && bc) {
+        if (!SMC_ICT_REQUIRE_SWEEP_FOR_THROUGH) {
+          isBounce = true
+          bounceQuality = 'sweep'
+        } else if (hasDirectionalSweepWick(candle, side, 0.4)) {
+          const sw = detectLiquiditySweep(candles, idx, { lookback: 20, wickRatio: 0.4 })
+          if (sw?.direction === 'bullish') {
+            isBounce = true
+            bounceQuality = 'sweep'
+          }
+        }
+      } else if (we && ca && bc) {
+        isBounce = true
+      } else if (proximity.wickTouch && bc) {
+        isBounce = true
+      }
     } else {
-      const we = candle.h >= bestZone.bottom - tol, cb = candle.c < bestZone.bottom + tol, bc = candle.c < candle.o
-      if (we && cb && hasDisplacement && bc) { isBounce = true; bounceQuality = 'displacement' }
-      else if (proximity.throughZone && cb) { if (!SMC_ICT_REQUIRE_SWEEP_FOR_THROUGH) { isBounce = true; bounceQuality = 'sweep' } else { const sw = detectLiquiditySweep(candles, idx, { lookback: 20, wickRatio: 0.4 }); if (sw?.direction === 'bearish') { isBounce = true; bounceQuality = 'sweep' } } }
-      else if (we && cb) isBounce = true
-      else if (proximity.wickTouch && bc) isBounce = true
+      const we = candle.h >= bestZone.bottom - tol
+      const cb = candle.c < bestZone.bottom + tol
+      const bc = candle.c < candle.o
+      if (we && cb && hasDisplacement && bc) {
+        isBounce = true
+        bounceQuality = 'displacement'
+      } else if (proximity.throughZone && cb && bc) {
+        if (!SMC_ICT_REQUIRE_SWEEP_FOR_THROUGH) {
+          isBounce = true
+          bounceQuality = 'sweep'
+        } else if (hasDirectionalSweepWick(candle, side, 0.4)) {
+          const sw = detectLiquiditySweep(candles, idx, { lookback: 20, wickRatio: 0.4 })
+          if (sw?.direction === 'bearish') {
+            isBounce = true
+            bounceQuality = 'sweep'
+          }
+        }
+      } else if (we && cb && bc) {
+        isBounce = true
+      } else if (proximity.wickTouch && bc) {
+        isBounce = true
+      }
     }
     if (!isBounce) return null
 
-    if (candle.h - candle.l > 0 && Math.abs(candle.c - candle.o) / (candle.h - candle.l) < SMC_MIN_BODY_RATIO) return null
-    const adxVal = adx(candles, idx)
-    if (!isNaN(adxVal) && adxVal < 18) return null
+    const adxVal = getCachedAdx14(coin, interval, candles, idx)
+    if (!isNaN(adxVal) && adxVal < SMC_1H_MIN_ADX) return null
 
-    // Confidence
-    let confidence = 0.65
+    // Confidence (base tunable via SMC_1H_CONFIDENCE_BASE optimizer param)
+    const _base1h = strategyParams?.SMC_1H_CONFIDENCE_BASE
+    let confidence = (typeof _base1h === 'number' && isFinite(_base1h) && _base1h > 0) ? _base1h : 0.65
     if (recentBreak.kind === 'choch') confidence += 0.10
+    if (recentBreak.kind === 'bos') confidence -= SMC_1H_BOS_PENALTY
     if (bounceQuality === 'displacement') confidence += 0.12
     else if (bounceQuality === 'sweep') confidence += 0.10
     else confidence += 0.05
@@ -861,38 +1205,66 @@ export class SmcSdStrategy implements IStrategy {
     if (bestZone.strength > 0.8) confidence += 0.05
     if (!isNaN(adxVal) && adxVal > 30) confidence += 0.08
     else if (!isNaN(adxVal) && adxVal > 25) confidence += 0.05
-    const volRatio = volumeRatio(candles, idx, 20)
     if (!isNaN(volRatio) && volRatio > 2.0) confidence += 0.08
     else if (!isNaN(volRatio) && volRatio > 1.5) confidence += 0.05
-    if (detectVSA(candles, idx).some(s => s.direction === (side === 'long' ? 'bullish' : 'bearish'))) confidence += 0.05
+    const vsaSignals = getCachedVsa(coin, interval, candles, idx)
+    for (const signal of vsaSignals) {
+      if (signal.direction === targetVsaDirection) {
+        confidence += 0.05
+        break
+      }
+    }
     let killzoneName = 'off-session'
-    if (SMC_ICT_KILLZONE_ENABLED) { const kz = getKillzoneBonus(candle.t); killzoneName = kz.name; confidence += kz.inKillzone ? kz.bonus : -SMC_ICT_KILLZONE_PENALTY }
-    confidence = applyRegimeModifier(confidence, side, detectRegime(candles, idx))
+    if (SMC_ICT_KILLZONE_ENABLED) {
+      const kz = getKillzoneBonus(candle.t)
+      killzoneName = kz.name
+      confidence += kz.inKillzone ? kz.bonus : -SMC_ICT_KILLZONE_PENALTY
+    }
+    const regime = getCachedRegime(coin, interval, candles, idx)
+    confidence = applyRegimeModifier(confidence, side, regime, strategyParams)
 
     // P2: liquidation cascade discount
-    if (isLiquidationCascade(candles, idx, atrVal)) confidence *= SMC_LIQUIDATION_CONFIDENCE_MULT
+    if (isLiquidationCascade(candle, atrVal, volRatio)) confidence *= SMC_LIQUIDATION_CONFIDENCE_MULT
 
     // P2: weekend low-volume discount
-    confidence *= getWeekendMultiplier(candle.t, candles, idx)
+    confidence *= getWeekendMultiplier(candle.t, volRatio)
 
-    if (confidence < MIN_CONFIDENCE) return null
+    if (confidence < (strategyParams?.MIN_CONFIDENCE ?? MIN_CONFIDENCE)) return null
 
     // SL/TP
     const entry = candle.c
-    const sl = side === 'long' ? bestZone.bottom - atrVal * STRUCTURE_STOP_ATR_BUFFER : bestZone.top + atrVal * STRUCTURE_STOP_ATR_BUFFER
-    const { tp1, tp2 } = computeStructureTargets(candles, idx, entry, sl, side)
-    const pools = findLiquidityPools(candles, idx, { tolerance: tol })
-    if (pools.length > 0) {
-      const op = side === 'long' ? pools.filter(p => p.type === 'bsl' && p.level > entry) : pools.filter(p => p.type === 'ssl' && p.level < entry)
-      if (op.length > 0) { const n = side === 'long' ? op.reduce((a, b) => a.level < b.level ? a : b) : op.reduce((a, b) => a.level > b.level ? a : b); if (Math.abs(tp1 - entry) > 0 && Math.abs(n.level - entry) <= Math.abs(tp1 - entry)) confidence += SMC_ICT_LIQUIDITY_POOL_TP_BONUS }
-    }
+    const slMult = (strategyParams?.SL_WICK_ATR_MULT ?? SL_WICK_ATR_MULT) / SL_WICK_ATR_MULT
+    const sl = side === 'long' ? bestZone.bottom - atrVal * STRUCTURE_STOP_ATR_BUFFER * slMult : bestZone.top + atrVal * STRUCTURE_STOP_ATR_BUFFER * slMult
+    const opposingZones = side === 'long' ? supplyZones : demandZones
+    const { tp1, tp2 } = computeStructureTargets(candles, idx, entry, sl, side, opposingZones, undefined, atrVal)
     const riskAmt = Math.abs(entry - sl)
-    if (riskAmt / entry > MAX_TRADE_SL_PCT || riskAmt <= 0 || Math.abs(tp1 - entry) / riskAmt < SMC_MIN_RR) return null
+    if (riskAmt / entry > MAX_TRADE_SL_PCT || riskAmt <= 0 || Math.abs(tp1 - entry) / riskAmt < (strategyParams?.SMC_MIN_RR ?? SMC_MIN_RR)) return null
+    const tpDistance = Math.abs(tp1 - entry)
+    if (tpDistance > 0) {
+      let nearestOpposingPoolLevel: number | null = null
+      for (const pool of findLiquidityPools(candles, idx, { tolerance: tol, atrValue: atrVal })) {
+        if (side === 'long') {
+          if (pool.type !== 'bsl' || pool.level <= entry) continue
+          if (nearestOpposingPoolLevel === null || pool.level < nearestOpposingPoolLevel) {
+            nearestOpposingPoolLevel = pool.level
+          }
+        } else {
+          if (pool.type !== 'ssl' || pool.level >= entry) continue
+          if (nearestOpposingPoolLevel === null || pool.level > nearestOpposingPoolLevel) {
+            nearestOpposingPoolLevel = pool.level
+          }
+        }
+      }
+      if (nearestOpposingPoolLevel !== null && Math.abs(nearestOpposingPoolLevel - entry) <= tpDistance) {
+        confidence += SMC_ICT_LIQUIDITY_POOL_TP_BONUS
+      }
+    }
 
     // P2: zone-aware dedup
     const dedupKey = `${coin}|${interval}`
-    if (isDuplicateSignal(dedupKey, idx, entry, bestZone.top, bestZone.bottom)) return null
-    recordSignal(dedupKey, idx, bestZone.top, bestZone.bottom)
+    const currentBarClock = barClockFor(candle.t, interval)
+    if (isDuplicateSignal(dedupKey, currentBarClock, bestZone.top, bestZone.bottom)) return null
+    recordSignal(dedupKey, currentBarClock, bestZone.top, bestZone.bottom)
 
     return {
       type: 'smc-sd', side, confidence: Math.min(confidence, 1),
@@ -902,7 +1274,7 @@ export class SmcSdStrategy implements IStrategy {
         breakKind: recentBreak.kind, breakDirection: recentBreak.direction, breakLevel: recentBreak.level,
         premiumDiscount: pd, zoneOrigin: bestZone.origin, zoneTop: bestZone.top, zoneBottom: bestZone.bottom,
         zoneStrength: bestZone.strength, throughZone: proximity.throughZone,
-        regime: detectRegime(candles, idx), tp2Price: tp2, atrAtEntry: atrVal,
+        regime, tp2Price: tp2, atrAtEntry: atrVal,
         htfAligned, inOTE, bounceQuality, hasDisplacement,
         atBreakerBlock: bestZone.origin === 'breaker-block',
         atInversionFVG: bestZone.origin === 'inversion-fvg', killzoneName,
@@ -916,5 +1288,6 @@ export class SmcSdStrategy implements IStrategy {
     lastSignalState.clear()
     htfPOIs.clear()
     confirmedPOIs.clear()
+    // Note: do NOT reset diagnostics here — they accumulate across walk-forward windows
   }
 }

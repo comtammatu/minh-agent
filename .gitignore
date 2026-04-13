@@ -6,3 +6,6 @@ node_modules/
 bun.lockb.bak
 .DS_Store
 .gstack/
+results/ci/
+results/optimize-*.json
+results/pipeline-benchmark-*.json

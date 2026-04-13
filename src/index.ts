@@ -92,7 +92,7 @@ import { getPositionMonitor, queryExchangePositions } from './agent/position-mon
 import { getInvalidationBridge } from './agent/invalidation-bridge.js'
 import { startBot, stopBot, formatAlert, sendTelegramAlert } from './alert/telegram/index.js'
 import { connectToAgent as connectMetrics } from './analytics/metrics-service.js'
-import { getStrategyRegistry } from './strategy/registry.js'
+import { getStrategyRegistry, resetStrategyRegistry } from './strategy/registry.js'
 import { SmcSdStrategy } from './strategy/strategies/smc-sd/index.js'
 import type { CandleInterval } from './types.js'
 
@@ -187,6 +187,8 @@ let liveAccountStatesByStrategyCache: Map<string, AccountState> | null = null
  * Map caused empty maps to mask fresh tracked positions until the next refresh.
  */
 let liveTuiExchangePositionsCache: ExchangePositionSnapshot[] | null = null
+
+class StartupFatalError extends Error {}
 
 async function refreshLiveStrategyWalletStatsCache(): Promise<void> {
   if (getEffectivePaperTrade()) {
@@ -546,7 +548,13 @@ async function main(): Promise<void> {
     await pool.init()
     const svc = pool.getShared()
     const account = await svc.getAccountState()
-    const positions = await svc.getPositions()
+    let positions: ExchangePositionSnapshot[] = []
+    try {
+      positions = await svc.getPositions()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.warn('startup', `POS   | Could not fetch open positions: ${msg}`)
+    }
     const acctAddr = svc.getAccountAddress()
     const addrShort = `${acctAddr.slice(0, 6)}…${acctAddr.slice(-4)}`
 
@@ -571,6 +579,10 @@ async function main(): Promise<void> {
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
+    if (activeExchange === 'BB') {
+      log.error('startup', `FATAL | BB startup exchange bootstrap failed: ${msg}`)
+      throw new StartupFatalError(`BB startup exchange bootstrap failed: ${msg}`)
+    }
     log.warn('startup', `ACCT  | Could not fetch account info: ${msg}`)
     if (getEffectivePaperTrade()) {
       log.info('startup', 'MODE  | PAPER TRADE — continuing without wallet')
@@ -728,6 +740,7 @@ async function cleanup(): Promise<void> {
     closeAllBybitTrades()
     closeAllBybitTicker()
   }
+  resetStrategyRegistry()
 }
 
 /** Run main() with exponential backoff reconnection on failure. */
@@ -750,6 +763,15 @@ async function runWithReconnect(): Promise<never> {
       await main()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
+      if (err instanceof StartupFatalError) {
+        log.error('lifecycle', `STARTUP FATAL | ${msg}`)
+        try {
+          await cleanup()
+        } catch {
+          // best-effort cleanup before process exit
+        }
+        throw err
+      }
       log.error('lifecycle', `CONNECTION LOST | ${msg}`)
       log.info('lifecycle', `RECONNECT | retrying in ${Math.round(delay / 1000)}s...`)
 
@@ -765,4 +787,8 @@ async function runWithReconnect(): Promise<never> {
 }
 
 
-runWithReconnect()
+runWithReconnect().catch((err) => {
+  const msg = err instanceof Error ? err.message : String(err)
+  log.error('lifecycle', `EXIT | ${msg}`)
+  process.exit(1)
+})

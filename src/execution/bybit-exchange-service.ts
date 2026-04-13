@@ -17,7 +17,13 @@ import { RestClientV5 } from 'bybit-api'
 import type { ExchangePositionSnapshot } from '../agent/types.js'
 import { getHealthMonitor } from '../agent/self-healing.js'
 import { log } from '../lib/logger.js'
-import type { AccountState, PlaceOrderParams, OrderResult, PlaceTriggerParams } from './exchange-service.js'
+import type {
+  AccountState,
+  PlaceOrderParams,
+  OrderResult,
+  PlaceTriggerParams,
+  UpdatePositionStopParams,
+} from './exchange-service.js'
 import { BYBIT_EXEC_BURST_TOKENS, BYBIT_EXEC_REFILL_MS } from '../config.js'
 
 // ─── Qty Rounding ────────────────────────────────────────────────────────────
@@ -737,37 +743,49 @@ export class BybitExchangeService {
    * tpsl='sl' → sets stopLoss; tpsl='tp' → sets takeProfit.
    */
   async placeTrigger(params: PlaceTriggerParams): Promise<OrderResult> {
+    // placeTrigger uses close side; position-level APIs need the position side.
+    const positionSide: 'long' | 'short' = params.side === 'short' ? 'long' : 'short'
+    return this.updatePositionStop({
+      coin: params.coin,
+      positionSide,
+      triggerPrice: params.triggerPrice,
+      tpsl: params.tpsl,
+    })
+  }
+
+  /**
+   * Update SL/TP directly on an open position (Bybit setTradingStop).
+   * Used by trail_update flow so stop updates do not depend on trigger order IDs.
+   */
+  async updatePositionStop(params: UpdatePositionStopParams): Promise<OrderResult> {
     this.ensureInit()
 
-    const symbol = this.toSymbol(params.coin)
-    // Hedge mode: position side = params.side reversed (trigger closes the position)
-    // params.side is the close side, so the position side is the opposite.
-    const positionIdx = params.side === 'short' ? 1 : 2  // 'short' closes long pos (idx=1), 'long' closes short pos (idx=2)
-
-    const setParams: Parameters<RestClientV5['setTradingStop']>[0] = {
-      category: 'linear',
-      symbol,
-      positionIdx,
-      ...(params.tpsl === 'sl'
-        ? { stopLoss: String(params.triggerPrice), slTriggerBy: 'LastPrice' }
-        : { takeProfit: String(params.triggerPrice), tpTriggerBy: 'LastPrice' }),
-    }
-
     try {
+      const symbol = this.toSymbol(params.coin)
+      const positionIdx = params.positionSide === 'long' ? 1 : 2
+      const setParams: Parameters<RestClientV5['setTradingStop']>[0] = {
+        category: 'linear',
+        symbol,
+        positionIdx,
+        ...(params.tpsl === 'sl'
+          ? { stopLoss: String(params.triggerPrice), slTriggerBy: 'LastPrice' }
+          : { takeProfit: String(params.triggerPrice), tpTriggerBy: 'LastPrice' }),
+      }
+
       await acquireExec()
       const resp = await this.client!.setTradingStop(setParams)
 
       if (resp.retCode !== 0) {
         const errMsg = resp.retMsg ?? `Bybit setTradingStop error ${resp.retCode}`
-        log.error('bybit-exec', `placeTrigger(${params.tpsl}) failed: ${errMsg} [${symbol}]`)
+        log.error('bybit-exec', `updatePositionStop(${params.tpsl}) failed: ${errMsg} [${symbol}]`)
         return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: errMsg }
       }
 
-      log.info('bybit-exec', `placeTrigger(${params.tpsl}) OK: ${symbol} @ ${params.triggerPrice}`)
+      log.info('bybit-exec', `updatePositionStop(${params.tpsl}) OK: ${symbol} side=${params.positionSide} @ ${params.triggerPrice}`)
       return { success: true, oid: null, avgPx: null, totalSz: null, status: 'submitted', error: null }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      log.error('bybit-exec', `placeTrigger exception: ${msg}`)
+      log.error('bybit-exec', `updatePositionStop exception: ${msg}`)
       throw err
     }
   }
@@ -807,12 +825,36 @@ export class BybitExchangeService {
    */
   async getFillAggregateByCloid(cloid: string, coin: string): Promise<{ avgPx: number; totalSz: number; isFilled?: boolean } | null> {
     this.ensureInit()
-    const symbol = this.toSymbol(coin)
+    return this.getFillAggregate({
+      coin,
+      orderLinkId: cloid,
+      context: `cloid=${cloid}`,
+    })
+  }
+
+  /** Aggregate fill size + VWAP by exchange orderId (fallback when cloid is unavailable). */
+  async getFillAggregateByOrderId(orderId: string, coin: string): Promise<{ avgPx: number; totalSz: number; isFilled?: boolean } | null> {
+    this.ensureInit()
+    return this.getFillAggregate({
+      coin,
+      orderId,
+      context: `orderId=${orderId}`,
+    })
+  }
+
+  private async getFillAggregate(params: {
+    coin: string
+    orderLinkId?: string
+    orderId?: string
+    context: string
+  }): Promise<{ avgPx: number; totalSz: number; isFilled?: boolean } | null> {
+    const symbol = this.toSymbol(params.coin)
     try {
       const resp = await this.client!.getHistoricOrders({
         category: 'linear',
         symbol,
-        orderLinkId: cloid,
+        ...(params.orderLinkId ? { orderLinkId: params.orderLinkId } : {}),
+        ...(params.orderId ? { orderId: params.orderId } : {}),
       })
       const order = resp.result?.list?.[0]
       if (!order) return null
@@ -822,7 +864,7 @@ export class BybitExchangeService {
       if (!Number.isFinite(avgPx) || avgPx <= 0 || !Number.isFinite(totalSz) || totalSz <= 0) return null
       return { avgPx, totalSz, isFilled: order.orderStatus === 'Filled' }
     } catch (err) {
-      log.warn('bybit-exec', `getFillAggregateByCloid failed: ${err instanceof Error ? err.message : err}`)
+      log.warn('bybit-exec', `getFillAggregate failed (${params.context}): ${err instanceof Error ? err.message : err}`)
       return null
     }
   }

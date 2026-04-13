@@ -6,22 +6,19 @@
  * S10: Also mocks ExchangeService (replaces old stubs).
  */
 
-import { describe, it, expect, beforeEach, mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 
 // Mock the DB connection BEFORE importing OrderManager
+let mockSqlResponses: Record<string, unknown>[][] = []
+
 mock.module('../db/connection.js', () => {
-  const handler = {
-    get(_target: unknown, prop: string) {
-      if (prop === 'end') return () => Promise.resolve()
-      // Return a tagged template function that resolves to empty array
-      return () => Promise.resolve([])
-    },
-    apply() {
-      return Promise.resolve([])
-    },
+  const sqlTag = () => {
+    const next = mockSqlResponses.shift()
+    return Promise.resolve(next ?? [])
   }
-  const sqlProxy = new Proxy(function () { return Promise.resolve([]) } as unknown as object, handler)
-  return { sql: sqlProxy }
+  return {
+    sql: Object.assign(sqlTag, { end: () => Promise.resolve() }),
+  }
 })
 
 // S10: Mock ExchangeService so OrderManager's exchange wrappers return success
@@ -68,7 +65,8 @@ import {
   paperSimulateCancel,
   paperSimulateTrigger,
 } from './order-manager.js'
-import type { AgentEvent, Order } from './types.js'
+import type { AgentEvent, Order, TriggerOrder } from './types.js'
+import type { ExchangePool, IExchangeService } from '../execution/exchange-pool.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -80,6 +78,20 @@ function getOrdersMap(om: OrderManager): Map<string, Order> {
 /** Inject an order into the cache (bypasses DB). */
 function injectOrder(om: OrderManager, order: Order): void {
   getOrdersMap(om).set(order.id, order)
+}
+
+/** Access the private triggerOrders map. */
+function getTriggerOrdersMap(om: OrderManager): Map<string, TriggerOrder[]> {
+  return (om as unknown as { triggerOrders: Map<string, TriggerOrder[]> }).triggerOrders
+}
+
+/** Inject trigger orders for a parent order (test-only helper). */
+function injectTriggers(om: OrderManager, parentOrderId: string, triggers: TriggerOrder[]): void {
+  getTriggerOrdersMap(om).set(parentOrderId, triggers)
+}
+
+function queueSqlResult(rows: Record<string, unknown>[]): void {
+  mockSqlResponses.push(rows)
 }
 
 function makeOrder(overrides: Partial<Order> = {}): Order {
@@ -101,6 +113,9 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     filledAt: null,
     fillPrice: null,
     fillSize: 0,
+    strategyId: 'smc-sd',
+    positionId: null,
+    exchange: 'HL',
     ...overrides,
   }
 }
@@ -127,12 +142,15 @@ describe('generateCloid', () => {
 describe('OrderManager', () => {
   let om: OrderManager
   let dispatchedEvents: Array<{ coin: string; event: AgentEvent }>
+  const originalActiveExchange = process.env.ACTIVE_EXCHANGE
 
   beforeEach(() => {
+    process.env.ACTIVE_EXCHANGE = 'HL'
     resetOrderManager()
     mockOrderSuccess = true
     mockCancelSuccess = true
     mockTriggerSuccess = true
+    mockSqlResponses = []
     om = new OrderManager()
     dispatchedEvents = []
     om.setAgentDispatch((coin, event) => {
@@ -140,9 +158,157 @@ describe('OrderManager', () => {
     })
   })
 
+  afterEach(() => {
+    if (originalActiveExchange === undefined) {
+      delete process.env.ACTIVE_EXCHANGE
+    } else {
+      process.env.ACTIVE_EXCHANGE = originalActiveExchange
+    }
+  })
+
   it('getOrder returns null for malformed order ids without hitting DB', async () => {
     expect(await om.getOrder('abc-123')).toBeNull()
     expect(await om.getOrder('not-a-uuid')).toBeNull()
+  })
+
+  describe('DB row mapping + recovery lookup', () => {
+    it('loadActiveOrders maps cloid from DB cloid column (not exchange_order_id)', async () => {
+      process.env.ACTIVE_EXCHANGE = 'BB'
+      const rowId = crypto.randomUUID()
+      queueSqlResult([{
+        id: rowId,
+        coin: 'BTC',
+        side: 'long',
+        type: 'limit',
+        price: 50000,
+        size: 0.1,
+        status: 'filled',
+        setup_id: 'setup-1',
+        sl_price: 49000,
+        tp_price: 52000,
+        cloid: 'bb-link-123',
+        exchange_order_id: 'be411c88-aaaa-bbbb-cccc-111122223333',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        filled_at: new Date().toISOString(),
+        fill_price: 50010,
+        fill_size: 0.1,
+        strategy_id: 'smc-sd',
+        position_id: 'pos-1',
+        exchange: 'BB',
+      }])
+
+      await om.loadActiveOrders()
+
+      const loaded = getOrdersMap(om).get(rowId)
+      expect(loaded).not.toBeUndefined()
+      expect(loaded?.cloid).toBe('bb-link-123')
+      expect(loaded?.exchangeOrderId).toBe('be411c88-aaaa-bbbb-cccc-111122223333')
+    })
+
+    it('loadActiveOrders does not infer Bybit cloid from exchange_order_id when cloid is empty', async () => {
+      process.env.ACTIVE_EXCHANGE = 'BB'
+      const rowId = crypto.randomUUID()
+      queueSqlResult([{
+        id: rowId,
+        coin: 'ETH',
+        side: 'short',
+        type: 'limit',
+        price: 3000,
+        size: 1,
+        status: 'submitted',
+        setup_id: 'setup-2',
+        sl_price: 3100,
+        tp_price: 2800,
+        cloid: '',
+        exchange_order_id: 'be411c88-aaaa-bbbb-cccc-111122223333',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        filled_at: null,
+        fill_price: null,
+        fill_size: 0,
+        strategy_id: 'smc-sd',
+        position_id: null,
+        exchange: 'BB',
+      }])
+
+      await om.loadActiveOrders()
+
+      const loaded = getOrdersMap(om).get(rowId)
+      expect(loaded).not.toBeUndefined()
+      expect(loaded?.cloid).toBe('')
+      expect(loaded?.exchangeOrderId).toBe('be411c88-aaaa-bbbb-cccc-111122223333')
+    })
+
+    it('syncSubmittedEntryFills prefers cloid lookup when cloid exists', async () => {
+      const order = makeOrder({
+        exchange: 'BB',
+        status: 'submitted',
+        size: 1,
+        fillSize: 0,
+        cloid: 'bb-link-live',
+        exchangeOrderId: 'bb-order-1',
+      })
+      injectOrder(om, order)
+
+      const getFillAggregateByCloid = mock(() =>
+        Promise.resolve({ avgPx: 50000, totalSz: 0.4, isFilled: false }),
+      )
+      const getFillAggregateByOrderId = mock(() => Promise.resolve(null))
+      const bbSvc = {
+        exchangeId: 'BB',
+        getFillAggregateByCloid,
+        getFillAggregateByOrderId,
+      } as unknown as IExchangeService
+      const fakePool = {
+        isInitialized: () => true,
+        get: () => bbSvc,
+      } as unknown as ExchangePool
+      om.setExchangePool(fakePool)
+
+      await om.syncSubmittedEntryFills()
+
+      expect(getFillAggregateByCloid).toHaveBeenCalledTimes(1)
+      expect(getFillAggregateByCloid).toHaveBeenCalledWith('bb-link-live', 'BTC')
+      expect(getFillAggregateByOrderId).toHaveBeenCalledTimes(0)
+      expect(getOrdersMap(om).get(order.id)?.status).toBe('partial')
+      expect(getOrdersMap(om).get(order.id)?.fillSize).toBe(0.4)
+    })
+
+    it('syncSubmittedEntryFills falls back to orderId lookup when cloid lookup misses', async () => {
+      const order = makeOrder({
+        exchange: 'BB',
+        status: 'submitted',
+        size: 1,
+        fillSize: 0,
+        cloid: 'bb-link-stale',
+        exchangeOrderId: 'bb-order-fallback',
+      })
+      injectOrder(om, order)
+
+      const getFillAggregateByCloid = mock(() => Promise.resolve(null))
+      const getFillAggregateByOrderId = mock(() =>
+        Promise.resolve({ avgPx: 49990, totalSz: 0.25, isFilled: false }),
+      )
+      const bbSvc = {
+        exchangeId: 'BB',
+        getFillAggregateByCloid,
+        getFillAggregateByOrderId,
+      } as unknown as IExchangeService
+      const fakePool = {
+        isInitialized: () => true,
+        get: () => bbSvc,
+      } as unknown as ExchangePool
+      om.setExchangePool(fakePool)
+
+      await om.syncSubmittedEntryFills()
+
+      expect(getFillAggregateByCloid).toHaveBeenCalledTimes(1)
+      expect(getFillAggregateByOrderId).toHaveBeenCalledTimes(1)
+      expect(getFillAggregateByOrderId).toHaveBeenCalledWith('bb-order-fallback', 'BTC')
+      expect(getOrdersMap(om).get(order.id)?.status).toBe('partial')
+      expect(getOrdersMap(om).get(order.id)?.fillSize).toBe(0.25)
+    })
   })
 
   // ── Cancel ───────────────────────────────────────────────────────────
@@ -339,6 +505,91 @@ describe('OrderManager', () => {
     it('is no-op for unknown parent order', async () => {
       // Should not throw
       await om.modifySLPrice('nonexistent', 50000)
+    })
+
+    it('uses Bybit position-level stop update without requiring triggerOrders', async () => {
+      const order = makeOrder({
+        status: 'filled',
+        strategyId: 'smc-sd',
+        exchange: 'BB',
+        slPrice: 49000,
+      })
+      injectOrder(om, order)
+
+      const modifyTrigger = mock(() =>
+        Promise.resolve({ success: true, oid: 67890, avgPx: null, totalSz: null, status: 'modified', error: null }),
+      )
+      const updatePositionStop = mock(() =>
+        Promise.resolve({ success: true, oid: null, avgPx: null, totalSz: null, status: 'submitted', error: null }),
+      )
+      const bbSvc = {
+        exchangeId: 'BB',
+        modifyTrigger,
+        updatePositionStop,
+      } as unknown as IExchangeService
+      const fakePool = {
+        isInitialized: () => true,
+        get: () => bbSvc,
+      } as unknown as ExchangePool
+      om.setExchangePool(fakePool)
+
+      await om.modifySLPrice(order.id, 49500)
+
+      expect(updatePositionStop).toHaveBeenCalledTimes(1)
+      expect(modifyTrigger).toHaveBeenCalledTimes(0)
+      const params = (updatePositionStop.mock.calls[0] as [{
+        coin: string
+        positionSide: 'long' | 'short'
+        triggerPrice: number
+        tpsl: 'tp' | 'sl'
+      }])[0]
+      expect(params.coin).toBe('BTC')
+      expect(params.positionSide).toBe('long')
+      expect(params.triggerPrice).toBe(49500)
+      expect(params.tpsl).toBe('sl')
+    })
+
+    it('keeps HL path on modifyTrigger for trailing SL updates', async () => {
+      const order = makeOrder({
+        status: 'filled',
+        strategyId: 'smc-sd',
+        exchange: 'HL',
+      })
+      injectOrder(om, order)
+      injectTriggers(om, order.id, [{
+        type: 'sl',
+        coin: 'BTC',
+        side: 'short',
+        triggerPrice: 49000,
+        size: 0.1,
+        isMarket: true,
+        cloid: generateCloid(),
+        exchangeOrderId: '67890',
+        parentOrderId: order.id,
+      }])
+
+      const modifyTrigger = mock(() =>
+        Promise.resolve({ success: true, oid: 67890, avgPx: null, totalSz: null, status: 'modified', error: null }),
+      )
+      const updatePositionStop = mock(() =>
+        Promise.resolve({ success: true, oid: null, avgPx: null, totalSz: null, status: 'submitted', error: null }),
+      )
+      const hlSvc = {
+        exchangeId: 'HL',
+        modifyTrigger,
+        updatePositionStop,
+      } as unknown as IExchangeService
+      const fakePool = {
+        isInitialized: () => true,
+        get: () => hlSvc,
+      } as unknown as ExchangePool
+      om.setExchangePool(fakePool)
+
+      await om.modifySLPrice(order.id, 49500)
+
+      expect(modifyTrigger).toHaveBeenCalledTimes(1)
+      expect(updatePositionStop).toHaveBeenCalledTimes(0)
+      expect(om.getTriggerOrders(order.id).find(t => t.type === 'sl')?.triggerPrice).toBe(49500)
     })
   })
 

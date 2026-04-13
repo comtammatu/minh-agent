@@ -41,7 +41,12 @@ import {
   HL_MIN_ORDER_NOTIONAL_USD,
   MARKET_ORDER_SLIPPAGE_PCT,
 } from '../config.js'
-import { getExchangeService, type ExchangeService } from '../execution/exchange-service.js'
+import {
+  getExchangeService,
+  type ExchangeService,
+  type OrderResult,
+  type UpdatePositionStopParams,
+} from '../execution/exchange-service.js'
 import type { ExchangePool, IExchangeService } from '../execution/exchange-pool.js'
 import { getLatestBook } from '../feed/orderbook.js'
 import { log } from '../lib/logger.js'
@@ -63,6 +68,24 @@ function isValidOrderUuid(id: string): boolean {
 
 function clampPositiveFinite(n: number, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback
+}
+
+function isBybitLiveMode(): boolean {
+  if (getEffectivePaperTrade()) return false
+  try {
+    return getActiveExchange() === 'BB'
+  } catch {
+    // Backward-compat for tests/scripts that don't set ACTIVE_EXCHANGE.
+    return false
+  }
+}
+
+type PositionStopUpdateExchange = IExchangeService & {
+  updatePositionStop: (params: UpdatePositionStopParams) => Promise<OrderResult>
+}
+
+function supportsPositionStopUpdate(svc: IExchangeService): svc is PositionStopUpdateExchange {
+  return typeof (svc as Partial<PositionStopUpdateExchange>).updatePositionStop === 'function'
 }
 
 /**
@@ -244,12 +267,12 @@ export function paperSimulateTrigger(trigger: TriggerOrder): ExchangeOrderResult
 /** Insert a new order into the database. */
 async function insertOrder(order: Order): Promise<void> {
   await sql`
-    INSERT INTO orders (id, coin, side, type, price, size, status, setup_id, sl_price, tp_price, exchange_order_id, created_at, updated_at, fill_price, filled_at, strategy_id, position_id, exchange)
+    INSERT INTO orders (id, coin, side, type, price, size, status, setup_id, sl_price, tp_price, cloid, exchange_order_id, created_at, updated_at, fill_price, fill_size, filled_at, strategy_id, position_id, exchange)
     VALUES (
       ${order.id}, ${order.coin}, ${order.side}, ${order.type}, ${order.price},
-      ${order.size}, ${order.status}, ${order.setupId}, ${order.slPrice}, ${order.tpPrice},
+      ${order.size}, ${order.status}, ${order.setupId}, ${order.slPrice}, ${order.tpPrice}, ${order.cloid},
       ${order.exchangeOrderId}, ${new Date(order.createdAt)}, ${new Date(order.updatedAt)},
-      ${order.fillPrice}, ${order.filledAt ? new Date(order.filledAt) : null},
+      ${order.fillPrice}, ${order.fillSize}, ${order.filledAt ? new Date(order.filledAt) : null},
       ${order.strategyId}, ${order.positionId}, ${order.exchange}
     )
   `
@@ -260,8 +283,10 @@ async function updateOrderInDb(order: Order): Promise<void> {
   await sql`
     UPDATE orders SET
       status = ${order.status},
+      cloid = ${order.cloid},
       exchange_order_id = ${order.exchangeOrderId},
       fill_price = ${order.fillPrice},
+      fill_size = ${order.fillSize},
       filled_at = ${order.filledAt ? new Date(order.filledAt) : null},
       updated_at = ${new Date(order.updatedAt)},
       position_id = ${order.positionId}
@@ -299,6 +324,16 @@ async function getOrderById(orderId: string): Promise<Order | null> {
 
 /** Map DB row to Order type. */
 function rowToOrder(row: Record<string, unknown>): Order {
+  const exchange = (row.exchange as string) ?? 'HL'
+  const exchangeOrderId = (row.exchange_order_id as string) ?? null
+  const persistedCloid = typeof row.cloid === 'string' ? row.cloid.trim() : ''
+  // Legacy fallback: before `cloid` persistence, some HL rows stored cloid-like IDs in exchange_order_id.
+  // Never apply this fallback to Bybit rows (orderId UUID must not be treated as cloid).
+  const fallbackCloid = exchange === 'HL' && typeof exchangeOrderId === 'string' && exchangeOrderId.startsWith('0x')
+    ? exchangeOrderId
+    : null
+  const cloid = persistedCloid.length > 0 ? persistedCloid : (fallbackCloid ?? '')
+
   return {
     id: row.id as string,
     coin: row.coin as string,
@@ -310,16 +345,16 @@ function rowToOrder(row: Record<string, unknown>): Order {
     setupId: (row.setup_id as string) ?? null,
     slPrice: (row.sl_price as number) ?? null,
     tpPrice: (row.tp_price as number) ?? null,
-    cloid: (row.exchange_order_id as string) ?? '',  // temporary until cloid column exists
-    exchangeOrderId: (row.exchange_order_id as string) ?? null,
+    cloid,
+    exchangeOrderId,
     createdAt: row.created_at ? new Date(row.created_at as string).getTime() : Date.now(),
     updatedAt: row.updated_at ? new Date(row.updated_at as string).getTime() : Date.now(),
     filledAt: row.filled_at ? new Date(row.filled_at as string).getTime() : null,
     fillPrice: (row.fill_price as number) ?? null,
-    fillSize: 0,  // TODO: add fill_size column in S10 migration
+    fillSize: (row.fill_size as number) ?? 0,
     strategyId: (row.strategy_id as string) ?? DEFAULT_STRATEGY,
     positionId: (row.position_id as string) ?? null,
-    exchange: (row.exchange as string) ?? 'HL',
+    exchange,
   }
 }
 
@@ -352,10 +387,17 @@ export class OrderManager {
     this.exchangePool = pool
   }
 
-  /** Get exchange service for a strategy. Falls back to HL singleton if no pool or pool init failed. */
+  /**
+   * Get exchange service for a strategy.
+   * Fallback to HL singleton is allowed only for HL/paper paths.
+   * BB live mode must never silently route to HL singleton.
+   */
   private getExchangeForStrategy(strategyId: string, exchange?: ExchangeId): IExchangeService {
     if (this.exchangePool?.isInitialized()) {
       return this.exchangePool.get(strategyId, exchange)
+    }
+    if (isBybitLiveMode()) {
+      throw new Error('OrderManager: ExchangePool must be initialized in BB live mode (HL fallback blocked)')
     }
     return getExchangeService()
   }
@@ -812,9 +854,45 @@ export class OrderManager {
 
   /**
    * Modify SL trigger order on exchange (used by PositionMonitor for trail stop).
-   * S10: Uses ExchangeService.modifyTrigger if oid available, else cancel+replace.
+   * S10: HL uses ExchangeService.modifyTrigger (or cancel+replace fallback).
+   * BB uses position-level updatePositionStop (no trigger-order dependency).
    */
   async modifySLPrice(parentOrderId: string, newSlPrice: number): Promise<void> {
+    const parentOrder = this.orders.get(parentOrderId)
+    const svc = this.getExchangeForStrategy(parentOrder?.strategyId ?? DEFAULT_STRATEGY)
+
+    if (!getEffectivePaperTrade() && svc.exchangeId === 'BB') {
+      if (!parentOrder) {
+        log.warn('order-manager', `No parent order for BB stop update ${parentOrderId}`)
+        return
+      }
+      if (!supportsPositionStopUpdate(svc)) {
+        log.error('order-manager', 'BB exchange service missing updatePositionStop()')
+        return
+      }
+
+      const oldPrice = parentOrder.slPrice
+      try {
+        const result = await svc.updatePositionStop({
+          coin: parentOrder.coin,
+          positionSide: parentOrder.side,
+          triggerPrice: newSlPrice,
+          tpsl: 'sl',
+        })
+        if (result.success) {
+          parentOrder.slPrice = newSlPrice
+          parentOrder.updatedAt = Date.now()
+          this.orders.set(parentOrder.id, parentOrder)
+          log.info('order-manager', `BB position SL updated: ${parentOrder.coin} ${oldPrice ?? '-'} → ${newSlPrice}`)
+        } else {
+          log.error('order-manager', `BB position SL update failed: ${result.error}`)
+        }
+      } catch (err) {
+        log.error('order-manager', `BB position SL update error: ${err instanceof Error ? err.message : err}`)
+      }
+      return
+    }
+
     const triggers = this.triggerOrders.get(parentOrderId)
     if (!triggers) {
       log.warn('order-manager', `No triggers for order ${parentOrderId}`)
@@ -835,10 +913,6 @@ export class OrderManager {
       log.info('order-manager', `[PAPER] SL updated: ${slTrigger.coin} ${oldPrice} → ${newSlPrice}`)
       return
     }
-
-    // Get strategy-specific exchange service from parent order
-    const parentOrder = this.orders.get(parentOrderId)
-    const svc = this.getExchangeForStrategy(parentOrder?.strategyId ?? DEFAULT_STRATEGY)
 
     // Try to modify on exchange if we have an oid
     if (slTrigger.exchangeOrderId) {
@@ -893,7 +967,14 @@ export class OrderManager {
     for (const [, order] of this.orders) {
       if (order.status !== 'submitted' && order.status !== 'partial') continue
       const svc = this.getExchangeForStrategy(order.strategyId)
-      const fill = await svc.getFillAggregateByCloid(order.cloid, order.coin)
+      const hasCloid = order.cloid.trim().length > 0
+      let fill = hasCloid
+        ? await svc.getFillAggregateByCloid(order.cloid, order.coin)
+        : null
+
+      if (!fill && order.exchangeOrderId && typeof svc.getFillAggregateByOrderId === 'function') {
+        fill = await svc.getFillAggregateByOrderId(order.exchangeOrderId, order.coin)
+      }
       if (!fill || fill.totalSz <= 0) continue
 
       // isFilled=true means the exchange confirms the order is fully done (e.g. Bybit

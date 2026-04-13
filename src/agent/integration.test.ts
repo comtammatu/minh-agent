@@ -7,7 +7,7 @@
  * Validates that index.ts wiring pattern works correctly.
  */
 
-import { describe, it, expect, beforeEach, mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { EventEmitter } from 'events'
 
 // Mock DB before any imports
@@ -100,8 +100,10 @@ describe('End-to-end integration', () => {
   let bridge: InvalidationBridge
   let pipelineEmitter: EventEmitter
   let actions: AgentAction[]
+  const originalActiveExchange = process.env.ACTIVE_EXCHANGE
 
   beforeEach(() => {
+    process.env.ACTIVE_EXCHANGE = 'HL'
     resetAgent()
     resetOrderManager()
     resetPositionMonitor()
@@ -123,6 +125,14 @@ describe('End-to-end integration', () => {
     })
     om.setAgentDispatch((coin, event) => agent.dispatch(coin, event))
     pm.setAgentDispatch((coin, event) => agent.dispatch(coin, event))
+  })
+
+  afterEach(() => {
+    if (originalActiveExchange === undefined) {
+      delete process.env.ACTIVE_EXCHANGE
+    } else {
+      process.env.ACTIVE_EXCHANGE = originalActiveExchange
+    }
   })
 
   it('setup event transitions agent from IDLE → ENTERING', () => {

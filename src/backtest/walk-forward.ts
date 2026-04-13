@@ -13,7 +13,6 @@
 
 import type { Candle, CandleInterval } from '../types.js'
 import type {
-  BacktestConfig,
   BacktestMetrics,
   BacktestTrade,
   WalkForwardConfig,
@@ -84,6 +83,7 @@ export function walkForward(
       testEnd: def.testEnd,
       trainMetrics: trainResult.metrics,
       testMetrics: testResult.metrics,
+      testTrades: testResult.trades,
     })
   }
 
@@ -102,8 +102,8 @@ export function walkForward(
     ? isMetrics.expectancy / oosMetrics.expectancy
     : (isMetrics.expectancy > 0 ? Infinity : 0)
 
-  // Collect all OOS trades for bootstrap CI
-  const oosTrades = collectOOSTrades(windows, candles, backtestConfig)
+  // Collect all OOS trades for bootstrap CI (reads from saved testTrades)
+  const oosTrades = collectOOSTrades(windows)
   const oosExpectancyCI = bootstrapExpectancyCI(oosTrades, WF_BOOTSTRAP_ITERATIONS, WF_CONFIDENCE_LEVEL)
   const windowConsistency = perWindowConsistency(windows)
 
@@ -415,20 +415,19 @@ export function perWindowConsistency(windows: WalkForwardWindow[]): WindowConsis
 }
 
 /**
- * Collect all OOS trades across windows by re-running backtest on each test period.
- * Needed for bootstrap CI (which requires individual trade PnLs, not aggregated metrics).
+ * Collect all OOS trades across windows from saved testTrades.
+ * Reads from WalkForwardWindow.testTrades (populated during the main loop)
+ * to avoid re-running backtest per window.
  */
 function collectOOSTrades(
   windows: WalkForwardWindow[],
-  candles: Map<string, Candle[]>,
-  config: BacktestConfig,
 ): BacktestTrade[] {
   const allTrades: BacktestTrade[] = []
 
   for (const w of windows) {
-    const testCandles = sliceCandles(candles, w.testStart, w.testEnd)
-    const result = runBacktest(testCandles, config)
-    allTrades.push(...result.trades)
+    if (w.testTrades) {
+      allTrades.push(...w.testTrades)
+    }
   }
 
   return allTrades

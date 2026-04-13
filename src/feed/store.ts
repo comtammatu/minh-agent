@@ -96,6 +96,28 @@ export function getCandles(coin: string, interval: CandleInterval, count: number
   return arr.slice(-count)
 }
 
+/**
+ * Copy last N candles into a caller-provided array to reduce allocations on hot paths.
+ * The target array is mutated in place and returned for chaining.
+ */
+export function getCandlesInto(
+  coin: string,
+  interval: CandleInterval,
+  count: number,
+  target: Candle[],
+  exchange: ExchangeId = 'HL',
+): Candle[] {
+  const arr = store.get(key(coin, interval, exchange))
+  target.length = 0
+  if (!arr) return target
+
+  const start = Math.max(0, arr.length - count)
+  for (let i = start; i < arr.length; i++) {
+    target.push(arr[i]!)
+  }
+  return target
+}
+
 /** Get total candle count for a coin/interval. */
 export function candleCount(coin: string, interval: CandleInterval, exchange: ExchangeId = 'HL'): number {
   return store.get(key(coin, interval, exchange))?.length ?? 0

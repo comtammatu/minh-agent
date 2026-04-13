@@ -8,7 +8,9 @@
     "start": "bun run src/index.ts",
     "test": "bun test",
     "test:run": "bun test --run",
-    "fixtures": "bun run scripts/gen-fixtures.ts"
+    "fixtures": "bun run scripts/gen-fixtures.ts",
+    "bench:pipeline": "LOG_LEVEL=ERROR bun run src/backtest/run-pipeline-benchmark.ts",
+    "bench:pipeline:ci": "LOG_LEVEL=ERROR bun run scripts/check-pipeline-performance.ts"
   },
   "dependencies": {
     "@nktkas/hyperliquid": "^0.32.2",

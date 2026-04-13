@@ -1,0 +1,3825 @@
+{
+  "runId": "2d8898ed-177a-40e1-aac3-682a31d594c0",
+  "coins": [
+    "BTC",
+    "ETH",
+    "SOL"
+  ],
+  "numTrials": 200,
+  "totalDurationMs": 1562071,
+  "trials": [
+    {
+      "trialIndex": 0,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.15,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.5942883689283589,
+      "oosExpectancy": -308.33351915753906,
+      "maxDD": 0.2443794638058556,
+      "winRate": 0.375,
+      "tradeCount": 72,
+      "numWindows": 280,
+      "durationMs": 7448
+    },
+    {
+      "trialIndex": 1,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.4,
+        "REGIME_MULT_NEUTRAL": 0.6,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7632
+    },
+    {
+      "trialIndex": 2,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7941
+    },
+    {
+      "trialIndex": 3,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7907
+    },
+    {
+      "trialIndex": 4,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.9015720812426714,
+      "oosExpectancy": -69.74003506080385,
+      "maxDD": 0.2363306735360326,
+      "winRate": 0.3815789473684211,
+      "tradeCount": 76,
+      "numWindows": 280,
+      "durationMs": 7699
+    },
+    {
+      "trialIndex": 5,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 1.336397849863252,
+      "oosExpectancy": 209.96213398789894,
+      "maxDD": 0.2199072338229784,
+      "winRate": 0.4125,
+      "tradeCount": 80,
+      "numWindows": 280,
+      "durationMs": 7946
+    },
+    {
+      "trialIndex": 6,
+      "params": {
+        "MIN_CONFIDENCE": 0.55,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.6,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 476.73227603809227,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7898
+    },
+    {
+      "trialIndex": 7,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 3.433574403656791,
+      "oosExpectancy": 189.17703769735988,
+      "maxDD": 0.007773628676119188,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7922
+    },
+    {
+      "trialIndex": 8,
+      "params": {
+        "MIN_CONFIDENCE": 0.55,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 460.1628402752219,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7851
+    },
+    {
+      "trialIndex": 9,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.5845525026240568,
+      "oosExpectancy": -336.60871433924507,
+      "maxDD": 0.25279054177374843,
+      "winRate": 0.36619718309859156,
+      "tradeCount": 71,
+      "numWindows": 280,
+      "durationMs": 7938
+    },
+    {
+      "trialIndex": 10,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.8,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.3469891483825587,
+      "oosExpectancy": 197.4110774338452,
+      "maxDD": 0.1891029151605445,
+      "winRate": 0.4444444444444444,
+      "tradeCount": 81,
+      "numWindows": 280,
+      "durationMs": 8326
+    },
+    {
+      "trialIndex": 11,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 460.1628402752219,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7920
+    },
+    {
+      "trialIndex": 12,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 15.42470583956218,
+      "oosExpectancy": 960.0350557014712,
+      "maxDD": 0.0133109827871625,
+      "winRate": 0.6,
+      "tradeCount": 5,
+      "numWindows": 280,
+      "durationMs": 8009
+    },
+    {
+      "trialIndex": 13,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": -158.23360857955717,
+      "maxDD": 0.015823360857955777,
+      "winRate": 0,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 8102
+    },
+    {
+      "trialIndex": 14,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": null,
+      "oosExpectancy": 381.16755609934455,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 8268
+    },
+    {
+      "trialIndex": 15,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.8,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 6.3546816911314385,
+      "oosExpectancy": 277.1591402072979,
+      "maxDD": 0.0051760152366542266,
+      "winRate": 0.6666666666666666,
+      "tradeCount": 3,
+      "numWindows": 280,
+      "durationMs": 8104
+    },
+    {
+      "trialIndex": 16,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 8334
+    },
+    {
+      "trialIndex": 17,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 495.2215169379933,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 9394
+    },
+    {
+      "trialIndex": 18,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.8,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 0.818618815840784,
+      "oosExpectancy": -132.7122657298288,
+      "maxDD": 0.2476170850374877,
+      "winRate": 0.37681159420289856,
+      "tradeCount": 69,
+      "numWindows": 280,
+      "durationMs": 8944
+    },
+    {
+      "trialIndex": 19,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.8,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": null,
+      "oosExpectancy": 355.9321484083623,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 8769
+    },
+    {
+      "trialIndex": 20,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.3039591293235666,
+      "oosExpectancy": 193.16215769151472,
+      "maxDD": 0.2229996810992602,
+      "winRate": 0.38372093023255816,
+      "tradeCount": 86,
+      "numWindows": 280,
+      "durationMs": 8251
+    },
+    {
+      "trialIndex": 21,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.4,
+        "REGIME_MULT_NEUTRAL": 0.8,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 8076
+    },
+    {
+      "trialIndex": 22,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 8107
+    },
+    {
+      "trialIndex": 23,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.15,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": -157.04512621477423,
+      "maxDD": 0.015704512621477443,
+      "winRate": 0,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7927
+    },
+    {
+      "trialIndex": 24,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7972
+    },
+    {
+      "trialIndex": 25,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 410.2543824644185,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 8017
+    },
+    {
+      "trialIndex": 26,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 476.73227603809227,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7971
+    },
+    {
+      "trialIndex": 27,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.9531964674606426,
+      "oosExpectancy": -30.865051288642803,
+      "maxDD": 0.2214903628378688,
+      "winRate": 0.41333333333333333,
+      "tradeCount": 75,
+      "numWindows": 280,
+      "durationMs": 7901
+    },
+    {
+      "trialIndex": 28,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.3272073658292125,
+      "oosExpectancy": 201.80378738377988,
+      "maxDD": 0.21896105335250354,
+      "winRate": 0.4074074074074074,
+      "tradeCount": 81,
+      "numWindows": 280,
+      "durationMs": 8384
+    },
+    {
+      "trialIndex": 29,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": null,
+      "oosExpectancy": 495.2215169379933,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 8022
+    },
+    {
+      "trialIndex": 30,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 1.798607368582228,
+      "oosExpectancy": 330.29653716282957,
+      "maxDD": 0.09788841285746927,
+      "winRate": 0.41509433962264153,
+      "tradeCount": 53,
+      "numWindows": 280,
+      "durationMs": 7981
+    },
+    {
+      "trialIndex": 31,
+      "params": {
+        "MIN_CONFIDENCE": 0.55,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.8290654286450673,
+      "oosExpectancy": -114.29589037896187,
+      "maxDD": 0.22571343287098203,
+      "winRate": 0.39473684210526316,
+      "tradeCount": 76,
+      "numWindows": 280,
+      "durationMs": 8156
+    },
+    {
+      "trialIndex": 32,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.4380252466635386,
+      "oosExpectancy": 208.71575682288085,
+      "maxDD": 0.12213138289551563,
+      "winRate": 0.40384615384615385,
+      "tradeCount": 52,
+      "numWindows": 280,
+      "durationMs": 7919
+    },
+    {
+      "trialIndex": 33,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.15,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.7934196274398979,
+      "oosExpectancy": -137.17881144846342,
+      "maxDD": 0.22424506538424513,
+      "winRate": 0.375,
+      "tradeCount": 72,
+      "numWindows": 280,
+      "durationMs": 8153
+    },
+    {
+      "trialIndex": 34,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.8,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.2828826859112998,
+      "oosExpectancy": 187.95024993007075,
+      "maxDD": 0.2338422084931745,
+      "winRate": 0.3780487804878049,
+      "tradeCount": 82,
+      "numWindows": 280,
+      "durationMs": 7881
+    },
+    {
+      "trialIndex": 35,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7728
+    },
+    {
+      "trialIndex": 36,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 9.342924282209392,
+      "oosExpectancy": 763.9259157389247,
+      "maxDD": 0.014702815390532212,
+      "winRate": 0.5,
+      "tradeCount": 6,
+      "numWindows": 280,
+      "durationMs": 7812
+    },
+    {
+      "trialIndex": 37,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 1.3257140072357558,
+      "oosExpectancy": 199.06812897800614,
+      "maxDD": 0.21685197873324544,
+      "winRate": 0.4024390243902439,
+      "tradeCount": 82,
+      "numWindows": 280,
+      "durationMs": 8361
+    },
+    {
+      "trialIndex": 38,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.8309057990690328,
+      "oosExpectancy": -114.52370309325033,
+      "maxDD": 0.22811478739069643,
+      "winRate": 0.4,
+      "tradeCount": 75,
+      "numWindows": 280,
+      "durationMs": 8076
+    },
+    {
+      "trialIndex": 39,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 8059
+    },
+    {
+      "trialIndex": 40,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.4,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 8014
+    },
+    {
+      "trialIndex": 41,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 0.7982740201092267,
+      "oosExpectancy": -130.3571624532583,
+      "maxDD": 0.21881016985904347,
+      "winRate": 0.3783783783783784,
+      "tradeCount": 74,
+      "numWindows": 280,
+      "durationMs": 7929
+    },
+    {
+      "trialIndex": 42,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.2862330266161197,
+      "oosExpectancy": 187.89873186948205,
+      "maxDD": 0.23139234816875182,
+      "winRate": 0.3855421686746988,
+      "tradeCount": 83,
+      "numWindows": 280,
+      "durationMs": 8262
+    },
+    {
+      "trialIndex": 43,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.15,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 0.5942883689283589,
+      "oosExpectancy": -308.33351915753906,
+      "maxDD": 0.2443794638058556,
+      "winRate": 0.375,
+      "tradeCount": 72,
+      "numWindows": 280,
+      "durationMs": 7956
+    },
+    {
+      "trialIndex": 44,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 8291
+    },
+    {
+      "trialIndex": 45,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.4,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 6.500609245868075,
+      "oosExpectancy": 293.2020970740354,
+      "maxDD": 0.00533035676537614,
+      "winRate": 0.6666666666666666,
+      "tradeCount": 3,
+      "numWindows": 280,
+      "durationMs": 8123
+    },
+    {
+      "trialIndex": 46,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 3.5676555967520653,
+      "oosExpectancy": 201.61889863399978,
+      "maxDD": 0.007852256310738721,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7783
+    },
+    {
+      "trialIndex": 47,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.8,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 1.29065913414799,
+      "oosExpectancy": 199.2433256308217,
+      "maxDD": 0.239704892573203,
+      "winRate": 0.379746835443038,
+      "tradeCount": 79,
+      "numWindows": 280,
+      "durationMs": 7812
+    },
+    {
+      "trialIndex": 48,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.6,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 0.6272803716168941,
+      "oosExpectancy": -284.9994899682378,
+      "maxDD": 0.13990401655140391,
+      "winRate": 0.34210526315789475,
+      "tradeCount": 38,
+      "numWindows": 280,
+      "durationMs": 8463
+    },
+    {
+      "trialIndex": 49,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.4,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 1.3430814717772053,
+      "oosExpectancy": 209.57420571367072,
+      "maxDD": 0.21590095693742475,
+      "winRate": 0.4146341463414634,
+      "tradeCount": 82,
+      "numWindows": 280,
+      "durationMs": 7945
+    },
+    {
+      "trialIndex": 50,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 3.19651567832858,
+      "oosExpectancy": 170.1480511380977,
+      "maxDD": 0.007746270733089932,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7700
+    },
+    {
+      "trialIndex": 51,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 410.2543824644185,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7719
+    },
+    {
+      "trialIndex": 52,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.7907073072437221,
+      "oosExpectancy": -140.90111409039628,
+      "maxDD": 0.22832741586745478,
+      "winRate": 0.38028169014084506,
+      "tradeCount": 71,
+      "numWindows": 280,
+      "durationMs": 8152
+    },
+    {
+      "trialIndex": 53,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 0.6004795785102085,
+      "oosExpectancy": -299.46901964686975,
+      "maxDD": 0.24103179991810414,
+      "winRate": 0.3835616438356164,
+      "tradeCount": 73,
+      "numWindows": 280,
+      "durationMs": 7950
+    },
+    {
+      "trialIndex": 54,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.6,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 8138
+    },
+    {
+      "trialIndex": 55,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.8,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7853
+    },
+    {
+      "trialIndex": 56,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 6.236082754981826,
+      "oosExpectancy": 276.1747563806545,
+      "maxDD": 0.005274453619318592,
+      "winRate": 0.6666666666666666,
+      "tradeCount": 3,
+      "numWindows": 280,
+      "durationMs": 7671
+    },
+    {
+      "trialIndex": 57,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 7.276715522650928,
+      "oosExpectancy": 632.5080101398603,
+      "maxDD": 0.01483097638409225,
+      "winRate": 0.42857142857142855,
+      "tradeCount": 7,
+      "numWindows": 280,
+      "durationMs": 7786
+    },
+    {
+      "trialIndex": 58,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.8889492604700506,
+      "oosExpectancy": -72.58072866243174,
+      "maxDD": 0.2228161118972033,
+      "winRate": 0.38461538461538464,
+      "tradeCount": 78,
+      "numWindows": 280,
+      "durationMs": 7874
+    },
+    {
+      "trialIndex": 59,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.2296960067706457,
+      "oosExpectancy": 120.14461938269619,
+      "maxDD": 0.11987617535428455,
+      "winRate": 0.39655172413793105,
+      "tradeCount": 58,
+      "numWindows": 280,
+      "durationMs": 9049
+    },
+    {
+      "trialIndex": 60,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.6,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 9604
+    },
+    {
+      "trialIndex": 61,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 3.5676555967520653,
+      "oosExpectancy": 201.61889863399978,
+      "maxDD": 0.007852256310738721,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 8077
+    },
+    {
+      "trialIndex": 62,
+      "params": {
+        "MIN_CONFIDENCE": 0.55,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.6004795785102085,
+      "oosExpectancy": -299.46901964686975,
+      "maxDD": 0.24103179991810414,
+      "winRate": 0.3835616438356164,
+      "tradeCount": 73,
+      "numWindows": 280,
+      "durationMs": 7809
+    },
+    {
+      "trialIndex": 63,
+      "params": {
+        "MIN_CONFIDENCE": 0.55,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 0.8060992422629921,
+      "oosExpectancy": -123.6297603079596,
+      "maxDD": 0.21589270092758955,
+      "winRate": 0.38666666666666666,
+      "tradeCount": 75,
+      "numWindows": 280,
+      "durationMs": 7756
+    },
+    {
+      "trialIndex": 64,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.8057263448811074,
+      "oosExpectancy": -120.8295691613967,
+      "maxDD": 0.23003410630891785,
+      "winRate": 0.38961038961038963,
+      "tradeCount": 77,
+      "numWindows": 280,
+      "durationMs": 7685
+    },
+    {
+      "trialIndex": 65,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 0.5849131424102255,
+      "oosExpectancy": -341.5036139411564,
+      "maxDD": 0.2574283460752882,
+      "winRate": 0.36363636363636365,
+      "tradeCount": 66,
+      "numWindows": 280,
+      "durationMs": 7790
+    },
+    {
+      "trialIndex": 66,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7948
+    },
+    {
+      "trialIndex": 67,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": -158.23360857955717,
+      "maxDD": 0.015823360857955777,
+      "winRate": 0,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 8528
+    },
+    {
+      "trialIndex": 68,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.4,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": null,
+      "oosExpectancy": 470.72523979105915,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7925
+    },
+    {
+      "trialIndex": 69,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 0.8,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 1.297569016546275,
+      "oosExpectancy": 191.3212846583897,
+      "maxDD": 0.2267214339939419,
+      "winRate": 0.38823529411764707,
+      "tradeCount": 85,
+      "numWindows": 280,
+      "durationMs": 8071
+    },
+    {
+      "trialIndex": 70,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.8,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 1.2619229239930516,
+      "oosExpectancy": 184.2358093473283,
+      "maxDD": 0.2602219768265432,
+      "winRate": 0.36363636363636365,
+      "tradeCount": 77,
+      "numWindows": 280,
+      "durationMs": 8050
+    },
+    {
+      "trialIndex": 71,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.2296960067706457,
+      "oosExpectancy": 120.14461938269619,
+      "maxDD": 0.11987617535428455,
+      "winRate": 0.39655172413793105,
+      "tradeCount": 58,
+      "numWindows": 280,
+      "durationMs": 7773
+    },
+    {
+      "trialIndex": 72,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.6,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7727
+    },
+    {
+      "trialIndex": 73,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 2.036902346090477,
+      "oosExpectancy": 505.5661740403838,
+      "maxDD": 0.10335953395486171,
+      "winRate": 0.359375,
+      "tradeCount": 64,
+      "numWindows": 280,
+      "durationMs": 8151
+    },
+    {
+      "trialIndex": 74,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 8093
+    },
+    {
+      "trialIndex": 75,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 3.433574403656791,
+      "oosExpectancy": 189.17703769735988,
+      "maxDD": 0.007773628676119188,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7860
+    },
+    {
+      "trialIndex": 76,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 3.433574403656791,
+      "oosExpectancy": 189.17703769735988,
+      "maxDD": 0.007773628676119188,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 8163
+    },
+    {
+      "trialIndex": 77,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.4,
+        "REGIME_MULT_NEUTRAL": 0.6,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 0.7519716612724378,
+      "oosExpectancy": -181.86754061037027,
+      "maxDD": 0.1832075102729136,
+      "winRate": 0.3409090909090909,
+      "tradeCount": 44,
+      "numWindows": 280,
+      "durationMs": 7821
+    },
+    {
+      "trialIndex": 78,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.4084279517059557,
+      "oosExpectancy": 249.14677029996608,
+      "maxDD": 0.19850536323937162,
+      "winRate": 0.44,
+      "tradeCount": 75,
+      "numWindows": 280,
+      "durationMs": 7812
+    },
+    {
+      "trialIndex": 79,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 533.8266489171027,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7818
+    },
+    {
+      "trialIndex": 80,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 546.1880255778561,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7647
+    },
+    {
+      "trialIndex": 81,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7512
+    },
+    {
+      "trialIndex": 82,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 3.5676555967520653,
+      "oosExpectancy": 201.61889863399978,
+      "maxDD": 0.007852256310738721,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7576
+    },
+    {
+      "trialIndex": 83,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 2.2042922360558372,
+      "oosExpectancy": 516.503701273372,
+      "maxDD": 0.09032238204769913,
+      "winRate": 0.41935483870967744,
+      "tradeCount": 62,
+      "numWindows": 280,
+      "durationMs": 7543
+    },
+    {
+      "trialIndex": 84,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.8665883665489743,
+      "oosExpectancy": -93.0905799225909,
+      "maxDD": 0.20515298377668117,
+      "winRate": 0.36764705882352944,
+      "tradeCount": 68,
+      "numWindows": 280,
+      "durationMs": 7565
+    },
+    {
+      "trialIndex": 85,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": null,
+      "oosExpectancy": 460.1628402752219,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7621
+    },
+    {
+      "trialIndex": 86,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.8,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 13.635597305828266,
+      "oosExpectancy": 1051.201364021229,
+      "maxDD": 0.016638728483953126,
+      "winRate": 0.5,
+      "tradeCount": 4,
+      "numWindows": 280,
+      "durationMs": 7567
+    },
+    {
+      "trialIndex": 87,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 2.432760157670941,
+      "oosExpectancy": 599.5206635561892,
+      "maxDD": 0.09822831409838186,
+      "winRate": 0.4230769230769231,
+      "tradeCount": 52,
+      "numWindows": 280,
+      "durationMs": 7610
+    },
+    {
+      "trialIndex": 88,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 560.2829234827738,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7532
+    },
+    {
+      "trialIndex": 89,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 3.5676555967520653,
+      "oosExpectancy": 201.61889863399978,
+      "maxDD": 0.007852256310738721,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7552
+    },
+    {
+      "trialIndex": 90,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7565
+    },
+    {
+      "trialIndex": 91,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 460.1628402752219,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7516
+    },
+    {
+      "trialIndex": 92,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.6,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7535
+    },
+    {
+      "trialIndex": 93,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 1.4185078896455146,
+      "oosExpectancy": 246.85181563642686,
+      "maxDD": 0.20846112210530002,
+      "winRate": 0.4117647058823529,
+      "tradeCount": 85,
+      "numWindows": 280,
+      "durationMs": 7581
+    },
+    {
+      "trialIndex": 94,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.6,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7521
+    },
+    {
+      "trialIndex": 95,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": null,
+      "oosExpectancy": 451.0600869931092,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7558
+    },
+    {
+      "trialIndex": 96,
+      "params": {
+        "MIN_CONFIDENCE": 0.55,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 3.433574403656791,
+      "oosExpectancy": 189.17703769735988,
+      "maxDD": 0.007773628676119188,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7531
+    },
+    {
+      "trialIndex": 97,
+      "params": {
+        "MIN_CONFIDENCE": 0.55,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 1.4096341936517,
+      "oosExpectancy": 242.40082440284732,
+      "maxDD": 0.20841976546352914,
+      "winRate": 0.4117647058823529,
+      "tradeCount": 85,
+      "numWindows": 280,
+      "durationMs": 7597
+    },
+    {
+      "trialIndex": 98,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 1.3654870917404447,
+      "oosExpectancy": 224.51910578969296,
+      "maxDD": 0.1811643957935701,
+      "winRate": 0.38571428571428573,
+      "tradeCount": 70,
+      "numWindows": 280,
+      "durationMs": 7659
+    },
+    {
+      "trialIndex": 99,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7585
+    },
+    {
+      "trialIndex": 100,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 0.8214759830154629,
+      "oosExpectancy": -130.21890335949024,
+      "maxDD": 0.24636597721337491,
+      "winRate": 0.391304347826087,
+      "tradeCount": 69,
+      "numWindows": 280,
+      "durationMs": 7616
+    },
+    {
+      "trialIndex": 101,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.15,
+        "REGIME_MULT_NEUTRAL": 0.6,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7582
+    },
+    {
+      "trialIndex": 102,
+      "params": {
+        "MIN_CONFIDENCE": 0.55,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 3.433574403656791,
+      "oosExpectancy": 189.17703769735988,
+      "maxDD": 0.007773628676119188,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7520
+    },
+    {
+      "trialIndex": 103,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7557
+    },
+    {
+      "trialIndex": 104,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.4,
+        "REGIME_MULT_NEUTRAL": 0.6,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7540
+    },
+    {
+      "trialIndex": 105,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": -157.04512621477423,
+      "maxDD": 0.015704512621477443,
+      "winRate": 0,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7554
+    },
+    {
+      "trialIndex": 106,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.4,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7546
+    },
+    {
+      "trialIndex": 107,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.6,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 2.2362485563827814,
+      "oosExpectancy": 489.7024487778794,
+      "maxDD": 0.09418574346592057,
+      "winRate": 0.37735849056603776,
+      "tradeCount": 53,
+      "numWindows": 280,
+      "durationMs": 7570
+    },
+    {
+      "trialIndex": 108,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.5814261056981113,
+      "oosExpectancy": -357.4438353614314,
+      "maxDD": 0.2660588275657802,
+      "winRate": 0.3582089552238806,
+      "tradeCount": 67,
+      "numWindows": 280,
+      "durationMs": 7534
+    },
+    {
+      "trialIndex": 109,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 0.8,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 3.433574403656791,
+      "oosExpectancy": 189.17703769735988,
+      "maxDD": 0.007773628676119188,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7534
+    },
+    {
+      "trialIndex": 110,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.6004795785102085,
+      "oosExpectancy": -299.46901964686975,
+      "maxDD": 0.24103179991810414,
+      "winRate": 0.3835616438356164,
+      "tradeCount": 73,
+      "numWindows": 280,
+      "durationMs": 7519
+    },
+    {
+      "trialIndex": 111,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.456566611425816,
+      "oosExpectancy": 255.02742271986176,
+      "maxDD": 0.1810498513267961,
+      "winRate": 0.36666666666666664,
+      "tradeCount": 90,
+      "numWindows": 280,
+      "durationMs": 7626
+    },
+    {
+      "trialIndex": 112,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7505
+    },
+    {
+      "trialIndex": 113,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.624264319629527,
+      "oosExpectancy": -300.11775846925894,
+      "maxDD": 0.26745347400501895,
+      "winRate": 0.3918918918918919,
+      "tradeCount": 74,
+      "numWindows": 280,
+      "durationMs": 7551
+    },
+    {
+      "trialIndex": 114,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.15,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.7991374154114889,
+      "oosExpectancy": -129.79300957820942,
+      "maxDD": 0.21880707372240593,
+      "winRate": 0.3918918918918919,
+      "tradeCount": 74,
+      "numWindows": 280,
+      "durationMs": 7566
+    },
+    {
+      "trialIndex": 115,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.15,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7484
+    },
+    {
+      "trialIndex": 116,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.4,
+        "REGIME_MULT_NEUTRAL": 0.8,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7515
+    },
+    {
+      "trialIndex": 117,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7492
+    },
+    {
+      "trialIndex": 118,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7479
+    },
+    {
+      "trialIndex": 119,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": -157.04512621477423,
+      "maxDD": 0.015704512621477443,
+      "winRate": 0,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7522
+    },
+    {
+      "trialIndex": 120,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": null,
+      "oosExpectancy": 476.73227603809227,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7493
+    },
+    {
+      "trialIndex": 121,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 3.4976431925191633,
+      "oosExpectancy": 195.01457536288427,
+      "maxDD": 0.007807943742604402,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7523
+    },
+    {
+      "trialIndex": 122,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 3.4976431925191633,
+      "oosExpectancy": 195.01457536288427,
+      "maxDD": 0.007807943742604402,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7520
+    },
+    {
+      "trialIndex": 123,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.8007212960569203,
+      "oosExpectancy": -136.0459245448842,
+      "maxDD": 0.17288264200773187,
+      "winRate": 0.38,
+      "tradeCount": 50,
+      "numWindows": 280,
+      "durationMs": 7465
+    },
+    {
+      "trialIndex": 124,
+      "params": {
+        "MIN_CONFIDENCE": 0.55,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 3.4976431925191633,
+      "oosExpectancy": 195.01457536288427,
+      "maxDD": 0.007807943742604402,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7509
+    },
+    {
+      "trialIndex": 125,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7476
+    },
+    {
+      "trialIndex": 126,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7505
+    },
+    {
+      "trialIndex": 127,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.7991374154114889,
+      "oosExpectancy": -129.79300957820942,
+      "maxDD": 0.21880707372240593,
+      "winRate": 0.3918918918918919,
+      "tradeCount": 74,
+      "numWindows": 280,
+      "durationMs": 7524
+    },
+    {
+      "trialIndex": 128,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.6,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": -155.472573522383,
+      "maxDD": 0.015547257352238376,
+      "winRate": 0,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7475
+    },
+    {
+      "trialIndex": 129,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7516
+    },
+    {
+      "trialIndex": 130,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 0,
+      "oosExpectancy": -155.472573522383,
+      "maxDD": 0.015547257352238376,
+      "winRate": 0,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7523
+    },
+    {
+      "trialIndex": 131,
+      "params": {
+        "MIN_CONFIDENCE": 0.55,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 3.5676555967520653,
+      "oosExpectancy": 201.61889863399978,
+      "maxDD": 0.007852256310738721,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7506
+    },
+    {
+      "trialIndex": 132,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": -158.23360857955717,
+      "maxDD": 0.015823360857955777,
+      "winRate": 0,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7529
+    },
+    {
+      "trialIndex": 133,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7512
+    },
+    {
+      "trialIndex": 134,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 3.4976431925191633,
+      "oosExpectancy": 195.01457536288427,
+      "maxDD": 0.007807943742604402,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7499
+    },
+    {
+      "trialIndex": 135,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.4563515931445934,
+      "oosExpectancy": 281.2396841321115,
+      "maxDD": 0.19660738998530877,
+      "winRate": 0.3625,
+      "tradeCount": 80,
+      "numWindows": 280,
+      "durationMs": 7570
+    },
+    {
+      "trialIndex": 136,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 0.7532100622766241,
+      "oosExpectancy": -185.51915609049604,
+      "maxDD": 0.18831250522188994,
+      "winRate": 0.3333333333333333,
+      "tradeCount": 45,
+      "numWindows": 280,
+      "durationMs": 7470
+    },
+    {
+      "trialIndex": 137,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7535
+    },
+    {
+      "trialIndex": 138,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": null,
+      "oosExpectancy": 451.0600869931092,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7556
+    },
+    {
+      "trialIndex": 139,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7703
+    },
+    {
+      "trialIndex": 140,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.5785715965883285,
+      "oosExpectancy": -355.5148772795686,
+      "maxDD": 0.2630362081150124,
+      "winRate": 0.35294117647058826,
+      "tradeCount": 68,
+      "numWindows": 280,
+      "durationMs": 7629
+    },
+    {
+      "trialIndex": 141,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.4,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.3067025053626824,
+      "oosExpectancy": 163.21795192980164,
+      "maxDD": 0.10866216885553559,
+      "winRate": 0.36507936507936506,
+      "tradeCount": 63,
+      "numWindows": 280,
+      "durationMs": 7614
+    },
+    {
+      "trialIndex": 142,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.15,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.8107334979859405,
+      "oosExpectancy": -133.50820183766507,
+      "maxDD": 0.23797693820982918,
+      "winRate": 0.375,
+      "tradeCount": 72,
+      "numWindows": 280,
+      "durationMs": 7717
+    },
+    {
+      "trialIndex": 143,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7531
+    },
+    {
+      "trialIndex": 144,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": -158.23360857955717,
+      "maxDD": 0.015823360857955777,
+      "winRate": 0,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7539
+    },
+    {
+      "trialIndex": 145,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 1.297569016546275,
+      "oosExpectancy": 191.3212846583897,
+      "maxDD": 0.2267214339939419,
+      "winRate": 0.38823529411764707,
+      "tradeCount": 85,
+      "numWindows": 280,
+      "durationMs": 7634
+    },
+    {
+      "trialIndex": 146,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 3.433574403656791,
+      "oosExpectancy": 189.17703769735988,
+      "maxDD": 0.007773628676119188,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7915
+    },
+    {
+      "trialIndex": 147,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 460.1628402752219,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7913
+    },
+    {
+      "trialIndex": 148,
+      "params": {
+        "MIN_CONFIDENCE": 0.55,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 6.3546816911314385,
+      "oosExpectancy": 277.1591402072979,
+      "maxDD": 0.0051760152366542266,
+      "winRate": 0.6666666666666666,
+      "tradeCount": 3,
+      "numWindows": 280,
+      "durationMs": 7616
+    },
+    {
+      "trialIndex": 149,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 3.19651567832858,
+      "oosExpectancy": 170.1480511380977,
+      "maxDD": 0.007746270733089932,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7617
+    },
+    {
+      "trialIndex": 150,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.2504315480450714,
+      "oosExpectancy": 172.68488567413942,
+      "maxDD": 0.2548398357165592,
+      "winRate": 0.35443037974683544,
+      "tradeCount": 79,
+      "numWindows": 280,
+      "durationMs": 7761
+    },
+    {
+      "trialIndex": 151,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": null,
+      "oosExpectancy": 451.0600869931092,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7843
+    },
+    {
+      "trialIndex": 152,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.4,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": -159.91070296128476,
+      "maxDD": 0.01599107029612842,
+      "winRate": 0,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7728
+    },
+    {
+      "trialIndex": 153,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.15,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.298634409729203,
+      "oosExpectancy": 206.7426059571767,
+      "maxDD": 0.24255898805641848,
+      "winRate": 0.38461538461538464,
+      "tradeCount": 78,
+      "numWindows": 280,
+      "durationMs": 7463
+    },
+    {
+      "trialIndex": 154,
+      "params": {
+        "MIN_CONFIDENCE": 0.55,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.8,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 495.2215169379933,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7637
+    },
+    {
+      "trialIndex": 155,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.7991374154114889,
+      "oosExpectancy": -129.79300957820942,
+      "maxDD": 0.21880707372240593,
+      "winRate": 0.3918918918918919,
+      "tradeCount": 74,
+      "numWindows": 280,
+      "durationMs": 7720
+    },
+    {
+      "trialIndex": 156,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.6,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 2.84710777723113,
+      "oosExpectancy": 144.073874153213,
+      "maxDD": 0.007799971172726236,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7671
+    },
+    {
+      "trialIndex": 157,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.4,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 495.2215169379933,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7595
+    },
+    {
+      "trialIndex": 158,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.836863240571454,
+      "oosExpectancy": -107.66521356882174,
+      "maxDD": 0.2227820895869433,
+      "winRate": 0.4025974025974026,
+      "tradeCount": 77,
+      "numWindows": 280,
+      "durationMs": 7635
+    },
+    {
+      "trialIndex": 159,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": -158.23360857955717,
+      "maxDD": 0.015823360857955777,
+      "winRate": 0,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7674
+    },
+    {
+      "trialIndex": 160,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7624
+    },
+    {
+      "trialIndex": 161,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.2947186410973153,
+      "oosExpectancy": 183.4150759525212,
+      "maxDD": 0.2171927318854448,
+      "winRate": 0.40540540540540543,
+      "tradeCount": 74,
+      "numWindows": 280,
+      "durationMs": 7602
+    },
+    {
+      "trialIndex": 162,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.15,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7598
+    },
+    {
+      "trialIndex": 163,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 533.8266489171027,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7588
+    },
+    {
+      "trialIndex": 164,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.4,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 476.73227603809227,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7588
+    },
+    {
+      "trialIndex": 165,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.15,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.3411466207820402,
+      "oosExpectancy": 203.56629406486297,
+      "maxDD": 0.2122783592805948,
+      "winRate": 0.4166666666666667,
+      "tradeCount": 84,
+      "numWindows": 280,
+      "durationMs": 7652
+    },
+    {
+      "trialIndex": 166,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 6.663595102878159,
+      "oosExpectancy": 294.5058569096219,
+      "maxDD": 0.005199980781817491,
+      "winRate": 0.6666666666666666,
+      "tradeCount": 3,
+      "numWindows": 280,
+      "durationMs": 7576
+    },
+    {
+      "trialIndex": 167,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 0.5819916855191206,
+      "oosExpectancy": -339.7069941376244,
+      "maxDD": 0.2544893303443339,
+      "winRate": 0.3582089552238806,
+      "tradeCount": 67,
+      "numWindows": 280,
+      "durationMs": 7563
+    },
+    {
+      "trialIndex": 168,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 3.5676555967520653,
+      "oosExpectancy": 201.61889863399978,
+      "maxDD": 0.007852256310738721,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7646
+    },
+    {
+      "trialIndex": 169,
+      "params": {
+        "MIN_CONFIDENCE": 0.55,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": -159.91070296128476,
+      "maxDD": 0.01599107029612842,
+      "winRate": 0,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7739
+    },
+    {
+      "trialIndex": 170,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 460.1628402752219,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7842
+    },
+    {
+      "trialIndex": 171,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.6,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 0.7404832458499231,
+      "oosExpectancy": -176.74261652521216,
+      "maxDD": 0.12584341001244162,
+      "winRate": 0.34146341463414637,
+      "tradeCount": 41,
+      "numWindows": 280,
+      "durationMs": 7616
+    },
+    {
+      "trialIndex": 172,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.15,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 7.276715522650928,
+      "oosExpectancy": 632.5080101398603,
+      "maxDD": 0.01483097638409225,
+      "winRate": 0.42857142857142855,
+      "tradeCount": 7,
+      "numWindows": 280,
+      "durationMs": 7644
+    },
+    {
+      "trialIndex": 173,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 3.433574403656791,
+      "oosExpectancy": 189.17703769735988,
+      "maxDD": 0.007773628676119188,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 8042
+    },
+    {
+      "trialIndex": 174,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.6,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7587
+    },
+    {
+      "trialIndex": 175,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": null,
+      "oosExpectancy": 460.1628402752219,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7723
+    },
+    {
+      "trialIndex": 176,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 3.433574403656791,
+      "oosExpectancy": 189.17703769735988,
+      "maxDD": 0.007773628676119188,
+      "winRate": 0.5,
+      "tradeCount": 2,
+      "numWindows": 280,
+      "durationMs": 7617
+    },
+    {
+      "trialIndex": 177,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 8412
+    },
+    {
+      "trialIndex": 178,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 8165
+    },
+    {
+      "trialIndex": 179,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": null,
+      "oosExpectancy": 476.73227603809227,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7763
+    },
+    {
+      "trialIndex": 180,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 0.8936891754130373,
+      "oosExpectancy": -67.75024680444585,
+      "maxDD": 0.2156864205493665,
+      "winRate": 0.4,
+      "tradeCount": 80,
+      "numWindows": 280,
+      "durationMs": 7767
+    },
+    {
+      "trialIndex": 181,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.15,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 8175
+    },
+    {
+      "trialIndex": 182,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.4437611714834273,
+      "oosExpectancy": 274.2821476726356,
+      "maxDD": 0.19779100642856637,
+      "winRate": 0.35,
+      "tradeCount": 80,
+      "numWindows": 280,
+      "durationMs": 7971
+    },
+    {
+      "trialIndex": 183,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 8409
+    },
+    {
+      "trialIndex": 184,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.4,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 8872
+    },
+    {
+      "trialIndex": 185,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.75,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 1.2835253863221918,
+      "oosExpectancy": 155.94414554527418,
+      "maxDD": 0.11241469002520181,
+      "winRate": 0.41379310344827586,
+      "tradeCount": 58,
+      "numWindows": 280,
+      "durationMs": 7625
+    },
+    {
+      "trialIndex": 186,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 410.2543824644185,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7620
+    },
+    {
+      "trialIndex": 187,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7573
+    },
+    {
+      "trialIndex": 188,
+      "params": {
+        "MIN_CONFIDENCE": 0.65,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.5,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 1.3246055115671842,
+      "oosExpectancy": 203.22277300764983,
+      "maxDD": 0.22050837601509438,
+      "winRate": 0.4,
+      "tradeCount": 80,
+      "numWindows": 280,
+      "durationMs": 7623
+    },
+    {
+      "trialIndex": 189,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": null,
+      "oosExpectancy": 460.1628402752219,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7569
+    },
+    {
+      "trialIndex": 190,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.15,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": null,
+      "oosExpectancy": 476.73227603809227,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7505
+    },
+    {
+      "trialIndex": 191,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.8,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.8,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7522
+    },
+    {
+      "trialIndex": 192,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 1.4717307298654152,
+      "oosExpectancy": 278.6613238549145,
+      "maxDD": 0.18880304922700017,
+      "winRate": 0.36904761904761907,
+      "tradeCount": 84,
+      "numWindows": 280,
+      "durationMs": 7656
+    },
+    {
+      "trialIndex": 193,
+      "params": {
+        "MIN_CONFIDENCE": 0.5,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.8,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": 6.663595102878159,
+      "oosExpectancy": 294.5058569096219,
+      "maxDD": 0.005199980781817491,
+      "winRate": 0.6666666666666666,
+      "tradeCount": 3,
+      "numWindows": 280,
+      "durationMs": 7623
+    },
+    {
+      "trialIndex": 194,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.8,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 4
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7603
+    },
+    {
+      "trialIndex": 195,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.15,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 546.1880255778561,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 7622
+    },
+    {
+      "trialIndex": 196,
+      "params": {
+        "MIN_CONFIDENCE": 0.6,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.7,
+        "SMC_MIN_RR": 3.5
+      },
+      "oosPF": 0,
+      "oosExpectancy": 0,
+      "maxDD": 0,
+      "winRate": 0,
+      "tradeCount": 0,
+      "numWindows": 280,
+      "durationMs": 7606
+    },
+    {
+      "trialIndex": 197,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 1.3453156034828162,
+      "oosExpectancy": 212.7501080650611,
+      "maxDD": 0.20256596352149323,
+      "winRate": 0.44594594594594594,
+      "tradeCount": 74,
+      "numWindows": 280,
+      "durationMs": 8002
+    },
+    {
+      "trialIndex": 198,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 0.5849533208294595,
+      "oosExpectancy": -341.4471035964995,
+      "maxDD": 0.2574166943950338,
+      "winRate": 0.36363636363636365,
+      "tradeCount": 66,
+      "numWindows": 280,
+      "durationMs": 9004
+    },
+    {
+      "trialIndex": 199,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.25,
+        "REGIME_MULT_NEUTRAL": 1,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.55,
+        "SL_WICK_ATR_MULT": 1,
+        "SMC_MIN_RR": 3
+      },
+      "oosPF": null,
+      "oosExpectancy": 460.1628402752219,
+      "maxDD": 0,
+      "winRate": 1,
+      "tradeCount": 1,
+      "numWindows": 280,
+      "durationMs": 8035
+    }
+  ],
+  "topN": [
+    {
+      "trialIndex": 12,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.2,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 15.42470583956218,
+      "oosExpectancy": 960.0350557014712,
+      "maxDD": 0.0133109827871625,
+      "winRate": 0.6,
+      "tradeCount": 5,
+      "numWindows": 280,
+      "durationMs": 8009,
+      "holdoutPF": 0,
+      "holdoutMaxDD": 0.016408557936399667,
+      "holdoutTrades": 1
+    },
+    {
+      "trialIndex": 36,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.3,
+        "REGIME_MULT_NEUTRAL": 0.9,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 9.342924282209392,
+      "oosExpectancy": 763.9259157389247,
+      "maxDD": 0.014702815390532212,
+      "winRate": 0.5,
+      "tradeCount": 6,
+      "numWindows": 280,
+      "durationMs": 7812,
+      "holdoutPF": 0,
+      "holdoutMaxDD": 0.016408557936399667,
+      "holdoutTrades": 1
+    },
+    {
+      "trialIndex": 57,
+      "params": {
+        "MIN_CONFIDENCE": 0.45,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.85,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.5,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 7.276715522650928,
+      "oosExpectancy": 632.5080101398603,
+      "maxDD": 0.01483097638409225,
+      "winRate": 0.42857142857142855,
+      "tradeCount": 7,
+      "numWindows": 280,
+      "durationMs": 7786,
+      "holdoutPF": 0,
+      "holdoutMaxDD": 0.016408557936399667,
+      "holdoutTrades": 1
+    },
+    {
+      "trialIndex": 172,
+      "params": {
+        "MIN_CONFIDENCE": 0.4,
+        "REGIME_MULT_COUNTER": 0.15,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 2.5
+      },
+      "oosPF": 7.276715522650928,
+      "oosExpectancy": 632.5080101398603,
+      "maxDD": 0.01483097638409225,
+      "winRate": 0.42857142857142855,
+      "tradeCount": 7,
+      "numWindows": 280,
+      "durationMs": 7644,
+      "holdoutPF": 0,
+      "holdoutMaxDD": 0.016408557936399667,
+      "holdoutTrades": 1
+    },
+    {
+      "trialIndex": 87,
+      "params": {
+        "MIN_CONFIDENCE": 0.75,
+        "REGIME_MULT_COUNTER": 0.5,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.6,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 2.432760157670941,
+      "oosExpectancy": 599.5206635561892,
+      "maxDD": 0.09822831409838186,
+      "winRate": 0.4230769230769231,
+      "tradeCount": 52,
+      "numWindows": 280,
+      "durationMs": 7610,
+      "holdoutPF": 0.5364125227832368,
+      "holdoutMaxDD": 0.042079699836688134,
+      "holdoutTrades": 13
+    },
+    {
+      "trialIndex": 107,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.6,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.8,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 1.5
+      },
+      "oosPF": 2.2362485563827814,
+      "oosExpectancy": 489.7024487778794,
+      "maxDD": 0.09418574346592057,
+      "winRate": 0.37735849056603776,
+      "tradeCount": 53,
+      "numWindows": 280,
+      "durationMs": 7570,
+      "holdoutPF": 0.6335682399921185,
+      "holdoutMaxDD": 0.04154445901453306,
+      "holdoutTrades": 13
+    },
+    {
+      "trialIndex": 83,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+        "SL_WICK_ATR_MULT": 0.6,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 2.2042922360558372,
+      "oosExpectancy": 516.503701273372,
+      "maxDD": 0.09032238204769913,
+      "winRate": 0.41935483870967744,
+      "tradeCount": 62,
+      "numWindows": 280,
+      "durationMs": 7543,
+      "holdoutPF": 0.9800183984889179,
+      "holdoutMaxDD": 0.02698700115738192,
+      "holdoutTrades": 15
+    },
+    {
+      "trialIndex": 73,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.1,
+        "REGIME_MULT_NEUTRAL": 0.65,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.75,
+        "SL_WICK_ATR_MULT": 0.4,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 2.036902346090477,
+      "oosExpectancy": 505.5661740403838,
+      "maxDD": 0.10335953395486171,
+      "winRate": 0.359375,
+      "tradeCount": 64,
+      "numWindows": 280,
+      "durationMs": 8151,
+      "holdoutPF": 0.734361210008078,
+      "holdoutMaxDD": 0.036848491740917075,
+      "holdoutTrades": 16
+    },
+    {
+      "trialIndex": 30,
+      "params": {
+        "MIN_CONFIDENCE": 0.8,
+        "REGIME_MULT_COUNTER": 0.35,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 1.798607368582228,
+      "oosExpectancy": 330.29653716282957,
+      "maxDD": 0.09788841285746927,
+      "winRate": 0.41509433962264153,
+      "tradeCount": 53,
+      "numWindows": 280,
+      "durationMs": 7981,
+      "holdoutPF": 0.8191024616693628,
+      "holdoutMaxDD": 0.038295470663851895,
+      "holdoutTrades": 13
+    },
+    {
+      "trialIndex": 192,
+      "params": {
+        "MIN_CONFIDENCE": 0.7,
+        "REGIME_MULT_COUNTER": 0.45,
+        "REGIME_MULT_NEUTRAL": 0.95,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.3,
+        "SMC_MIN_RR": 2
+      },
+      "oosPF": 1.4717307298654152,
+      "oosExpectancy": 278.6613238549145,
+      "maxDD": 0.18880304922700017,
+      "winRate": 0.36904761904761907,
+      "tradeCount": 84,
+      "numWindows": 280,
+      "durationMs": 7656,
+      "holdoutPF": 0.8935488733884718,
+      "holdoutMaxDD": 0.03479837372085283,
+      "holdoutTrades": 18
+    }
+  ],
+  "plateauDetected": false
+}

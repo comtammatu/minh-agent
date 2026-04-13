@@ -5,7 +5,7 @@
  * Pure function. Zero I/O.
  */
 
-import type { Candle, PivotPoint } from '../../types.js'
+import type { Candle, PivotPoint, StructureBreak } from '../../types.js'
 import type { WyckoffResult } from '../../indicators/wyckoff.js'
 import { detectWyckoff } from '../../indicators/wyckoff.js'
 import { detectStructureBreaks } from '../../indicators/smc.js'
@@ -26,14 +26,25 @@ export function determineBias(
   idx: number,
   htfCandles: Candle[],
   pivots: PivotPoint[],
+  precomputed: {
+    breaks?: StructureBreak[]
+    htfBreaks?: StructureBreak[]
+    wyckoff?: WyckoffResult
+    htfWyckoff?: WyckoffResult
+  } = {},
 ): BiasResult | null {
   if (idx < 50) return null
 
-  const wyckoff = detectWyckoff(candles, idx)
-  const breaks = detectStructureBreaks(candles, idx)
+  const wyckoff = precomputed.wyckoff ?? detectWyckoff(candles, idx)
+  const breaks = precomputed.breaks ?? detectStructureBreaks(candles, idx, { pivots })
 
-  const latestCHoCH = breaks.findLast(b => b.kind === 'choch')
-  const latestBOS = breaks.findLast(b => b.kind === 'bos')
+  let latestCHoCH: (typeof breaks)[number] | undefined
+  let latestBOS: (typeof breaks)[number] | undefined
+  for (let i = breaks.length - 1; i >= 0 && (latestCHoCH === undefined || latestBOS === undefined); i--) {
+    const br = breaks[i]!
+    if (latestCHoCH === undefined && br.kind === 'choch') latestCHoCH = br
+    if (latestBOS === undefined && br.kind === 'bos') latestBOS = br
+  }
 
   let bias: 'long' | 'short' | 'neutral' = 'neutral'
   let confidence = 0
@@ -97,7 +108,7 @@ export function determineBias(
   if (bias === 'neutral') return { bias: 'neutral', confidence: 0, source }
 
   // HTF cross-reference
-  const htfBias = computeHTFBias(htfCandles, wyckoff)
+  const htfBias = computeHTFBias(htfCandles, precomputed.htfBreaks, precomputed.htfWyckoff)
 
   if (htfBias && htfBias !== 'neutral') {
     if (htfBias !== bias) {
@@ -111,17 +122,25 @@ export function determineBias(
 
 function computeHTFBias(
   htfCandles: Candle[],
-  _currentWyckoff: WyckoffResult,
+  htfBreaks?: StructureBreak[],
+  htfWyckoff?: WyckoffResult,
 ): 'long' | 'short' | 'neutral' | null {
   if (htfCandles.length < 50) return null
 
   const htfIdx = htfCandles.length - 1
-  const htfWyckoff = detectWyckoff(htfCandles, htfIdx)
-  const htfBreaks = detectStructureBreaks(htfCandles, htfIdx)
-  const htfCHoCH = htfBreaks.findLast(b => b.kind === 'choch')
+  const wyckoff = htfWyckoff ?? detectWyckoff(htfCandles, htfIdx)
+  const breaks = htfBreaks ?? detectStructureBreaks(htfCandles, htfIdx)
+  let htfCHoCH: (typeof breaks)[number] | undefined
+  for (let i = breaks.length - 1; i >= 0; i--) {
+    const br = breaks[i]!
+    if (br.kind === 'choch') {
+      htfCHoCH = br
+      break
+    }
+  }
 
-  if (htfWyckoff.phase === 'accumulation' || htfWyckoff.phase === 'markup') return 'long'
-  if (htfWyckoff.phase === 'distribution' || htfWyckoff.phase === 'markdown') return 'short'
+  if (wyckoff.phase === 'accumulation' || wyckoff.phase === 'markup') return 'long'
+  if (wyckoff.phase === 'distribution' || wyckoff.phase === 'markdown') return 'short'
 
   if (htfCHoCH) return htfCHoCH.direction === 'bullish' ? 'long' : 'short'
 
@@ -136,11 +155,10 @@ function findSpringLow(
   pivots: PivotPoint[],
 ): number | null {
   const minIdx = idx - SPRING_LOW_LOOKBACK
-  const lows = pivots.filter(p => p.kind === 'low' && p.index <= idx && p.index >= minIdx)
-  if (lows.length === 0) return null
   let minPrice = Infinity
-  for (const p of lows) {
+  for (const p of pivots) {
+    if (p.kind !== 'low' || p.index > idx || p.index < minIdx) continue
     if (p.price < minPrice) minPrice = p.price
   }
-  return minPrice
+  return minPrice === Infinity ? null : minPrice
 }

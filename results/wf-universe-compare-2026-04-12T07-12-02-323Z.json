@@ -1,0 +1,68 @@
+{
+  "generatedAt": "2026-04-12T07:12:02.323Z",
+  "fixedParams": {
+    "MIN_CONFIDENCE": 0.7,
+    "SL_WICK_ATR_MULT": 0.6,
+    "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.7,
+    "SMC_MIN_RR": 2
+  },
+  "candleProfile": "extended",
+  "candleCounts": {
+    "1m": 500,
+    "5m": 12000,
+    "15m": 24000,
+    "1h": 7000,
+    "4h": 7000,
+    "1d": 3000
+  },
+  "wfWindows": {
+    "trainWindowMs": 2592000000,
+    "testWindowMs": 604800000,
+    "stepMs": 604800000
+  },
+  "runA": {
+    "label": "A_baseline_10",
+    "coins": [
+      "BTC",
+      "ETH",
+      "SOL",
+      "AVAX",
+      "LINK",
+      "ARB",
+      "APT",
+      "BNB",
+      "DOT",
+      "ATOM"
+    ],
+    "subsetCriterion": "Full 10-coin baseline",
+    "oosPF": 0.8633251190678065,
+    "oosMaxDD": 0.31816349204770583,
+    "oosTrades": 214,
+    "oosWins": 97,
+    "oosWinRate": 0.4532710280373832,
+    "numWindows": 311,
+    "tradesByMode": {
+      "1h_same_tf": 214
+    },
+    "durationMs": 65694
+  },
+  "runB": {
+    "label": "B_subset",
+    "coins": [
+      "BTC",
+      "ETH",
+      "SOL"
+    ],
+    "subsetCriterion": "Tier-1 liquidity Top-3 (BTC, ETH, SOL) — same criterion as raw Top-3 vs Rest diagnostics",
+    "oosPF": 2.3396464326947792,
+    "oosMaxDD": 0.07129144586843719,
+    "oosTrades": 76,
+    "oosWins": 32,
+    "oosWinRate": 0.42105263157894735,
+    "numWindows": 311,
+    "tradesByMode": {
+      "1h_same_tf": 76
+    },
+    "durationMs": 19350
+  }
+}

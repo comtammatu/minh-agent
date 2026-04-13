@@ -1,0 +1,72 @@
+{
+  "runId": "4924f4d9-8cbb-41cd-bdfb-e2ce56b8da7a",
+  "coins": [
+    "BTC",
+    "ETH",
+    "SOL",
+    "AVAX",
+    "LINK",
+    "ARB",
+    "APT",
+    "BNB",
+    "DOT",
+    "ATOM"
+  ],
+  "numTrials": 1,
+  "totalDurationMs": 26589,
+  "trials": [
+    {
+      "trialIndex": 0,
+      "params": {
+        "MIN_CONFIDENCE": 0.55,
+        "REGIME_MULT_COUNTER": 0.4,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 1.5,
+        "SMC_1H_CONFIDENCE_BASE": 0.65
+      },
+      "oosPF": 0.5689505362319257,
+      "oosExpectancy": -488.1580750809537,
+      "maxDD": 0.7280492518849746,
+      "winRate": 0.3951219512195122,
+      "tradeCount": 205,
+      "numWindows": 280,
+      "durationMs": 26589,
+      "tradesByMode": {
+        "1h_same_tf": 205
+      }
+    }
+  ],
+  "topN": [
+    {
+      "trialIndex": 0,
+      "params": {
+        "MIN_CONFIDENCE": 0.55,
+        "REGIME_MULT_COUNTER": 0.4,
+        "REGIME_MULT_NEUTRAL": 0.7,
+        "SMC_DRILLDOWN_CONFIDENCE_BASE": 0.65,
+        "SL_WICK_ATR_MULT": 0.9,
+        "SMC_MIN_RR": 1.5,
+        "SMC_1H_CONFIDENCE_BASE": 0.65
+      },
+      "oosPF": 0.5689505362319257,
+      "oosExpectancy": -488.1580750809537,
+      "maxDD": 0.7280492518849746,
+      "winRate": 0.3951219512195122,
+      "tradeCount": 205,
+      "numWindows": 280,
+      "durationMs": 26589,
+      "tradesByMode": {
+        "1h_same_tf": 205
+      },
+      "holdoutPF": 0.1722674273122265,
+      "holdoutMaxDD": 1.8724210112724073,
+      "holdoutTrades": 41,
+      "holdoutTradesByMode": {
+        "1h_same_tf": 41
+      }
+    }
+  ],
+  "plateauDetected": false
+}

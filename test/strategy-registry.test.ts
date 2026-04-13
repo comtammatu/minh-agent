@@ -303,6 +303,24 @@ describe('StrategyRegistry', () => {
     })
   })
 
+  describe('runnable selection helpers', () => {
+    test('getMaxRunnableMinCandles respects enabled + activeOnly', () => {
+      registry.register(mockStrategy({ id: 'fast', minCandles: () => 10 }))
+      registry.register(mockStrategy({ id: 'slow', minCandles: () => 200 }))
+
+      expect(registry.getMaxRunnableMinCandles()).toBe(200)
+
+      registry.disable('slow')
+      expect(registry.getMaxRunnableMinCandles()).toBe(10)
+
+      registry.activateOnly('slow')
+      expect(registry.getMaxRunnableMinCandles()).toBe(200)
+
+      registry.activateOnly(null)
+      expect(registry.getMaxRunnableMinCandles()).toBe(10)
+    })
+  })
+
   // ── clearAllState ─────────────────────────────────────────────────────────
 
   describe('clearAllState', () => {
