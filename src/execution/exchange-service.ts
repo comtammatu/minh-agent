@@ -19,6 +19,14 @@ import type {
 // Re-export param/result types so callers don't need separate imports
 export type { PlaceOrderParams, PlaceTriggerParams, OrderResult, AccountState }
 
+/** Position-level stop update (e.g. Bybit setTradingStop). */
+export interface UpdatePositionStopParams {
+  coin: string
+  positionSide: 'long' | 'short'
+  triggerPrice: number
+  tpsl: 'tp' | 'sl'
+}
+
 // ─── Interface ──────────────────────────────────────────────────────────────
 
 /**
@@ -80,6 +88,12 @@ export interface IExchangeService {
     tpsl: 'tp' | 'sl',
   ): Promise<OrderResult>
 
+  /**
+   * Update SL/TP directly on an open position (exchange-specific, optional).
+   * Used by exchanges that manage protection at position level (e.g. Bybit).
+   */
+  updatePositionStop?(params: UpdatePositionStopParams): Promise<OrderResult>
+
   /** Query account summary. Updates cached accountValue. */
   getAccountState(): Promise<AccountState>
 
@@ -94,6 +108,9 @@ export interface IExchangeService {
    * (e.g. Bybit orderStatus='Filled'). When absent/false, caller falls back to
    * size comparison (suitable for HL which aggregates individual fill events). */
   getFillAggregateByCloid(cloid: string, coin: string): Promise<{ avgPx: number; totalSz: number; isFilled?: boolean } | null>
+
+  /** Optional fallback for exchanges where submitted/resting recovery can query by exchange order ID (e.g. Bybit orderId). */
+  getFillAggregateByOrderId?(orderId: string, coin: string): Promise<{ avgPx: number; totalSz: number; isFilled?: boolean } | null>
 }
 
 // ─── Re-exports ─────────────────────────────────────────────────────────────

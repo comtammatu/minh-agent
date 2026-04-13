@@ -42,22 +42,29 @@ export function detectFVG(candles: Candle[], idx: number, tolerance: number = 0)
  * Filled = price retraces through midpoint (Consequent Encroachment).
  */
 export function scanFVGs(candles: Candle[], upToIdx: number, tolerance: number = 0): FVG[] {
-  const active: FVG[] = []
+  if (upToIdx < 2) return []
 
-  for (let i = 2; i <= upToIdx; i++) {
+  const active: FVG[] = []
+  let futureMinLow = Infinity
+  let futureMaxHigh = -Infinity
+
+  for (let i = upToIdx; i >= 2; i--) {
+    if (i < upToIdx) {
+      const future = candles[i + 1]!
+      if (future.l < futureMinLow) futureMinLow = future.l
+      if (future.h > futureMaxHigh) futureMaxHigh = future.h
+    }
+
     const fvg = detectFVG(candles, i, tolerance)
     if (!fvg) continue
 
-    // Check if filled by any subsequent candle
-    let filled = false
-    for (let j = i + 1; j <= upToIdx; j++) {
-      const c = candles[j]!
-      if (fvg.bullish && c.l <= fvg.midpoint) { filled = true; break }
-      if (!fvg.bullish && c.h >= fvg.midpoint) { filled = true; break }
-    }
+    const filled = fvg.bullish
+      ? futureMinLow <= fvg.midpoint
+      : futureMaxHigh >= fvg.midpoint
     if (!filled) active.push(fvg)
   }
 
+  active.reverse()
   return active
 }
 
@@ -68,7 +75,7 @@ export function scanFVGs(candles: Candle[], upToIdx: number, tolerance: number =
  * Bullish OB: bearish candle before 1.5× bullish impulse.
  * Bearish OB: bullish candle before 1.5× bearish impulse.
  */
-export function detectOrderBlocks(
+function collectOrderBlockCandidates(
   candles: Candle[],
   upToIdx: number,
   params: { impulseMultiplier?: number; lookback?: number } = {},
@@ -96,7 +103,14 @@ export function detectOrderBlocks(
     }
   }
 
-  // Mark tested (price revisited zone)
+  return blocks
+}
+
+function markOrderBlocksTested(
+  candles: Candle[],
+  upToIdx: number,
+  blocks: OrderBlock[],
+): void {
   for (const ob of blocks) {
     for (let i = ob.index + 2; i <= upToIdx; i++) {
       const c = candles[i]!
@@ -104,7 +118,17 @@ export function detectOrderBlocks(
       if (!ob.bullish && c.h >= ob.bottom && c.h <= ob.top) { ob.tested = true; break }
     }
   }
+}
 
+export function detectOrderBlocks(
+  candles: Candle[],
+  upToIdx: number,
+  params: { impulseMultiplier?: number; lookback?: number } = {},
+): OrderBlock[] {
+  const blocks = collectOrderBlockCandidates(candles, upToIdx, params)
+
+  // Mark tested (price revisited zone)
+  markOrderBlocksTested(candles, upToIdx, blocks)
   return blocks
 }
 
@@ -121,21 +145,35 @@ export function findPivots(
   tolerance: number = 0,
 ): PivotPoint[] {
   const pts: PivotPoint[] = []
+  const endIdx = upToIdx - lookback
+  if (endIdx < lookback) return pts
 
-  for (let i = lookback; i <= upToIdx - lookback; i++) {
+  for (let i = lookback; i <= endIdx; i++) {
     const c = candles[i]!
-    let isHigh = true, isLow = true
+    const high = c.h
+    const low = c.l
+    let isHigh = true
+    let isLow = true
 
     for (let j = 1; j <= lookback; j++) {
-      if (c.h < candles[i - j]!.h - tolerance || c.h < candles[i + j]!.h - tolerance) isHigh = false
-      if (c.l > candles[i - j]!.l + tolerance || c.l > candles[i + j]!.l + tolerance) isLow = false
+      const left = candles[i - j]!
+      const right = candles[i + j]!
+
+      if (isHigh && (high < left.h - tolerance || high < right.h - tolerance)) {
+        isHigh = false
+      }
+      if (isLow && (low > left.l + tolerance || low > right.l + tolerance)) {
+        isLow = false
+      }
+      if (!isHigh && !isLow) break
     }
 
-    if (isHigh) pts.push({ kind: 'high', price: c.h, index: i })
-    if (isLow) pts.push({ kind: 'low', price: c.l, index: i })
+    if (isHigh) pts.push({ kind: 'high', price: high, index: i })
+    if (isLow) pts.push({ kind: 'low', price: low, index: i })
   }
 
-  return pts.sort((a, b) => a.index - b.index)
+  // Points are emitted in ascending index order because `i` increments monotonically.
+  return pts
 }
 
 // ─── BOS / CHoCH ──────────────────────────────────────────────────────────────
@@ -147,33 +185,48 @@ export function findPivots(
 export function detectStructureBreaks(
   candles: Candle[],
   upToIdx: number,
-  params: { swingLookback?: number; tolerance?: number; minPivotSpacing?: number } = {},
+  params: { swingLookback?: number; tolerance?: number; minPivotSpacing?: number; pivots?: PivotPoint[] } = {},
 ): StructureBreak[] {
+  const swingLookback = params.swingLookback ?? 3
   const tol = params.tolerance ?? 0
   const minSpacing = params.minPivotSpacing ?? 5
-  const pivots = findPivots(candles, upToIdx, params.swingLookback ?? 3, tol)
+  if (upToIdx < swingLookback * 2) return []
+  const pivots = params.pivots ?? findPivots(candles, upToIdx, swingLookback, tol)
   const breaks: StructureBreak[] = []
 
-  // Filter out clustered pivots — require minimum bar spacing between pivots of same kind
-  const filterClustered = (pts: PivotPoint[]): PivotPoint[] => {
-    if (pts.length <= 1) return pts
-    const result: PivotPoint[] = [pts[0]!]
-    for (let i = 1; i < pts.length; i++) {
-      const prev = result[result.length - 1]!
-      const cur = pts[i]!
-      if (cur.index - prev.index >= minSpacing) {
-        result.push(cur)
-      } else if ((cur.kind === 'high' && cur.price > prev.price) ||
-                 (cur.kind === 'low' && cur.price < prev.price)) {
-        // Keep the more extreme pivot in a cluster
-        result[result.length - 1] = cur
+  // We only need the latest 3 clustered pivots per side. Reverse scan lets us
+  // stop once we have enough recent clusters instead of processing the full history.
+  const collectRecentClusteredPivots = (kind: 'high' | 'low'): PivotPoint[] => {
+    const clustered: PivotPoint[] = []
+    let clusterBest: PivotPoint | null = null
+
+    for (let i = pivots.length - 1; i >= 0; i--) {
+      const pivot = pivots[i]!
+      if (pivot.kind !== kind) continue
+
+      if (clusterBest === null) {
+        clusterBest = pivot
+        continue
+      }
+
+      if (clusterBest.index - pivot.index >= minSpacing) {
+        clustered.push(clusterBest)
+        if (clustered.length === 3) break
+        clusterBest = pivot
+      } else if (
+        (kind === 'high' && pivot.price > clusterBest.price) ||
+        (kind === 'low' && pivot.price < clusterBest.price)
+      ) {
+        clusterBest = pivot
       }
     }
-    return result
-  }
 
-  const highs = filterClustered(pivots.filter(p => p.kind === 'high'))
-  const lows = filterClustered(pivots.filter(p => p.kind === 'low'))
+    if (clusterBest !== null && clustered.length < 3) clustered.push(clusterBest)
+    clustered.reverse()
+    return clustered
+  }
+  const highs = collectRecentClusteredPivots('high')
+  const lows = collectRecentClusteredPivots('low')
   if (highs.length < 2 || lows.length < 2) return breaks
 
   // Require minimum price distance between pivots (0.5 ATR) to avoid noise breaks
@@ -220,6 +273,11 @@ export function detectLiquiditySweep(
   const range = c.h - c.l
   if (range === 0) return null
 
+  const lowerWick = Math.min(c.o, c.c) - c.l
+  const upperWick = c.h - Math.max(c.o, c.c)
+  // If neither wick can satisfy the minimum ratio, the lookback scan cannot change the outcome.
+  if (lowerWick / range <= wr && upperWick / range <= wr) return null
+
   let recentLow = Infinity, recentHigh = -Infinity
   for (let i = idx - lb; i < idx; i++) {
     const x = candles[i]!
@@ -227,12 +285,10 @@ export function detectLiquiditySweep(
     if (x.h > recentHigh) recentHigh = x.h
   }
 
-  const lowerWick = Math.min(c.o, c.c) - c.l
   if (c.l < recentLow && c.c > recentLow && lowerWick / range > wr) {
     return { direction: 'bullish', level: recentLow }
   }
 
-  const upperWick = c.h - Math.max(c.o, c.c)
   if (c.h > recentHigh && c.c < recentHigh && upperWick / range > wr) {
     return { direction: 'bearish', level: recentHigh }
   }
@@ -250,6 +306,46 @@ interface RawZone {
   sourceIdx: number
 }
 
+function appendOrderBlockRawZones(
+  candles: Candle[],
+  upToIdx: number,
+  demandRaw: RawZone[],
+  supplyRaw: RawZone[],
+  params: { impulseMultiplier?: number; lookback?: number } = {},
+): void {
+  const mult = params.impulseMultiplier ?? 1.5
+  const lb = params.lookback ?? 50
+  const start = Math.max(1, upToIdx - lb)
+
+  for (let i = start; i < upToIdx; i++) {
+    const cur = candles[i]!
+    const nxt = candles[i + 1]
+    if (!nxt) continue
+
+    const curBody = Math.abs(cur.c - cur.o)
+    const nxtBody = Math.abs(nxt.c - nxt.o)
+    if (nxtBody < curBody * mult) continue
+
+    if (cur.c < cur.o && nxt.c > nxt.o) {
+      demandRaw.push({
+        top: cur.o,
+        bottom: cur.l,
+        kind: 'demand',
+        origin: 'order-block',
+        sourceIdx: i,
+      })
+    } else if (cur.c > cur.o && nxt.c < nxt.o) {
+      supplyRaw.push({
+        top: cur.h,
+        bottom: cur.o,
+        kind: 'supply',
+        origin: 'order-block',
+        sourceIdx: i,
+      })
+    }
+  }
+}
+
 function mergeAndRank(
   raw: RawZone[],
   kind: 'demand' | 'supply',
@@ -261,8 +357,22 @@ function mergeAndRank(
   if (raw.length === 0) return []
   raw.sort((a, b) => (a.top + a.bottom) / 2 - (b.top + b.bottom) / 2)
 
-  const merged: Array<{ top: number; bottom: number; origins: string[]; touches: number; lastTouch: number; broken: boolean; latestSourceIdx: number }> = []
-  let cur = { top: raw[0]!.top, bottom: raw[0]!.bottom, origins: [raw[0]!.origin], touches: 0, lastTouch: -1, broken: false, latestSourceIdx: raw[0]!.sourceIdx }
+  interface MergedZone {
+    top: number
+    bottom: number
+    origin: string
+    originCount: number
+    latestSourceIdx: number
+  }
+
+  const merged: MergedZone[] = []
+  let cur: MergedZone = {
+    top: raw[0]!.top,
+    bottom: raw[0]!.bottom,
+    origin: raw[0]!.origin,
+    originCount: 1,
+    latestSourceIdx: raw[0]!.sourceIdx,
+  }
 
   for (let i = 1; i < raw.length; i++) {
     const z = raw[i]!
@@ -272,54 +382,76 @@ function mergeAndRank(
     if (Math.abs(curMid - zMid) <= mergeGap) {
       cur.top = Math.max(cur.top, z.top)
       cur.bottom = Math.min(cur.bottom, z.bottom)
-      cur.origins.push(z.origin)
+      cur.originCount++
       cur.latestSourceIdx = Math.max(cur.latestSourceIdx, z.sourceIdx)
     } else {
       merged.push(cur)
-      cur = { top: z.top, bottom: z.bottom, origins: [z.origin], touches: 0, lastTouch: -1, broken: false, latestSourceIdx: z.sourceIdx }
+      cur = {
+        top: z.top,
+        bottom: z.bottom,
+        origin: z.origin,
+        originCount: 1,
+        latestSourceIdx: z.sourceIdx,
+      }
     }
   }
   merged.push(cur)
 
-  for (const zone of merged) {
-    for (let i = zone.latestSourceIdx + 1; i <= upToIdx; i++) {
-      const c = candles[i]!
-      const touched = kind === 'demand'
-        ? c.l <= zone.top && c.l >= zone.bottom
-        : c.h >= zone.bottom && c.h <= zone.top
-      if (touched) { zone.touches++; zone.lastTouch = i }
-      const broken = kind === 'demand' ? c.c < zone.bottom : c.c > zone.top
-      if (broken) zone.broken = true
-    }
+  const zones: KeyZone[] = []
+  const pushTopZone = (zone: KeyZone): void => {
+    let insertAt = zones.length
+    while (insertAt > 0 && zones[insertAt - 1]!.strength < zone.strength) insertAt--
+    zones.splice(insertAt, 0, zone)
+    if (zones.length > max) zones.length = max
   }
 
-  const zones: KeyZone[] = merged
-    .filter(z => !z.broken)
-    .map(z => {
-      const sourceScore = Math.min(z.origins.length / 2, 1)  // easier to reach 1.0 (2 sources = max)
-      const recency = Math.min((z.latestSourceIdx + 1) / (upToIdx + 1), 1)  // more recent creation = higher
-      // Fresh untested zones are STRONGER (institutional zones — first touch is the reaction)
-      // Multi-tested zones are weaker (diminishing returns each retest)
-      const touchScore = z.touches === 0 ? 1.0 : z.touches === 1 ? 0.7 : 0.4
-      const strength = Math.min(sourceScore * 0.35 + recency * 0.30 + touchScore * 0.35, 1)
-      return {
-        type: kind,
-        top: z.top,
-        bottom: z.bottom,
-        strength,
-        origin: z.origins[0]!,
-        createdAtIdx: z.latestSourceIdx,
-      }
-    })
+  for (const zone of merged) {
+    let touches = 0
+    let broken = false
 
-  zones.sort((a, b) => b.strength - a.strength)
-  return zones.slice(0, max)
+    for (let i = zone.latestSourceIdx + 1; i <= upToIdx; i++) {
+      const c = candles[i]!
+      if (kind === 'demand') {
+        if (c.c < zone.bottom) {
+          broken = true
+          break
+        }
+        if (c.l <= zone.top && c.l >= zone.bottom) touches++
+      } else {
+        if (c.c > zone.top) {
+          broken = true
+          break
+        }
+        if (c.h >= zone.bottom && c.h <= zone.top) touches++
+      }
+    }
+
+    if (broken) continue
+
+    const sourceScore = Math.min(zone.originCount / 2, 1)  // easier to reach 1.0 (2 sources = max)
+    const recency = Math.min((zone.latestSourceIdx + 1) / (upToIdx + 1), 1)  // more recent creation = higher
+    // Fresh untested zones are STRONGER (institutional zones — first touch is the reaction)
+    // Multi-tested zones are weaker (diminishing returns each retest)
+    const touchScore = touches === 0 ? 1.0 : touches === 1 ? 0.7 : 0.4
+    const strength = Math.min(sourceScore * 0.35 + recency * 0.30 + touchScore * 0.35, 1)
+    pushTopZone({
+      type: kind,
+      top: zone.top,
+      bottom: zone.bottom,
+      strength,
+      origin: zone.origin,
+      createdAtIdx: zone.latestSourceIdx,
+    })
+  }
+
+  return zones
 }
 
 export function compileKeyZones(
   candles: Candle[],
   upToIdx: number,
   tolerance: number = 0,
+  params: { pivots?: PivotPoint[]; fvgs?: FVG[] } = {},
 ): { demandZones: KeyZone[]; supplyZones: KeyZone[] } {
   if (upToIdx < 30) return { demandZones: [], supplyZones: [] }
 
@@ -330,34 +462,47 @@ export function compileKeyZones(
   const mergeGap = curATR * 0.5
   const MAX_ZONES = 8
 
-  const raw: RawZone[] = []
+  const demandRaw: RawZone[] = []
+  const supplyRaw: RawZone[] = []
 
-  for (const ob of detectOrderBlocks(candles, upToIdx, { lookback: 50 })) {
-    raw.push({ top: ob.top, bottom: ob.bottom, kind: ob.bullish ? 'demand' : 'supply', origin: 'order-block', sourceIdx: ob.index })
-  }
+  appendOrderBlockRawZones(candles, upToIdx, demandRaw, supplyRaw, { lookback: 50 })
 
-  for (const p of findPivots(candles, upToIdx, 3, tolerance)) {
+  const pivots = params.pivots ?? findPivots(candles, upToIdx, 3, tolerance)
+  for (const p of pivots) {
     if (p.kind === 'low') {
-      raw.push({ top: p.price + thick, bottom: p.price, kind: 'demand', origin: 'swing', sourceIdx: p.index })
+      demandRaw.push({ top: p.price + thick, bottom: p.price, kind: 'demand', origin: 'swing', sourceIdx: p.index })
     } else {
-      raw.push({ top: p.price, bottom: p.price - thick, kind: 'supply', origin: 'swing', sourceIdx: p.index })
+      supplyRaw.push({ top: p.price, bottom: p.price - thick, kind: 'supply', origin: 'swing', sourceIdx: p.index })
     }
   }
 
-  for (const fvg of scanFVGs(candles, upToIdx, tolerance)) {
-    raw.push({ top: fvg.top, bottom: fvg.bottom, kind: fvg.bullish ? 'demand' : 'supply', origin: 'fvg', sourceIdx: fvg.index })
+  const fvgs = params.fvgs ?? scanFVGs(candles, upToIdx, tolerance)
+  for (const fvg of fvgs) {
+    if (fvg.bullish) {
+      demandRaw.push({
+        top: fvg.top,
+        bottom: fvg.bottom,
+        kind: 'demand',
+        origin: 'fvg',
+        sourceIdx: fvg.index,
+      })
+    } else {
+      supplyRaw.push({
+        top: fvg.top,
+        bottom: fvg.bottom,
+        kind: 'supply',
+        origin: 'fvg',
+        sourceIdx: fvg.index,
+      })
+    }
   }
 
-  const demand = raw.filter(z => z.kind === 'demand')
-  const supply = raw.filter(z => z.kind === 'supply')
-
-  const demandZones = mergeAndRank(demand, 'demand', candles, upToIdx, mergeGap, MAX_ZONES)
-  const supplyZones = mergeAndRank(supply, 'supply', candles, upToIdx, mergeGap, MAX_ZONES)
+  const demandZones = mergeAndRank(demandRaw, 'demand', candles, upToIdx, mergeGap, MAX_ZONES)
+  const supplyZones = mergeAndRank(supplyRaw, 'supply', candles, upToIdx, mergeGap, MAX_ZONES)
 
   const price = candles[upToIdx]!.c
-  const midOf = (z: KeyZone) => (z.top + z.bottom) / 2
-  demandZones.sort((a, b) => Math.abs(price - midOf(a)) - Math.abs(price - midOf(b)))
-  supplyZones.sort((a, b) => Math.abs(price - midOf(a)) - Math.abs(price - midOf(b)))
+  demandZones.sort((a, b) => Math.abs(price - (a.top + a.bottom) / 2) - Math.abs(price - (b.top + b.bottom) / 2))
+  supplyZones.sort((a, b) => Math.abs(price - (a.top + a.bottom) / 2) - Math.abs(price - (b.top + b.bottom) / 2))
 
   return { demandZones, supplyZones }
 }
@@ -388,51 +533,46 @@ export function detectBreakerBlocks(
   upToIdx: number,
   params: { lookback?: number } = {},
 ): BreakerBlock[] {
-  const obs = detectOrderBlocks(candles, upToIdx, params)
-  const breakers: BreakerBlock[] = []
+  const obs = collectOrderBlockCandidates(candles, upToIdx, params)
+  const validBreakers: BreakerBlock[] = []
 
   for (const ob of obs) {
-    // Check if OB was broken by a subsequent candle closing through it
+    let breakIndex = -1
+
     for (let i = ob.index + 2; i <= upToIdx; i++) {
       const c = candles[i]!
 
       if (ob.bullish) {
-        // Bullish OB broken: price closes BELOW the OB bottom → flips to Supply
-        if (c.c < ob.bottom) {
-          breakers.push({
-            top: ob.top,
-            bottom: ob.bottom,
-            type: 'supply',  // flipped: was demand (bullish OB), now supply
-            index: i,
-            originalOBIndex: ob.index,
-          })
-          break  // only record first break
+        if (breakIndex < 0) {
+          // Bullish OB broken: price closes BELOW the OB bottom → flips to Supply
+          if (c.c < ob.bottom) breakIndex = i
+        } else if (c.c > ob.top) {
+          // Broken again after inversion → invalid.
+          breakIndex = -1
+          break
         }
       } else {
-        // Bearish OB broken: price closes ABOVE the OB top → flips to Demand
-        if (c.c > ob.top) {
-          breakers.push({
-            top: ob.top,
-            bottom: ob.bottom,
-            type: 'demand',  // flipped: was supply (bearish OB), now demand
-            index: i,
-            originalOBIndex: ob.index,
-          })
+        if (breakIndex < 0) {
+          // Bearish OB broken: price closes ABOVE the OB top → flips to Demand
+          if (c.c > ob.top) breakIndex = i
+        } else if (c.c < ob.bottom) {
+          breakIndex = -1
           break
         }
       }
     }
-  }
 
-  // Filter: only return breakers that haven't been broken AGAIN
-  return breakers.filter(bb => {
-    for (let i = bb.index + 1; i <= upToIdx; i++) {
-      const c = candles[i]!
-      if (bb.type === 'demand' && c.c < bb.bottom) return false  // broken again
-      if (bb.type === 'supply' && c.c > bb.top) return false
+    if (breakIndex >= 0) {
+      validBreakers.push({
+        top: ob.top,
+        bottom: ob.bottom,
+        type: ob.bullish ? 'supply' : 'demand',
+        index: breakIndex,
+        originalOBIndex: ob.index,
+      })
     }
-    return true
-  })
+  }
+  return validBreakers
 }
 
 // ─── ICT Inversion FVG ──────────────────────────────────────────────────────
@@ -462,55 +602,64 @@ export function detectInversionFVGs(
   upToIdx: number,
   tolerance: number = 0,
 ): InversionFVG[] {
-  const inversions: InversionFVG[] = []
+  const validInversions: InversionFVG[] = []
 
   for (let i = 2; i <= upToIdx; i++) {
-    const fvg = detectFVG(candles, i, tolerance)
-    if (!fvg) continue
+    const left = candles[i - 2]!
+    const right = candles[i]!
+    let bullish = false
+    let top = 0
+    let bottom = 0
+    let midpoint = 0
 
-    // Check if FVG was COMPLETELY filled (not just CE/midpoint)
+    if (right.l > left.h - tolerance) {
+      bullish = true
+      bottom = left.h
+      top = right.l
+      midpoint = (top + bottom) / 2
+    } else if (right.h < left.l + tolerance) {
+      top = left.l
+      bottom = right.h
+      midpoint = (top + bottom) / 2
+    } else {
+      continue
+    }
+
+    let inversionIndex = -1
     for (let j = i + 1; j <= upToIdx; j++) {
       const c = candles[j]!
 
-      if (fvg.bullish) {
-        // Bullish FVG fully filled: price closes below the FVG bottom
-        if (c.c < fvg.bottom) {
-          inversions.push({
-            top: fvg.top,
-            bottom: fvg.bottom,
-            midpoint: fvg.midpoint,
-            type: 'supply',  // flipped: was bullish gap → now bearish zone
-            index: j,
-            originalFVGIndex: fvg.index,
-          })
+      if (bullish) {
+        if (inversionIndex < 0) {
+          // Bullish FVG fully filled: price closes below the FVG bottom
+          if (c.c < bottom) inversionIndex = j
+        } else if (c.c > top) {
+          inversionIndex = -1
           break
         }
       } else {
-        // Bearish FVG fully filled: price closes above the FVG top
-        if (c.c > fvg.top) {
-          inversions.push({
-            top: fvg.top,
-            bottom: fvg.bottom,
-            midpoint: fvg.midpoint,
-            type: 'demand',  // flipped: was bearish gap → now bullish zone
-            index: j,
-            originalFVGIndex: fvg.index,
-          })
+        if (inversionIndex < 0) {
+          // Bearish FVG fully filled: price closes above the FVG top
+          if (c.c > top) inversionIndex = j
+        } else if (c.c < bottom) {
+          inversionIndex = -1
           break
         }
       }
     }
-  }
 
-  // Filter: only return inversions still valid (not broken again)
-  return inversions.filter(inv => {
-    for (let i = inv.index + 1; i <= upToIdx; i++) {
-      const c = candles[i]!
-      if (inv.type === 'demand' && c.c < inv.bottom) return false
-      if (inv.type === 'supply' && c.c > inv.top) return false
+    if (inversionIndex >= 0) {
+      validInversions.push({
+        top,
+        bottom,
+        midpoint,
+        type: bullish ? 'supply' : 'demand',
+        index: inversionIndex,
+        originalFVGIndex: i,
+      })
     }
-    return true
-  })
+  }
+  return validInversions
 }
 
 // ─── ICT HTF Structure Bias ──────────────────────────────────────────────────
@@ -525,33 +674,33 @@ export function detectInversionFVGs(
 export function htfStructureBias(
   candles: Candle[],
   upToIdx: number,
-  params: { swingLookback?: number; tolerance?: number } = {},
+  params: { swingLookback?: number; tolerance?: number; pivots?: PivotPoint[] } = {},
 ): { bias: 'bullish' | 'bearish' | 'neutral'; confidence: number } {
   const tol = params.tolerance ?? 0
-  const pivots = findPivots(candles, upToIdx, params.swingLookback ?? 5, tol)
-  const highs = pivots.filter(p => p.kind === 'high')
-  const lows = pivots.filter(p => p.kind === 'low')
+  const pivots = params.pivots ?? findPivots(candles, upToIdx, params.swingLookback ?? 5, tol)
+  const highs: PivotPoint[] = []
+  const lows: PivotPoint[] = []
+  for (const pivot of pivots) {
+    if (pivot.kind === 'high') highs.push(pivot)
+    else lows.push(pivot)
+  }
 
   if (highs.length < 2 || lows.length < 2) return { bias: 'neutral', confidence: 0 }
 
-  // Check last 3 swing highs and lows for pattern
-  const recentHighs = highs.slice(-3)
-  const recentLows = lows.slice(-3)
-
   let hhCount = 0, hlCount = 0, lhCount = 0, llCount = 0
 
-  for (let i = 1; i < recentHighs.length; i++) {
-    if (recentHighs[i]!.price > recentHighs[i - 1]!.price) hhCount++
+  for (let i = Math.max(1, highs.length - 2); i < highs.length; i++) {
+    if (highs[i]!.price > highs[i - 1]!.price) hhCount++
     else lhCount++
   }
-  for (let i = 1; i < recentLows.length; i++) {
-    if (recentLows[i]!.price > recentLows[i - 1]!.price) hlCount++
+  for (let i = Math.max(1, lows.length - 2); i < lows.length; i++) {
+    if (lows[i]!.price > lows[i - 1]!.price) hlCount++
     else llCount++
   }
 
   // Also check BOS/CHoCH for confirmation
-  const breaks = detectStructureBreaks(candles, upToIdx, params)
-  const recentBreak = breaks.at(-1)
+  const breaks = detectStructureBreaks(candles, upToIdx, { ...params, pivots })
+  const recentBreak = breaks.length > 0 ? breaks[breaks.length - 1]! : null
 
   // Bullish: HH + HL sequence
   if (hhCount > 0 && hlCount > 0) {
@@ -611,50 +760,159 @@ export interface LiquidityPool {
 export function findLiquidityPools(
   candles: Candle[],
   upToIdx: number,
-  params: { tolerance?: number; minCluster?: number; lookback?: number } = {},
+  params: { tolerance?: number; minCluster?: number; lookback?: number; atrValue?: number } = {},
 ): LiquidityPool[] {
   const tol = params.tolerance ?? 0
   const minCluster = params.minCluster ?? 2
   const pivots = findPivots(candles, upToIdx, 3, tol)
   const pools: LiquidityPool[] = []
 
-  // Group highs by price proximity
-  const highs = pivots.filter(p => p.kind === 'high')
-  const lows = pivots.filter(p => p.kind === 'low')
+  const highs: PivotPoint[] = []
+  const lows: PivotPoint[] = []
+  for (const pivot of pivots) {
+    if (pivot.kind === 'high') highs.push(pivot)
+    else lows.push(pivot)
+  }
 
-  const curATR = atr(candles, upToIdx, 14)
+  const curATR = params.atrValue ?? atr(candles, upToIdx, 14)
   if (isNaN(curATR) || curATR <= 0) return pools
   const clusterTol = curATR * 0.15  // 15% of ATR = "equal" level
 
-  // Find BSL (equal highs)
-  for (let i = 0; i < highs.length; i++) {
-    let count = 1
-    let maxIdx = highs[i]!.index
-    for (let j = i + 1; j < highs.length; j++) {
-      if (Math.abs(highs[j]!.price - highs[i]!.price) <= clusterTol) {
-        count++
-        maxIdx = Math.max(maxIdx, highs[j]!.index)
+  const buildPools = (points: PivotPoint[], type: 'bsl' | 'ssl'): void => {
+    if (points.length < minCluster) return
+    if (points.length <= 24) {
+      for (let i = 0; i < points.length; i++) {
+        const base = points[i]!
+        let count = 1
+        let maxIdx = base.index
+        for (let j = i + 1; j < points.length; j++) {
+          const other = points[j]!
+          if (Math.abs(other.price - base.price) <= clusterTol) {
+            count++
+            if (other.index > maxIdx) maxIdx = other.index
+          }
+        }
+        if (count >= minCluster) {
+          pools.push({
+            level: base.price,
+            type,
+            count,
+            index: maxIdx,
+          })
+        }
+      }
+      return
+    }
+
+    const sortedPrices = new Array<number>(points.length)
+    for (let i = 0; i < points.length; i++) {
+      sortedPrices[i] = points[i]!.price
+    }
+    sortedPrices.sort((a, b) => a - b)
+    const uniquePrices: number[] = []
+    for (const price of sortedPrices) {
+      if (uniquePrices.length === 0 || uniquePrices[uniquePrices.length - 1] !== price) {
+        uniquePrices.push(price)
       }
     }
-    if (count >= minCluster) {
-      pools.push({ level: highs[i]!.price, type: 'bsl', count, index: maxIdx })
+
+    const lowerBound = (value: number): number => {
+      let lo = 0
+      let hi = uniquePrices.length
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1
+        if (uniquePrices[mid]! < value) lo = mid + 1
+        else hi = mid
+      }
+      return lo
     }
+
+    const upperBound = (value: number): number => {
+      let lo = 0
+      let hi = uniquePrices.length
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1
+        if (uniquePrices[mid]! <= value) lo = mid + 1
+        else hi = mid
+      }
+      return lo
+    }
+
+    const bit = new Array<number>(uniquePrices.length + 1).fill(0)
+    const addCount = (coord: number): void => {
+      for (let i = coord + 1; i < bit.length; i += i & -i) bit[i]! += 1
+    }
+    const prefixCount = (coord: number): number => {
+      let sum = 0
+      for (let i = coord + 1; i > 0; i -= i & -i) sum += bit[i]!
+      return sum
+    }
+    const rangeCount = (left: number, right: number): number => {
+      if (left > right) return 0
+      return prefixCount(right) - (left > 0 ? prefixCount(left - 1) : 0)
+    }
+
+    let size = 1
+    while (size < uniquePrices.length) size <<= 1
+    const seg = new Array<number>(size * 2).fill(-1)
+    const updateMax = (coord: number, value: number): void => {
+      let pos = coord + size
+      if (value > seg[pos]!) seg[pos] = value
+      pos >>= 1
+      while (pos > 0) {
+        const next = Math.max(seg[pos * 2]!, seg[pos * 2 + 1]!)
+        if (next === seg[pos]) break
+        seg[pos] = next
+        pos >>= 1
+      }
+    }
+    const rangeMax = (left: number, right: number): number => {
+      if (left > right) return -1
+      let best = -1
+      let l = left + size
+      let r = right + size
+      while (l <= r) {
+        if ((l & 1) === 1) {
+          if (seg[l]! > best) best = seg[l]!
+          l++
+        }
+        if ((r & 1) === 0) {
+          if (seg[r]! > best) best = seg[r]!
+          r--
+        }
+        l >>= 1
+        r >>= 1
+      }
+      return best
+    }
+
+    const nextPools: LiquidityPool[] = []
+    for (let i = points.length - 1; i >= 0; i--) {
+      const point = points[i]!
+      const left = lowerBound(point.price - clusterTol)
+      const right = upperBound(point.price + clusterTol) - 1
+      const laterCount = rangeCount(left, right)
+      if (laterCount + 1 >= minCluster) {
+        const laterMaxIdx = rangeMax(left, right)
+        nextPools.push({
+          level: point.price,
+          type,
+          count: laterCount + 1,
+          index: laterMaxIdx > point.index ? laterMaxIdx : point.index,
+        })
+      }
+
+      const coord = lowerBound(point.price)
+      addCount(coord)
+      updateMax(coord, point.index)
+    }
+
+    nextPools.reverse()
+    for (const pool of nextPools) pools.push(pool)
   }
 
-  // Find SSL (equal lows)
-  for (let i = 0; i < lows.length; i++) {
-    let count = 1
-    let maxIdx = lows[i]!.index
-    for (let j = i + 1; j < lows.length; j++) {
-      if (Math.abs(lows[j]!.price - lows[i]!.price) <= clusterTol) {
-        count++
-        maxIdx = Math.max(maxIdx, lows[j]!.index)
-      }
-    }
-    if (count >= minCluster) {
-      pools.push({ level: lows[i]!.price, type: 'ssl', count, index: maxIdx })
-    }
-  }
+  buildPools(highs, 'bsl')
+  buildPools(lows, 'ssl')
 
   return pools
 }
@@ -667,6 +925,17 @@ export interface SessionRange {
   startIdx: number
   endIdx: number
   barCount: number
+}
+
+const MS_PER_HOUR = 60 * 60 * 1000
+const MS_PER_DAY = 24 * MS_PER_HOUR
+
+function utcHour(timestampMs: number): number {
+  return Math.floor(timestampMs / MS_PER_HOUR) % 24
+}
+
+function utcDayId(timestampMs: number): number {
+  return Math.floor(timestampMs / MS_PER_DAY)
 }
 
 /**
@@ -689,21 +958,16 @@ export function detectSessionRange(
   let count = 0
 
   // Scan backwards to find candles within the session window (same day as idx candle)
-  const refDate = new Date(candles[idx]!.t)
-  const refDay = refDate.getUTCDate()
-  const refMonth = refDate.getUTCMonth()
-  const refYear = refDate.getUTCFullYear()
+  const refTimestamp = candles[idx]!.t
+  const refDay = utcDayId(refTimestamp)
+  const minTimestamp = refTimestamp - MS_PER_DAY * 1.5
 
   for (let i = idx; i >= Math.max(0, idx - 200); i--) {
     const c = candles[i]!
-    const d = new Date(c.t)
+    if (c.t < minTimestamp) break  // too far back
 
-    // Must be same UTC day (or previous day for ranges crossing midnight)
-    const dayDiff = Math.abs(refDate.getTime() - d.getTime()) / 86_400_000
-    if (dayDiff > 1.5) break  // too far back
-
-    const hour = d.getUTCHours()
-    const sameDay = d.getUTCDate() === refDay && d.getUTCMonth() === refMonth && d.getUTCFullYear() === refYear
+    const hour = utcHour(c.t)
+    const sameDay = utcDayId(c.t) === refDay
 
     // Handle ranges that don't cross midnight (e.g., 0-7)
     let inWindow: boolean
@@ -763,53 +1027,55 @@ export function detectJudasSwing(
 
   let bearishSweepIdx = -1  // swept above range high
   let bullishSweepIdx = -1  // swept below range low
+  let bullishReversalIdx = -1
+  let bearishReversalIdx = -1
+  let bullishSweepLevel = 0
+  let bearishSweepLevel = 0
 
   for (let i = scanStart; i <= scanEnd; i++) {
     const c = candles[i]!
 
     // Bearish Judas: wick above range high (sweep BSL)
-    if (c.h > range.high + tolerance && bearishSweepIdx === -1) {
+    if (bearishSweepIdx === -1 && c.h > range.high + tolerance) {
       bearishSweepIdx = i
+      bearishSweepLevel = c.h
     }
 
     // Bullish Judas: wick below range low (sweep SSL)
-    if (c.l < range.low - tolerance && bullishSweepIdx === -1) {
+    if (bullishSweepIdx === -1 && c.l < range.low - tolerance) {
       bullishSweepIdx = i
+      bullishSweepLevel = c.l
+    }
+
+    // Reversal can happen on the sweep candle itself, so these checks happen
+    // after sweep registration in the same pass.
+    if (bullishSweepIdx !== -1 && bullishReversalIdx === -1 && c.c > range.low && c.c > c.o) {
+      bullishReversalIdx = i
+    }
+    if (bearishSweepIdx !== -1 && bearishReversalIdx === -1 && c.c < range.high && c.c < c.o) {
+      bearishReversalIdx = i
     }
   }
 
-  // Check for reversal after sweep
-  // Bullish: swept below → candle closes above range low (recovery)
-  if (bullishSweepIdx !== -1) {
-    for (let i = bullishSweepIdx; i <= scanEnd; i++) {
-      const c = candles[i]!
-      if (c.c > range.low && c.c > c.o) {  // closes inside range with bullish body
-        return {
-          direction: 'bullish',
-          sweepLevel: candles[bullishSweepIdx]!.l,
-          sweepIdx: bullishSweepIdx,
-          reversalIdx: i,
-          rangeHigh: range.high,
-          rangeLow: range.low,
-        }
-      }
+  // Preserve previous priority: bullish reversal wins if both sides qualify.
+  if (bullishReversalIdx !== -1) {
+    return {
+      direction: 'bullish',
+      sweepLevel: bullishSweepLevel,
+      sweepIdx: bullishSweepIdx,
+      reversalIdx: bullishReversalIdx,
+      rangeHigh: range.high,
+      rangeLow: range.low,
     }
   }
-
-  // Bearish: swept above → candle closes below range high (rejection)
-  if (bearishSweepIdx !== -1) {
-    for (let i = bearishSweepIdx; i <= scanEnd; i++) {
-      const c = candles[i]!
-      if (c.c < range.high && c.c < c.o) {  // closes inside range with bearish body
-        return {
-          direction: 'bearish',
-          sweepLevel: candles[bearishSweepIdx]!.h,
-          sweepIdx: bearishSweepIdx,
-          reversalIdx: i,
-          rangeHigh: range.high,
-          rangeLow: range.low,
-        }
-      }
+  if (bearishReversalIdx !== -1) {
+    return {
+      direction: 'bearish',
+      sweepLevel: bearishSweepLevel,
+      sweepIdx: bearishSweepIdx,
+      reversalIdx: bearishReversalIdx,
+      rangeHigh: range.high,
+      rangeLow: range.low,
     }
   }
 
@@ -832,20 +1098,23 @@ export function findConfirmingBreak(
   expectedDirection: 'bullish' | 'bearish',
   tolerance: number,
 ): StructureBreak | null {
-  let bestBreak: StructureBreak | null = null
+  let latestBos: StructureBreak | null = null
+  const startIdx = Math.max(0, idx - lookback)
 
-  for (let i = Math.max(0, idx - lookback); i <= idx; i++) {
+  for (let i = idx; i >= startIdx; i--) {
     const breaks = detectStructureBreaks(candles, i, { tolerance })
     for (const b of breaks) {
       if (b.direction !== expectedDirection) continue
-      // Prefer CHoCH over BOS (stronger confirmation)
-      if (!bestBreak || b.kind === 'choch' || (bestBreak.kind !== 'choch' && b.index > bestBreak.index)) {
-        bestBreak = b
+      // Scanning backwards means the first CHoCH we see is the latest one,
+      // which already matches the previous "prefer newest CHoCH over any BOS" rule.
+      if (b.kind === 'choch') {
+        return b
       }
+      if (latestBos === null) latestBos = b
     }
   }
 
-  return bestBreak
+  return latestBos
 }
 
 // ─── S&D re-exports (canonical location: supply-demand.ts) ────────────────────

@@ -28,6 +28,13 @@ import {
   WF_TRAIN_WINDOW_MS,
   WF_TEST_WINDOW_MS,
   WF_STEP_MS,
+  OPTIMIZER_CANDIDATE_FRACTION,
+  OPTIMIZER_CANDIDATE_MIN,
+  OPTIMIZER_CANDIDATE_MAX,
+  OPTIMIZER_SELECTION_OOS_TRADE_TARGET,
+  OPTIMIZER_HOLDOUT_MIN_PF,
+  OPTIMIZER_HOLDOUT_MIN_TRADES,
+  OPTIMIZER_HOLDOUT_TRADE_TARGET,
 } from '../config.js'
 import { log } from '../lib/logger.js'
 import { mkdirSync, writeFileSync } from 'fs'
@@ -84,6 +91,17 @@ export interface OptimizeRunResult {
   trials: TrialResult[]
   topN: HoldoutResult[]
   plateauDetected: boolean
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value))
+}
+
+function normalizePf(value: number): number {
+  if (Number.isNaN(value) || value <= 0) return 0
+  // Cap infinities from tiny-sample perfect wins to avoid dominating rank.
+  if (!Number.isFinite(value)) return 10
+  return value
 }
 
 // ─── Core Functions (exported for testing) ────────────────────────────────
@@ -200,14 +218,67 @@ export function runTrial(
 }
 
 /**
- * Select top-N trials by OOS profit factor, excluding failures.
+ * Candidate score before holdout validation.
+ * Uses OOS PF, OOS trade count, and drawdown penalty (anti-overfit pre-filter).
+ */
+export function scoreOosCandidate(trial: TrialResult): number {
+  const pf = normalizePf(trial.oosPF)
+  const tradeFactor = clamp01(trial.tradeCount / OPTIMIZER_SELECTION_OOS_TRADE_TARGET)
+  const drawdownPenalty = clamp01(1 - trial.maxDD)
+  return pf * tradeFactor * drawdownPenalty
+}
+
+/**
+ * Select top-N candidates for holdout validation.
  * Minimum trade count filter: at least 5 OOS trades.
  */
 export function selectTopN(trials: TrialResult[], n: number): TrialResult[] {
   return trials
     .filter(t => !t.error && t.tradeCount >= 5 && isFinite(t.oosPF))
-    .sort((a, b) => b.oosPF - a.oosPF)
+    .sort((a, b) => {
+      const scoreDiff = scoreOosCandidate(b) - scoreOosCandidate(a)
+      if (scoreDiff !== 0) return scoreDiff
+      if (b.tradeCount !== a.tradeCount) return b.tradeCount - a.tradeCount
+      return normalizePf(b.oosPF) - normalizePf(a.oosPF)
+    })
     .slice(0, n)
+}
+
+/**
+ * Final objective score after holdout validation.
+ * Prioritizes holdout PF + holdout trade count and penalizes OOS/holdout divergence.
+ */
+export function scoreHoldoutRobustness(trial: HoldoutResult): number {
+  const holdoutPf = normalizePf(trial.holdoutPF)
+  const holdoutTradeFactor = clamp01(trial.holdoutTrades / OPTIMIZER_HOLDOUT_TRADE_TARGET)
+  const holdoutDdPenalty = clamp01(1 - trial.holdoutMaxDD)
+  const overfitPenalty = clamp01(holdoutPf / Math.max(normalizePf(trial.oosPF), 0.01))
+  return holdoutPf * holdoutTradeFactor * holdoutDdPenalty * overfitPenalty
+}
+
+/**
+ * Robustness gate used by ranking and summary.
+ */
+export function isRobustHoldout(trial: HoldoutResult): boolean {
+  return trial.holdoutPF >= OPTIMIZER_HOLDOUT_MIN_PF
+    && trial.holdoutTrades >= OPTIMIZER_HOLDOUT_MIN_TRADES
+}
+
+/**
+ * Rank holdout-validated trials by robust objective.
+ * Robust-pass trials always appear before non-pass trials.
+ */
+export function rankHoldoutResults(trials: HoldoutResult[]): HoldoutResult[] {
+  return [...trials].sort((a, b) => {
+    const robustA = isRobustHoldout(a) ? 1 : 0
+    const robustB = isRobustHoldout(b) ? 1 : 0
+    if (robustA !== robustB) return robustB - robustA
+
+    const scoreDiff = scoreHoldoutRobustness(b) - scoreHoldoutRobustness(a)
+    if (scoreDiff !== 0) return scoreDiff
+    if (b.holdoutTrades !== a.holdoutTrades) return b.holdoutTrades - a.holdoutTrades
+    return normalizePf(b.holdoutPF) - normalizePf(a.holdoutPF)
+  })
 }
 
 /**
@@ -282,8 +353,8 @@ export function formatConsoleTable(topN: HoldoutResult[]): string {
   const lines: string[] = [
     '',
     '=== TOP PARAMETER COMBINATIONS ===',
-    `${'#'.padStart(3)}  ${'OOS PF'.padStart(7)}  ${'OOS Exp'.padStart(8)}  ${'MaxDD'.padStart(6)}  ${'WR'.padStart(5)}  ${'Trades'.padStart(6)}  ${'Hold PF'.padStart(8)}  ${'Hold DD'.padStart(8)}  ${'Hold #'.padStart(6)}  ${'Hold Modes'.padEnd(32)}  Params`,
-    '-'.repeat(155),
+    `${'#'.padStart(3)}  ${'OOS PF'.padStart(7)}  ${'OOS Exp'.padStart(8)}  ${'MaxDD'.padStart(6)}  ${'WR'.padStart(5)}  ${'Trades'.padStart(6)}  ${'Hold PF'.padStart(8)}  ${'Hold DD'.padStart(8)}  ${'Hold #'.padStart(6)}  ${'Obj'.padStart(6)}  ${'Hold Modes'.padEnd(32)}  Params`,
+    '-'.repeat(165),
   ]
 
   for (let i = 0; i < topN.length; i++) {
@@ -295,12 +366,13 @@ export function formatConsoleTable(topN: HoldoutResult[]): string {
     const modeStr = t.holdoutTradesByMode
       ? Object.entries(t.holdoutTradesByMode).map(([m, n]) => `${m}:${n}`).join(' ')
       : ''
+    const objectiveScore = scoreHoldoutRobustness(t)
     lines.push(
-      `${(i + 1).toString().padStart(3)}  ${t.oosPF.toFixed(2).padStart(7)}  ${('$' + t.oosExpectancy.toFixed(2)).padStart(8)}  ${(t.maxDD * 100).toFixed(1).padStart(5)}%  ${(t.winRate * 100).toFixed(0).padStart(4)}%  ${t.tradeCount.toString().padStart(6)}  ${t.holdoutPF.toFixed(2).padStart(8)}  ${(t.holdoutMaxDD * 100).toFixed(1).padStart(7)}%  ${t.holdoutTrades.toString().padStart(6)}  ${modeStr.padEnd(32)}  ${paramStr}`
+      `${(i + 1).toString().padStart(3)}  ${t.oosPF.toFixed(2).padStart(7)}  ${('$' + t.oosExpectancy.toFixed(2)).padStart(8)}  ${(t.maxDD * 100).toFixed(1).padStart(5)}%  ${(t.winRate * 100).toFixed(0).padStart(4)}%  ${t.tradeCount.toString().padStart(6)}  ${t.holdoutPF.toFixed(2).padStart(8)}  ${(t.holdoutMaxDD * 100).toFixed(1).padStart(7)}%  ${t.holdoutTrades.toString().padStart(6)}  ${objectiveScore.toFixed(2).padStart(6)}  ${modeStr.padEnd(32)}  ${paramStr}`
     )
   }
 
-  lines.push('='.repeat(155))
+  lines.push('='.repeat(165))
   return lines.join('\n')
 }
 
@@ -399,7 +471,14 @@ async function fetchAllCandles(
 async function main() {
   const numTrials = parseInt(process.argv[2] ?? '200', 10)
   const coins = process.argv[3]?.split(',') ?? ['BTC', 'ETH', 'SOL']
-  const topNCount = Math.min(10, Math.ceil(numTrials * 0.05))
+  const finalTopNCount = Math.min(10, Math.ceil(numTrials * 0.05))
+  const candidateCount = Math.max(
+    finalTopNCount,
+    Math.min(
+      OPTIMIZER_CANDIDATE_MAX,
+      Math.max(OPTIMIZER_CANDIDATE_MIN, Math.ceil(numTrials * OPTIMIZER_CANDIDATE_FRACTION))
+    )
+  )
   const runId = crypto.randomUUID()
 
   // Register strategy
@@ -411,7 +490,8 @@ async function main() {
   console.log(`  Run ID: ${runId}`)
   console.log(`  Coins: ${coins.join(', ')}`)
   console.log(`  Trials: ${numTrials}`)
-  console.log(`  Top-N for holdout: ${topNCount}`)
+  console.log(`  Holdout candidates: ${candidateCount}`)
+  console.log(`  Final Top-N: ${finalTopNCount}`)
   console.log('='.repeat(60))
 
   // Step 1: Fetch candles
@@ -477,11 +557,13 @@ async function main() {
 
   const totalDuration = Date.now() - runStart
 
-  // Step 5: Select top-N and validate on holdout
-  const topTrials = selectTopN(trials, topNCount)
-  log.info('optimizer', `Top ${topTrials.length} trials selected for holdout validation...`)
+  // Step 5: Select OOS candidates, validate on holdout, then rank by robust objective
+  const holdoutCandidates = selectTopN(trials, candidateCount)
+  log.info('optimizer', `${holdoutCandidates.length} candidate trials selected for holdout validation...`)
 
-  const holdoutResults = validateHoldout(holdoutCandles, baseConfig, wfConfig, topTrials)
+  const holdoutValidated = validateHoldout(holdoutCandles, baseConfig, wfConfig, holdoutCandidates)
+  const rankedHoldout = rankHoldoutResults(holdoutValidated)
+  const holdoutTopN = rankedHoldout.slice(0, finalTopNCount)
 
   // Step 6: Plateau detection
   const plateauDetected = detectPlateau(trials)
@@ -496,7 +578,7 @@ async function main() {
     numTrials,
     totalDurationMs: totalDuration,
     trials,
-    topN: holdoutResults,
+    topN: holdoutTopN,
     plateauDetected,
   }
 
@@ -509,16 +591,21 @@ async function main() {
   log.info('optimizer', `Results written to ${jsonPath}`)
 
   // Console table
-  console.log(formatConsoleTable(holdoutResults))
+  console.log(formatConsoleTable(holdoutTopN))
   console.log(`\nTotal duration: ${(totalDuration / 1000).toFixed(1)}s`)
   console.log(`Successful trials: ${trials.filter(t => !t.error).length}/${numTrials}`)
+  const robustPassCount = holdoutValidated.filter(isRobustHoldout).length
+  console.log(
+    `Robust holdout pass: ${robustPassCount}/${holdoutValidated.length} ` +
+    `(PF>=${OPTIMIZER_HOLDOUT_MIN_PF}, trades>=${OPTIMIZER_HOLDOUT_MIN_TRADES})`
+  )
   if (plateauDetected) {
     console.log('⚠ PLATEAU DETECTED — random search exhausted, consider Bayesian optimization')
   }
 
   // Step 8: DB write (best-effort)
   const holdoutMap = new Map<number, HoldoutResult>()
-  for (const h of holdoutResults) holdoutMap.set(h.trialIndex, h)
+  for (const h of holdoutValidated) holdoutMap.set(h.trialIndex, h)
   await writeTrialsToDB(runId, coins, trials, holdoutMap)
 
   log.info('optimizer', 'Done.')

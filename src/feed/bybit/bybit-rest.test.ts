@@ -1,57 +1,82 @@
-import { describe, it, expect, mock, beforeEach } from 'bun:test'
+import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test'
+import type { RestClientV5 } from 'bybit-api'
+import {
+  __setBybitRestTestDeps,
+  fetchBybitCandles,
+  fetchBybitCandlesBatched,
+} from './bybit-rest.js'
 
-// ─── Mock bybit-api before any import of bybit-rest ─────────────────────────
+// ─── Deterministic fixtures + mock isolation helpers ────────────────────────
 
-const mockGetKline = mock(() =>
-  Promise.resolve({
+const FIXED_NOW = 1_700_000_120_000
+const TEST_START_TIME = FIXED_NOW - 120_000
+const DEFAULT_KLINE_LIST = [
+  ['1700000060000', '50100', '50200', '50050', '50150', '10.5', '525000'],
+  ['1700000000000', '50000', '50100', '49950', '50100', '12.0', '600000'],
+]
+
+function makeKlineSuccessResponse(list: string[][] = DEFAULT_KLINE_LIST): {
+  retCode: number
+  retMsg: string
+  result: { list: string[][] }
+  retExtInfo: Record<string, string>
+  time: number
+} {
+  return {
     retCode: 0,
     retMsg: 'OK',
-    result: {
-      // Bybit returns newest first — parser must reverse()
-      list: [
-        ['1700000060000', '50100', '50200', '50050', '50150', '10.5', '525000'],
-        ['1700000000000', '50000', '50100', '49950', '50100', '12.0', '600000'],
-      ],
-    },
+    result: { list },
     retExtInfo: {},
     time: Date.now(),
-  })
-)
+  }
+}
 
-mock.module('bybit-api', () => ({
-  RestClientV5: class {
-    getKline = mockGetKline
-  },
-}))
+const mockGetKline = mock(() => Promise.resolve(makeKlineSuccessResponse()))
+const mockGetTickers = mock(() => Promise.resolve({ retCode: 0, retMsg: 'OK', result: { list: [] } }))
+const mockAcquire = mock(() => Promise.resolve())
 
-// ─── Reset mock before each test ─────────────────────────────────────────────
+type BybitRestClient = Pick<RestClientV5, 'getKline' | 'getTickers'>
+
+function installTestDeps(): void {
+  const client: BybitRestClient = {
+    getKline: mockGetKline as unknown as BybitRestClient['getKline'],
+    getTickers: mockGetTickers as unknown as BybitRestClient['getTickers'],
+  }
+  __setBybitRestTestDeps({ client, acquire: mockAcquire })
+}
+
+// ─── Reset mock + clock before each test ────────────────────────────────────
+
+let originalDateNow: typeof Date.now
 
 beforeEach(() => {
-  mockGetKline.mockRestore()
-  mockGetKline.mockImplementation(() =>
-    Promise.resolve({
-      retCode: 0,
-      retMsg: 'OK',
-      result: {
-        list: [
-          ['1700000060000', '50100', '50200', '50050', '50150', '10.5', '525000'],
-          ['1700000000000', '50000', '50100', '49950', '50100', '12.0', '600000'],
-        ],
-      },
-      retExtInfo: {},
-      time: Date.now(),
-    })
-  )
+  originalDateNow = Date.now
+  Date.now = () => FIXED_NOW
+
+  mockGetKline.mockClear()
+  mockGetKline.mockImplementation(() => Promise.resolve(makeKlineSuccessResponse()))
+
+  mockAcquire.mockClear()
+  mockAcquire.mockImplementation(() => Promise.resolve())
+
+  installTestDeps()
 })
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
+afterEach(() => {
+  Date.now = originalDateNow
+})
 
-describe('fetchBybitCandles', () => {
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
+describe.serial('fetchBybitCandles', () => {
   it('returns candles in ascending order (reversed from API response)', async () => {
-    const { fetchBybitCandles } = await import('./bybit-rest.js')
-    const candles = await fetchBybitCandles('BTC', '1m', Date.now() - 120_000)
+    const candles = await fetchBybitCandles('BTC', '1m', TEST_START_TIME)
     expect(candles).not.toBeNull()
     expect(candles!.length).toBe(2)
+    // Regression guard: ensure test used mock path, not live market data.
+    expect(mockGetKline).toHaveBeenCalledTimes(1)
+    expect(mockAcquire).toHaveBeenCalledTimes(1)
+
     // After reverse: oldest candle first (smaller t)
     expect(candles![0]!.t).toBeLessThan(candles![1]!.t)
     expect(candles![0]!.t).toBe(1700000000000)
@@ -59,8 +84,7 @@ describe('fetchBybitCandles', () => {
   })
 
   it('parses OHLCV values as floats from strings', async () => {
-    const { fetchBybitCandles } = await import('./bybit-rest.js')
-    const candles = await fetchBybitCandles('BTC', '1m', Date.now() - 120_000)
+    const candles = await fetchBybitCandles('BTC', '1m', TEST_START_TIME)
     expect(candles).not.toBeNull()
     const oldest = candles![0]!
     expect(oldest.o).toBe(50000)
@@ -71,17 +95,8 @@ describe('fetchBybitCandles', () => {
   })
 
   it('returns [] on empty list from API', async () => {
-    mockGetKline.mockImplementation(() =>
-      Promise.resolve({
-        retCode: 0,
-        retMsg: 'OK',
-        result: { list: [] },
-        retExtInfo: {},
-        time: Date.now(),
-      })
-    )
-    const { fetchBybitCandles } = await import('./bybit-rest.js')
-    const candles = await fetchBybitCandles('BTC', '1m', Date.now() - 120_000)
+    mockGetKline.mockImplementation(() => Promise.resolve(makeKlineSuccessResponse([])))
+    const candles = await fetchBybitCandles('BTC', '1m', TEST_START_TIME)
     expect(candles).not.toBeNull()
     expect(candles).toEqual([])
   })
@@ -96,35 +111,31 @@ describe('fetchBybitCandles', () => {
         time: Date.now(),
       })
     )
-    const { fetchBybitCandles } = await import('./bybit-rest.js')
     // maxRetries=1 to keep test fast
-    const candles = await fetchBybitCandles('BTC', '1m', Date.now() - 120_000, undefined, 1)
+    const candles = await fetchBybitCandles('BTC', '1m', TEST_START_TIME, undefined, 1)
     expect(candles).toBeNull()
   })
 
   it('returns null on network error after retries', async () => {
     mockGetKline.mockImplementation(() => Promise.reject(new Error('Network timeout')))
-    const { fetchBybitCandles } = await import('./bybit-rest.js')
     // maxRetries=1 to keep test fast
-    const candles = await fetchBybitCandles('BTC', '1m', Date.now() - 120_000, undefined, 1)
+    const candles = await fetchBybitCandles('BTC', '1m', TEST_START_TIME, undefined, 1)
     expect(candles).toBeNull()
   })
 
   it('returns null for unknown interval (no mapping)', async () => {
-    const { fetchBybitCandles } = await import('./bybit-rest.js')
-    // '3m' is not in BYBIT_INTERVAL_MAP
-    const candles = await fetchBybitCandles('BTC', '5m' as never, Date.now() - 120_000)
+    const candles = await fetchBybitCandles('BTC', '5m' as never, TEST_START_TIME)
     // '5m' is valid, so this should succeed — just confirming valid interval works
     expect(candles).not.toBeNull()
   })
 })
 
-describe('fetchBybitCandlesBatched', () => {
+describe.serial('fetchBybitCandlesBatched', () => {
   it('returns combined candles from single batch when count <= batch size', async () => {
-    const { fetchBybitCandlesBatched } = await import('./bybit-rest.js')
     const candles = await fetchBybitCandlesBatched('ETH', '1h', 100)
     expect(candles).not.toBeNull()
     expect(candles!.length).toBe(2)
+    expect(mockGetKline).toHaveBeenCalledTimes(1)
     // Still in ascending order
     expect(candles![0]!.t).toBeLessThan(candles![1]!.t)
   })

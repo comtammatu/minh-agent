@@ -1,11 +1,16 @@
 /**
  * backfillAllCoins tests — concurrency cap, TF priority, failure isolation.
  *
- * Mocks fetchCandles to track concurrent calls and call order.
+ * Uses rest.ts test hooks to inject deterministic fetch behavior without module-loader races.
  */
 
-import { describe, it, expect, beforeEach, mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import type { Candle, CandleInterval } from '../../src/types.js'
+import {
+  __resetRestTestDeps,
+  __setRestTestDeps,
+  backfillAllCoins,
+} from '../../src/feed/rest.js'
 
 // ── Track concurrent calls ────────────────────────────────────────────────
 
@@ -27,9 +32,9 @@ function makeCandle(t: number): Candle {
   return { t, o: 100, h: 101, l: 99, c: 100.5, v: 1000 }
 }
 
-// ── Mock rest.ts ──────────────────────────────────────────────────────────
+// ── Deterministic fetch stub via test deps ────────────────────────────────
 
-const mockFetch = async (coin: string, interval: CandleInterval, _startTime: number) => {
+const mockFetchBatched = async (coin: string, interval: CandleInterval, _totalCount: number) => {
   concurrentNow++
   if (concurrentNow > maxConcurrent) maxConcurrent = concurrentNow
   callLog.push({ coin, interval })
@@ -42,26 +47,16 @@ const mockFetch = async (coin: string, interval: CandleInterval, _startTime: num
   return [makeCandle(1000), makeCandle(2000)]
 }
 
-mock.module('../../src/feed/rest.js', () => ({
-  fetchCandles: mockFetch,
-  fetchCandlesBatched: async (coin: string, interval: CandleInterval, _totalCount: number) => {
-    return mockFetch(coin, interval, 0)
-  },
-  backfillStartTime: (_interval: CandleInterval) => 0,
-  info: {
-    metaAndAssetCtxs: async () => [{ universe: [] }, []],
-    candleSnapshot: async () => [],
-  },
-}))
-
-// Import after mock
-const { backfillAllCoins } = await import('../../src/feed/rest.js')
-
 // ── Tests ─────────────────────────────────────────────────────────────────
 
 describe('backfillAllCoins', () => {
   beforeEach(() => {
     resetTracking()
+    __setRestTestDeps({ fetchCandlesBatched: mockFetchBatched })
+  })
+
+  afterEach(() => {
+    __resetRestTestDeps()
   })
 
   it('respects concurrency cap', async () => {

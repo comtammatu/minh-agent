@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect } from 'bun:test'
+import { VP_BINS, VP_VALUE_AREA_PCT } from '../../src/config.js'
 import {
   computeDelta,
   cumulativeDelta,
@@ -12,9 +13,10 @@ import {
   bookConfirm,
   fundingConfirm,
   oiConfirm,
+  buildVolumeProfile,
 } from '../../src/indicators/order-flow.js'
 import type { RawTrade } from '../../src/indicators/order-flow.js'
-import type { KeyZone, DeltaState } from '../../src/types.js'
+import type { KeyZone, DeltaState, Candle } from '../../src/types.js'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -103,6 +105,121 @@ describe('cumulativeDelta', () => {
   it('negative trend → negative cumDelta', () => {
     const history = Array(5).fill(null).map(() => makeDelta({ delta: -8 }))
     expect(cumulativeDelta(history, 5)).toBe(-40)
+  })
+})
+
+describe('buildVolumeProfile', () => {
+  it('matches the previous naive implementation', () => {
+    const candles: Candle[] = Array.from({ length: 120 }, (_, i) => {
+      const base = 100 + i * 0.07
+      const wave = Math.sin(i / 4.5) * 3.1
+      return {
+        t: i * 60_000,
+        o: base + wave - 0.2,
+        h: base + wave + 1.3 + (i % 5) * 0.04,
+        l: base + wave - 1.0 - (i % 4) * 0.05,
+        c: base + Math.cos(i / 6) * 0.75,
+        v: 800 + (i % 11) * 35,
+      }
+    })
+
+    const naiveBuildVolumeProfile = (
+      series: Candle[],
+      startIdx: number,
+      endIdx: number,
+      params: { numBins?: number; valueAreaPct?: number } = {},
+    ) => {
+      const numBins = params.numBins ?? VP_BINS
+      const valueAreaPct = params.valueAreaPct ?? VP_VALUE_AREA_PCT
+      if (startIdx < 0 || endIdx >= series.length || startIdx >= endIdx) return null
+
+      let hi = -Infinity
+      let lo = Infinity
+      for (let i = startIdx; i <= endIdx; i++) {
+        const candle = series[i]!
+        if (candle.h > hi) hi = candle.h
+        if (candle.l < lo) lo = candle.l
+      }
+      if (hi === lo) return null
+
+      const binSize = (hi - lo) / numBins
+      const bins = Array.from({ length: numBins }, (_, i) => ({
+        priceLevel: lo + binSize * (i + 0.5),
+        volume: 0,
+      }))
+
+      for (let i = startIdx; i <= endIdx; i++) {
+        const candle = series[i]!
+        const lowBin = Math.max(0, Math.floor((candle.l - lo) / binSize))
+        const highBin = Math.min(numBins - 1, Math.floor((candle.h - lo) / binSize))
+        const binsSpanned = highBin - lowBin + 1
+        const volPerBin = candle.v / binsSpanned
+        for (let b = lowBin; b <= highBin; b++) bins[b]!.volume += volPerBin
+      }
+
+      let poc = 0
+      let maxVol = 0
+      for (let i = 0; i < bins.length; i++) {
+        if (bins[i]!.volume > maxVol) {
+          maxVol = bins[i]!.volume
+          poc = i
+        }
+      }
+
+      const total = bins.reduce((sum, bin) => sum + bin.volume, 0)
+      const target = total * valueAreaPct
+      let acc = bins[poc]!.volume
+      let upper = poc
+      let lower = poc
+      while (acc < target && (upper < bins.length - 1 || lower > 0)) {
+        const upVol = upper < bins.length - 1 ? bins[upper + 1]!.volume : 0
+        const dnVol = lower > 0 ? bins[lower - 1]!.volume : 0
+        if (upVol >= dnVol && upper < bins.length - 1) {
+          upper++
+          acc += bins[upper]!.volume
+        } else if (lower > 0) {
+          lower--
+          acc += bins[lower]!.volume
+        } else {
+          upper++
+          acc += bins[upper]!.volume
+        }
+      }
+
+      const pocPrice = bins[poc]!.priceLevel
+      const vah = bins[upper]!.priceLevel + binSize / 2
+      const val = bins[lower]!.priceLevel - binSize / 2
+
+      const avgVol = total / numBins
+      const hvn: number[] = []
+      for (let i = 1; i < bins.length - 1; i++) {
+        const volume = bins[i]!.volume
+        if (volume > avgVol * 1.5 && volume > bins[i - 1]!.volume && volume > bins[i + 1]!.volume) {
+          hvn.push(bins[i]!.priceLevel)
+        }
+      }
+
+      const lvnThreshold = avgVol * 0.5
+      const lvn: number[] = []
+      let zoneStart = -1
+      for (let i = 1; i < bins.length - 1; i++) {
+        if (bins[i]!.volume < lvnThreshold) {
+          if (zoneStart === -1) zoneStart = i
+        } else if (zoneStart !== -1) {
+          lvn.push(bins[Math.floor((zoneStart + i - 1) / 2)]!.priceLevel)
+          zoneStart = -1
+        }
+      }
+      if (zoneStart !== -1) {
+        lvn.push(bins[Math.floor((zoneStart + bins.length - 2) / 2)]!.priceLevel)
+      }
+
+      return { poc: pocPrice, vah, val, hvn, lvn }
+    }
+
+    expect(buildVolumeProfile(candles, 5, 95)).toEqual(naiveBuildVolumeProfile(candles, 5, 95))
+    expect(buildVolumeProfile(candles, 10, 110, { numBins: 32, valueAreaPct: 0.68 }))
+      .toEqual(naiveBuildVolumeProfile(candles, 10, 110, { numBins: 32, valueAreaPct: 0.68 }))
   })
 })
 

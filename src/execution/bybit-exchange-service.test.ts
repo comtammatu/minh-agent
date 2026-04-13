@@ -91,6 +91,12 @@ let mockGetWalletBalance = mock(() =>
     },
   }),
 )
+let mockSetTradingStop = mock(() =>
+  Promise.resolve({ retCode: 0, retMsg: 'OK', result: {} }),
+)
+let mockGetHistoricOrders = mock(() =>
+  Promise.resolve({ retCode: 0, retMsg: 'OK', result: { list: [] } }),
+)
 
 mock.module('bybit-api', () => ({
   RestClientV5: class MockRestClientV5 {
@@ -102,6 +108,8 @@ mock.module('bybit-api', () => ({
     getWalletBalance = mockGetWalletBalance
     getInstrumentsInfo = mockGetInstrumentsInfo
     getTickers = mockGetTickers
+    setTradingStop = mockSetTradingStop
+    getHistoricOrders = mockGetHistoricOrders
   },
 }))
 
@@ -195,6 +203,12 @@ describe('BybitExchangeService', () => {
           ],
         },
       }),
+    )
+    mockSetTradingStop = mock(() =>
+      Promise.resolve({ retCode: 0, retMsg: 'OK', result: {} }),
+    )
+    mockGetHistoricOrders = mock(() =>
+      Promise.resolve({ retCode: 0, retMsg: 'OK', result: { list: [] } }),
     )
   })
 
@@ -526,6 +540,135 @@ describe('BybitExchangeService', () => {
       const result = await svc.cancelByCloid('BTC', 'my-client-order-id')
       expect(result.success).toBe(true)
       expect(result.status).toBe('cancelled')
+    })
+  })
+
+  // ── fill aggregation ─────────────────────────────────────────────────────
+
+  describe('fill aggregation', () => {
+    it('gets fill aggregate by cloid (orderLinkId)', async () => {
+      mockGetHistoricOrders = mock(() =>
+        Promise.resolve({
+          retCode: 0,
+          retMsg: 'OK',
+          result: {
+            list: [{
+              orderStatus: 'Filled',
+              avgPrice: '50010',
+              cumExecQty: '0.2',
+            }],
+          },
+        }),
+      )
+
+      const { BybitExchangeService } = await import('./bybit-exchange-service.js')
+      const svc = new BybitExchangeService()
+      await svc.init()
+
+      const fill = await svc.getFillAggregateByCloid('bb-link-1', 'BTC')
+      expect(fill).not.toBeNull()
+      expect(fill?.avgPx).toBe(50010)
+      expect(fill?.totalSz).toBe(0.2)
+      expect(fill?.isFilled).toBe(true)
+
+      const call = (mockGetHistoricOrders.mock.calls[0] as [{ orderLinkId?: string; orderId?: string }])[0]
+      expect(call.orderLinkId).toBe('bb-link-1')
+      expect(call.orderId).toBeUndefined()
+    })
+
+    it('gets fill aggregate by orderId fallback', async () => {
+      mockGetHistoricOrders = mock(() =>
+        Promise.resolve({
+          retCode: 0,
+          retMsg: 'OK',
+          result: {
+            list: [{
+              orderStatus: 'PartiallyFilled',
+              avgPrice: '3000',
+              cumExecQty: '1.5',
+            }],
+          },
+        }),
+      )
+
+      const { BybitExchangeService } = await import('./bybit-exchange-service.js')
+      const svc = new BybitExchangeService()
+      await svc.init()
+
+      const fill = await svc.getFillAggregateByOrderId('bb-order-xyz', 'ETH')
+      expect(fill).not.toBeNull()
+      expect(fill?.avgPx).toBe(3000)
+      expect(fill?.totalSz).toBe(1.5)
+      expect(fill?.isFilled).toBe(false)
+
+      const call = (mockGetHistoricOrders.mock.calls[0] as [{ orderLinkId?: string; orderId?: string }])[0]
+      expect(call.orderId).toBe('bb-order-xyz')
+      expect(call.orderLinkId).toBeUndefined()
+    })
+  })
+
+  // ── updatePositionStop / placeTrigger ─────────────────────────────────────
+
+  describe('updatePositionStop', () => {
+    it('updates stop-loss via setTradingStop for long position', async () => {
+      const { BybitExchangeService } = await import('./bybit-exchange-service.js')
+      const svc = new BybitExchangeService()
+      await svc.init()
+
+      const result = await svc.updatePositionStop({
+        coin: 'BTC',
+        positionSide: 'long',
+        triggerPrice: 49000,
+        tpsl: 'sl',
+      })
+
+      expect(result.success).toBe(true)
+      const payload = (mockSetTradingStop.mock.calls[0] as [Record<string, string | number>])[0]
+      expect(payload['symbol']).toBe('BTCUSDT')
+      expect(payload['positionIdx']).toBe(1)
+      expect(payload['stopLoss']).toBe('49000')
+    })
+
+    it('returns failure when Bybit rejects setTradingStop', async () => {
+      mockSetTradingStop = mock(() =>
+        Promise.resolve({ retCode: 10001, retMsg: 'Bad stop', result: {} }),
+      )
+      const { BybitExchangeService } = await import('./bybit-exchange-service.js')
+      const svc = new BybitExchangeService()
+      await svc.init()
+
+      const result = await svc.updatePositionStop({
+        coin: 'ETH',
+        positionSide: 'short',
+        triggerPrice: 3100,
+        tpsl: 'sl',
+      })
+
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('Bad stop')
+    })
+  })
+
+  describe('placeTrigger', () => {
+    it('maps close side to position side and reuses position-level stop update', async () => {
+      const { BybitExchangeService } = await import('./bybit-exchange-service.js')
+      const svc = new BybitExchangeService()
+      await svc.init()
+
+      const result = await svc.placeTrigger({
+        coin: 'SOL',
+        side: 'short', // close-long trigger => long position
+        triggerPrice: 120,
+        size: 10,
+        isMarket: true,
+        tpsl: 'sl',
+      })
+
+      expect(result.success).toBe(true)
+      const payload = (mockSetTradingStop.mock.calls[0] as [Record<string, string | number>])[0]
+      expect(payload['symbol']).toBe('SOLUSDT')
+      expect(payload['positionIdx']).toBe(1)
+      expect(payload['stopLoss']).toBe('120')
     })
   })
 

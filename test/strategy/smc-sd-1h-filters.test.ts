@@ -17,7 +17,7 @@
 import { describe, test, expect, beforeEach } from 'bun:test'
 import { SmcSdStrategy } from '../../src/strategy/strategies/smc-sd/index.js'
 import type { Candle, Signal, StrategyContext } from '../../src/types.js'
-import { MIN_CANDLES_FOR_SCAN } from '../../src/config.js'
+import { MIN_CANDLES_FOR_SCAN, SMC_1H_ALLOWED_COINS } from '../../src/config.js'
 import smcFixture from '../fixtures/smc.json'
 
 // ─── Fixture data ────────────────────────────��───────────────────────────────
@@ -291,5 +291,15 @@ describe('scan1hSameTF quality filters', () => {
       if (strategy.scan('BTC', '1h', flat, i)) { anySignal = true; break }
     }
     expect(anySignal).toBe(false)
+  })
+
+  test('19. non-core coin → null (1h allowlist gate)', () => {
+    const coreCoin = SMC_1H_ALLOWED_COINS[0]
+    const coreSignal = strategy.scan(coreCoin, '1h', CANDLES, SIG_IDX)
+    expect(coreSignal).not.toBeNull()
+
+    strategy.clearState()
+    const nonCoreSignal = strategy.scan('DOGE', '1h', CANDLES, SIG_IDX)
+    expect(nonCoreSignal).toBeNull()
   })
 })

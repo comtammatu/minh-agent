@@ -15,6 +15,7 @@ import {
   splitData,
   runTrial,
   selectTopN,
+  scoreOosCandidate,
   validateHoldout,
   detectPlateau,
   formatConsoleTable,
@@ -284,8 +285,8 @@ describe('optimize', () => {
     expect(result.numWindows).toBe(0)
   })
 
-  // Test 9: selectTopN filters and sorts correctly
-  test('selectTopN filters errors and sorts by PF', () => {
+  // Test 9: selectTopN filters and ranks by anti-overfit OOS score
+  test('selectTopN filters errors and ranks by OOS robustness score', () => {
     const trials: TrialResult[] = [
       { trialIndex: 0, params: {} as StrategyParams, oosPF: 2.0, oosExpectancy: 10, maxDD: 0.3, winRate: 0.5, tradeCount: 20, numWindows: 5, durationMs: 100 },
       { trialIndex: 1, params: {} as StrategyParams, oosPF: 3.0, oosExpectancy: 15, maxDD: 0.2, winRate: 0.6, tradeCount: 10, numWindows: 5, durationMs: 100 },
@@ -297,10 +298,12 @@ describe('optimize', () => {
     const top = selectTopN(trials, 3)
 
     expect(top.length).toBe(3)
-    // Sorted descending by PF
-    expect(top[0]!.oosPF).toBe(3.0)
-    expect(top[1]!.oosPF).toBe(2.0)
-    expect(top[2]!.oosPF).toBe(1.5)
+    // Sorted descending by anti-overfit OOS score (PF × trade factor × drawdown penalty)
+    expect(top[0]!.trialIndex).toBe(0) // better trade sample beats raw-PF winner
+    expect(top[1]!.trialIndex).toBe(1)
+    expect(top[2]!.trialIndex).toBe(2)
+    expect(scoreOosCandidate(top[0]!)).toBeGreaterThanOrEqual(scoreOosCandidate(top[1]!))
+    expect(scoreOosCandidate(top[1]!)).toBeGreaterThanOrEqual(scoreOosCandidate(top[2]!))
     // Error and low-trade trials excluded
     expect(top.find(t => t.trialIndex === 3)).toBeUndefined()
     expect(top.find(t => t.trialIndex === 4)).toBeUndefined()

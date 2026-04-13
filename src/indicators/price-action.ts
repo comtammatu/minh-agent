@@ -34,13 +34,12 @@ const bodyBot = (c: Candle) => Math.min(c.o, c.c)
 const isBullish = (c: Candle) => c.c > c.o
 const isBearish = (c: Candle) => c.c < c.o
 
-function trendAt(candles: Candle[], idx: number, lookback: number): 'up' | 'down' | 'flat' {
+function trendAt(candles: Candle[], idx: number, lookback: number, atrValue: number): 'up' | 'down' | 'flat' {
   if (idx < lookback) return 'flat'
   const change = candles[idx]!.c - candles[idx - lookback]!.c
-  const a = atr(candles, idx, lookback)
-  if (isNaN(a) || a === 0) return 'flat'
-  if (change > a * 0.5) return 'up'
-  if (change < -a * 0.5) return 'down'
+  if (isNaN(atrValue) || atrValue === 0) return 'flat'
+  if (change > atrValue * 0.5) return 'up'
+  if (change < -atrValue * 0.5) return 'down'
   return 'flat'
 }
 
@@ -153,7 +152,7 @@ export function detectPriceAction(
   if (isNaN(a) || a === 0) return []
 
   const c = candles[idx]!
-  const trend = trendAt(candles, idx, lb)
+  const trend = trendAt(candles, idx, lb, a)
   const patterns: CandlePattern[] = []
 
   // Single-candle: doji is mutually exclusive with pin bar / hammer
@@ -208,7 +207,7 @@ export function classifySwings(candles: Candle[], upToIdx: number): SwingPoint[]
     }
   }
 
-  return out.sort((a, b) => a.index - b.index)
+  return out
 }
 
 // ─── Structural bias ───────────────────────────────────────────────────────────
@@ -216,10 +215,11 @@ export function classifySwings(candles: Candle[], upToIdx: number): SwingPoint[]
 export function detectStructuralBias(swings: SwingPoint[]): { bias: 'bullish' | 'bearish' | 'neutral'; confidence: number } {
   if (swings.length < 4) return { bias: 'neutral', confidence: 0 }
 
-  const window = swings.slice(-Math.min(swings.length, 10))
+  const windowStart = Math.max(0, swings.length - 10)
   let bullish = 0, bearish = 0
 
-  for (const s of window) {
+  for (let i = windowStart; i < swings.length; i++) {
+    const s = swings[i]!
     if (s.type === 'HH' || s.type === 'HL') bullish++
     else if (s.type === 'LH' || s.type === 'LL') bearish++
   }

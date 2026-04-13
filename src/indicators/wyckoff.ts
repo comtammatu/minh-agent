@@ -6,12 +6,98 @@
  */
 
 import type { Candle, WyckoffPhase, WyckoffEvent } from '../types.js'
-import { sma, atr, volumeRatio } from './core.js'
 
 export interface WyckoffResult {
   phase: WyckoffPhase | null
   confidence: number
   event: WyckoffEvent | null
+}
+
+function trueRange(candles: Candle[], idx: number): number {
+  if (idx === 0) return candles[0]!.h - candles[0]!.l
+  const c = candles[idx]!
+  const p = candles[idx - 1]!
+  return Math.max(c.h - c.l, Math.abs(c.h - p.c), Math.abs(c.l - p.c))
+}
+
+function atrPair(candles: Candle[], idx: number, shortPeriod: number, longPeriod: number): [number, number] {
+  if (idx < Math.max(shortPeriod, longPeriod)) return [NaN, NaN]
+
+  let shortSeed = 0
+  let longSeed = 0
+  let shortVal = NaN
+  let longVal = NaN
+
+  for (let i = 1; i <= idx; i++) {
+    const tr = trueRange(candles, i)
+
+    if (i <= shortPeriod) {
+      shortSeed += tr
+      if (i === shortPeriod) shortVal = shortSeed / shortPeriod
+    } else {
+      shortVal = (shortVal * (shortPeriod - 1) + tr) / shortPeriod
+    }
+
+    if (i <= longPeriod) {
+      longSeed += tr
+      if (i === longPeriod) longVal = longSeed / longPeriod
+    } else {
+      longVal = (longVal * (longPeriod - 1) + tr) / longPeriod
+    }
+  }
+
+  return [shortVal, longVal]
+}
+
+function computeWindowStats(
+  candles: Candle[],
+  idx: number,
+  rangePeriod: number,
+  trendPeriod: number,
+): {
+  smaLong: number
+  smaPrev: number
+  smaPriorStart: number
+  volRatio: number
+} {
+  const hasSmaPrev = idx - rangePeriod >= trendPeriod - 1
+  const hasSmaPriorStart = idx - rangePeriod * 2 >= trendPeriod - 1
+  const hasVolRatio = idx >= rangePeriod
+  const window0Start = idx - trendPeriod + 1
+  const window1Start = idx - rangePeriod - trendPeriod + 1
+  const window1End = idx - rangePeriod
+  const window2Start = idx - rangePeriod * 2 - trendPeriod + 1
+  const window2End = idx - rangePeriod * 2
+  const volStart = idx - rangePeriod
+
+  let sum0 = 0
+  let sum1 = 0
+  let sum2 = 0
+  let volSum = 0
+
+  let loopStart = window0Start
+  if (hasVolRatio && volStart < loopStart) loopStart = volStart
+  if (hasSmaPrev && window1Start < loopStart) loopStart = window1Start
+  if (hasSmaPriorStart && window2Start < loopStart) loopStart = window2Start
+  if (loopStart < 0) loopStart = 0
+
+  for (let i = loopStart; i <= idx; i++) {
+    const candle = candles[i]!
+    const close = candle.c
+    if (i >= window0Start) sum0 += close
+    if (hasSmaPrev && i >= window1Start && i <= window1End) sum1 += close
+    if (hasSmaPriorStart && i >= window2Start && i <= window2End) sum2 += close
+    if (hasVolRatio && i >= volStart && i < idx) volSum += candle.v
+  }
+
+  return {
+    smaLong: sum0 / trendPeriod,
+    smaPrev: hasSmaPrev ? sum1 / trendPeriod : NaN,
+    smaPriorStart: hasSmaPriorStart ? sum2 / trendPeriod : NaN,
+    volRatio: hasVolRatio
+      ? ((volSum / rangePeriod) === 0 ? 0 : candles[idx]!.v / (volSum / rangePeriod))
+      : NaN,
+  }
 }
 
 // ─── Spring / UTAD event helpers ──────────────────────────────────────────────
@@ -63,27 +149,21 @@ export function detectWyckoff(
   // Need 2× trendPeriod: current window + prior window for trend history
   if (idx < tp * 2) return { phase: null, confidence: 0, event: null }
 
-  const atrShort = atr(candles, idx, rp)
-  const atrLong = atr(candles, idx, tp)
+  const [atrShort, atrLong] = atrPair(candles, idx, rp, tp)
   if (isNaN(atrShort) || isNaN(atrLong) || atrLong === 0) return { phase: null, confidence: 0, event: null }
 
   const atrRatio = atrShort / atrLong
 
   // Current slope: SMA change over recent rangePeriod bars
-  const smaLong = sma(candles, idx, tp)
-  const smaPrev = sma(candles, idx - rp, tp)
+  const { smaLong, smaPrev, smaPriorStart, volRatio: volR } = computeWindowStats(candles, idx, rp, tp)
   if (isNaN(smaLong) || isNaN(smaPrev) || smaPrev === 0) return { phase: null, confidence: 0, event: null }
   const trendSlope = (smaLong - smaPrev) / smaPrev
 
   // Prior slope: SMA change over the window BEFORE the current consolidation
   // This tells us what trend preceded the current tight range
-  const smaPriorEnd = sma(candles, idx - rp, tp)
-  const smaPriorStart = sma(candles, idx - rp * 2, tp)
-  const priorSlope = (!isNaN(smaPriorEnd) && !isNaN(smaPriorStart) && smaPriorStart !== 0)
-    ? (smaPriorEnd - smaPriorStart) / smaPriorStart
+  const priorSlope = (!isNaN(smaPriorStart) && smaPriorStart !== 0)
+    ? (smaPrev - smaPriorStart) / smaPriorStart
     : 0
-
-  const volR = volumeRatio(candles, idx, rp)
   const volDecreasing = !isNaN(volR) && volR < 0.8
   const volSpike = !isNaN(volR) && volR > 2.0
 

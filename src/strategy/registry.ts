@@ -18,6 +18,9 @@ import type { Candle, CandleInterval, Signal, PatternType, StrategyContext } fro
 import type { StrategyParams } from '../backtest/types.js'
 import { log } from '../lib/logger.js'
 
+const EMPTY_RUN_RESULTS: ReadonlyArray<{ strategyId: string; signal: Signal }> =
+  Object.freeze([]) as ReadonlyArray<{ strategyId: string; signal: Signal }>
+
 // ─── IStrategy Interface ────────────────────────────────────────────────────
 
 /**
@@ -143,6 +146,22 @@ export class StrategyRegistry {
     this.activeOnly = id
   }
 
+  /** Max minCandles among currently runnable strategies (activeOnly/enabled aware). */
+  getMaxRunnableMinCandles(): number {
+    if (this.activeOnly !== null) {
+      const activeStrategy = this.strategies.get(this.activeOnly)
+      return activeStrategy?.minCandles() ?? 0
+    }
+
+    let maxMinCandles = 0
+    for (const [id, strategy] of this.strategies) {
+      if (!this.enabled.get(id)) continue
+      const minCandles = strategy.minCandles()
+      if (minCandles > maxMinCandles) maxMinCandles = minCandles
+    }
+    return maxMinCandles
+  }
+
   /**
    * Fan-out: run all enabled strategies on this tick.
    * Each strategy's scan() is wrapped in try/catch — one strategy throwing
@@ -159,8 +178,8 @@ export class StrategyRegistry {
     idx: number,
     context?: StrategyContext,
     strategyParams?: StrategyParams,
-  ): Array<{ strategyId: string; signal: Signal }> {
-    const results: Array<{ strategyId: string; signal: Signal }> = []
+  ): ReadonlyArray<{ strategyId: string; signal: Signal }> {
+    let results: Array<{ strategyId: string; signal: Signal }> | null = null
 
     for (const [id, strategy] of this.strategies) {
       // Skip disabled strategies (unless activeOnly overrides)
@@ -176,6 +195,7 @@ export class StrategyRegistry {
       try {
         const signal = strategy.scan(coin, interval, candles, idx, context, strategyParams)
         if (signal !== null) {
+          if (!results) results = []
           results.push({ strategyId: id, signal })
         }
       } catch (err) {
@@ -184,7 +204,7 @@ export class StrategyRegistry {
       }
     }
 
-    return results
+    return results ?? EMPTY_RUN_RESULTS
   }
 
   /** Clear all strategies' module-level state. Used by backtest reset. */

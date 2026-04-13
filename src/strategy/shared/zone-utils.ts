@@ -4,7 +4,7 @@
  * Extracted from the former layered/layers/confirm.ts and layered/layers/trigger.ts.
  */
 
-import type { Candle, KeyZone } from '../../types.js'
+import type { Candle, KeyZone, PivotPoint } from '../../types.js'
 import { ZONE_BUFFER_ATR_MULT, MIN_TP1_RR } from '../../config.js'
 import { compileKeyZones, findPivots } from '../../indicators/smc.js'
 import { atr } from '../../indicators/core.js'
@@ -55,6 +55,9 @@ export function computeStructureTargets(
   entry: number,
   sl: number,
   side: 'long' | 'short',
+  opposingZones?: KeyZone[],
+  swingPivots?: PivotPoint[],
+  atrValue?: number,
 ): { tp1: number; tp2: number } {
   const risk = Math.abs(entry - sl)
   if (risk === 0) return { tp1: entry, tp2: entry }
@@ -63,11 +66,14 @@ export function computeStructureTargets(
   const minTp1 = entry + dir * risk * MIN_TP1_RR
 
   // ── TP1: Nearest opposing zone ──────────────────────────────────────────
-  const { demandZones, supplyZones } = compileKeyZones(candles, idx)
-  const opposingZones = side === 'long' ? supplyZones : demandZones
+  const targetZones = opposingZones ?? (
+    side === 'long'
+      ? compileKeyZones(candles, idx).supplyZones
+      : compileKeyZones(candles, idx).demandZones
+  )
 
   let tp1: number | null = null
-  for (const z of opposingZones) {
+  for (const z of targetZones) {
     const edge = side === 'long' ? z.bottom : z.top
     const valid = side === 'long' ? edge > entry : edge < entry
     if (valid) {
@@ -85,7 +91,7 @@ export function computeStructureTargets(
   if (side === 'short' && tp1 > minTp1) tp1 = minTp1
 
   // Minimum TP distance: max of 2 ATR or MIN_TP1_RR × risk
-  const curAtr = atr(candles, idx, 14)
+  const curAtr = atrValue ?? atr(candles, idx, 14)
   if (!isNaN(curAtr) && curAtr > 0) {
     const minTpDist = Math.max(curAtr * 2, risk * MIN_TP1_RR)
     const minTpPrice = entry + dir * minTpDist
@@ -94,19 +100,19 @@ export function computeStructureTargets(
   }
 
   // ── TP2: Swing structure target ─────────────────────────────────────────
-  const pivots = findPivots(candles, idx, 5)
+  const pivots = swingPivots ?? findPivots(candles, idx, 5)
 
   let tp2: number | null = null
   if (side === 'long') {
-    const candidates = pivots
-      .filter(p => p.kind === 'high' && p.price > tp1!)
-      .sort((a, b) => a.price - b.price)
-    tp2 = candidates[0]?.price ?? null
+    for (const pivot of pivots) {
+      if (pivot.kind !== 'high' || pivot.price <= tp1) continue
+      if (tp2 === null || pivot.price < tp2) tp2 = pivot.price
+    }
   } else {
-    const candidates = pivots
-      .filter(p => p.kind === 'low' && p.price < tp1!)
-      .sort((a, b) => b.price - a.price)
-    tp2 = candidates[0]?.price ?? null
+    for (const pivot of pivots) {
+      if (pivot.kind !== 'low' || pivot.price >= tp1) continue
+      if (tp2 === null || pivot.price > tp2) tp2 = pivot.price
+    }
   }
 
   // Fallback + ensure TP2 > TP1

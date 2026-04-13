@@ -11,6 +11,18 @@ import { log } from '../lib/logger.js'
 
 const transport = new HttpTransport()
 export const info = new InfoClient({ transport })
+type FetchCandlesBatchedFn = (coin: string, interval: CandleInterval, totalCount: number) => Promise<Candle[] | null>
+let fetchCandlesBatchedOverride: FetchCandlesBatchedFn | null = null
+
+/** Test hook: override batched fetch used by backfillAllCoins. */
+export function __setRestTestDeps(deps: { fetchCandlesBatched?: FetchCandlesBatchedFn }): void {
+  fetchCandlesBatchedOverride = deps.fetchCandlesBatched ?? null
+}
+
+/** Reset test overrides to production behavior. */
+export function __resetRestTestDeps(): void {
+  fetchCandlesBatchedOverride = null
+}
 
 /** Parse HL numeric strings to floats. */
 function parseCandle(raw: {
@@ -278,7 +290,8 @@ export async function backfillAllCoins(
     async function runTask(coin: string, interval: CandleInterval): Promise<void> {
       try {
         const totalCount = BACKFILL_CANDLE_COUNTS[interval] ?? BACKFILL_CANDLE_COUNT
-        const candles = await fetchCandlesBatched(coin, interval, totalCount)
+        const fetcher = fetchCandlesBatchedOverride ?? fetchCandlesBatched
+        const candles = await fetcher(coin, interval, totalCount)
 
         if (candles === null) {
           log.warn('backfill', `${coin} ${interval}: FAILED — skipping`)
