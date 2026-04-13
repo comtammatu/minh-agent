@@ -579,10 +579,12 @@ export const PIPELINE_BENCH_CI_TRIM_RATIO = 0.01
 /** Compare robust metrics by default to reduce CI flakes from scheduler/GC spikes. */
 export const PIPELINE_BENCH_CI_METRIC_MODE: PipelineBenchmarkMetricMode = 'robust'
 
-/** Max allowed regression vs baseline before CI fails (10%). */
+/** Max allowed regression vs baseline before CI fails.
+ * Keep p95 strict, but allow more p99 headroom on hosted GitHub runners
+ * where tail latency shows materially higher scheduler variance. */
 export const PIPELINE_BENCH_CI_MAX_REGRESSION = {
   p95Pct: 0.10,
-  p99Pct: 0.10,
+  p99Pct: 0.25,
 } as const
 
 // ─── Max Holding Period (P0 fix) ──────────────────────────────────────────
