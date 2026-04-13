@@ -49,6 +49,18 @@ import { MARKET_ORDER_SLIPPAGE_PCT, RETRY, HL_MIN_ORDER_NOTIONAL_USD } from '../
 import { getLatestBook } from '../feed/orderbook.js'
 import { fetchAllMids } from '../feed/perp-info.js'
 
+function getExchangeStatusError(status: unknown): string | null {
+  if (
+    typeof status === 'object'
+    && status !== null
+    && 'error' in status
+    && typeof (status as { error?: unknown }).error === 'string'
+  ) {
+    return (status as { error: string }).error
+  }
+  return null
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface PlaceOrderParams {
@@ -453,11 +465,11 @@ export class HLExchangeService {
         const response = await this.exchange!.cancel({
           cancels: [{ a: assetId, o: oid }],
         })
-        const status = response.response.data.statuses[0]
+        const status: unknown = response.response.data.statuses[0]
         if (status === 'success') {
           return { success: true as const, oid, avgPx: null, totalSz: null, status: 'cancelled' as const, error: null }
         }
-        const errorMsg = typeof status === 'object' && 'error' in status ? status.error : 'Unknown cancel error'
+        const errorMsg = getExchangeStatusError(status) ?? 'Unknown cancel error'
         throw new Error(errorMsg)
       },
       {
@@ -497,11 +509,11 @@ export class HLExchangeService {
         const response = await this.exchange!.cancelByCloid({
           cancels: [{ asset: assetId, cloid: cloid as `0x${string}` }],
         })
-        const status = response.response.data.statuses[0]
+        const status: unknown = response.response.data.statuses[0]
         if (status === 'success') {
           return { success: true as const, oid: null, avgPx: null, totalSz: null, status: 'cancelled' as const, error: null }
         }
-        const errorMsg = typeof status === 'object' && 'error' in status ? status.error : 'Unknown cancel error'
+        const errorMsg = getExchangeStatusError(status) ?? 'Unknown cancel error'
         throw new Error(errorMsg)
       },
       {

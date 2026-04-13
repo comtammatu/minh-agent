@@ -13,6 +13,7 @@ This project optimizes for deterministic behavior, low-latency scans, and safe e
 
 ```bash
 bun install
+bun run typecheck
 bun test --run
 ACTIVE_EXCHANGE=HL bun run bench:pipeline:ci
 ```
@@ -24,10 +25,18 @@ Use `ACTIVE_EXCHANGE=HL` for benchmark validation unless you are intentionally w
 Every non-trivial change should satisfy all of these:
 
 1. `bun test --run` passes
-2. `ACTIVE_EXCHANGE=HL bun run bench:pipeline:ci` passes when touching strategy, indicators, cache, config, or CI budget code
-3. No new `any` without a justification comment
-4. No new magic numbers outside `src/config.ts`
-5. No side effects inside pure indicator/strategy helpers
+2. `bun run typecheck` passes
+3. `ACTIVE_EXCHANGE=HL bun run bench:pipeline:ci` passes when touching strategy, indicators, cache, config, or CI budget code
+4. No new `any` without a justification comment
+5. No new magic numbers outside `src/config.ts`
+6. No side effects inside pure indicator/strategy helpers
+
+## Typecheck Scope
+
+- `bun run typecheck` uses [`tsconfig.typecheck.json`](tsconfig.typecheck.json).
+- It intentionally locks `src/**` runtime modules and excludes `test/**` plus `src/**/*.test.ts`.
+- Tests are still mandatory and are enforced separately via `bun test --run`.
+- Rationale: we want strict compiler guarantees on production code without turning fixture-heavy test files into the main source of CI noise.
 
 ## Performance Gate Policy
 

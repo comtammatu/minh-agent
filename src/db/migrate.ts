@@ -41,7 +41,7 @@ export async function runMigrations(sql: Sql): Promise<number> {
 
     await sql.begin(async (tx) => {
       await tx.unsafe(content)
-      await tx`INSERT INTO schema_migrations (version) VALUES (${version})`
+      await tx.unsafe('INSERT INTO schema_migrations (version) VALUES ($1)', [version])
     })
 
     count++

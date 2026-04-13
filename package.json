@@ -8,6 +8,7 @@
     "start": "bun run src/index.ts",
     "test": "bun test",
     "test:run": "bun test --run",
+    "typecheck": "bunx tsc --noEmit -p tsconfig.typecheck.json",
     "fixtures": "bun run scripts/gen-fixtures.ts",
     "bench:pipeline": "LOG_LEVEL=ERROR bun run src/backtest/run-pipeline-benchmark.ts",
     "bench:pipeline:ci": "LOG_LEVEL=ERROR bun run scripts/check-pipeline-performance.ts"
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/node": "^25.6.0",
     "@types/react": "^19.2.14"
   }
 }

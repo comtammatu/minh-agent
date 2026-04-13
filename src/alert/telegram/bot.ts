@@ -275,7 +275,7 @@ async function routeCallback(
     const isMenu = rest === 'menu'
     await sendTelegramAlert(reply, fetchFn, {
       parseMode: isMenu ? 'HTML' : 'MarkdownV2',
-      replyMarkup: isMenu ? getMainMenuKeyboard() : undefined,
+      ...(isMenu ? { replyMarkup: getMainMenuKeyboard() } : {}),
     })
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err)
@@ -320,7 +320,7 @@ async function routeUpdate(
     const isMenu = parsed.name === 'menu'
     await sendTelegramAlert(reply, fetchFn, {
       parseMode: isMenu ? 'HTML' : 'MarkdownV2',
-      replyMarkup: isMenu ? getMainMenuKeyboard() : undefined,
+      ...(isMenu ? { replyMarkup: getMainMenuKeyboard() } : {}),
     })
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err)

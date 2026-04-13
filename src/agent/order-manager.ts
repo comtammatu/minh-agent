@@ -134,8 +134,8 @@ export async function submitToExchange(
       size,
       reduceOnly: false,
       cloid,
-      slPrice,
-      tpPrice,
+      ...(slPrice !== undefined ? { slPrice } : {}),
+      ...(tpPrice !== undefined ? { tpPrice } : {}),
     })
     if (result.success) {
       // Prefer rawOrderId (Bybit UUID) > oid (HL numeric) > status fallback
@@ -632,18 +632,20 @@ export class OrderManager {
     )
 
     // Register position with PositionMonitor for tracking (trail stop, partial close, TUI display)
-    this.onPositionOpen?.({
-      positionId,
-      coin: order.coin,
-      side: order.side,
-      entryPrice: fillPrice,
-      size: fillSize,
-      slPrice: order.slPrice,
-      tpPrice: order.tpPrice,
-      entryOrderId: order.id,
-      leverage,
-      strategyId: order.strategyId,
-    })
+    if (order.slPrice !== null && order.tpPrice !== null) {
+      this.onPositionOpen?.({
+        positionId,
+        coin: order.coin,
+        side: order.side,
+        entryPrice: fillPrice,
+        size: fillSize,
+        slPrice: order.slPrice,
+        tpPrice: order.tpPrice,
+        entryOrderId: order.id,
+        leverage,
+        strategyId: order.strategyId,
+      })
+    }
 
     // Dispatch to agent (with strategyId for correct routing)
     this.dispatchToAgent?.(order.coin, {
@@ -829,7 +831,12 @@ export class OrderManager {
       // Fallback: cancel by cloid when exchangeOrderId is invalid (e.g. Bybit stored "submitted")
       if (!cancelResult.success && order.cloid && !getEffectivePaperTrade()) {
         log.info('order-manager', `Retrying cancel by cloid for ${orderId}`)
-        cancelResult = await svc.cancelByCloid(order.coin, order.cloid)
+        const retryResult = await svc.cancelByCloid(order.coin, order.cloid)
+        cancelResult = {
+          success: retryResult.success,
+          exchangeOrderId: null,
+          error: retryResult.error,
+        }
       }
       if (!cancelResult.success) {
         log.error('order-manager', `Exchange cancel failed for ${orderId}: ${cancelResult.error}`)

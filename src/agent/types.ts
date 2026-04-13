@@ -9,6 +9,7 @@
  */
 
 import type { ActiveSetup, ConfluenceGrade, ExchangeId } from '../types.js'
+export type { ActiveSetup, ExchangeId } from '../types.js'
 
 // ─── Agent States ────────────────────────────────────────────────────────────
 

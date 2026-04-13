@@ -4,6 +4,28 @@ All architectural and engineering decisions made during plan reviews.
 
 ---
 
+## Active Repository Decisions
+
+### 2026-04-13 — Typecheck + CI split by responsibility
+
+- `bun run typecheck` now uses [`tsconfig.typecheck.json`](../../tsconfig.typecheck.json).
+- Scope: production/runtime modules in `src/**` plus supported scripts.
+- Excluded from compiler gate:
+  - `test/**`
+  - `src/**/*.test.ts`
+  - `scripts/gen-fixtures.ts` (depends on an external sibling repo and is not required for normal repo validation)
+- CI now has a dedicated `CI` workflow that gates:
+  - `bun run typecheck`
+  - `bun test --run`
+- Performance remains a separate gate in `pipeline-performance-budget.yml`.
+
+Rationale:
+- We want strict compiler guarantees on runtime code that actually ships.
+- Test files remain mandatory, but are enforced by the test runner rather than by turning fixture typing into the main compiler bottleneck.
+- This keeps contributor workflow strict, fast enough, and aligned with operational risk.
+
+---
+
 ## Original Plan Review (Flat Architecture — superseded)
 
 Decisions below were made for the original flat 8-detector architecture. Many remain valid (C1, C2, C3, C7-C9, E1-E2, E4-E9). Some changed due to the shift to Layered Decision Framework.

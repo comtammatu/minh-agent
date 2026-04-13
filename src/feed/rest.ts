@@ -275,6 +275,7 @@ export async function backfillAllCoins(
     function next(): void {
       while (running < concurrency && idx < total) {
         const task = tasks[idx++]
+        if (!task) continue
         running++
         runTask(task.coin, task.interval)
           .then(() => {

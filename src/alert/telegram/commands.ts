@@ -178,16 +178,25 @@ export function parsePauseCoinArgs(args: string): { coin: string; durationMs: nu
   const parts = args.trim().split(/\s+/)
   if (parts.length < 2) return null
 
-  const coin = parts[0].toUpperCase()
-  const durationStr = parts[1].toLowerCase()
+  const rawCoin = parts[0]
+  const rawDuration = parts[1]
+  if (!rawCoin || !rawDuration) return null
+
+  const coin = rawCoin.toUpperCase()
+  const durationStr = rawDuration.toLowerCase()
   const match = durationStr.match(/^(\d+)(m|h|d)$/)
   if (!match) return null
 
-  const value = parseInt(match[1], 10)
+  const [, rawValue, unit] = match
+  if (!rawValue || !unit) return null
+
+  const value = parseInt(rawValue, 10)
   if (value <= 0 || isNaN(value)) return null
 
   const multipliers: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000 }
-  const durationMs = value * multipliers[match[2]]
+  const multiplier = multipliers[unit]
+  if (multiplier === undefined) return null
+  const durationMs = value * multiplier
   return { coin, durationMs, label: durationStr }
 }
 

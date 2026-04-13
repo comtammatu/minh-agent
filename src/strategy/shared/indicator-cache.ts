@@ -294,7 +294,12 @@ export function getCachedKeyZones(
   if (cached !== undefined) return cached
 
   const pivots = getCachedPivotsIfAvailable(entry, 3, tolerance)
-  const computed = compileKeyZones(candles, idx, tolerance, { pivots })
+  const computed = compileKeyZones(
+    candles,
+    idx,
+    tolerance,
+    pivots !== undefined ? { pivots } : {},
+  )
   entry.keyZonesByTolerance.set(toleranceKey, computed)
   return computed
 }

@@ -173,7 +173,7 @@ function refreshStatusSnapshot(
   const regime = getCachedRegime(coin, interval, candles, idx)
   const pivots = getCachedPivots3(coin, interval, candles, idx)
   const wyckoff = getCachedWyckoff(coin, interval, candles, idx)
-  const breaks = getCachedStructureBreaks(coin, interval, candles, idx, { pivots })
+  const breaks = getCachedStructureBreaks(coin, interval, candles, idx)
   const htfInterval = HTF_MAP[interval]
   const htfIdx = htfCandles.length - 1
   const htfBreaks = htfCandles.length >= MIN_CANDLES_FOR_SCAN && htfInterval !== interval
@@ -182,7 +182,12 @@ function refreshStatusSnapshot(
   const htfWyckoff = htfCandles.length >= MIN_CANDLES_FOR_SCAN && htfInterval !== interval
     ? getCachedWyckoff(coin, htfInterval, htfCandles, htfIdx)
     : undefined
-  const bias = determineBias(candles, idx, htfCandles, pivots, { breaks, htfBreaks, wyckoff, htfWyckoff })
+  const bias = determineBias(candles, idx, htfCandles, pivots, {
+    breaks,
+    wyckoff,
+    ...(htfBreaks !== undefined ? { htfBreaks } : {}),
+    ...(htfWyckoff !== undefined ? { htfWyckoff } : {}),
+  })
   const existing = statusState.get(sk)
   statusState.set(sk, {
     coin,
@@ -291,7 +296,9 @@ function seedLastCandleTsFromStore(coin: string, interval: CandleInterval): void
   const sk = statusKey(coin, interval)
   const candles = getCandles(coin, interval, 2)
   if (candles.length === 0) return
-  lastCandleTs.set(sk, candles[candles.length - 1].t)
+  const latest = candles[candles.length - 1]
+  if (!latest) return
+  lastCandleTs.set(sk, latest.t)
 }
 
 /**

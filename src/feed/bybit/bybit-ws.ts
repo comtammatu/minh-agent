@@ -48,6 +48,7 @@ function getClient(): WebsocketClient {
       if (parts.length < 3) return
       const bybitInterval = parts[1]  // e.g. '60'
       const symbol = parts[2]         // e.g. 'BTCUSDT'
+      if (!symbol) return
       const coin = symbol.replace('USDT', '')
       const interval = (
         Object.entries(BYBIT_INTERVAL_MAP) as [CandleInterval, string][]

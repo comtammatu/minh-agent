@@ -43,15 +43,19 @@ export async function subscribeOrderBook(coin: string): Promise<void> {
       const [rawBids, rawAsks] = event.levels
 
       // Cap to top BOOK_DEPTH_LEVELS
-      const bids: [number, number][] = rawBids
-        .slice(0, BOOK_DEPTH_LEVELS)
-        .map(level => [parseFloat(level.px), parseFloat(level.sz)])
-        .filter(([px, sz]) => !isNaN(px) && !isNaN(sz))
+      const bids: [number, number][] = []
+      for (const level of rawBids.slice(0, BOOK_DEPTH_LEVELS)) {
+        const px = parseFloat(level.px)
+        const sz = parseFloat(level.sz)
+        if (!isNaN(px) && !isNaN(sz)) bids.push([px, sz])
+      }
 
-      const asks: [number, number][] = rawAsks
-        .slice(0, BOOK_DEPTH_LEVELS)
-        .map(level => [parseFloat(level.px), parseFloat(level.sz)])
-        .filter(([px, sz]) => !isNaN(px) && !isNaN(sz))
+      const asks: [number, number][] = []
+      for (const level of rawAsks.slice(0, BOOK_DEPTH_LEVELS)) {
+        const px = parseFloat(level.px)
+        const sz = parseFloat(level.sz)
+        if (!isNaN(px) && !isNaN(sz)) asks.push([px, sz])
+      }
 
       const imbalance = bidAskImbalance(bids, asks)
 

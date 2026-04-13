@@ -1129,14 +1129,15 @@ export class SmcSdStrategy implements IStrategy {
       }
     }
     if (!bestZone) return null
+    const selectedZone: KeyZone = bestZone
 
     // Bounce detection
     let isBounce = false
     let bounceQuality: 'displacement' | 'wick' | 'sweep' = 'wick'
     const hasDisplacement = isDisplacementCandle(candles, idx, atrVal, SMC_ICT_DISPLACEMENT_BODY_ATR)
     if (side === 'long') {
-      const we = candle.l <= bestZone.top + tol
-      const ca = candle.c > bestZone.top - tol
+      const we = candle.l <= selectedZone.top + tol
+      const ca = candle.c > selectedZone.top - tol
       const bc = candle.c > candle.o
       if (we && ca && hasDisplacement && bc) {
         isBounce = true
@@ -1158,8 +1159,8 @@ export class SmcSdStrategy implements IStrategy {
         isBounce = true
       }
     } else {
-      const we = candle.h >= bestZone.bottom - tol
-      const cb = candle.c < bestZone.bottom + tol
+      const we = candle.h >= selectedZone.bottom - tol
+      const cb = candle.c < selectedZone.bottom + tol
       const bc = candle.c < candle.o
       if (we && cb && hasDisplacement && bc) {
         isBounce = true
@@ -1199,10 +1200,10 @@ export class SmcSdStrategy implements IStrategy {
     if (htfAligned) confidence += SMC_ICT_HTF_ALIGNED_BONUS
     if (htfOpposed) confidence -= SMC_ICT_HTF_COUNTER_PENALTY
     if (inOTE) confidence += SMC_ICT_OTE_BONUS
-    if (bestZone.origin === 'breaker-block') confidence += SMC_ICT_BREAKER_BLOCK_BONUS
-    if (bestZone.origin === 'inversion-fvg') confidence += SMC_ICT_INVERSION_FVG_BONUS
-    if (bestZone.strength > 0.6) confidence += 0.05
-    if (bestZone.strength > 0.8) confidence += 0.05
+    if (selectedZone.origin === 'breaker-block') confidence += SMC_ICT_BREAKER_BLOCK_BONUS
+    if (selectedZone.origin === 'inversion-fvg') confidence += SMC_ICT_INVERSION_FVG_BONUS
+    if (selectedZone.strength > 0.6) confidence += 0.05
+    if (selectedZone.strength > 0.8) confidence += 0.05
     if (!isNaN(adxVal) && adxVal > 30) confidence += 0.08
     else if (!isNaN(adxVal) && adxVal > 25) confidence += 0.05
     if (!isNaN(volRatio) && volRatio > 2.0) confidence += 0.08
@@ -1234,7 +1235,9 @@ export class SmcSdStrategy implements IStrategy {
     // SL/TP
     const entry = candle.c
     const slMult = (strategyParams?.SL_WICK_ATR_MULT ?? SL_WICK_ATR_MULT) / SL_WICK_ATR_MULT
-    const sl = side === 'long' ? bestZone.bottom - atrVal * STRUCTURE_STOP_ATR_BUFFER * slMult : bestZone.top + atrVal * STRUCTURE_STOP_ATR_BUFFER * slMult
+    const sl = side === 'long'
+      ? selectedZone.bottom - atrVal * STRUCTURE_STOP_ATR_BUFFER * slMult
+      : selectedZone.top + atrVal * STRUCTURE_STOP_ATR_BUFFER * slMult
     const opposingZones = side === 'long' ? supplyZones : demandZones
     const { tp1, tp2 } = computeStructureTargets(candles, idx, entry, sl, side, opposingZones, undefined, atrVal)
     const riskAmt = Math.abs(entry - sl)
@@ -1263,8 +1266,8 @@ export class SmcSdStrategy implements IStrategy {
     // P2: zone-aware dedup
     const dedupKey = `${coin}|${interval}`
     const currentBarClock = barClockFor(candle.t, interval)
-    if (isDuplicateSignal(dedupKey, currentBarClock, bestZone.top, bestZone.bottom)) return null
-    recordSignal(dedupKey, currentBarClock, bestZone.top, bestZone.bottom)
+    if (isDuplicateSignal(dedupKey, currentBarClock, selectedZone.top, selectedZone.bottom)) return null
+    recordSignal(dedupKey, currentBarClock, selectedZone.top, selectedZone.bottom)
 
     return {
       type: 'smc-sd', side, confidence: Math.min(confidence, 1),
@@ -1272,12 +1275,12 @@ export class SmcSdStrategy implements IStrategy {
       confluenceGrade: 'B', confluenceCount: 3,
       patternData: {
         breakKind: recentBreak.kind, breakDirection: recentBreak.direction, breakLevel: recentBreak.level,
-        premiumDiscount: pd, zoneOrigin: bestZone.origin, zoneTop: bestZone.top, zoneBottom: bestZone.bottom,
-        zoneStrength: bestZone.strength, throughZone: proximity.throughZone,
+        premiumDiscount: pd, zoneOrigin: selectedZone.origin, zoneTop: selectedZone.top, zoneBottom: selectedZone.bottom,
+        zoneStrength: selectedZone.strength, throughZone: proximity.throughZone,
         regime, tp2Price: tp2, atrAtEntry: atrVal,
         htfAligned, inOTE, bounceQuality, hasDisplacement,
-        atBreakerBlock: bestZone.origin === 'breaker-block',
-        atInversionFVG: bestZone.origin === 'inversion-fvg', killzoneName,
+        atBreakerBlock: selectedZone.origin === 'breaker-block',
+        atInversionFVG: selectedZone.origin === 'inversion-fvg', killzoneName,
       },
     }
   }

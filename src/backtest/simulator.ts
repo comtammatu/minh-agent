@@ -465,7 +465,7 @@ export class TradeSimulator {
       pnlPct: pos.sizeUsd > 0 ? pnl / pos.sizeUsd : 0,
       exitReason,
       strategyId: this.strategyId,
-      partialCloses: pos.partialCloses.length > 0 ? [...pos.partialCloses] : undefined,
+      ...(pos.partialCloses.length > 0 ? { partialCloses: [...pos.partialCloses] } : {}),
     })
 
     this.positions.delete(pos.coin)

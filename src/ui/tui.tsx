@@ -69,7 +69,7 @@ export interface TuiDataSources {
   }>
   getStatus: () => StatusSnapshot[]
   getHealthReport: () => { overall: string; uptime: number; rssBytes: number; components: { feed: { status: string; consecutiveErrors: number }; db: { status: string; consecutiveErrors: number }; exchange: { status: string; consecutiveErrors: number } } }
-  getAccountState: () => Promise<{ effectiveBalance: number; accountValue: number; spotUsdcBalance: number; totalMarginUsed: number; withdrawable: number }> | null
+  getAccountState: () => Promise<{ effectiveBalance: number; accountValue: number; spotUsdcBalance: number; totalMarginUsed: number; withdrawable: number } | null> | null
   getSubscriptionCount: () => number
   getTrackedCoins: () => string[]
   getPaperStats: () => PaperStats | null
@@ -265,14 +265,15 @@ function buildWatchlistColumnWidths(inner: number): WatchlistColumnWidths {
   const ideal = { coin: 12, grade: 5, setups: 5, price: 13, dayPct: 9, fund: 10, tfBlock: 40 }
   const minimum = { coin: 6, grade: 3, setups: 2, price: 7, dayPct: 5, fund: 7, tfBlock: 16 }
   const flat = distributeColumnWidths(innerNet, ideal, minimum)
-  let tfCell = Math.max(3, Math.floor(flat.tfBlock / 4))
+  const tfBlock = flat.tfBlock ?? minimum.tfBlock
+  let tfCell = Math.max(3, Math.floor(tfBlock / 4))
   const cols: WatchlistColumnWidths = {
-    coin: flat.coin,
-    grade: flat.grade,
-    setups: flat.setups,
-    price: flat.price,
-    dayPct: flat.dayPct,
-    fund: flat.fund,
+    coin: flat.coin ?? minimum.coin,
+    grade: flat.grade ?? minimum.grade,
+    setups: flat.setups ?? minimum.setups,
+    price: flat.price ?? minimum.price,
+    dayPct: flat.dayPct ?? minimum.dayPct,
+    fund: flat.fund ?? minimum.fund,
     tfCell,
   }
   let sum = cols.coin + cols.grade + cols.setups + cols.price + cols.dayPct + cols.fund + 4 * cols.tfCell
@@ -940,28 +941,49 @@ const WatchlistCoinRow = memo(function WatchlistCoinRow({ coin, info, col, price
   const dCol = dayPctColor(info.dayChangePctUtc ?? 0)
 
   const fundStr = info.funding != null ? formatFunding(info.funding).padStart(col.fund) : '\u2014'.padStart(col.fund)
+  const gradeCol = gradeColor(info.grade)
+  const fundingCol = info.funding != null ? fundingColor(info.funding) : undefined
 
   return (
     <Box flexDirection="row" flexWrap="nowrap">
       <TableCell w={col.coin} marginRight={WL_GAP} bold>{coin.padEnd(col.coin)}</TableCell>
-      <TableCell
-        w={col.grade}
-        marginRight={WL_GAP}
-        bold={info.grade.startsWith('A')}
-        {...(gradeColor(info.grade) != null ? { color: gradeColor(info.grade) } : {})}
-      >
-        {info.grade.padEnd(col.grade)}
-      </TableCell>
+      {gradeCol !== undefined ? (
+        <TableCell
+          w={col.grade}
+          marginRight={WL_GAP}
+          bold={info.grade.startsWith('A')}
+          color={gradeCol}
+        >
+          {info.grade.padEnd(col.grade)}
+        </TableCell>
+      ) : (
+        <TableCell
+          w={col.grade}
+          marginRight={WL_GAP}
+          bold={info.grade.startsWith('A')}
+        >
+          {info.grade.padEnd(col.grade)}
+        </TableCell>
+      )}
       <TableCell w={col.setups} marginRight={WL_GAP}>{String(info.setups).padEnd(col.setups)}</TableCell>
-      <TableCell w={col.price} marginRight={WL_GAP} color={priceColor}>{priceStr}</TableCell>
+      <TableCell w={col.price} marginRight={WL_GAP} {...(priceColor !== undefined ? { color: priceColor } : {})}>{priceStr}</TableCell>
       <TableCell w={col.dayPct} marginRight={WL_GAP} {...(dCol != null ? { color: dCol } : {})}>{dayStr}</TableCell>
-      <TableCell
-        w={col.fund}
-        marginRight={WL_GAP}
-        {...(info.funding != null && fundingColor(info.funding) != null ? { color: fundingColor(info.funding) } : {})}
-      >
-        {fundStr}
-      </TableCell>
+      {fundingCol !== undefined ? (
+        <TableCell
+          w={col.fund}
+          marginRight={WL_GAP}
+          color={fundingCol}
+        >
+          {fundStr}
+        </TableCell>
+      ) : (
+        <TableCell
+          w={col.fund}
+          marginRight={WL_GAP}
+        >
+          {fundStr}
+        </TableCell>
+      )}
       {DISPLAY_TFS.map((tf, i) => {
         const { label, color } = tfCellText(info.tfs[tf], col.tfCell)
         return (

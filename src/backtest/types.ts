@@ -54,7 +54,7 @@ export interface PartialCloseDetail {
   price: number
   sizePct: number    // fraction of original size (e.g. 0.4, 0.3, 0.3)
   bar: number        // bar index relative to entry
-  reason: 'tp1_zone' | 'tp2_swing' | 'tp3_trail' | 'sl_hit' | 'be_hit' | 'end_of_data'
+  reason: 'tp1_zone' | 'tp2_swing' | 'tp3_trail' | 'sl_hit' | 'be_hit' | 'end_of_data' | 'max_hold'
 }
 
 // ─── Trade Record ───────────────────────────────────────────────────────────

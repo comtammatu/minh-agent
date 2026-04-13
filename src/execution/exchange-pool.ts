@@ -13,19 +13,14 @@
 
 import { ExchangeService, getExchangeService } from './exchange-service.js'
 import { BybitExchangeService } from './bybit-exchange-service.js'
+import type { IExchangeService } from './exchange-service.js'
+export type { IExchangeService } from './exchange-service.js'
 import {
   getActiveExchange,
   SIMULATED_ACCOUNT,
 } from '../config.js'
 import type { ExchangeId } from '../types.js'
 import { log } from '../lib/logger.js'
-
-/**
- * Union of all exchange service types managed by the pool.
- * Consumers that need HL-specific methods (getWalletAddress, reloadSymbols, etc.)
- * should narrow via instanceof ExchangeService check.
- */
-export type IExchangeService = ExchangeService | BybitExchangeService
 
 export class ExchangePool {
   /** Shared instance for all strategies. */

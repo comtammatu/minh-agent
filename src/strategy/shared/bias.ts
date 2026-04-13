@@ -117,7 +117,9 @@ export function determineBias(
     confidence = Math.min(confidence + HTF_ALIGN_BOOST, 1)
   }
 
-  return { bias, confidence, source, htfBias: htfBias ?? undefined }
+  return htfBias === null
+    ? { bias, confidence, source }
+    : { bias, confidence, source, htfBias }
 }
 
 function computeHTFBias(

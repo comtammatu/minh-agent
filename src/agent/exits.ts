@@ -411,7 +411,7 @@ export function computePartialCloseLevels(
   levels.push({
     targetPrice: firstTpPrice,
     closePct: config.firstClosePct,
-    newSlPrice: config.moveSlToBreakeven ? entryPrice : undefined,
+    ...(config.moveSlToBreakeven ? { newSlPrice: entryPrice } : {}),
   })
 
   // Second TP level (remainder)

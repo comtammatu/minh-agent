@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src", "scripts"],
+  "exclude": [
+    "test",
+    "scripts/gen-fixtures.ts",
+    "src/**/*.test.ts"
+  ]
+}

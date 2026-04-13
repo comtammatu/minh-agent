@@ -146,7 +146,7 @@ export function evaluatePosition(
         type: 'partial_close',
         positionId: position.positionId,
         closePct: level.closePct,
-        newSlPrice: level.newSlPrice,
+        ...(level.newSlPrice !== undefined ? { newSlPrice: level.newSlPrice } : {}),
       })
       // Only fire one partial close per tick to avoid cascading
       break
@@ -519,6 +519,7 @@ export class PositionMonitor {
       const actions = reconcilePositions(this.positions, snapshots)
 
       for (const action of actions) {
+        if (!('positionId' in action)) continue
         const pos = this.positions.get(action.positionId)
         if (pos) {
           await this.executeAction(pos, action)

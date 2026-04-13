@@ -146,7 +146,7 @@ export async function fetchBybitCandles(
         symbol,
         interval: bybitInterval,
         start: startTime,
-        end: endTime,
+        ...(endTime !== undefined ? { end: endTime } : {}),
         limit: BYBIT_BACKFILL_BATCH_SIZE,
       })
 

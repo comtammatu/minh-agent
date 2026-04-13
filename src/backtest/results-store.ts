@@ -8,7 +8,7 @@
  * Sprint 3 S3.
  */
 
-import type { Sql } from 'postgres'
+import type { JSONValue, Sql } from 'postgres'
 import { sql as defaultSql } from '../db/connection.js'
 import { computeMetricsDelta } from './metrics.js'
 import type { MetricsDelta } from './metrics.js'
@@ -80,8 +80,8 @@ export async function saveRun(
       max_drawdown, sharpe_ratio, expectancy
     ) VALUES (
       ${name ?? null},
-      ${db.json(config)},
-      ${db.json(metrics)},
+      ${db.json(config as unknown as JSONValue)},
+      ${db.json(metrics as unknown as JSONValue)},
       ${metrics.totalTrades},
       ${metrics.netPnl},
       ${metrics.winRate},
@@ -91,6 +91,7 @@ export async function saveRun(
     )
     RETURNING id
   `
+  if (!row) throw new Error('Failed to persist backtest run header')
   const runId = row.id
 
   // Bulk insert trades in chunks
@@ -157,6 +158,7 @@ export async function loadRun(runId: string, db: Sql = defaultSql): Promise<Save
   `
   if (runs.length === 0) return null
   const run = runs[0]
+  if (!run) return null
 
   // Load trades
   const tradeRows = await db<{

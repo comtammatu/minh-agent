@@ -1,6 +1,7 @@
 # TODOS
 
-Items deferred from CEO/Eng reviews. Priority: P1 (do next), P2 (soon), P3 (someday).
+Active backlog only. Historical review notes and superseded plans live in [docs/plan/decisions.md](docs/plan/decisions.md).
+Priority: P1 (do next), P2 (soon), P3 (someday).
 
 ---
 

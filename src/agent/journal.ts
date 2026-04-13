@@ -10,14 +10,15 @@
  */
 
 import { sql } from '../db/connection.js'
+import type { JSONValue } from 'postgres'
 import { log } from '../lib/logger.js'
 import type {
   AgentAction,
-  ExchangeId,
   JournalEntry,
   JournalFilter,
   DailySummary,
 } from './types.js'
+import type { ExchangeId } from '../types.js'
 
 // ─── Write ──────────────────────────────────────────────────────────────────
 
@@ -35,7 +36,7 @@ export async function logJournalEntry(
   try {
     await sql`
       INSERT INTO trade_journal (event_type, coin, details, agent_state, strategy_id, exchange)
-      VALUES (${eventType}, ${coin}, ${sql.json(details)}, ${agentState ?? null}, ${strategyId ?? 'smc-sd'}, ${exchange})
+      VALUES (${eventType}, ${coin}, ${sql.json(details as JSONValue)}, ${agentState ?? null}, ${strategyId ?? 'smc-sd'}, ${exchange})
     `
   } catch (err) {
     log.error('journal', `Failed to write entry: ${eventType} ${coin ?? ''} — ${(err as Error).message}`)

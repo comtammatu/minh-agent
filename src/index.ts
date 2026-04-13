@@ -624,7 +624,7 @@ async function main(): Promise<void> {
   if (!getEffectivePaperTrade()) {
     try {
       const openSnaps = await queryExchangePositions()
-      om.restoreOpenPositions(openSnaps)
+      if (openSnaps) om.restoreOpenPositions(openSnaps)
     } catch (err) {
       log.warn('agent', `restoreOpenPositions failed (non-fatal): ${err instanceof Error ? err.message : err}`)
     }

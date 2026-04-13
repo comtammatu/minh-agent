@@ -177,7 +177,7 @@ export class InvalidationBridge {
       coinState,
       matched,
       actionTaken,
-      strategyKey,
+      ...(strategyKey !== undefined ? { strategyKey } : {}),
       ts: Date.now(),
     }
     this.history.push(record)

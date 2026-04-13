@@ -244,9 +244,8 @@ function runStrategiesForExchange(exchangeId: ExchangeId): CollectedSignal[] {
         slPrice: setup.slPrice,
         tpPrice: setup.tpPrice,
         patternData: setup.patternData,
-        confluenceGrade: setup.confluenceGrade,
-        confluenceCount: setup.confluenceCount,
-        zoneOrigin: setup.zoneOrigin,
+        ...(setup.confluenceGrade !== undefined ? { confluenceGrade: setup.confluenceGrade } : {}),
+        ...(setup.confluenceCount !== undefined ? { confluenceCount: setup.confluenceCount } : {}),
       },
       timestamp: setup.detectedAt,
     })
