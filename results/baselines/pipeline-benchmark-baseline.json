@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-04-13T05:45:58.813Z",
-  "sourceResult": "results/ci/pipeline-benchmark-current.json",
+  "generatedAt": "2026-04-13T15:54:23.202Z",
+  "sourceResult": "https://github.com/comtammatu/minh-agent/actions/runs/24353032687/job/71112432981",
   "metrics": {
     "raw": {
-      "p95Ms": 0.050999999999962685,
-      "p99Ms": 0.09049999999988145
+      "p95Ms": 0.0645,
+      "p99Ms": 0.0987
     },
     "robust": {
-      "p95Ms": 0.04900149999998738,
-      "p99Ms": 0.06783299999951245
+      "p95Ms": 0.0628,
+      "p99Ms": 0.0796
     }
   }
 }
