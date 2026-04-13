@@ -1373,3 +1373,26 @@ Priorities for the next sessions (English technical log):
 ### Test suite note
 
 `bun test --run` (2026-04-12): **1112 pass, 6 fail.** Failures are **`fetchBybitCandles` / `fetchBybitCandlesBatched`** cases in `src/feed/bybit/bybit-rest.test.ts` (live API / network dependent). No change to that file in this session; scope not expanded to fix unrelated REST tests.
+
+---
+
+## Pipeline Performance Gate Calibration (2026-04-13)
+
+Decisions made while stabilizing the new pipeline benchmark gate after PR merge/review.
+
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| P1 | CI benchmark env | **Set `ACTIVE_EXCHANGE=HL` in GitHub Actions** | `bench:pipeline:ci` requires exchange selection at startup. Local env masked this; Actions did not have it. |
+| P2 | Bun version in Actions | **Pin to `1.3.11`** instead of `latest` | Benchmark latency is sensitive to runtime drift. `latest` made the gate non-reproducible across runs. |
+| P3 | Baseline source | **Calibrate baseline from GitHub-hosted runner measurements** | Local laptop numbers were materially faster than hosted Actions. CI baseline must reflect the environment that enforces the gate. |
+| P4 | Regression budget | **Keep `p95` at 10%, relax `p99` to 25%** | Hosted runners showed acceptable but real tail-latency variance. `p95` remained stable; `p99` needed more headroom to avoid false failures. |
+| P5 | Validation rule | **Always verify on `main` after merge** with `bun test --run` and `ACTIVE_EXCHANGE=HL bun run bench:pipeline:ci` | PR-green is necessary but not sufficient; branch-main confirmation prevents silent post-merge drift. |
+
+**Observed outcome on `main` after merge:**
+
+- `bun test --run` → **1201 pass, 0 fail**
+- `ACTIVE_EXCHANGE=HL bun run bench:pipeline:ci` → **PASS**
+  - robust `p95 = 0.0294ms`
+  - robust `p99 = 0.0340ms`
+
+**Operational note:** the remaining GitHub Actions warning is a non-blocking deprecation notice for `actions/checkout@v4` on Node 20. Treat it as repo hygiene follow-up, not a release blocker.
