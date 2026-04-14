@@ -1,4 +1,5 @@
 node_modules/
+.codeindex/
 .env
 .env.*
 !.env.example
