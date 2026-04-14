@@ -33,6 +33,9 @@ mock.module('../../agent/trading-agent.js', () => ({
 }))
 
 let closeAllResult = { cancelled: 0, closed: 0 }
+const handledActions: Array<Record<string, unknown>> = []
+const recordedTraceActions: Array<Record<string, unknown>> = []
+const loggedOperatorActions: Array<unknown[]> = []
 mock.module('../../agent/close-all.js', () => ({
   closeAllPositions: async (_reason: string) => closeAllResult,
 }))
@@ -41,12 +44,14 @@ const mockPositions = new Map([
   ['pos-1', {
     positionId: 'pos-1',
     coin: 'ETH',
+    strategyId: 'smc-sd',
     side: 'long' as const,
     entryPrice: 3200.5,
     currentSize: 0.5,
     originalSize: 0.5,
     slPrice: 3100,
     tpPrice: 3500,
+    leverage: 3,
     entryOrderId: 'ord-1',
     trailingState: null,
     partialClosesFired: [],
@@ -58,6 +63,13 @@ const mockPositions = new Map([
 mock.module('../../agent/position-monitor.js', () => ({
   getPositionMonitor: () => ({
     getPositions: () => new Map(mockPositions),
+    getPosition: (id: string) => mockPositions.get(id) ?? null,
+  }),
+}))
+
+mock.module('../../agent/order-manager.js', () => ({
+  getOrderManager: () => ({
+    handleAction: async (action: Record<string, unknown>) => { handledActions.push(action) },
   }),
 }))
 
@@ -89,6 +101,216 @@ mock.module('../../analytics/metrics-service.js', () => ({
   }),
 }))
 
+const mockDecisionTrace = {
+  traceId: 'smc-sd:BTC|1h|setup|1710',
+  coin: 'BTC',
+  interval: '1h' as const,
+  strategyId: 'smc-sd',
+  exchange: 'HL' as const,
+  ts: 1_710_000_000_000,
+  regime: {
+    state: 'BULL' as const,
+    confidence: 0.74,
+    modifier: 1,
+  },
+  roles: {
+    judge: {
+      role: 'judge' as const,
+      verdict: 'approve' as const,
+      confidence: 0.74,
+      summary: 'Setup is approved for watch/execution.',
+      reasonsFor: ['Confluence A'],
+      reasonsAgainst: ['Execution pending'],
+    },
+    guardian: {
+      role: 'guardian' as const,
+      state: 'trail_sl' as const,
+      summary: 'Guardian moved stop to 4200.00.',
+      actions: ['trail_sl:4200'],
+    },
+    executor: {
+      role: 'executor' as const,
+      state: 'filled' as const,
+      summary: 'Order filled and position is live.',
+    },
+  },
+  timeline: [
+    {
+      ts: 1_710_000_000_000,
+      actor: 'judge' as const,
+      action: 'approve',
+      summary: 'Setup is approved for watch/execution.',
+    },
+    {
+      ts: 1_710_000_100_000,
+      actor: 'guardian' as const,
+      action: 'trail_sl',
+      summary: 'Guardian moved stop to 4200.00.',
+    },
+  ],
+  outcome: {
+    action: 'trail_sl' as const,
+    confidence: 0.74,
+    summary: 'Stop updated to 4200.00.',
+    setupId: 'smc-sd:BTC|1h|smc-sd',
+    positionId: 'pos-1',
+  },
+}
+
+mock.module('../../strategy/index.js', () => ({
+  getDecisionTraces: () => [mockDecisionTrace],
+  getDecisionTraceBySetupId: (id: string) =>
+    id === mockDecisionTrace.outcome.setupId ? mockDecisionTrace : null,
+  getDecisionTraceByPositionId: (id: string) =>
+    id === mockDecisionTrace.outcome.positionId ? mockDecisionTrace : null,
+  getDecisionTracesForCoin: (coin: string) =>
+    coin === mockDecisionTrace.coin ? [mockDecisionTrace] : [],
+  recordDecisionTraceAgentAction: (action: Record<string, unknown>) => { recordedTraceActions.push(action) },
+}))
+
+const mockOperatorEntries = [
+  {
+    id: 1,
+    ts: new Date('2026-04-14T03:04:05Z'),
+    eventType: 'operator' as const,
+    coin: 'BTC',
+    details: {
+      action: 'close',
+      target: 'BTC LONG',
+      status: 'submitted',
+      operatorSource: 'telegram',
+      strategyId: 'smc-sd',
+      positionId: 'pos-1',
+      reason: 'manual via TUI (BTC LONG)',
+    },
+    agentState: null,
+    exchange: 'HL' as const,
+  },
+  {
+    id: 2,
+    ts: new Date('2026-04-14T03:05:06Z'),
+    eventType: 'operator' as const,
+    coin: 'ETH',
+    details: {
+      action: 'reduce 50%',
+      target: 'ETH SHORT',
+      status: 'failed',
+      strategyId: 'alpha',
+      positionId: 'pos-2',
+      reason: 'manual via TUI (ETH SHORT)',
+    },
+    agentState: null,
+    exchange: 'HL' as const,
+  },
+]
+
+mock.module('../../agent/journal.js', () => ({
+  getJournalEntries: async (filter?: { coin?: string; eventType?: string; limit?: number }) => {
+    const filtered = mockOperatorEntries.filter(entry => {
+      if (filter?.eventType && entry.eventType !== filter.eventType) return false
+      if (filter?.coin && entry.coin !== filter.coin) return false
+      return true
+    })
+    return filtered.slice(0, filter?.limit ?? filtered.length)
+  },
+  logOperatorAuditEntry: async (...args: unknown[]) => { loggedOperatorActions.push(args) },
+}))
+
+mock.module('./briefing-refresh-stats.js', () => ({
+  getBriefingRefreshStats: () => ({
+    requested: 7,
+    coalesced: 2,
+    skippedIdentical: 1,
+    edited: 4,
+    failed: 0,
+    lastOutcome: 'edited',
+    lastKey: '22345:42',
+    lastKind: 'morning',
+    lastAt: Date.parse('2026-04-14T03:15:16Z'),
+  }),
+  getBriefingRefreshHealth: () => ({
+    state: 'healthy',
+    samples: 7,
+    requested: 7,
+    edited: 4,
+    failed: 0,
+    coalesced: 2,
+    skippedIdentical: 1,
+    editRatio: 4 / 7,
+    failureStreak: 0,
+    coalescedStreak: 0,
+    lastOutcome: 'edited',
+    lastKey: '22345:42',
+    lastKind: 'morning',
+    lastAt: Date.parse('2026-04-14T03:15:16Z'),
+    lastCoin: 'BTC',
+    lastPositionId: 'pos-1',
+    lastTarget: 'BTC / pos-1',
+    lastAttention: 'BTC 1h TRAIL_SL',
+    recoveredFrom: 'critical',
+    recoveredAt: Date.parse('2026-04-14T03:15:16Z'),
+    recoveredCoin: 'BTC',
+    recoveredPositionId: 'pos-1',
+    recoveredTarget: 'BTC / pos-1',
+    recoveredAttention: 'BTC 1h TRAIL_SL',
+  }),
+  getBriefingRefreshHistory: () => ([
+    {
+      ts: Date.parse('2026-04-14T03:15:16Z'),
+      from: 'critical',
+      to: 'healthy',
+      kind: 'morning',
+      outcome: 'edited',
+      coin: 'BTC',
+      positionId: 'pos-1',
+      target: 'BTC / pos-1',
+      attention: 'BTC 1h TRAIL_SL',
+    },
+    {
+      ts: Date.parse('2026-04-14T03:12:00Z'),
+      from: 'degraded',
+      to: 'critical',
+      kind: 'morning',
+      outcome: 'coalesced',
+      coin: 'BTC',
+      positionId: 'pos-1',
+      target: 'BTC / pos-1',
+      attention: 'BTC 1h TRAIL_SL',
+    },
+    {
+      ts: Date.parse('2026-04-14T03:10:00Z'),
+      from: 'healthy',
+      to: 'degraded',
+      kind: 'morning',
+      outcome: 'coalesced',
+      coin: 'BTC',
+      positionId: 'pos-1',
+      target: 'BTC / pos-1',
+      attention: 'BTC 1h WATCH',
+    },
+  ]),
+  getBriefingRefreshIncidents: () => ([
+    {
+      startedAt: Date.parse('2026-04-14T03:10:00Z'),
+      resolvedAt: Date.parse('2026-04-14T03:15:16Z'),
+      target: 'BTC / pos-1',
+      attention: 'BTC 1h TRAIL_SL',
+      peakState: 'critical',
+      status: 'recovered',
+      transitions: [],
+    },
+    {
+      startedAt: Date.parse('2026-04-14T03:16:00Z'),
+      resolvedAt: null,
+      target: 'ETH / pos-2',
+      attention: 'ETH 5m WATCH',
+      peakState: 'degraded',
+      status: 'active',
+      transitions: [],
+    },
+  ]),
+}))
+
 import {
   registerCommand,
   getCommands,
@@ -97,6 +319,7 @@ import {
   registerBuiltinCommands,
   parsePauseCoinArgs,
   resetCloseAllState,
+  getMainMenuKeyboard,
 } from './commands.js'
 
 describe('command registry', () => {
@@ -137,6 +360,9 @@ describe('command registry', () => {
 describe('registerBuiltinCommands', () => {
   beforeEach(() => {
     resetCommands()
+    handledActions.length = 0
+    recordedTraceActions.length = 0
+    loggedOperatorActions.length = 0
   })
 
   it('registers /help command', () => {
@@ -154,6 +380,8 @@ describe('registerBuiltinCommands', () => {
     expect(reply).toContain('Minh')
     expect(reply).toContain('/help')
     expect(reply).toContain('/status')
+    expect(reply).toContain('/trace')
+    expect(reply).toContain('/operator')
     expect(reply).toContain('/positions')
     expect(reply).toContain('/pnl')
     expect(reply).toContain('/pause')
@@ -167,9 +395,179 @@ describe('registerBuiltinCommands', () => {
     expect(reply).toContain('/paper')
   })
 
-  it('registers 13 built-in commands', () => {
+  it('registers 15 built-in commands', () => {
     registerBuiltinCommands()
-    expect(getCommands()).toHaveLength(13)
+    expect(getCommands()).toHaveLength(15)
+  })
+
+  it('includes operator and trace buttons in the main menu keyboard', () => {
+    const keyboard = getMainMenuKeyboard()
+    const labels = keyboard.inline_keyboard.flat().map(button => button.text)
+    expect(labels).toContain('🧾 Operator')
+    expect(labels).toContain('🧠 Trace')
+  })
+
+  it('builds a compact keyboard for scheduled briefings', async () => {
+    const { getBriefingReplyMarkup } = await import('./commands.js')
+    expect(getBriefingReplyMarkup()).toEqual({
+      inline_keyboard: [
+        [
+          { text: '🧠 Trace', callback_data: 'c:trace' },
+          { text: '📈 Positions', callback_data: 'c:positions' },
+        ],
+        [
+          { text: '🧾 Operator', callback_data: 'c:operator' },
+          { text: '📑 Report', callback_data: 'c:report' },
+        ],
+        [{ text: '🔄 Refresh briefing', callback_data: 'c:briefing_refresh:live' }],
+      ],
+    })
+  })
+
+  it('uses focused position context in scheduled briefing keyboard when provided', async () => {
+    const { getBriefingReplyMarkup } = await import('./commands.js')
+    expect(getBriefingReplyMarkup({ positionId: 'pos-1', coin: 'btc' })).toEqual({
+      inline_keyboard: [
+        [
+          { text: '🧠 Trace', callback_data: 'c:briefing_trace_position:pos-1' },
+          { text: '📈 Positions', callback_data: 'c:positions' },
+        ],
+        [
+          { text: '🧾 Operator', callback_data: 'c:briefing_operator_position:pos-1' },
+          { text: '📑 Report', callback_data: 'c:report' },
+        ],
+        [{ text: '🔄 Refresh briefing', callback_data: 'c:briefing_refresh:live' }],
+      ],
+    })
+  })
+
+  it('adds bucket drill-down buttons for representative briefing cases', async () => {
+    const { getBriefingReplyMarkup } = await import('./commands.js')
+    expect(getBriefingReplyMarkup({
+      positionId: 'pos-1',
+      coin: 'btc',
+      buckets: [
+        { label: 'Guardian Active', coin: 'eth' },
+        { label: 'Watching', positionId: 'pos-2', coin: 'sol' },
+      ],
+    })).toEqual({
+      inline_keyboard: [
+        [
+          { text: '🧠 Trace', callback_data: 'c:briefing_trace_position:pos-1' },
+          { text: '📈 Positions', callback_data: 'c:positions' },
+        ],
+        [
+          { text: '🧾 Operator', callback_data: 'c:briefing_operator_position:pos-1' },
+          { text: '📑 Report', callback_data: 'c:report' },
+        ],
+        [{ text: '🔄 Refresh briefing', callback_data: 'c:briefing_refresh:live' }],
+        [
+          { text: '↘️ Guardian Active', callback_data: 'c:briefing_trace_coin:ETH' },
+          { text: '↘️ Watching', callback_data: 'c:briefing_trace_position:pos-2' },
+        ],
+      ],
+    })
+  })
+
+  it('adds health drill-down buttons when healthTarget is provided', async () => {
+    const { getBriefingReplyMarkup } = await import('./commands.js')
+    expect(getBriefingReplyMarkup({
+      healthTarget: { positionId: 'pos-1', coin: 'btc' },
+    })).toEqual({
+      inline_keyboard: [
+        [
+          { text: '🧠 Trace', callback_data: 'c:trace' },
+          { text: '📈 Positions', callback_data: 'c:positions' },
+        ],
+        [
+          { text: '🧾 Operator', callback_data: 'c:operator' },
+          { text: '📑 Report', callback_data: 'c:report' },
+        ],
+        [{ text: '🔄 Refresh briefing', callback_data: 'c:briefing_refresh:live' }],
+        [
+          { text: '⚠️ Health Trace', callback_data: 'c:briefing_trace_position:pos-1' },
+          { text: '⚠️ Health Operator', callback_data: 'c:briefing_operator_position:pos-1' },
+        ],
+      ],
+    })
+  })
+
+  it('prioritizes health drill-down buttons when the briefing has an active incident', async () => {
+    const { getBriefingReplyMarkup } = await import('./commands.js')
+    expect(getBriefingReplyMarkup({
+      prioritizeHealthTarget: true,
+      healthTarget: { positionId: 'pos-1', coin: 'btc' },
+    })).toEqual({
+      inline_keyboard: [
+        [
+          { text: '⚠️ Health Trace', callback_data: 'c:briefing_trace_position:pos-1' },
+          { text: '⚠️ Health Operator', callback_data: 'c:briefing_operator_position:pos-1' },
+        ],
+        [
+          { text: '🧠 Trace', callback_data: 'c:trace' },
+          { text: '📈 Positions', callback_data: 'c:positions' },
+        ],
+        [
+          { text: '🧾 Operator', callback_data: 'c:operator' },
+          { text: '📑 Report', callback_data: 'c:report' },
+        ],
+        [{ text: '🔄 Refresh briefing', callback_data: 'c:briefing_refresh:live' }],
+      ],
+    })
+  })
+
+  it('puts Health Operator first when the incident prefers operator intervention', async () => {
+    const { getBriefingReplyMarkup } = await import('./commands.js')
+    expect(getBriefingReplyMarkup({
+      prioritizeHealthTarget: true,
+      preferredHealthAction: 'operator',
+      healthTarget: { positionId: 'pos-1', coin: 'btc' },
+    })).toEqual({
+      inline_keyboard: [
+        [
+          { text: '⚠️ Health Operator', callback_data: 'c:briefing_operator_position:pos-1' },
+          { text: '⚠️ Health Trace', callback_data: 'c:briefing_trace_position:pos-1' },
+        ],
+        [
+          { text: '🧠 Trace', callback_data: 'c:trace' },
+          { text: '📈 Positions', callback_data: 'c:positions' },
+        ],
+        [
+          { text: '🧾 Operator', callback_data: 'c:operator' },
+          { text: '📑 Report', callback_data: 'c:report' },
+        ],
+        [{ text: '🔄 Refresh briefing', callback_data: 'c:briefing_refresh:live' }],
+      ],
+    })
+  })
+
+  it('uses incident-aware health button labels when provided', async () => {
+    const { getBriefingReplyMarkup } = await import('./commands.js')
+    expect(getBriefingReplyMarkup({
+      prioritizeHealthTarget: true,
+      preferredHealthAction: 'operator',
+      healthButtonLabels: {
+        trace: '🧠 Inspect Trace',
+        operator: '⚠️ Fix Operator Path',
+      },
+      healthTarget: { positionId: 'pos-1', coin: 'btc' },
+    })).toEqual({
+      inline_keyboard: [
+        [
+          { text: '⚠️ Fix Operator Path', callback_data: 'c:briefing_operator_position:pos-1' },
+          { text: '🧠 Inspect Trace', callback_data: 'c:briefing_trace_position:pos-1' },
+        ],
+        [
+          { text: '🧠 Trace', callback_data: 'c:trace' },
+          { text: '📈 Positions', callback_data: 'c:positions' },
+        ],
+        [
+          { text: '🧾 Operator', callback_data: 'c:operator' },
+          { text: '📑 Report', callback_data: 'c:report' },
+        ],
+        [{ text: '🔄 Refresh briefing', callback_data: 'c:briefing_refresh:live' }],
+      ],
+    })
   })
 })
 
@@ -179,6 +577,9 @@ describe('/status command', () => {
   beforeEach(() => {
     resetCommands()
     registerBuiltinCommands()
+    handledActions.length = 0
+    recordedTraceActions.length = 0
+    loggedOperatorActions.length = 0
   })
 
   it('returns agent state, health, uptime, positions, coins', () => {
@@ -191,6 +592,13 @@ describe('/status command', () => {
     expect(reply).toContain('42\\.50') // dailyPnl abs value (escaped)
     expect(reply).toContain('Positions: 1')
     expect(reply).toContain('Coins: 3')
+    expect(reply).toContain('Briefing: 4 edited')
+    expect(reply).toContain('1 skipped')
+    expect(reply).toContain('2 coalesced')
+    expect(reply).toContain('Briefing incident: critical recovered BTC / pos\\-1')
+    expect(reply).toContain('degraded active ETH / pos\\-2')
+    expect(reply).toContain('Briefing history: critical\\-\\>healthy BTC / pos\\-1')
+    expect(reply).toContain('degraded\\-\\>critical BTC / pos\\-1')
   })
 
   it('shows PAUSED when agent is paused', () => {
@@ -214,6 +622,9 @@ describe('/positions command', () => {
   beforeEach(() => {
     resetCommands()
     registerBuiltinCommands()
+    handledActions.length = 0
+    recordedTraceActions.length = 0
+    loggedOperatorActions.length = 0
   })
 
   it('lists open positions with details', () => {
@@ -238,12 +649,14 @@ describe('/positions command', () => {
     mockPositions.set('pos-1', {
       positionId: 'pos-1',
       coin: 'ETH',
+      strategyId: 'smc-sd',
       side: 'long' as const,
       entryPrice: 3200.5,
       currentSize: 0.5,
       originalSize: 0.5,
       slPrice: 3100,
       tpPrice: 3500,
+      leverage: 3,
       entryOrderId: 'ord-1',
       trailingState: null,
       partialClosesFired: [],
@@ -253,12 +666,199 @@ describe('/positions command', () => {
   })
 })
 
+// ─── /trace ──────────────────────────────────────────────────────────────────
+
+describe('/trace command', () => {
+  beforeEach(() => {
+    resetCommands()
+    registerBuiltinCommands()
+    handledActions.length = 0
+    recordedTraceActions.length = 0
+    loggedOperatorActions.length = 0
+  })
+
+  it('returns the latest trace when called without args', async () => {
+    const cmd = findCommand('trace')!
+    const reply = await cmd.handler('', 0)
+    expect(reply).toContain('Decision Trace')
+    expect(reply).toContain('BTC')
+    expect(reply).toContain('APPROVE')
+    expect(reply).toContain('TRAIL\\_SL')
+    expect(reply).toContain('Recent')
+  })
+
+  it('looks up the latest trace by coin', async () => {
+    const cmd = findCommand('trace')!
+    const reply = await cmd.handler('btc', 0)
+    expect(reply).toContain('BTC')
+    expect(reply).toContain('smc\\-sd')
+    expect(reply).toContain('🧭 *Trace Focus*')
+    expect(reply).toContain('Target: BTC.')
+    expect(reply).toContain('Attention: BTC 1h TRAIL\\_SL.')
+  })
+
+  it('looks up trace by setup id', async () => {
+    const cmd = findCommand('trace')!
+    const reply = await cmd.handler(`setup ${mockDecisionTrace.outcome.setupId}`, 0)
+    expect(reply).toContain('smc\\-sd:BTC\\|1h\\|smc\\-sd')
+    expect(reply).toContain('pos\\-1')
+  })
+
+  it('looks up trace by position id with guardian snapshot', async () => {
+    const cmd = findCommand('trace')!
+    const reply = await cmd.handler(`position ${mockDecisionTrace.outcome.positionId}`, 0)
+    expect(reply).toContain('Guardian Snapshot')
+    expect(reply).toContain('Guardian: TRAIL SL')
+    expect(reply).toContain('Executor: FILLED')
+    expect(reply).toContain('Live: ETH LONG')
+    expect(reply).toContain('tracked')
+    expect(reply).toContain('Size: 0\\.5000')
+    expect(reply).toContain('Lev: 3x')
+    expect(reply).toContain('Last lifecycle: guardian')
+    expect(reply).toContain('Manual Intervention')
+    expect(reply).toContain('Status: SUBMITTED')
+    expect(reply).toContain('Source: TELEGRAM')
+    expect(reply).toContain('Action: close')
+  })
+
+  it('returns a not found message for missing trace', async () => {
+    const cmd = findCommand('trace')!
+    const reply = await cmd.handler('ETH', 0)
+    expect(reply).toContain('Target: ETH.')
+    expect(reply).toContain('No decision trace found')
+  })
+})
+
+// ─── /operator ───────────────────────────────────────────────────────────────
+
+describe('/operator command', () => {
+  const CHAT_ID = 12345
+
+  beforeEach(() => {
+    resetCommands()
+    registerBuiltinCommands()
+    resetCloseAllState(CHAT_ID)
+    handledActions.length = 0
+    recordedTraceActions.length = 0
+    loggedOperatorActions.length = 0
+  })
+
+  it('returns recent operator audit entries', async () => {
+    const cmd = findCommand('operator')!
+    const reply = await cmd.handler('', 0)
+    expect(reply).toContain('Operator Audit')
+    expect(reply).toContain('latest manual interventions')
+    expect(reply).toContain('SUBMITTED')
+    expect(reply).toContain('close BTC LONG')
+    expect(reply).toContain('FAILED')
+    expect(reply).toContain('reduce 50% ETH SHORT')
+  })
+
+  it('filters operator audit by coin', async () => {
+    const cmd = findCommand('operator')!
+    const reply = await cmd.handler('btc', 0)
+    expect(reply).toContain('Filter: BTC')
+    expect(reply).toContain('close BTC LONG')
+    expect(reply).not.toContain('ETH SHORT')
+    expect(reply).toContain('🧭 *Operator Focus*')
+    expect(reply).toContain('Target: BTC.')
+    expect(reply).toContain('Attention: BTC 1h TRAIL\\_SL.')
+  })
+
+  it('keeps operator focus coin-only for position-target mismatch', async () => {
+    const cmd = findCommand('operator')!
+    const reply = await cmd.handler('position pos-2', 0)
+    expect(reply).toContain('Target: pos\\-2.')
+    expect(reply).toContain('Position: pos\\-2')
+    expect(reply).toContain('reduce 50% ETH SHORT')
+    expect(reply).not.toContain('Attention:')
+  })
+
+  it('filters operator audit by position id', async () => {
+    const cmd = findCommand('operator')!
+    const reply = await cmd.handler('position pos-2', 0)
+    expect(reply).toContain('Position: pos\\-2')
+    expect(reply).toContain('reduce 50% ETH SHORT')
+    expect(reply).not.toContain('BTC LONG')
+  })
+
+  it('filters operator audit by strategy id', async () => {
+    const cmd = findCommand('operator')!
+    const reply = await cmd.handler('strategy smc-sd', 0)
+    expect(reply).toContain('Strategy: smc\\-sd')
+    expect(reply).toContain('close BTC LONG')
+    expect(reply).not.toContain('ETH SHORT')
+  })
+
+  it('returns a no-data message when no operator audit is found', async () => {
+    const cmd = findCommand('operator')!
+    const reply = await cmd.handler('sol', 0)
+    expect(reply).toContain('No operator audit entries found')
+  })
+
+  it('requests confirmation before closing a tracked position', async () => {
+    const cmd = findCommand('operator')!
+    const reply = await cmd.handler('close pos-1', CHAT_ID)
+    expect(reply).toContain('Remote Operator Action')
+    expect(reply).toContain('/confirm')
+    expect(reply).toContain('pos\\-1')
+    expect(handledActions).toHaveLength(0)
+  })
+
+  it('/confirm executes a pending close action', async () => {
+    const cmd = findCommand('operator')!
+    await cmd.handler('close pos-1', CHAT_ID)
+
+    const confirmCmd = findCommand('confirm')!
+    const reply = await confirmCmd.handler('', CHAT_ID)
+    expect(reply).toContain('Operator Action Executed')
+    expect(handledActions).toHaveLength(1)
+    expect(handledActions[0]).toMatchObject({
+      type: 'close_position',
+      positionId: 'pos-1',
+      reason: 'manual via Telegram',
+    })
+    expect(recordedTraceActions).toHaveLength(1)
+    expect(loggedOperatorActions).toHaveLength(1)
+    expect(loggedOperatorActions[0]?.[3]).toMatchObject({
+      source: 'telegram',
+      coin: 'ETH',
+      strategyId: 'smc-sd',
+    })
+  })
+
+  it('/confirm executes a pending reduce action', async () => {
+    const cmd = findCommand('operator')!
+    await cmd.handler('reduce pos-1 25', CHAT_ID)
+
+    const confirmCmd = findCommand('confirm')!
+    const reply = await confirmCmd.handler('', CHAT_ID)
+    expect(reply).toContain('Operator Action Executed')
+    expect(handledActions).toHaveLength(1)
+    expect(handledActions[0]).toMatchObject({
+      type: 'partial_close',
+      positionId: 'pos-1',
+      closePct: 0.25,
+    })
+  })
+
+  it('rejects unsupported reduce size', async () => {
+    const cmd = findCommand('operator')!
+    const reply = await cmd.handler('reduce pos-1 10', CHAT_ID)
+    expect(reply).toContain('25 or 50')
+    expect(handledActions).toHaveLength(0)
+  })
+})
+
 // ─── /pnl ─────────────────────────────────────────────────────────────────────
 
 describe('/pnl command', () => {
   beforeEach(() => {
     resetCommands()
     registerBuiltinCommands()
+    handledActions.length = 0
+    recordedTraceActions.length = 0
+    loggedOperatorActions.length = 0
   })
 
   it('returns daily/weekly/monthly/all-time PnL and win rates', async () => {
@@ -284,6 +884,9 @@ describe('/pause command', () => {
     registerBuiltinCommands()
     pausedWith = null
     dispatchedEvents.length = 0
+    handledActions.length = 0
+    recordedTraceActions.length = 0
+    loggedOperatorActions.length = 0
   })
 
   it('pauses agent with default reason', () => {
@@ -327,6 +930,9 @@ describe('/resume command', () => {
     resetCommands()
     registerBuiltinCommands()
     resumed = false
+    handledActions.length = 0
+    recordedTraceActions.length = 0
+    loggedOperatorActions.length = 0
   })
 
   it('resumes agent', () => {
@@ -385,6 +991,9 @@ describe('/risk command', () => {
   beforeEach(() => {
     resetCommands()
     registerBuiltinCommands()
+    handledActions.length = 0
+    recordedTraceActions.length = 0
+    loggedOperatorActions.length = 0
   })
 
   it('returns risk dashboard with PnL, positions, CB status', () => {
@@ -413,8 +1022,11 @@ describe('/closeall + /confirm commands', () => {
   beforeEach(() => {
     resetCommands()
     registerBuiltinCommands()
-    resetCloseAllState()
+    resetCloseAllState(CHAT_ID)
     closeAllResult = { cancelled: 2, closed: 1 }
+    handledActions.length = 0
+    recordedTraceActions.length = 0
+    loggedOperatorActions.length = 0
   })
 
   it('/closeall requests confirmation', () => {
@@ -458,6 +1070,15 @@ describe('/closeall + /confirm commands', () => {
     const reply = cmd.handler('', CHAT_ID) as string
     expect(reply).toContain('already pending')
   })
+
+  it('/closeall is blocked while a remote operator action is pending', async () => {
+    const operatorCmd = findCommand('operator')!
+    await operatorCmd.handler('close pos-1', CHAT_ID)
+
+    const closeallCmd = findCommand('closeall')!
+    const reply = closeallCmd.handler('', CHAT_ID) as string
+    expect(reply).toContain('remote operator action is already pending')
+  })
 })
 
 // ─── /report ─────────────────────────────────────────────────────────────────
@@ -466,12 +1087,25 @@ describe('/report command', () => {
   beforeEach(() => {
     resetCommands()
     registerBuiltinCommands()
+    handledActions.length = 0
+    recordedTraceActions.length = 0
+    loggedOperatorActions.length = 0
   })
 
   it('returns daily report with PnL, win rate, drawdown', async () => {
     const cmd = findCommand('report')!
     const reply = await cmd.handler('', 0)
     expect(reply).toContain('Daily Report')
+    expect(reply).toContain('Ops Recap')
+    expect(reply).toContain('Bot: 1 open position')
+    expect(reply).toContain('1 live case')
+    expect(reply).toContain('TRAIL SL 1')
+    expect(reply).toContain('Guardian: 1 active case')
+    expect(reply).toContain('Operator: 2 recent actions')
+    expect(reply).toContain('1 submitted')
+    expect(reply).toContain('1 failed')
+    expect(reply).toContain('Briefing: healthy')
+    expect(reply).toContain('4/7 edited')
     expect(reply).toContain('120\\.50')    // daily pnl
     expect(reply).toContain('450\\.30')    // weekly pnl
     expect(reply).toContain('1200\\.00')   // monthly pnl
@@ -481,6 +1115,23 @@ describe('/report command', () => {
     expect(reply).toContain('2\\.50')      // current drawdown
     expect(reply).toContain('8\\.30')      // max drawdown
     expect(reply).toContain('Open positions:* 1')
+    expect(reply).toContain('Operator Recent')
+    expect(reply).toContain('submitted')
+    expect(reply).toContain('Briefing Refresh')
+    expect(reply).toContain('7 requested')
+    expect(reply).toContain('4 edited')
+    expect(reply).toContain('1 skipped')
+    expect(reply).toContain('2 coalesced')
+    expect(reply).toContain('recovered critical')
+    expect(reply).toContain('target BTC / pos\\-1')
+    expect(reply).toContain('attention BTC 1h TRAIL\\_SL')
+    expect(reply).toContain('incident critical recovered BTC / pos\\-1')
+    expect(reply).toContain('degraded active ETH / pos\\-2')
+    expect(reply).toContain('history critical\\-\\>healthy BTC / pos\\-1')
+    expect(reply).toContain('degraded\\-\\>critical BTC / pos\\-1')
+    expect(reply).toContain('healthy\\-\\>degraded BTC / pos\\-1')
+    expect(reply).toContain('Live Oversight')
+    expect(reply).toContain('BTC 1h')
   })
 
   it('shows no pattern/coin sections when arrays are empty', async () => {
