@@ -8,8 +8,12 @@ export {
   escapeMarkdownV2,
   escapeHtml,
   formatAlert,
+  formatDecisionTraceAlert,
+  getDecisionTraceAlertFingerprint,
+  shouldSendDecisionTraceAlert,
   formatDailySummary,
   formatDailySummaryHtml,
+  formatScheduledBriefingHtml,
   checkTelegramConfig,
 } from './alerts.js'
 

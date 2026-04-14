@@ -839,6 +839,17 @@ export const WF_CONFIDENCE_LEVEL = 0.95
 /** Walk-forward: minimum fraction of OOS windows with positive expectancy. */
 export const WF_MIN_WINDOW_CONSISTENCY = 0.5
 
+/** Unattended-live release gate: minimum holdout PF on narrowed universe. */
+export const RELEASE_GATE_HOLDOUT_MIN_PF = 1.20
+/** Unattended-live release gate: minimum OOS PF on narrowed universe. */
+export const RELEASE_GATE_OOS_MIN_PF = 1.10
+/** Unattended-live release gate: minimum holdout trade count. */
+export const RELEASE_GATE_HOLDOUT_MIN_TRADES = 40
+/** Unattended-live release gate: minimum OOS trade count. */
+export const RELEASE_GATE_OOS_MIN_TRADES = 100
+/** Unattended-live release gate: maximum acceptable OOS max drawdown. */
+export const RELEASE_GATE_OOS_MAX_DD = 0.20
+
 // ─── Strategy Enable/Disable ─────────────────────────────────────────────────
 
 /**
@@ -1001,6 +1012,8 @@ export const TELEGRAM_BOT = {
   maxBackoffMs: 30_000,
   /** /closeall confirmation timeout (seconds). User must /confirm within this window. */
   closeallConfirmTimeoutSec: 30,
+  /** Debounce window for in-place scheduled briefing refreshes (ms). */
+  briefingRefreshDebounceMs: 75,
   /**
    * IANA timezone for morning/evening daily reports (journal stats use local calendar day).
    * Default UTC. Example: `Asia/Ho_Chi_Minh`.
@@ -1022,6 +1035,8 @@ export const HEALTH = {
   exchangeStaleMs: 60_000,
   /** Staleness threshold for DB writes (ms). */
   dbStaleMs: 60_000,
+  /** Pause new entries after this many consecutive position-sync failures in live mode. */
+  exchangeBlindPauseAfterFailures: 3,
 } as const
 
 // ── Multi-exchange ─────────────────────────────────────────────────────────
@@ -1048,6 +1063,30 @@ export function tryGetActiveExchange(): ExchangeId | null {
 }
 
 // ── Bybit-specific config ──────────────────────────────────────────────────
+
+export type BybitTradingEnv = 'mainnet' | 'testnet' | 'demo'
+
+/**
+ * Resolve which Bybit execution/account environment to use.
+ *
+ * `demo` maps private REST/account calls to Bybit's demo environment while
+ * keeping public market data on mainnet. This mirrors Bybit's own guidance:
+ * demo trading is a mainnet-adjacent simulation environment, not a testnet.
+ */
+export function getBybitTradingEnv(): BybitTradingEnv {
+  const testnet = process.env['BYBIT_TESTNET'] === 'true'
+  const demoTrading = process.env['BYBIT_DEMO_TRADING'] === 'true'
+
+  if (testnet && demoTrading) {
+    throw new Error(
+      'BYBIT_TESTNET and BYBIT_DEMO_TRADING cannot both be true. Demo trading uses mainnet market data with demo execution/account endpoints.',
+    )
+  }
+
+  if (demoTrading) return 'demo'
+  if (testnet) return 'testnet'
+  return 'mainnet'
+}
 
 /** Bybit candle interval format (maps CandleInterval → Bybit API string). */
 export const BYBIT_INTERVAL_MAP: Record<CandleInterval, string> = {
@@ -1124,6 +1163,26 @@ export const COMMON_COINS: string[] = [
 export function getDefaultCoins(exchange: ExchangeId): string[] {
   if (exchange === 'BB') return BYBIT_STATIC_COINS
   return []
+}
+
+/**
+ * Optional runtime override for focused operator drills.
+ * When set, the live runtime tracks exactly this CSV coin list instead of the
+ * dynamic top-coin selector. Intended for paper/supervised ops drills only.
+ *
+ * Env: `FOCUSED_TRACKED_COINS=BTC,ETH`
+ */
+export function getFocusedTrackedCoinsOverride(): string[] | null {
+  const raw = process.env['FOCUSED_TRACKED_COINS']?.trim()
+  if (!raw) return null
+
+  const coins = raw
+    .split(',')
+    .map(coin => coin.trim().toUpperCase())
+    .filter(Boolean)
+
+  if (coins.length === 0) return null
+  return Array.from(new Set(coins))
 }
 
 /** Max concurrent REST backfill requests for Bybit. */

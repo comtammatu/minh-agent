@@ -24,7 +24,7 @@ import type {
   PlaceTriggerParams,
   UpdatePositionStopParams,
 } from './exchange-service.js'
-import { BYBIT_EXEC_BURST_TOKENS, BYBIT_EXEC_REFILL_MS } from '../config.js'
+import { BYBIT_EXEC_BURST_TOKENS, BYBIT_EXEC_REFILL_MS, getBybitTradingEnv } from '../config.js'
 
 // ─── Qty Rounding ────────────────────────────────────────────────────────────
 
@@ -96,6 +96,7 @@ export class BybitExchangeService {
   private apiKey: string = ''
   private apiSecret: string = ''
   private testnet: boolean = false
+  private demoTrading: boolean = false
   private initialized = false
 
   /** Cached account value for pipeline risk-filter compatibility. */
@@ -136,12 +137,15 @@ export class BybitExchangeService {
     // Store privately — NEVER log these values
     this.apiKey = apiKey
     this.apiSecret = apiSecret
-    this.testnet = process.env['BYBIT_TESTNET'] === 'true'
+    const tradingEnv = getBybitTradingEnv()
+    this.testnet = tradingEnv === 'testnet'
+    this.demoTrading = tradingEnv === 'demo'
 
     this.client = new RestClientV5({
       key: this.apiKey,
       secret: this.apiSecret,
       testnet: this.testnet,
+      demoTrading: this.demoTrading,
     })
 
     // Load maxLeverage + lot-size specs per coin from getInstrumentsInfo.
@@ -180,7 +184,7 @@ export class BybitExchangeService {
     }
 
     this.initialized = true
-    log.info('bybit-svc', `BybitExchangeService initialized (testnet=${this.testnet})`)
+    log.info('bybit-svc', `BybitExchangeService initialized (env=${tradingEnv}, testnet=${this.testnet}, demoTrading=${this.demoTrading})`)
   }
 
   /** Ensure init() has been called. */

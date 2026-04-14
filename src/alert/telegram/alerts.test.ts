@@ -4,10 +4,15 @@ import {
   escapeHtml,
   sendTelegramAlert,
   formatAlert,
+  formatDecisionTraceAlert,
+  getDecisionTraceAlertFingerprint,
   formatDailySummary,
+  formatScheduledBriefingHtml,
   checkTelegramConfig,
+  shouldSendDecisionTraceAlert,
 } from './alerts.js'
 import type { AgentAction } from '../../agent/types.js'
+import type { DecisionTrace } from '../../types.js'
 
 // ─── escapeMarkdownV2 ───────────────────────────────────────────────────────
 
@@ -365,6 +370,193 @@ describe('formatAlert', () => {
   })
 })
 
+describe('formatDecisionTraceAlert', () => {
+  function makeTrace(): DecisionTrace {
+    return {
+      traceId: 'smc-sd:BTC|1h|setup|1710',
+      coin: 'BTC',
+      interval: '1h',
+      strategyId: 'smc-sd',
+      exchange: 'HL',
+      ts: 1_710_000_000_000,
+      regime: {
+        state: 'BULL',
+        confidence: 0.74,
+        modifier: 1,
+      },
+      roles: {
+        bull: {
+          role: 'Bull Analyst',
+          stance: 'bullish',
+          confidence: 0.78,
+          summary: 'Bullish structure is aligned.',
+          evidence: ['BOS', 'CHoCH'],
+        },
+        bear: {
+          role: 'Bear Analyst',
+          stance: 'bearish',
+          confidence: 0.15,
+          summary: 'Bear case is weaker here.',
+          evidence: ['No breakdown'],
+        },
+        risk: {
+          role: 'Risk Manager',
+          stance: 'neutral',
+          confidence: 0.7,
+          summary: 'Risk is acceptable if execution stays clean.',
+          evidence: ['R:R 1:2.00'],
+        },
+        judge: {
+          role: 'judge',
+          verdict: 'approve',
+          confidence: 0.74,
+          summary: 'Setup is approved for watch/execution.',
+          reasonsFor: ['Confluence A'],
+          reasonsAgainst: ['Execution pending'],
+        },
+      },
+      timeline: [
+        {
+          ts: 1_710_000_000_000,
+          actor: 'judge',
+          action: 'approve',
+          summary: 'Setup is approved for watch/execution.',
+        },
+      ],
+      outcome: {
+        action: 'watch',
+        confidence: 0.74,
+        summary: 'Setup is approved for watch/execution.',
+        setupId: 'smc-sd:BTC|1h|smc-sd',
+      },
+    }
+  }
+
+  it('formats a decision trace as HTML', () => {
+    const msg = formatDecisionTraceAlert(makeTrace())
+    expect(msg).not.toBeNull()
+    expect(msg?.parseMode).toBe('HTML')
+    expect(msg?.text).toContain('DELIBERATION')
+    expect(msg?.text).toContain('BTC')
+    expect(msg?.text).toContain('APPROVE')
+    expect(msg?.text).toContain('WATCH')
+    expect(msg?.text).toContain('Recent')
+    expect(msg?.text).toContain('Judge:')
+  })
+
+  it('returns null when judge card is missing', () => {
+    const trace = makeTrace()
+    delete trace.roles.judge
+    expect(formatDecisionTraceAlert(trace)).toBeNull()
+  })
+
+  it('formats guardian updates with timeline context', () => {
+    const trace = makeTrace()
+    trace.roles.guardian = {
+      role: 'guardian',
+      state: 'trail_sl',
+      summary: 'Guardian moved stop to 4200.00.',
+      actions: ['trail_sl:4200.00'],
+    }
+    trace.timeline.push({
+      ts: 1_710_000_100_000,
+      actor: 'guardian',
+      action: 'trail_sl',
+      summary: 'Guardian moved stop to 4200.00.',
+    })
+    trace.outcome.action = 'trail_sl'
+    trace.outcome.positionId = 'pos-1'
+    trace.outcome.summary = 'Stop updated to 4200.00.'
+
+    const msg = formatDecisionTraceAlert(trace)
+    expect(msg?.text).toContain('GUARDIAN UPDATE')
+    expect(msg?.text).toContain('Position: <code>pos-1</code>')
+    expect(msg?.text).toContain('Guardian moved stop to 4200.00.')
+  })
+})
+
+describe('decision trace alert gating', () => {
+  function makeTrace(): DecisionTrace {
+    return {
+      traceId: 'smc-sd:BTC|1h|setup|1710',
+      coin: 'BTC',
+      interval: '1h',
+      strategyId: 'smc-sd',
+      exchange: 'HL',
+      ts: 1_710_000_000_000,
+      regime: {
+        state: 'BULL',
+        confidence: 0.74,
+        modifier: 1,
+      },
+      roles: {
+        judge: {
+          role: 'judge',
+          verdict: 'approve',
+          confidence: 0.74,
+          summary: 'Setup is approved for watch/execution.',
+          reasonsFor: ['Confluence A'],
+          reasonsAgainst: ['Execution pending'],
+        },
+      },
+      timeline: [
+        {
+          ts: 1_710_000_000_000,
+          actor: 'judge',
+          action: 'approve',
+          summary: 'Setup is approved for watch/execution.',
+        },
+      ],
+      outcome: {
+        action: 'watch',
+        confidence: 0.74,
+        summary: 'Setup is approved for watch/execution.',
+        setupId: 'smc-sd:BTC|1h|smc-sd',
+      },
+    }
+  }
+
+  it('sends approved deliberation alerts once per setup fingerprint', () => {
+    const trace = makeTrace()
+    expect(shouldSendDecisionTraceAlert(trace)).toBe(true)
+    expect(getDecisionTraceAlertFingerprint(trace)).toBe('deliberation:smc-sd:BTC|1h|smc-sd')
+  })
+
+  it('suppresses non-approved watch traces', () => {
+    const trace = makeTrace()
+    trace.roles.judge = {
+      ...trace.roles.judge!,
+      verdict: 'watch',
+    }
+    expect(shouldSendDecisionTraceAlert(trace)).toBe(false)
+    expect(getDecisionTraceAlertFingerprint(trace)).toBeNull()
+  })
+
+  it('sends guardian updates with summary-sensitive fingerprint', () => {
+    const trace = makeTrace()
+    trace.roles.guardian = {
+      role: 'guardian',
+      state: 'partial_tp',
+      summary: 'Guardian scaled out 50% of the position.',
+      actions: ['partial_close:50%'],
+    }
+    trace.timeline.push({
+      ts: 1_710_000_200_000,
+      actor: 'guardian',
+      action: 'partial_close',
+      summary: 'Guardian scaled out 50% of the position.',
+    })
+    trace.outcome.action = 'partial_close'
+    trace.outcome.positionId = 'pos-1'
+    trace.outcome.summary = 'Scaled out 50% of the position.'
+
+    expect(shouldSendDecisionTraceAlert(trace)).toBe(true)
+    expect(getDecisionTraceAlertFingerprint(trace)).toBe(
+      'guardian:partial_close:pos-1:Guardian scaled out 50% of the position.',
+    )
+  })
+})
+
 // ─── formatDailySummary ─────────────────────────────────────────────────────
 
 describe('formatDailySummary', () => {
@@ -417,6 +609,117 @@ describe('formatDailySummary', () => {
     })
     expect(msg).toContain('DAILY SUMMARY')
     expect(msg).toContain('0')
+  })
+})
+
+describe('formatScheduledBriefingHtml', () => {
+  it('adds needs-action wording when the incident is still active', () => {
+    const html = formatScheduledBriefingHtml('Live Briefing', {
+      date: '2026-04-14',
+      totalTrades: 2,
+      wins: 1,
+      losses: 1,
+      winRate: 0.5,
+      totalPnl: 25,
+      largestWin: 40,
+      largestLoss: -15,
+    }, {
+      openPositions: 1,
+      incident: {
+        peakState: 'CRITICAL',
+        status: 'ACTIVE',
+        target: 'ETH / pos-1',
+        cause: 'Refresh storm around ETH / pos-1',
+        recommendedAction: 'Open Health Trace first, then use Health Operator only if the case still needs manual intervention.',
+      },
+    })
+
+    expect(html).toContain('Open positions: <b>1</b>')
+    expect(html).toContain('Immediate action: <b>Refresh storm around ETH / pos-1</b> Open Health Trace first, then use Health Operator only if the case still needs manual intervention.')
+    expect(html).toContain('Incident: <b>CRITICAL ACTIVE</b> — ETH / pos-1')
+  })
+
+  it('renders operator and live oversight sections for scheduled reports', () => {
+    const html = formatScheduledBriefingHtml('Đầu ngày — hôm qua', {
+      date: '2026-04-14',
+      totalTrades: 4,
+      wins: 3,
+      losses: 1,
+      winRate: 0.75,
+      totalPnl: 180.25,
+      largestWin: 120,
+      largestLoss: -35,
+      entryCount: 18,
+    }, {
+      openPositions: 2,
+      attention: {
+        level: 'ACTIVE',
+        summary: 'BTC 1h — Guardian scaled out 50% of the position.',
+      },
+      incident: {
+        peakState: 'CRITICAL',
+        status: 'RECOVERED',
+        target: 'BTC / pos-1',
+      },
+      liveBuckets: [
+        {
+          label: 'Guardian Active',
+          count: 1,
+          items: [{ coin: 'ETH', interval: '15m', action: 'HOLD' }],
+        },
+        {
+          label: 'Watching',
+          count: 1,
+          items: [{ coin: 'SOL', interval: '5m', action: 'WATCH' }],
+        },
+      ],
+      operatorRecent: {
+        totalActions: 3,
+        submitted: 2,
+        failed: 1,
+        items: [
+          { action: 'reduce 25%', target: 'BTC', source: 'TELEGRAM', at: '09:15:10' },
+          { action: 'close', target: 'ETH', source: 'TUI', at: '09:18:44' },
+        ],
+      },
+      liveOversight: [
+        { coin: 'BTC', interval: '1h', action: 'TRAIL_SL', guardian: 'TRAIL SL', executor: 'FILLED' },
+      ],
+    })
+
+    expect(html).toContain('Đầu ngày — hôm qua')
+    expect(html).toContain('Open positions: <b>2</b>')
+    expect(html).toContain('ACTIVE: <b>BTC 1h — Guardian scaled out 50% of the position.</b>')
+    expect(html).toContain('Incident: <b>CRITICAL RECOVERED</b> — BTC / pos-1')
+    expect(html).toContain('<b>Operator Recent</b>')
+    expect(html).toContain('3 actions | 2 submitted | 1 failed')
+    expect(html).toContain('reduce 25%')
+    expect(html).toContain('<b>Case Buckets</b>')
+    expect(html).toContain('<b>Guardian Active</b> (1): ETH 15m HOLD')
+    expect(html).toContain('<b>Watching</b> (1): SOL 5m WATCH')
+    expect(html).toContain('<b>Live Oversight</b>')
+    expect(html).toContain('<b>BTC</b> 1h | TRAIL_SL | G TRAIL SL | E FILLED')
+  })
+
+  it('omits optional sections when there is no operator or live context', () => {
+    const html = formatScheduledBriefingHtml('Cuối ngày — hôm nay', {
+      date: '2026-04-14',
+      totalTrades: 0,
+      wins: 0,
+      losses: 0,
+      winRate: 0,
+      totalPnl: 0,
+      largestWin: 0,
+      largestLoss: 0,
+    }, {
+      openPositions: 0,
+    })
+
+    expect(html).toContain('Open positions: <b>0</b>')
+    expect(html).not.toContain('ACTIVE:')
+    expect(html).not.toContain('Operator Recent')
+    expect(html).not.toContain('Case Buckets')
+    expect(html).not.toContain('Live Oversight')
   })
 })
 

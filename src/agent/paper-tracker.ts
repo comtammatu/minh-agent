@@ -72,7 +72,7 @@ export interface PaperWalletSummary {
 
 // ─── Enhanced Position Types ────────────────────────────────────────────────
 
-export type PaperExitReason = 'tp1_zone' | 'tp2_swing' | 'tp3_trail' | 'sl_hit' | 'be_hit' | 'max_hold'
+export type PaperExitReason = 'tp1_zone' | 'tp2_swing' | 'tp3_trail' | 'sl_hit' | 'be_hit' | 'max_hold' | 'manual_partial'
 
 export interface PaperPartialClose {
   price: number
@@ -125,6 +125,11 @@ export interface PaperCheckResult {
   exitReason?: string
   closePrice?: number
   pnl?: number
+}
+
+export interface PaperPartialExitResult {
+  pnl: number
+  remainingSize: number
 }
 
 // ─── PaperTracker Class ─────────────────────────────────────────────────────
@@ -219,6 +224,44 @@ export class PaperTracker {
     const pnlStr = pnl >= 0 ? `+${pnl.toFixed(2)}` : pnl.toFixed(2)
     log.info('paper', `Exit: ${pos.coin} ${pos.side} @ ${closePrice.toFixed(2)} | P&L=${pnlStr} | balance=${this.balance.toFixed(2)}`)
     return trade
+  }
+
+  /**
+   * Record a partial paper exit and realize P&L on the reduced portion only.
+   * `closePct` is a fraction of the current remaining position size.
+   */
+  recordPartialExit(orderId: string, closePrice: number, closePct: number): PaperPartialExitResult | null {
+    const pos = this.openPositions.get(orderId)
+    if (!pos || closePct <= 0 || closePct >= 1) return null
+
+    const closeSize = pos.size * closePct
+    if (closeSize <= 0) return null
+
+    const direction = pos.side === 'long' ? 1 : -1
+    const pnl = (closePrice - pos.entryPrice) * closeSize * direction
+    pos.size -= closeSize
+    this.balance += pnl
+    this.equityCurve.push({ ts: Date.now(), balance: this.balance })
+
+    const enhanced = this.enhancedPositions.get(orderId)
+    if (enhanced) {
+      const closeSizePct = enhanced.remainingSizePct * closePct
+      enhanced.partialCloses.push({
+        price: closePrice,
+        sizePct: closeSizePct,
+        reason: 'manual_partial',
+        closedAt: Date.now(),
+      })
+      enhanced.remainingSizePct = Math.max(0, enhanced.remainingSizePct - closeSizePct)
+    }
+
+    const pnlStr = pnl >= 0 ? `+${pnl.toFixed(2)}` : pnl.toFixed(2)
+    log.info(
+      'paper',
+      `Partial exit: ${pos.coin} ${pos.side} ${(closePct * 100).toFixed(0)}% @ ${closePrice.toFixed(2)} | P&L=${pnlStr} | balance=${this.balance.toFixed(2)}`,
+    )
+
+    return { pnl, remainingSize: pos.size }
   }
 
   // ─── Enhanced Multi-TP API ────────────────────────────────────────────

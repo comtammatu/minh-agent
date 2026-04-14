@@ -100,11 +100,13 @@ let mockCancelAllOrders = mock(() =>
 let mockGetHistoricOrders = mock(() =>
   Promise.resolve({ retCode: 0, retMsg: 'OK', result: { list: [] } }),
 )
+let lastRestClientOptions: Record<string, unknown> | null = null
 
 mock.module('bybit-api', () => ({
   RestClientV5: class MockRestClientV5 {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mock constructor params
-    constructor(_params: any) {}
+    constructor(params: Record<string, unknown>) {
+      lastRestClientOptions = params
+    }
     submitOrder = mockSubmitOrder
     cancelOrder = mockCancelOrder
     getPositionInfo = mockGetPositionInfo
@@ -124,6 +126,8 @@ describe('BybitExchangeService', () => {
     process.env['BYBIT_API_KEY'] = 'test-key'
     process.env['BYBIT_API_SECRET'] = 'test-secret'
     process.env['BYBIT_TESTNET'] = 'true'
+    delete process.env['BYBIT_DEMO_TRADING']
+    lastRestClientOptions = null
 
     // Reset mocks to defaults
     mockSubmitOrder = mock(() =>
@@ -227,6 +231,35 @@ describe('BybitExchangeService', () => {
       const svc = new BybitExchangeService()
       await svc.init()
       expect(svc.exchangeId).toBe('BB')
+      expect(lastRestClientOptions).toEqual({
+        key: 'test-key',
+        secret: 'test-secret',
+        testnet: true,
+        demoTrading: false,
+      })
+    })
+
+    it('uses demo trading with mainnet transport when BYBIT_DEMO_TRADING=true', async () => {
+      process.env['BYBIT_TESTNET'] = 'false'
+      process.env['BYBIT_DEMO_TRADING'] = 'true'
+
+      const { BybitExchangeService } = await import('./bybit-exchange-service.js')
+      const svc = new BybitExchangeService()
+      await svc.init()
+      expect(lastRestClientOptions).toEqual({
+        key: 'test-key',
+        secret: 'test-secret',
+        testnet: false,
+        demoTrading: true,
+      })
+    })
+
+    it('rejects conflicting BYBIT_TESTNET + BYBIT_DEMO_TRADING', async () => {
+      process.env['BYBIT_DEMO_TRADING'] = 'true'
+
+      const { BybitExchangeService } = await import('./bybit-exchange-service.js')
+      const svc = new BybitExchangeService()
+      await expect(svc.init()).rejects.toThrow('BYBIT_TESTNET and BYBIT_DEMO_TRADING')
     })
 
     it('throws when BYBIT_API_KEY missing', async () => {

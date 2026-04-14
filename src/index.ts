@@ -35,6 +35,8 @@ import {
   getEffectivePaperTrade,
   MIN_CANDLES_FOR_SCAN,
   getActiveExchange,
+  getBybitTradingEnv,
+  getFocusedTrackedCoinsOverride,
   getEnabledStrategies,
   BYBIT_TOP_COINS_LIMIT,
   BYBIT_FUNDING_REFRESH_MS,
@@ -57,11 +59,15 @@ import { createCoinSelector } from './feed/coin-selector.js'
 import type { RefreshResult, CoinSelector } from './feed/coin-selector.js'
 import {
   onCandleTick,
+  getDecisionTraces,
   getStatus,
   getActiveSetups,
   getActiveSetupCoins,
   clearCoinState,
   bootstrapPipelineFromStore,
+  recordDecisionTraceAgentAction,
+  recordDecisionTraceMonitorEvent,
+  recordDecisionTracePaperExit,
 } from './strategy/orchestrator.js'
 import { sql, closeDb } from './db/connection.js'
 import { runMigrations } from './db/migrate.js'
@@ -82,19 +88,42 @@ import {
 import { createWriteStream, type WriteStream } from 'fs'
 import { log, setTuiSink, clearTuiSink } from './lib/logger.js'
 import { getHealthMonitor } from './agent/self-healing.js'
-import { startTui, stopTui, setBackfillDone, type TuiDataSources, type PaperStats } from './ui/tui.jsx'
+import {
+  startTui,
+  stopTui,
+  setBackfillDone,
+  type TuiDataSources,
+  type PaperStats,
+  type OperatorAuditEntry,
+} from './ui/tui.jsx'
 import { getPaperWalletSummaries, getTotalPaperBalance } from './agent/paper-tracker.js'
 import { getLatestAssetCtx } from './feed/asset-ctx.js'
 import { getPipelineEmitter } from './strategy/orchestrator.js'
 import { getAgent } from './agent/trading-agent.js'
+import { closeAllPositions } from './agent/close-all.js'
 import { getOrderManager } from './agent/order-manager.js'
 import { getPositionMonitor, queryExchangePositions } from './agent/position-monitor.js'
 import { getInvalidationBridge } from './agent/invalidation-bridge.js'
-import { startBot, stopBot, formatAlert, sendTelegramAlert } from './alert/telegram/index.js'
+import { getJournalEntries, logOperatorAuditEntry } from './agent/journal.js'
+import {
+  startBot,
+  stopBot,
+  formatAlert,
+  formatDecisionTraceAlert,
+  getDecisionTraceAlertFingerprint,
+  sendTelegramAlert,
+  shouldSendDecisionTraceAlert,
+} from './alert/telegram/index.js'
+import {
+  getBriefingRefreshHealth,
+  getBriefingRefreshHistory,
+  getBriefingRefreshIncidents,
+  getBriefingRefreshStats,
+} from './alert/telegram/briefing-refresh-stats.js'
 import { connectToAgent as connectMetrics } from './analytics/metrics-service.js'
 import { getStrategyRegistry, resetStrategyRegistry } from './strategy/registry.js'
 import { SmcSdStrategy } from './strategy/strategies/smc-sd/index.js'
-import type { CandleInterval } from './types.js'
+import type { CandleInterval, DecisionTrace } from './types.js'
 
 // ── Banner (logged inside main() before TUI starts) ────────────────────────
 
@@ -191,6 +220,77 @@ let liveAccountStatesByStrategyCache: Map<string, AccountState> | null = null
  * Map caused empty maps to mask fresh tracked positions until the next refresh.
  */
 let liveTuiExchangePositionsCache: ExchangePositionSnapshot[] | null = null
+const MAX_OPERATOR_AUDIT_ENTRIES = 6
+let operatorAuditCache: OperatorAuditEntry[] = []
+
+function appendOperatorAuditCache(entry: Omit<OperatorAuditEntry, 'ts'>, ts: number = Date.now()): void {
+  operatorAuditCache = [...operatorAuditCache, { ts, ...entry }]
+    .sort((a, b) => a.ts - b.ts)
+    .slice(-MAX_OPERATOR_AUDIT_ENTRIES)
+}
+
+function mapJournalEntryToOperatorAudit(entry: Awaited<ReturnType<typeof getJournalEntries>>[number]): OperatorAuditEntry | null {
+  if (entry.eventType !== 'operator') return null
+  const action = typeof entry.details.action === 'string' ? entry.details.action : null
+  const target = typeof entry.details.target === 'string' ? entry.details.target : null
+  const status = entry.details.status
+  if (
+    action == null
+    || target == null
+    || (status !== 'armed' && status !== 'submitted' && status !== 'failed')
+  ) {
+    return null
+  }
+  return {
+    ts: entry.ts.getTime(),
+    action,
+    target,
+    status,
+    coin: entry.coin,
+    strategyId: typeof entry.details.strategyId === 'string' ? entry.details.strategyId : null,
+    positionId: typeof entry.details.positionId === 'string' ? entry.details.positionId : null,
+  }
+}
+
+async function hydrateOperatorAuditCache(): Promise<void> {
+  try {
+    const entries = await getJournalEntries({
+      eventType: 'operator',
+      limit: MAX_OPERATOR_AUDIT_ENTRIES,
+      exchange: getActiveExchange(),
+    })
+    operatorAuditCache = entries
+      .map(mapJournalEntryToOperatorAudit)
+      .filter((entry): entry is OperatorAuditEntry => entry != null)
+      .sort((a, b) => a.ts - b.ts)
+  } catch {
+    operatorAuditCache = []
+  }
+}
+
+function recordOperatorAudit(entry: {
+  action: string
+  target: string
+  status: 'submitted' | 'failed'
+  coin?: string | null
+  strategyId?: string | null
+  details?: Record<string, unknown>
+}): void {
+  appendOperatorAuditCache({
+    action: entry.action,
+    target: entry.target,
+    status: entry.status,
+    coin: entry.coin ?? null,
+    strategyId: entry.strategyId ?? null,
+    positionId: typeof entry.details?.positionId === 'string' ? entry.details.positionId : null,
+  })
+  void logOperatorAuditEntry(entry.action, entry.target, entry.status, {
+    coin: entry.coin ?? null,
+    strategyId: entry.strategyId ?? null,
+    exchange: getActiveExchange(),
+    ...(entry.details !== undefined ? { details: entry.details } : {}),
+  })
+}
 
 class StartupFatalError extends Error {}
 
@@ -281,12 +381,17 @@ async function refreshLiveTuiCaches(): Promise<void> {
 async function main(): Promise<void> {
   const activeExchange = getActiveExchange()
   feed = activeExchange === 'HL' ? new HLFeed() : new BybitFeed()
+  const focusedTrackedCoins = getFocusedTrackedCoinsOverride()
 
   // Initialize selector with exchange-aware fetch function and top-coin limit.
   // BB: dynamic fetch from Bybit tickers API (top 50 by OI), no HIP-3.
   // HL: default behavior (fetchRankedCoins from HL API + HIP-3, top 20).
-  const fetchRankedFn = activeExchange === 'BB' ? makeBybitFetchRankedFn() : undefined
-  const topLimit = activeExchange === 'BB' ? BYBIT_TOP_COINS_LIMIT : undefined
+  const fetchRankedFn = focusedTrackedCoins !== null
+    ? async () => focusedTrackedCoins
+    : activeExchange === 'BB'
+      ? makeBybitFetchRankedFn()
+      : undefined
+  const topLimit = focusedTrackedCoins?.length ?? (activeExchange === 'BB' ? BYBIT_TOP_COINS_LIMIT : undefined)
   selector = createCoinSelector(getActiveSetupCoins, onCoinsRefreshed, fetchRankedFn, topLimit)
 
   // Banner — logged before TUI starts, so these safely go to console
@@ -297,6 +402,9 @@ async function main(): Promise<void> {
     `min:${MIN_CONFIDENCE} | confluence:${CONFLUENCE_MIN}+ | ` +
     `regime:${REGIME_MULTIPLIERS.aligned}/${REGIME_MULTIPLIERS.neutral}/${REGIME_MULTIPLIERS.counter}`,
   )
+  if (focusedTrackedCoins !== null) {
+    log.warn('startup', `FOCUSED TRACKED COINS override active: ${focusedTrackedCoins.join(', ')}`)
+  }
 
   // 0. Run DB migrations
   await runMigrations(sql)
@@ -340,6 +448,8 @@ async function main(): Promise<void> {
   }
 
   // 2b. Start TUI immediately — shows backfill progress (transitions to dashboard when done)
+  await hydrateOperatorAuditCache()
+
   const tuiSources: TuiDataSources = {
     getAgentSnapshot: () => ({
       global: { dailyPnl: 0, totalConsecutiveLosses: 0, globalPaused: false, globalPauseReason: null, uptime: 0 },
@@ -395,6 +505,13 @@ async function main(): Promise<void> {
       }
     },
     getActiveSetups: () => getActiveSetups(),
+    getDecisionTraces: () => getDecisionTraces(),
+    getBriefingRefreshStats: () => getBriefingRefreshStats(),
+    getBriefingRefreshHealth: () => getBriefingRefreshHealth(),
+    getBriefingRefreshHistory: () => getBriefingRefreshHistory(),
+    getBriefingRefreshIncidents: () => getBriefingRefreshIncidents(),
+    getOperatorAuditEntries: () => operatorAuditCache,
+    getTrackedPosition: () => null,
     getInvalidationStats: () => ({
       total: 0,
       matched: 0,
@@ -405,6 +522,9 @@ async function main(): Promise<void> {
     }),
     getLiveStrategyWalletStats: () => liveStrategyWalletStatsCache,
     getLiveAccountStatesByStrategy: () => liveAccountStatesByStrategyCache,
+    setStrategyPaused: () => false,
+    closePosition: () => false,
+    partialClosePosition: () => false,
   }
   tuiLogStream = createWriteStream('./minh.log', { flags: 'a' })
   setTuiSink(msg => { tuiLogStream!.write(msg + '\n') })
@@ -565,6 +685,8 @@ async function main(): Promise<void> {
     const exchangeName = activeExchange === 'BB' ? 'Bybit' : 'Hyperliquid'
     if (getEffectivePaperTrade()) {
       log.info('startup', 'MODE  | PAPER TRADE — orders are SIMULATED, no real exchange calls')
+    } else if (activeExchange === 'BB' && getBybitTradingEnv() === 'demo') {
+      log.info('startup', 'MODE  | BYBIT DEMO TRADING — demo orders on Bybit with mainnet market data')
     } else {
       log.info('startup', `MODE  | LIVE TRADING — real orders on ${exchangeName}`)
     }
@@ -613,18 +735,34 @@ async function main(): Promise<void> {
   // Agent → OrderManager (bidirectional) — dispatch includes strategyId (Sprint 4.5)
   // MUST be wired BEFORE subscribeToPipeline + bootstrapPipelineFromStore so that
   // place_order actions emitted during bootstrap are handled (not lost).
-  agent.onAction(action => om.handleAction(action))
+  agent.onAction(action => {
+    recordDecisionTraceAgentAction(action)
+    void om.handleAction(action)
+  })
   om.setAgentDispatch((coin, event, strategyId) => agent.dispatch(coin, event, strategyId))
 
   // OrderManager → PositionMonitor: register position on fill (enables TUI display + trail stop)
   om.setPositionOpenCallback(params => pm.openPosition(params))
+  om.setPositionPartialCloseCallback((positionId, closePct) => {
+    pm.applyExternalPartialClose(positionId, closePct)
+  })
+  om.setPositionSizeResolver(positionId => pm.getPosition(positionId)?.currentSize ?? null)
 
   // Crash recovery: re-register positions from DB-filled orders for coins still open on exchange.
   // PositionMonitor state is in-memory — lost on restart → positions show as 'ext' without this.
   if (!getEffectivePaperTrade()) {
     try {
       const openSnaps = await queryExchangePositions()
-      if (openSnaps) om.restoreOpenPositions(openSnaps)
+      if (openSnaps) {
+        om.restoreOpenPositions(openSnaps)
+        const recoveredPositions = Array.from(pm.getPositions().values()).map(pos => ({
+          coin: pos.coin,
+          positionId: pos.positionId,
+          side: pos.side,
+          strategyId: pos.strategyId,
+        }))
+        agent.recoverFromCrash(openSnaps, recoveredPositions)
+      }
     } catch (err) {
       log.warn('agent', `restoreOpenPositions failed (non-fatal): ${err instanceof Error ? err.message : err}`)
     }
@@ -635,6 +773,30 @@ async function main(): Promise<void> {
 
   // PositionMonitor → OrderManager: trail stop SL updates go directly to exchange
   pm.setUpdateStopCallback((parentOrderId, newSlPrice) => om.modifySLPrice(parentOrderId, newSlPrice))
+  pm.setPartialCloseCallback(async (positionId, closePct) => {
+    const before = pm.getPosition(positionId)?.currentSize ?? null
+    await om.handleAction({ type: 'partial_close', positionId, closePct })
+    const after = pm.getPosition(positionId)?.currentSize ?? null
+    return before != null && after != null && after < before
+  })
+  pm.setMonitorActionCallback((pos, action) => {
+    if (action.type === 'alert') return
+    const summary =
+      action.type === 'hold'
+        ? `Guardian is holding ${pos.coin} and monitoring the open position.`
+        : action.type === 'trail_update'
+          ? `Guardian trailed SL on ${pos.coin} to ${action.newSlPrice.toFixed(2)}.`
+          : action.type === 'partial_close'
+            ? `Guardian scaled out ${(action.closePct * 100).toFixed(0)}% on ${pos.coin}.`
+            : `Guardian is closing ${pos.coin}: ${action.reason}.`
+    recordDecisionTraceMonitorEvent({
+      positionId: pos.positionId,
+      coin: pos.coin,
+      strategyId: pos.strategyId,
+      action: action.type,
+      summary,
+    })
+  })
 
   // PositionMonitor price getter: used in paper mode to simulate SL/TP hits every 10s
   pm.setPriceGetter((coin) => {
@@ -649,6 +811,10 @@ async function main(): Promise<void> {
 
   // Sprint 4.5: Wire equity update from position monitor → agent (for portfolio risk)
   pm.setEquityCallback(equity => agent.setAccountEquity(equity))
+  pm.setSyncBlindPauseCallback(reason => {
+    log.error('agent', `${reason} — pausing new entries until exchange sync recovers`)
+    agent.pauseAll(reason)
+  })
 
   // Start exchange sync heartbeat (R3: 10s interval)
   pm.startSync()
@@ -672,10 +838,33 @@ async function main(): Promise<void> {
 
   // Agent ← Pipeline (setup events)
   // Subscribed AFTER all agent.onAction handlers are wired so bootstrap actions are not lost.
-  agent.subscribeToPipeline(getPipelineEmitter())
+  const pipelineEmitter = getPipelineEmitter()
+  const sentDecisionTraceAlerts = new Map<string, string>()
+  pipelineEmitter.on('decision_trace', (trace: DecisionTrace) => {
+    if (!shouldSendDecisionTraceAlert(trace)) return
+    const fingerprint = getDecisionTraceAlertFingerprint(trace)
+    if (fingerprint == null) return
+    if (sentDecisionTraceAlerts.get(trace.traceId) === fingerprint) return
+
+    const msg = formatDecisionTraceAlert(trace)
+    if (msg == null) return
+
+    sentDecisionTraceAlerts.set(trace.traceId, fingerprint)
+    void sendTelegramAlert(msg.text, globalThis.fetch, { parseMode: msg.parseMode })
+  })
+  agent.subscribeToPipeline(pipelineEmitter)
+  pipelineEmitter.on('paper_exit', (event: {
+    coin: string
+    strategyId: string
+    exitReason: string
+    closePrice: number
+    pnl: number
+  }) => {
+    recordDecisionTracePaperExit(event)
+  })
 
   // InvalidationBridge ← Pipeline (invalidation events) → Agent
-  bridge.connect(getPipelineEmitter(), agent)
+  bridge.connect(pipelineEmitter, agent)
 
   // One scan per coin/TF from backfilled store so bias/TUI/strategies are live immediately
   bootstrapPipelineFromStore(coins)
@@ -693,7 +882,111 @@ async function main(): Promise<void> {
     if (exchangeSnap === null) return pm.getPositions()
     return mergeExchangeAndTrackedForTui(pm.getPositions(), exchangeSnap)
   }
+  tuiSources.getTrackedPosition = (positionId: string) => pm.getPosition(positionId)
   tuiSources.getHealthReport = () => health.getReport()
+  tuiSources.setStrategyPaused = (strategyId: string, paused: boolean, reason: string) => {
+    const action = paused ? 'pause' : 'resume'
+    try {
+      if (paused) {
+        agent.pauseStrategy(strategyId, reason)
+      } else {
+        agent.resumeStrategy(strategyId)
+      }
+      recordOperatorAudit({
+        action,
+        target: strategyId,
+        status: 'submitted',
+        strategyId,
+        details: { reason },
+      })
+      return true
+    } catch {
+      recordOperatorAudit({
+        action,
+        target: strategyId,
+        status: 'failed',
+        strategyId,
+        details: { reason },
+      })
+      return false
+    }
+  }
+  tuiSources.closePosition = (positionId: string, reason: string) => {
+    const pos = pm.getPosition(positionId)
+    const target = pos != null ? `${pos.coin} ${pos.side.toUpperCase()}` : positionId
+    try {
+      if (pos == null) {
+        recordOperatorAudit({
+          action: 'close',
+          target,
+          status: 'failed',
+          details: { reason, positionId, failure: 'position_not_found' },
+        })
+        return false
+      }
+      const action = { type: 'close_position' as const, positionId, reason }
+      recordDecisionTraceAgentAction(action)
+      void om.handleAction(action)
+      recordOperatorAudit({
+        action: 'close',
+        target,
+        status: 'submitted',
+        coin: pos.coin,
+        strategyId: pos.strategyId,
+        details: { reason, positionId },
+      })
+      return true
+    } catch {
+      recordOperatorAudit({
+        action: 'close',
+        target,
+        status: 'failed',
+        coin: pos?.coin ?? null,
+        strategyId: pos?.strategyId ?? null,
+        details: { reason, positionId },
+      })
+      return false
+    }
+  }
+  tuiSources.partialClosePosition = (positionId: string, closePct: number, reason: string) => {
+    const pos = pm.getPosition(positionId)
+    const target = pos != null ? `${pos.coin} ${pos.side.toUpperCase()}` : positionId
+    const actionLabel = `reduce ${(closePct * 100).toFixed(0)}%`
+    try {
+      if (pos == null) {
+        recordOperatorAudit({
+          action: actionLabel,
+          target,
+          status: 'failed',
+          details: { reason, positionId, closePct, failure: 'position_not_found' },
+        })
+        return false
+      }
+      const action = { type: 'partial_close' as const, positionId, closePct }
+      recordDecisionTraceAgentAction(action)
+      void om.handleAction(action)
+      log.info('tui', `Manual partial close: ${pos.coin} ${(closePct * 100).toFixed(0)}% reason=${reason}`)
+      recordOperatorAudit({
+        action: actionLabel,
+        target,
+        status: 'submitted',
+        coin: pos.coin,
+        strategyId: pos.strategyId,
+        details: { reason, positionId, closePct },
+      })
+      return true
+    } catch {
+      recordOperatorAudit({
+        action: actionLabel,
+        target,
+        status: 'failed',
+        coin: pos?.coin ?? null,
+        strategyId: pos?.strategyId ?? null,
+        details: { reason, positionId, closePct },
+      })
+      return false
+    }
+  }
   tuiSources.getAccountState = async () => {
     try {
       if (liveAccountStatesByStrategyCache && liveAccountStatesByStrategyCache.size > 0) {
@@ -733,6 +1026,14 @@ async function cleanup(reason: 'reconnect' | 'shutdown' = 'reconnect'): Promise<
   stopTui()
   selector.stopRefreshLoop()
   getPositionMonitor().stopSync()
+  if (reason === 'shutdown' && !getEffectivePaperTrade()) {
+    try {
+      const result = await closeAllPositions('process_shutdown')
+      log.warn('shutdown', `Best-effort flatten before shutdown: cancelled=${result.cancelled} closed=${result.closed}`)
+    } catch (err) {
+      log.error('shutdown', `Best-effort flatten before shutdown failed: ${err instanceof Error ? err.message : err}`)
+    }
+  }
   getStrategyRegistry().clear()
   stopBot()
   for (const id of activeIntervals) clearInterval(id)

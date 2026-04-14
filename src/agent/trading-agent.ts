@@ -150,6 +150,8 @@ export function handleEntering(
         positionId: event.positionId,
         setupId: ctx.activeSetup?.id,
         side: ctx.activeSetup?.side,
+        interval: ctx.activeSetup?.interval,
+        strategyId: ctx.strategyId,
       })],
     }
   }
@@ -160,6 +162,7 @@ export function handleEntering(
       actions: [journalAction('skip', ctx.coin, {
         orderId: event.orderId,
         reason: `Order rejected: ${event.reason}`,
+        strategyId: ctx.strategyId,
       })],
     }
   }
@@ -169,7 +172,7 @@ export function handleEntering(
       nextState: 'IDLE',
       actions: [
         { type: 'cancel_order', orderId: event.orderId, reason: 'timeout' },
-        journalAction('skip', ctx.coin, { orderId: event.orderId, reason: 'Order timeout' }),
+        journalAction('skip', ctx.coin, { orderId: event.orderId, reason: 'Order timeout', strategyId: ctx.strategyId }),
       ],
     }
   }
@@ -179,7 +182,7 @@ export function handleEntering(
     const age = Date.now() - ctx.stateEnteredAt
     if (age > ORDER_TIMEOUT_MS) {
       const actions: AgentAction[] = [
-        journalAction('skip', ctx.coin, { orderId: ctx.pendingOrderId, reason: 'Order timeout' }),
+        journalAction('skip', ctx.coin, { orderId: ctx.pendingOrderId, reason: 'Order timeout', strategyId: ctx.strategyId }),
       ]
       if (ctx.pendingOrderId) {
         // Cancel on exchange only if we have an order ID (live limit order)
@@ -194,13 +197,13 @@ export function handleEntering(
     if (ctx.pendingOrderId) {
       actions.push({ type: 'cancel_order', orderId: ctx.pendingOrderId, reason: event.reason })
     }
-    actions.push(journalAction('invalidate', ctx.coin, { setupId: event.setupId, reason: event.reason }))
+    actions.push(journalAction('invalidate', ctx.coin, { setupId: event.setupId, reason: event.reason, strategyId: ctx.strategyId }))
     return { nextState: 'IDLE', actions }
   }
 
   if (event.type === 'pause' || event.type === 'circuit_break') {
     const reason = event.reason
-    const actions: AgentAction[] = [journalAction('pause', ctx.coin, { reason })]
+    const actions: AgentAction[] = [journalAction('pause', ctx.coin, { reason, strategyId: ctx.strategyId })]
     if (ctx.pendingOrderId) {
       actions.unshift({ type: 'cancel_order', orderId: ctx.pendingOrderId, reason })
     }
@@ -215,6 +218,7 @@ export function handleEntering(
         reason: `Order pending — ignored new setup until fill/cancel`,
         setupId: setup.id,
         pendingOrderId: ctx.pendingOrderId,
+        strategyId: ctx.strategyId,
       })],
     }
   }
@@ -238,6 +242,9 @@ export function handleInPosition(
         closePrice: event.closePrice,
         pnl: event.pnl,
         reason: event.type,
+        setupId: ctx.activeSetup?.id,
+        interval: ctx.activeSetup?.interval,
+        strategyId: ctx.strategyId,
       })],
     }
   }
@@ -247,7 +254,7 @@ export function handleInPosition(
       nextState: 'EXITING',
       actions: [
         { type: 'close_position', positionId: ctx.positionId, reason: `Invalidated: ${event.reason}` },
-        journalAction('invalidate', ctx.coin, { setupId: event.setupId, reason: event.reason, positionId: ctx.positionId }),
+        journalAction('invalidate', ctx.coin, { setupId: event.setupId, reason: event.reason, positionId: ctx.positionId, strategyId: ctx.strategyId }),
       ],
     }
   }
@@ -258,7 +265,7 @@ export function handleInPosition(
       nextState: 'EXITING',
       actions: [
         { type: 'close_position', positionId: ctx.positionId, reason: `Emergency: ${event.reason}` },
-        journalAction('pause', ctx.coin, { reason: event.reason, positionId: ctx.positionId }),
+        journalAction('pause', ctx.coin, { reason: event.reason, positionId: ctx.positionId, strategyId: ctx.strategyId }),
       ],
     }
   }
@@ -273,7 +280,7 @@ export function handleExiting(
 ): TransitionResult {
   if (event.type === 'position_closed') {
     const pnl = event.pnl
-    const exitAction = journalAction('exit', ctx.coin, { pnl, reason: event.reason, positionId: event.positionId })
+    const exitAction = journalAction('exit', ctx.coin, { pnl, reason: event.reason, positionId: event.positionId, strategyId: ctx.strategyId })
 
     if (global.globalPaused) {
       return {
@@ -296,7 +303,7 @@ export function handleExiting(
         nextState: 'EXITING',
         actions: [
           { type: 'close_position', positionId: ctx.positionId, reason: 'exit_timeout_retry' },
-          journalAction('error', ctx.coin, { reason: 'Exit timeout — retrying close', positionId: ctx.positionId }),
+          journalAction('error', ctx.coin, { reason: 'Exit timeout — retrying close', positionId: ctx.positionId, strategyId: ctx.strategyId }),
         ],
       }
     }
@@ -318,6 +325,7 @@ export function handlePaused(
       actions: [journalAction('skip', ctx.coin, {
         reason: `Agent paused (${why}) — setup ignored`,
         setupId: setup.id,
+        strategyId: ctx.strategyId,
       })],
     }
   }
@@ -325,7 +333,7 @@ export function handlePaused(
   if (event.type === 'resume') {
     return {
       nextState: 'IDLE',
-      actions: [journalAction('resume', ctx.coin, { previousPause: ctx.pauseReason })],
+      actions: [journalAction('resume', ctx.coin, { previousPause: ctx.pauseReason, strategyId: ctx.strategyId })],
     }
   }
 
@@ -334,7 +342,7 @@ export function handlePaused(
     if (Date.now() >= ctx.pauseUntil) {
       return {
         nextState: 'IDLE',
-        actions: [journalAction('resume', ctx.coin, { reason: 'cooldown_expired', previousPause: ctx.pauseReason })],
+        actions: [journalAction('resume', ctx.coin, { reason: 'cooldown_expired', previousPause: ctx.pauseReason, strategyId: ctx.strategyId })],
       }
     }
   }
@@ -365,6 +373,7 @@ function buildSignalJournalDetails(
   const pattern = typeof patternRaw === 'string' ? patternRaw : undefined
   const base: Record<string, unknown> = {
     setupId: setup.id,
+    strategyId: setup.strategyId,
     grade,
     confidence: setup.confidence,
     side: setup.side,

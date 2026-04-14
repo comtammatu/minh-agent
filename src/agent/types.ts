@@ -223,6 +223,7 @@ export type JournalEventType =
   | 'circuit_break'
   | 'pause'
   | 'resume'
+  | 'operator'
   | 'error'
 
 /** A persisted journal row from trade_journal table. */

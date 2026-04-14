@@ -533,6 +533,61 @@ describe('TradingAgent', () => {
     expect(snap.coins['SOL:smc-sd']!.positionId).toContain('orphan')
   })
 
+  it('crash recovery: prefers unique side match for same coin', () => {
+    const actions: unknown[] = []
+    agent.onAction((a) => actions.push(a))
+
+    agent.recoverFromCrash(
+      [{ coin: 'BTC', size: -0.25, entryPrice: 50000 }],
+      [
+        { coin: 'BTC', positionId: 'pos-long', side: 'long', strategyId: 'trend' },
+        { coin: 'BTC', positionId: 'pos-short', side: 'short', strategyId: 'mean-revert' },
+      ],
+    )
+
+    expect(agent.getCoinState('BTC', 'mean-revert')).toBe('IN_POSITION')
+    expect(agent.getCoinContext('BTC', 'mean-revert')?.positionId).toBe('pos-short')
+    expect(agent.getCoinState('BTC', 'trend')).toBe('IDLE')
+    expect(actions.some((a: any) => a.eventType === 'exit' && a.details?.positionId === 'pos-long')).toBe(true)
+  })
+
+  it('crash recovery: preserves orphan ownership when same coin + side is ambiguous', () => {
+    const actions: unknown[] = []
+    agent.onAction((a) => actions.push(a))
+
+    agent.recoverFromCrash(
+      [{ coin: 'BTC', size: 0.5, entryPrice: 50000 }],
+      [
+        { coin: 'BTC', positionId: 'pos-a', side: 'long', strategyId: 'trend' },
+        { coin: 'BTC', positionId: 'pos-b', side: 'long', strategyId: 'mean-revert' },
+      ],
+    )
+
+    expect(agent.getCoinState('BTC')).toBe('IN_POSITION')
+    expect(agent.getCoinContext('BTC')?.positionId).toBe('orphan-BTC')
+    expect(agent.getCoinState('BTC', 'trend')).toBe('IDLE')
+    expect(agent.getCoinState('BTC', 'mean-revert')).toBe('IDLE')
+    expect(actions.some((a: any) => a.eventType === 'exit' && a.coin === 'BTC')).toBe(false)
+  })
+
+  it('crash recovery: prefers exchange strategyId when present', () => {
+    const actions: unknown[] = []
+    agent.onAction((a) => actions.push(a))
+
+    agent.recoverFromCrash(
+      [{ coin: 'BTC', size: 0.5, entryPrice: 50000, strategyId: 'mean-revert' }],
+      [
+        { coin: 'BTC', positionId: 'pos-trend', side: 'long', strategyId: 'trend' },
+        { coin: 'BTC', positionId: 'pos-mean', side: 'long', strategyId: 'mean-revert' },
+      ],
+    )
+
+    expect(agent.getCoinState('BTC', 'mean-revert')).toBe('IN_POSITION')
+    expect(agent.getCoinContext('BTC', 'mean-revert')?.positionId).toBe('pos-mean')
+    expect(agent.getCoinState('BTC', 'trend')).toBe('IDLE')
+    expect(actions.some((a: any) => a.eventType === 'exit' && a.details?.positionId === 'pos-trend')).toBe(true)
+  })
+
   // ── Circuit Breaker Integration (S11) ───────────────────────────────────
 
   it('checkCircuitBreakers pauses on daily loss', () => {

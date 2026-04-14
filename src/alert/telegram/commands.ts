@@ -604,8 +604,8 @@ function prependBriefingFocusIntro(
     focusLabel.length > 0 &&
     matchesBriefingHealthTarget(
       {
-        coin: normalizedCoin ?? undefined,
-        positionId: normalizedPositionId ?? undefined,
+        ...(normalizedCoin != null ? { coin: normalizedCoin } : {}),
+        ...(normalizedPositionId != null ? { positionId: normalizedPositionId } : {}),
       },
       focus,
     )

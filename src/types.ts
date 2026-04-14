@@ -203,3 +203,85 @@ export type InvalidationReason =
 // ─── Confluence ──────────────────────────────────────────────────────────────
 
 export type ConfluenceGrade = 'C' | 'B' | 'A' | 'A+'
+
+// ─── Decision Trace (Explainability / Deliberation Layer) ───────────────────
+
+export type DecisionTraceAction =
+  | 'skip'
+  | 'watch'
+  | 'enter'
+  | 'hold'
+  | 'trail_sl'
+  | 'partial_close'
+  | 'exit'
+
+export type DecisionTraceStance = 'bullish' | 'bearish' | 'neutral'
+
+export interface AnalystCard {
+  role: string
+  stance: DecisionTraceStance
+  confidence: number
+  summary: string
+  evidence: string[]
+  veto?: string | null
+}
+
+export interface JudgeCard {
+  role: 'judge'
+  verdict: 'approve' | 'reject' | 'watch'
+  confidence: number
+  summary: string
+  reasonsFor: string[]
+  reasonsAgainst: string[]
+}
+
+export interface GuardianCard {
+  role: 'guardian'
+  state: 'watching' | 'holding' | 'trail_sl' | 'partial_tp' | 'exit_ready'
+  summary: string
+  actions: string[]
+}
+
+export interface ExecutorCard {
+  role: 'executor'
+  state: 'idle' | 'submitting' | 'filled' | 'rejected' | 'closed'
+  summary: string
+}
+
+export interface DecisionTraceTimelineEntry {
+  ts: number
+  actor: 'scanner' | 'judge' | 'executor' | 'guardian'
+  action: string
+  summary: string
+}
+
+export interface DecisionTrace {
+  traceId: string
+  coin: string
+  interval: CandleInterval
+  strategyId: string
+  exchange: ExchangeId
+  ts: number
+  regime: {
+    state: MarketRegime
+    confidence: number
+    modifier: number
+  }
+  roles: {
+    wyckoff?: AnalystCard
+    bull?: AnalystCard
+    bear?: AnalystCard
+    risk?: AnalystCard
+    judge?: JudgeCard
+    guardian?: GuardianCard
+    executor?: ExecutorCard
+  }
+  timeline: DecisionTraceTimelineEntry[]
+  outcome: {
+    action: DecisionTraceAction
+    confidence: number
+    summary: string
+    setupId?: string
+    positionId?: string
+  }
+}

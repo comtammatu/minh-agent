@@ -31,6 +31,7 @@ import type { TrailingStopState } from './exits.js'
 import type { SignalSide } from '../types.js'
 import {
   EXCHANGE_SYNC_INTERVAL_MS,
+  HEALTH,
   PAPER_WALLET_STRATEGY_IDS,
   TRAIL_UPDATE_THRESHOLD,
   tryGetActiveExchange,
@@ -238,14 +239,24 @@ export class PositionMonitor {
   private dispatchToAgent: ((coin: string, event: AgentEvent, strategyId?: string) => void) | null = null
   /** Callback to update SL on exchange via OrderManager (parentOrderId, newSlPrice). */
   private onUpdateStop: ((parentOrderId: string, newSlPrice: number) => void) | null = null
+  /** Callback to execute partial closes via OrderManager. */
+  private onPartialClose: ((positionId: string, closePct: number) => Promise<boolean> | boolean) | null = null
   /** Callback to update account equity on TradingAgent. */
   private onEquityUpdate: ((equity: number) => void) | null = null
+  /** Pause callback when exchange sync is blind for too long in live mode. */
+  private onSyncBlindPause: ((reason: string) => void) | null = null
+  /** Optional observer for lifecycle/guardian updates. */
+  private onMonitorAction: ((pos: PositionState, action: MonitorAction) => void) | null = null
   /** Callback to get current mark price for a coin (paper mode SL/TP checks). */
   private priceGetter: ((coin: string) => number | null) | null = null
   /** Cached exchange position snapshots from last syncWithExchange (TUI reuse — avoids duplicate API calls). */
   private lastExchangeSnapshots: ExchangePositionSnapshot[] | null = null
   /** Cached account state from last syncWithExchange (TUI reuse — avoids duplicate API calls). */
   private lastAccountState: AccountState | null = null
+  /** Consecutive live reconciliation cycles with no exchange snapshot. */
+  private consecutiveBlindSyncs = 0
+  /** Prevent duplicate auto-pause spam while the same blind streak is active. */
+  private blindPauseTriggered = false
 
   /** Set the callback for dispatching events to the agent state machine. */
   setAgentDispatch(fn: (coin: string, event: AgentEvent, strategyId?: string) => void): void {
@@ -257,9 +268,24 @@ export class PositionMonitor {
     this.onUpdateStop = fn
   }
 
+  /** Set the callback for partial closes via OrderManager. */
+  setPartialCloseCallback(fn: (positionId: string, closePct: number) => Promise<boolean> | boolean): void {
+    this.onPartialClose = fn
+  }
+
   /** Set the callback for updating account equity (Sprint 4.5: portfolio risk). */
   setEquityCallback(fn: (equity: number) => void): void {
     this.onEquityUpdate = fn
+  }
+
+  /** Pause new entries when live reconciliation is blind for too many cycles. */
+  setSyncBlindPauseCallback(fn: (reason: string) => void): void {
+    this.onSyncBlindPause = fn
+  }
+
+  /** Observe monitor actions for UI/trace updates. */
+  setMonitorActionCallback(fn: (pos: PositionState, action: MonitorAction) => void): void {
+    this.onMonitorAction = fn
   }
 
   /**
@@ -361,16 +387,16 @@ export class PositionMonitor {
         break
 
       case 'partial_close': {
-        const levelIdx = this.findPartialCloseLevel(pos, action.closePct)
-        if (levelIdx >= 0) {
-          pos.partialClosesFired.push(levelIdx)
+        if (this.onPartialClose) {
+          const executed = await this.onPartialClose(pos.positionId, action.closePct)
+          if (!executed) break
+          if (action.newSlPrice != null) {
+            pos.slPrice = action.newSlPrice
+            this.onUpdateStop?.(pos.entryOrderId, action.newSlPrice)
+          }
+          break
         }
-        const closeSize = pos.currentSize * action.closePct
-        pos.currentSize -= closeSize
-        if (action.newSlPrice != null) {  // null and undefined both excluded
-          pos.slPrice = action.newSlPrice
-        }
-        log.info('position-monitor', `Partial close: ${pos.coin} ${(action.closePct * 100).toFixed(0)}% (${closeSize.toFixed(4)} coins) remaining=${pos.currentSize.toFixed(4)}`)
+        this.applyExternalPartialClose(pos.positionId, action.closePct, action.newSlPrice)
         break
       }
 
@@ -416,6 +442,7 @@ export class PositionMonitor {
         log.warn('position-monitor', `ALERT ${pos.coin}: ${action.message}`)
         break
     }
+    this.onMonitorAction?.(pos, action)
   }
 
   /** Find which partial close level index matches a closePct. */
@@ -512,9 +539,12 @@ export class PositionMonitor {
       this.lastExchangeSnapshots = snapshots
       // null = API/network error — skip reconciliation to avoid false position closes
       if (snapshots === null) {
+        this.recordBlindSyncFailure()
         log.warn('position-monitor', `getPositions API error — skipping reconciliation this cycle (${this.positions.size} position(s) still tracked)`)
         return []
       }
+
+      this.resetBlindSyncFailures()
 
       const actions = reconcilePositions(this.positions, snapshots)
 
@@ -539,6 +569,26 @@ export class PositionMonitor {
     } finally {
       this.syncInProgress = false
     }
+  }
+
+  private recordBlindSyncFailure(): void {
+    this.consecutiveBlindSyncs++
+    if (this.blindPauseTriggered) return
+    if (this.onSyncBlindPause == null) return
+    if (this.consecutiveBlindSyncs < HEALTH.exchangeBlindPauseAfterFailures) return
+
+    this.blindPauseTriggered = true
+    const reason = `Exchange sync blind for ${this.consecutiveBlindSyncs} consecutive cycles`
+    try {
+      this.onSyncBlindPause(reason)
+    } catch (err) {
+      log.error('position-monitor', `Sync-blind pause callback failed: ${err instanceof Error ? err.message : err}`)
+    }
+  }
+
+  private resetBlindSyncFailures(): void {
+    this.consecutiveBlindSyncs = 0
+    this.blindPauseTriggered = false
   }
 
   // ── Paper SL/TP Simulation ────────────────────────────────────────────
@@ -610,6 +660,26 @@ export class PositionMonitor {
   /** Get a tracked position by ID. */
   getPosition(positionId: string): PositionState | null {
     return this.positions.get(positionId) ?? null
+  }
+
+  /** Apply an externally executed partial close to tracked state. */
+  applyExternalPartialClose(positionId: string, closePct: number, newSlPrice?: number | null): boolean {
+    const pos = this.positions.get(positionId)
+    if (!pos || closePct <= 0 || closePct >= 1) return false
+
+    const levelIdx = this.findPartialCloseLevel(pos, closePct)
+    if (levelIdx >= 0 && !pos.partialClosesFired.includes(levelIdx)) {
+      pos.partialClosesFired.push(levelIdx)
+    }
+
+    const closeSize = pos.currentSize * closePct
+    pos.currentSize = Math.max(0, pos.currentSize - closeSize)
+    if (newSlPrice != null) pos.slPrice = newSlPrice
+    log.info(
+      'position-monitor',
+      `Partial close: ${pos.coin} ${(closePct * 100).toFixed(0)}% (${closeSize.toFixed(4)} coins) remaining=${pos.currentSize.toFixed(4)}`,
+    )
+    return true
   }
 
   /** Get all tracked positions. */

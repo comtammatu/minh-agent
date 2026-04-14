@@ -56,6 +56,7 @@ mock.module('../lib/logger.js', () => ({
 
 import {
   logJournalEntry,
+  logOperatorAuditEntry,
   handleJournalAction,
   getJournalEntries,
   getDailySummary,
@@ -107,6 +108,29 @@ describe('logJournalEntry', () => {
     // Should NOT throw — errors are caught internally
     await logJournalEntry('exit', 'ETH', { pnl: 42.5 }, 'EXITING')
     // No exception = pass
+  })
+
+  it('writes operator audit entries with structured details', async () => {
+    await logOperatorAuditEntry('close', 'BTC LONG', 'submitted', {
+      coin: 'BTC',
+      strategyId: 'smc-sd',
+      details: { reason: 'manual via TUI', positionId: 'pos-1' },
+    })
+
+    expect(anyQueryContains('INSERT INTO trade_journal')).toBe(true)
+    const values = allInterpolatedValues()
+    expect(values).toContain('operator')
+    expect(values).toContain('BTC')
+    expect(values).toContain('smc-sd')
+    expect(values).toContainEqual({
+      action: 'close',
+      target: 'BTC LONG',
+      status: 'submitted',
+      operatorSource: 'tui',
+      strategyId: 'smc-sd',
+      reason: 'manual via TUI',
+      positionId: 'pos-1',
+    })
   })
 })
 
@@ -355,7 +379,7 @@ describe('integration: journalAction shape', () => {
   it('all event types produce valid journal actions', async () => {
     const eventTypes = [
       'signal', 'enter', 'exit', 'skip', 'invalidate',
-      'circuit_break', 'pause', 'resume', 'error',
+      'circuit_break', 'pause', 'resume', 'operator', 'error',
     ]
 
     for (const eventType of eventTypes) {

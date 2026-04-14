@@ -142,6 +142,7 @@ describe('generateCloid', () => {
 describe('OrderManager', () => {
   let om: OrderManager
   let dispatchedEvents: Array<{ coin: string; event: AgentEvent }>
+  let partialCloseEvents: Array<{ positionId: string; closePct: number }>
   const originalActiveExchange = process.env.ACTIVE_EXCHANGE
 
   beforeEach(() => {
@@ -153,8 +154,12 @@ describe('OrderManager', () => {
     mockSqlResponses = []
     om = new OrderManager()
     dispatchedEvents = []
+    partialCloseEvents = []
     om.setAgentDispatch((coin, event) => {
       dispatchedEvents.push({ coin, event })
+    })
+    om.setPositionPartialCloseCallback((positionId, closePct) => {
+      partialCloseEvents.push({ positionId, closePct })
     })
   })
 
@@ -308,6 +313,181 @@ describe('OrderManager', () => {
       expect(getFillAggregateByOrderId).toHaveBeenCalledWith('bb-order-fallback', 'BTC')
       expect(getOrdersMap(om).get(order.id)?.status).toBe('partial')
       expect(getOrdersMap(om).get(order.id)?.fillSize).toBe(0.25)
+    })
+  })
+
+  describe('restoreOpenPositions', () => {
+    it('restores the latest filled order per open coin+side and prefers fillSize', () => {
+      const restored: Array<{
+        positionId: string
+        coin: string
+        size: number
+        entryPrice: number
+        leverage: number
+        strategyId?: string
+      }> = []
+      om.setPositionOpenCallback((params) => {
+        restored.push({
+          positionId: params.positionId,
+          coin: params.coin,
+          size: params.size,
+          entryPrice: params.entryPrice,
+          leverage: params.leverage,
+          strategyId: params.strategyId,
+        })
+      })
+
+      injectOrder(om, makeOrder({
+        coin: 'BTC',
+        status: 'filled',
+        size: 1,
+        fillSize: 0.4,
+        fillPrice: 50000,
+        positionId: 'btc-old',
+        slPrice: 49000,
+        tpPrice: 52000,
+        filledAt: 1000,
+        updatedAt: 1000,
+      }))
+      injectOrder(om, makeOrder({
+        coin: 'BTC',
+        status: 'filled',
+        size: 1,
+        fillSize: 0.25,
+        fillPrice: 50100,
+        positionId: 'btc-new',
+        slPrice: 49100,
+        tpPrice: 52100,
+        filledAt: 2000,
+        updatedAt: 2000,
+      }))
+      injectOrder(om, makeOrder({
+        coin: 'ETH',
+        side: 'short',
+        status: 'filled',
+        size: 0.75,
+        fillSize: 0.5,
+        fillPrice: 3000,
+        positionId: 'eth-pos',
+        slPrice: 3100,
+        tpPrice: 2800,
+        filledAt: 1500,
+        updatedAt: 1500,
+      }))
+
+      om.restoreOpenPositions([
+        { coin: 'BTC', size: 0.25, entryPrice: 50100 },
+        { coin: 'ETH', size: -0.5, entryPrice: 3000 },
+      ])
+
+      expect(restored).toHaveLength(2)
+
+      const btc = restored.find(position => position.coin === 'BTC')
+      expect(btc).toEqual({
+        positionId: 'btc-new',
+        coin: 'BTC',
+        size: 0.25,
+        entryPrice: 50100,
+        leverage: 0,
+        strategyId: 'smc-sd',
+      })
+
+      const eth = restored.find(position => position.coin === 'ETH')
+      expect(eth).toEqual({
+        positionId: 'eth-pos',
+        coin: 'ETH',
+        size: 0.5,
+        entryPrice: 3000,
+        leverage: 0,
+        strategyId: 'smc-sd',
+      })
+    })
+
+    it('prefers exact strategy match when exchange snapshot includes strategyId', () => {
+      const restored: Array<{ coin: string; strategyId?: string; positionId: string }> = []
+      om.setPositionOpenCallback((params) => {
+        restored.push({ coin: params.coin, strategyId: params.strategyId, positionId: params.positionId })
+      })
+
+      injectOrder(om, makeOrder({
+        coin: 'BTC',
+        status: 'filled',
+        side: 'long',
+        fillPrice: 50000,
+        fillSize: 0.2,
+        positionId: 'btc-trend',
+        strategyId: 'trend',
+        filledAt: 1000,
+        updatedAt: 1000,
+      }))
+      injectOrder(om, makeOrder({
+        coin: 'BTC',
+        status: 'filled',
+        side: 'long',
+        fillPrice: 50100,
+        fillSize: 0.25,
+        positionId: 'btc-mean',
+        strategyId: 'mean-revert',
+        filledAt: 2000,
+        updatedAt: 2000,
+      }))
+
+      om.restoreOpenPositions([
+        { coin: 'BTC', size: 0.25, entryPrice: 50100, strategyId: 'trend' },
+      ])
+
+      expect(restored).toEqual([{
+        coin: 'BTC',
+        strategyId: 'trend',
+        positionId: 'btc-trend',
+      }])
+    })
+
+    it('falls back to original size for legacy rows and ignores incomplete fills', () => {
+      const restored: Array<{ coin: string; size: number; positionId: string }> = []
+      om.setPositionOpenCallback((params) => {
+        restored.push({ coin: params.coin, size: params.size, positionId: params.positionId })
+      })
+
+      injectOrder(om, makeOrder({
+        coin: 'SOL',
+        status: 'filled',
+        size: 2,
+        fillSize: 0,
+        fillPrice: 150,
+        positionId: 'sol-pos',
+        slPrice: 145,
+        tpPrice: 165,
+        filledAt: 2500,
+        updatedAt: 2500,
+      }))
+      injectOrder(om, makeOrder({
+        coin: 'SOL',
+        status: 'filled',
+        size: 1,
+        fillSize: 1,
+        fillPrice: null,
+        positionId: 'ignored-missing-price',
+        filledAt: 3000,
+        updatedAt: 3000,
+      }))
+      injectOrder(om, makeOrder({
+        coin: 'ARB',
+        status: 'filled',
+        size: 100,
+        fillSize: 100,
+        fillPrice: 1.2,
+        positionId: null,
+        filledAt: 3500,
+        updatedAt: 3500,
+      }))
+
+      om.restoreOpenPositions([
+        { coin: 'SOL', size: 2, entryPrice: 150 },
+        { coin: 'ARB', size: 100, entryPrice: 1.2 },
+      ])
+
+      expect(restored).toEqual([{ coin: 'SOL', size: 2, positionId: 'sol-pos' }])
     })
   })
 
@@ -603,6 +783,28 @@ describe('OrderManager', () => {
       await om.handleAction({ type: 'cancel_order', orderId: order.id, reason: 'test' })
 
       expect(getOrdersMap(om).get(order.id)?.status).toBe('cancelled')
+    })
+
+    it('executes partial_close and mirrors remaining protection size', async () => {
+      const order = makeOrder({
+        status: 'filled',
+        fillPrice: 50000,
+        fillSize: 2,
+        positionId: 'pos-1',
+      })
+      injectOrder(om, order)
+      injectTriggers(om, order.id, [
+        { type: 'sl', coin: 'BTC', side: 'short', triggerPrice: 49000, size: 2, isMarket: true, cloid: generateCloid(), exchangeOrderId: '111', parentOrderId: order.id },
+        { type: 'tp', coin: 'BTC', side: 'short', triggerPrice: 52000, size: 2, isMarket: true, cloid: generateCloid(), exchangeOrderId: '222', parentOrderId: order.id },
+      ])
+      om.setPositionSizeResolver(() => 2)
+
+      await om.handleAction({ type: 'partial_close', positionId: 'pos-1', closePct: 0.25 })
+
+      expect(partialCloseEvents).toEqual([{ positionId: 'pos-1', closePct: 0.25 }])
+      const triggers = getTriggerOrdersMap(om).get(order.id) ?? []
+      expect(triggers[0]?.size).toBeCloseTo(1.5, 8)
+      expect(triggers[1]?.size).toBeCloseTo(1.5, 8)
     })
 
     it('ignores non-order actions', async () => {

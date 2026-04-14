@@ -102,6 +102,22 @@ describe('PaperTracker', () => {
     expect(tracker.getBalance()).toBeCloseTo(10_000, 2)
   })
 
+  it('realizes P&L on partial exits and keeps the remainder open', () => {
+    tracker.recordEntry('o1', 'BTC', 'long', 50_000, 0.1)
+
+    const partial = tracker.recordPartialExit('o1', 51_000, 0.5)
+
+    expect(partial).not.toBeNull()
+    expect(partial?.pnl).toBeCloseTo(50, 2)
+    expect(partial?.remainingSize).toBeCloseTo(0.05, 8)
+    expect(tracker.getBalance()).toBeCloseTo(10_050, 2)
+    expect(tracker.getOpenCount()).toBe(1)
+
+    const finalTrade = tracker.recordExit('o1', 52_000)
+    expect(finalTrade?.pnl).toBeCloseTo(100, 2)
+    expect(tracker.getBalance()).toBeCloseTo(10_150, 2)
+  })
+
   // ── Edge cases ───────────────────────────────────────────────────────────
 
   it('returns null for unknown orderId on exit', () => {

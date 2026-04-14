@@ -10,9 +10,11 @@ import type {
   CandleInterval,
   ActiveSetup,
   ConfluenceGrade,
+  DecisionTrace,
   MarketRegime,
   StrategyContext,
 } from '../types.js'
+import type { AgentAction } from '../agent/types.js'
 import { appendCandle, getCandles, getCandlesInto } from '../feed/store.js'
 import { getStrategyRegistry, type StrategyRegistry } from './registry.js'
 import { computeExpiresAtBar, setupId } from './shared/invalidation.js'
@@ -42,6 +44,7 @@ import type { StrategyParams } from '../backtest/types.js'
 import { getPaperTracker } from '../agent/paper-tracker.js'
 import { log } from '../lib/logger.js'
 import { EventEmitter } from 'events'
+import { buildSetupDecisionTrace, buildStatusDecisionTrace } from './decision-trace.js'
 
 // ── Module-level state ──────────────────────────────────────────────────────
 
@@ -91,6 +94,9 @@ export interface StatusSnapshot {
 }
 
 const statusState = new Map<string, StatusSnapshot>()
+const decisionTraceState = new Map<string, DecisionTrace>()
+const traceKeyBySetupId = new Map<string, string>()
+const traceKeyByPositionId = new Map<string, string>()
 
 function statusKey(coin: string, interval: CandleInterval): string {
   return `${coin}|${interval}`
@@ -117,11 +123,360 @@ function activeSetupCount(coin: string, interval: CandleInterval): number {
   return activeSetupCounts.get(statusKey(coin, interval)) ?? 0
 }
 
+function decisionTraceKey(coin: string, interval: CandleInterval, strategyId: string): string {
+  return `${coin}|${interval}|${strategyId}`
+}
+
+function setDecisionTrace(trace: DecisionTrace): void {
+  const key = decisionTraceKey(trace.coin, trace.interval, trace.strategyId)
+  const prev = decisionTraceState.get(key)
+  if (prev?.outcome.setupId !== undefined && prev.outcome.setupId !== trace.outcome.setupId) {
+    traceKeyBySetupId.delete(prev.outcome.setupId)
+  }
+  if (prev?.outcome.positionId !== undefined && prev.outcome.positionId !== trace.outcome.positionId) {
+    traceKeyByPositionId.delete(prev.outcome.positionId)
+  }
+  decisionTraceState.set(key, trace)
+  if (trace.outcome.setupId !== undefined) {
+    traceKeyBySetupId.set(trace.outcome.setupId, key)
+  }
+  if (trace.outcome.positionId !== undefined) {
+    traceKeyByPositionId.set(trace.outcome.positionId, key)
+  }
+  pipelineEmitter.emit('decision_trace', trace)
+}
+
+/** Publish a trace from non-pipeline runtime sources (tests/UI/runtime lifecycle). */
+export function publishDecisionTrace(trace: DecisionTrace): void {
+  setDecisionTrace(trace)
+}
+
+function getTraceByKey(key: string | null): DecisionTrace | null {
+  if (key === null) return null
+  return decisionTraceState.get(key) ?? null
+}
+
+function findLatestTraceKeyForCoinStrategy(coin: string, strategyId: string): string | null {
+  let bestKey: string | null = null
+  let bestTs = -1
+  for (const [key, trace] of decisionTraceState) {
+    if (trace.coin !== coin || trace.strategyId !== strategyId) continue
+    if (trace.ts > bestTs) {
+      bestTs = trace.ts
+      bestKey = key
+    }
+  }
+  return bestKey
+}
+
+function cloneTrace(trace: DecisionTrace): DecisionTrace {
+  return {
+    ...trace,
+    regime: { ...trace.regime },
+    roles: {
+      ...trace.roles,
+      ...(trace.roles.wyckoff !== undefined ? { wyckoff: { ...trace.roles.wyckoff } } : {}),
+      ...(trace.roles.bull !== undefined ? { bull: { ...trace.roles.bull } } : {}),
+      ...(trace.roles.bear !== undefined ? { bear: { ...trace.roles.bear } } : {}),
+      ...(trace.roles.risk !== undefined ? { risk: { ...trace.roles.risk } } : {}),
+      ...(trace.roles.judge !== undefined ? { judge: { ...trace.roles.judge } } : {}),
+      ...(trace.roles.guardian !== undefined ? { guardian: { ...trace.roles.guardian } } : {}),
+      ...(trace.roles.executor !== undefined ? { executor: { ...trace.roles.executor } } : {}),
+    },
+    timeline: trace.timeline.map(item => ({ ...item })),
+    outcome: { ...trace.outcome },
+  }
+}
+
+const DECISION_TRACE_TIMELINE_LIMIT = 8
+
+function appendTimeline(
+  trace: DecisionTrace,
+  actor: 'scanner' | 'judge' | 'executor' | 'guardian',
+  action: string,
+  summary: string,
+): void {
+  trace.timeline.push({
+    ts: trace.ts,
+    actor,
+    action,
+    summary,
+  })
+  if (trace.timeline.length > DECISION_TRACE_TIMELINE_LIMIT) {
+    trace.timeline.splice(0, trace.timeline.length - DECISION_TRACE_TIMELINE_LIMIT)
+  }
+}
+
+function strategyFromDetails(details: Record<string, unknown>): string | null {
+  const strategyId = details['strategyId']
+  return typeof strategyId === 'string' && strategyId.length > 0 ? strategyId : null
+}
+
+function resolveTraceKeyForAction(action: AgentAction): string | null {
+  if (action.type === 'place_order') {
+    const strategyId = action.setup.strategyId ?? 'system'
+    return decisionTraceKey(action.setup.coin, action.setup.interval, strategyId)
+  }
+  if (action.type === 'close_position' || action.type === 'update_stop' || action.type === 'partial_close') {
+    return traceKeyByPositionId.get(action.positionId) ?? null
+  }
+  if (action.type !== 'log_journal') return null
+
+  const details = action.details
+  const setupId = details['setupId']
+  if (typeof setupId === 'string') {
+    const found = traceKeyBySetupId.get(setupId)
+    if (found !== undefined) return found
+  }
+  const positionId = details['positionId']
+  if (typeof positionId === 'string') {
+    const found = traceKeyByPositionId.get(positionId)
+    if (found !== undefined) return found
+  }
+  const strategyId = strategyFromDetails(details)
+  if (strategyId !== null) return findLatestTraceKeyForCoinStrategy(action.coin, strategyId)
+  return null
+}
+
+/** Apply agent action lifecycle updates to the latest matching decision trace. */
+export function recordDecisionTraceAgentAction(action: AgentAction): void {
+  const key = resolveTraceKeyForAction(action)
+  const trace = getTraceByKey(key)
+  if (trace === null) return
+
+  const next = cloneTrace(trace)
+  next.ts = Date.now()
+
+  if (action.type === 'place_order') {
+    next.roles.executor = {
+      role: 'executor',
+      state: 'submitting',
+      summary: `Submitting ${action.setup.side.toUpperCase()} order to ${action.setup.exchange}.`,
+    }
+    next.outcome.action = 'enter'
+    next.outcome.summary = 'Executor is submitting the order to the exchange.'
+    appendTimeline(next, 'executor', 'submit', next.outcome.summary)
+    setDecisionTrace(next)
+    return
+  }
+
+  if (action.type === 'close_position') {
+    next.roles.guardian = {
+      role: 'guardian',
+      state: 'exit_ready',
+      summary: `Guardian is closing the position: ${action.reason}.`,
+      actions: [`close_position:${action.reason}`],
+    }
+    next.outcome.action = 'exit'
+    next.outcome.summary = `Closing position: ${action.reason}.`
+    appendTimeline(next, 'guardian', 'close', next.outcome.summary)
+    setDecisionTrace(next)
+    return
+  }
+
+  if (action.type === 'update_stop') {
+    next.roles.guardian = {
+      role: 'guardian',
+      state: 'trail_sl',
+      summary: `Guardian moved stop to ${action.newStopPrice.toFixed(2)}.`,
+      actions: [`trail_sl:${action.newStopPrice.toFixed(2)}`],
+    }
+    next.outcome.action = 'trail_sl'
+    next.outcome.summary = `Stop updated to ${action.newStopPrice.toFixed(2)}.`
+    appendTimeline(next, 'guardian', 'trail_sl', next.outcome.summary)
+    setDecisionTrace(next)
+    return
+  }
+
+  if (action.type === 'partial_close') {
+    next.roles.guardian = {
+      role: 'guardian',
+      state: 'partial_tp',
+      summary: `Guardian scaled out ${(action.closePct * 100).toFixed(0)}% of the position.`,
+      actions: [`partial_close:${(action.closePct * 100).toFixed(0)}%`],
+    }
+    next.outcome.action = 'partial_close'
+    next.outcome.summary = `Scaled out ${(action.closePct * 100).toFixed(0)}% of the position.`
+    appendTimeline(next, 'guardian', 'partial_close', next.outcome.summary)
+    setDecisionTrace(next)
+    return
+  }
+
+  if (action.type !== 'log_journal') return
+
+  const details = action.details
+  switch (action.eventType) {
+    case 'enter': {
+      const positionId = typeof details['positionId'] === 'string' ? details['positionId'] : undefined
+      next.roles.executor = {
+        role: 'executor',
+        state: 'filled',
+        summary: 'Order filled and position is live.',
+      }
+      next.roles.guardian = {
+        role: 'guardian',
+        state: 'holding',
+        summary: 'Guardian is monitoring the open position.',
+        actions: ['hold'],
+      }
+      next.outcome.action = 'hold'
+      next.outcome.summary = 'Position is open and under guardian monitoring.'
+      if (positionId !== undefined) next.outcome.positionId = positionId
+      appendTimeline(next, 'executor', 'filled', 'Order filled and position is live.')
+      appendTimeline(next, 'guardian', 'hold', next.outcome.summary)
+      setDecisionTrace(next)
+      return
+    }
+    case 'exit': {
+      const positionId = typeof details['positionId'] === 'string' ? details['positionId'] : undefined
+      const reason = typeof details['reason'] === 'string' ? details['reason'] : 'closed'
+      next.roles.executor = {
+        role: 'executor',
+        state: 'closed',
+        summary: `Position closed: ${reason}.`,
+      }
+      next.roles.guardian = {
+        role: 'guardian',
+        state: 'exit_ready',
+        summary: `Guardian completed exit: ${reason}.`,
+        actions: [`exit:${reason}`],
+      }
+      next.outcome.action = 'exit'
+      next.outcome.summary = `Position closed: ${reason}.`
+      if (positionId !== undefined) next.outcome.positionId = positionId
+      appendTimeline(next, 'executor', 'closed', next.outcome.summary)
+      setDecisionTrace(next)
+      return
+    }
+    case 'skip': {
+      const reason = typeof details['reason'] === 'string' ? details['reason'] : ''
+      if (!reason.toLowerCase().includes('order')) return
+      next.roles.executor = {
+        role: 'executor',
+        state: 'rejected',
+        summary: reason.length > 0 ? reason : 'Order was rejected or skipped.',
+      }
+      next.outcome.action = 'skip'
+      next.outcome.summary = reason.length > 0 ? reason : 'Order was rejected or skipped.'
+      appendTimeline(next, 'executor', 'rejected', next.outcome.summary)
+      setDecisionTrace(next)
+      return
+    }
+    case 'invalidate': {
+      const reason = typeof details['reason'] === 'string' ? details['reason'] : 'invalidated'
+      next.roles.guardian = {
+        role: 'guardian',
+        state: 'exit_ready',
+        summary: `Guardian flagged invalidation: ${reason}.`,
+        actions: [`invalidate:${reason}`],
+      }
+      next.outcome.summary = `Setup invalidated: ${reason}.`
+      appendTimeline(next, 'guardian', 'invalidate', next.outcome.summary)
+      setDecisionTrace(next)
+      return
+    }
+  }
+}
+
+export interface DecisionTraceMonitorEvent {
+  positionId: string
+  coin: string
+  strategyId: string
+  action: 'hold' | 'trail_update' | 'partial_close' | 'close'
+  summary: string
+}
+
+/** Apply guardian-side monitor updates (trail, partial, hold, pending exit). */
+export function recordDecisionTraceMonitorEvent(event: DecisionTraceMonitorEvent): void {
+  const key =
+    traceKeyByPositionId.get(event.positionId) ??
+    findLatestTraceKeyForCoinStrategy(event.coin, event.strategyId)
+  const trace = getTraceByKey(key)
+  if (trace === null) return
+
+  const next = cloneTrace(trace)
+  next.ts = Date.now()
+
+  if (event.action === 'hold') {
+    next.roles.guardian = {
+      role: 'guardian',
+      state: 'holding',
+      summary: event.summary,
+      actions: ['hold'],
+    }
+    next.outcome.action = 'hold'
+  } else if (event.action === 'trail_update') {
+    next.roles.guardian = {
+      role: 'guardian',
+      state: 'trail_sl',
+      summary: event.summary,
+      actions: ['trail_sl'],
+    }
+    next.outcome.action = 'trail_sl'
+  } else if (event.action === 'partial_close') {
+    next.roles.guardian = {
+      role: 'guardian',
+      state: 'partial_tp',
+      summary: event.summary,
+      actions: ['partial_close'],
+    }
+    next.outcome.action = 'partial_close'
+  } else {
+    next.roles.guardian = {
+      role: 'guardian',
+      state: 'exit_ready',
+      summary: event.summary,
+      actions: ['close'],
+    }
+    next.outcome.action = 'exit'
+  }
+
+  next.outcome.summary = event.summary
+  next.outcome.positionId = event.positionId
+  appendTimeline(next, 'guardian', event.action, event.summary)
+  setDecisionTrace(next)
+}
+
+export interface DecisionTracePaperExitEvent {
+  coin: string
+  strategyId: string
+  exitReason: string
+  closePrice: number
+  pnl: number
+}
+
+/** Update traces when enhanced paper tracking closes a position outside the agent action loop. */
+export function recordDecisionTracePaperExit(event: DecisionTracePaperExitEvent): void {
+  const key = findLatestTraceKeyForCoinStrategy(event.coin, event.strategyId)
+  const trace = getTraceByKey(key)
+  if (trace === null) return
+
+  const next = cloneTrace(trace)
+  next.ts = Date.now()
+  next.roles.executor = {
+    role: 'executor',
+    state: 'closed',
+    summary: `Paper exit: ${event.exitReason} @ ${event.closePrice.toFixed(2)}.`,
+  }
+  next.roles.guardian = {
+    role: 'guardian',
+    state: 'exit_ready',
+    summary: `Guardian closed paper position with PnL ${event.pnl.toFixed(2)}.`,
+    actions: [`paper_exit:${event.exitReason}`],
+  }
+  next.outcome.action = 'exit'
+  next.outcome.summary = `Paper exit ${event.exitReason} (${event.pnl.toFixed(2)}).`
+  appendTimeline(next, 'executor', 'paper_exit', `Paper exit: ${event.exitReason}.`)
+  appendTimeline(next, 'guardian', 'exit', next.outcome.summary)
+  setDecisionTrace(next)
+}
+
 function removeSetupById(id: string): void {
   const existing = activeSetups.get(id)
   if (!existing) return
   activeSetups.delete(id)
   decrementActiveSetupCount(setupCountKey(existing))
+  traceKeyBySetupId.delete(id)
 }
 
 function requiredScanWindow(registry: StrategyRegistry): number {
@@ -201,6 +556,18 @@ function refreshStatusSnapshot(
   })
   lastStatusUpdateBarClock.set(sk, barClock)
   statusRefreshCounts.set(sk, (statusRefreshCounts.get(sk) ?? 0) + 1)
+
+  const trace = buildStatusDecisionTrace({
+    coin,
+    interval,
+    exchange: getActiveExchange(),
+    regime,
+    bias,
+    wyckoff,
+    breaks,
+    activeCount: activeSetupCount(coin, interval),
+  })
+  setDecisionTrace(trace)
 }
 
 /**
@@ -237,6 +604,24 @@ function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry:
 
   refreshStatusSnapshot(coin, interval, candles, idx, htfCandles)
 
+  const regime = getCachedRegime(coin, interval, candles, idx)
+  const pivots = getCachedPivots3(coin, interval, candles, idx)
+  const wyckoff = getCachedWyckoff(coin, interval, candles, idx)
+  const breaks = getCachedStructureBreaks(coin, interval, candles, idx)
+  const htfIdx = htfCandles.length - 1
+  const htfBreaks = htfCandles.length >= MIN_CANDLES_FOR_SCAN && htfInterval !== interval
+    ? getCachedStructureBreaks(coin, htfInterval, htfCandles, htfIdx)
+    : undefined
+  const htfWyckoff = htfCandles.length >= MIN_CANDLES_FOR_SCAN && htfInterval !== interval
+    ? getCachedWyckoff(coin, htfInterval, htfCandles, htfIdx)
+    : undefined
+  const bias = determineBias(candles, idx, htfCandles, pivots, {
+    breaks,
+    wyckoff,
+    ...(htfBreaks !== undefined ? { htfBreaks } : {}),
+    ...(htfWyckoff !== undefined ? { htfWyckoff } : {}),
+  })
+
   const signalResults = registry.runAll(coin, interval, candles, idx, context, activeStrategyParams ?? undefined)
 
   for (const { strategyId, signal } of signalResults) {
@@ -262,6 +647,16 @@ function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry:
     stats.setupsTracked++
     pipelineEmitter.emit('setup', setup)
 
+    const trace = buildSetupDecisionTrace({
+      setup,
+      regime,
+      bias,
+      wyckoff,
+      breaks,
+      activeCount: activeSetupCount(coin, interval),
+    })
+    setDecisionTrace(trace)
+
     // Promote confluenceGrade in statusState when a setup is detected
     const existing = statusState.get(sk)
     if (existing && signal.confluenceGrade) {
@@ -276,11 +671,11 @@ function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry:
     const rr = isNaN(rrRaw) ? 0 : rrRaw
     const grade = signal.confluenceGrade ?? 'C'
     const count = signal.confluenceCount ?? 0
-    const regime = signal.patternData['regime'] as string | undefined
+    const signalRegime = signal.patternData['regime'] as string | undefined
     const zoneOrigin = signal.patternData['zoneOrigin'] as string | undefined
     log.info('pipeline',
       `⚡ SETUP | ${coin} ${interval.toUpperCase()} [${activeExchange}] | ${signal.side.toUpperCase()} ${signal.type}${zoneOrigin ? ` at ${zoneOrigin}` : ''} | ` +
-      `${grade} (${count}/7) | conf:${signal.confidence.toFixed(2)}${regime ? ` | ${regime}` : ''} | ` +
+      `${grade} (${count}/7) | conf:${signal.confidence.toFixed(2)}${signalRegime ? ` | ${signalRegime}` : ''} | ` +
       `entry:${fmtP(signal.entryPrice)} sl:${fmtP(signal.slPrice)} tp:${fmtP(signal.tpPrice)} | R:R 1:${rr.toFixed(2)} | ` +
       `ttl:${setup.expiresAtBar - setup.detectedAtBar}bars | [${strategyId}]`,
     )
@@ -371,6 +766,30 @@ export function getStatus(): StatusSnapshot[] {
   return Array.from(statusState.values())
 }
 
+/** Get the latest decision traces keyed by coin/interval/strategy. */
+export function getDecisionTraces(): DecisionTrace[] {
+  return Array.from(decisionTraceState.values())
+}
+
+/** Find a decision trace by setup id. */
+export function getDecisionTraceBySetupId(setupId: string): DecisionTrace | null {
+  const key = traceKeyBySetupId.get(setupId)
+  return key != null ? decisionTraceState.get(key) ?? null : null
+}
+
+/** Find a decision trace by position id. */
+export function getDecisionTraceByPositionId(positionId: string): DecisionTrace | null {
+  const key = traceKeyByPositionId.get(positionId)
+  return key != null ? decisionTraceState.get(key) ?? null : null
+}
+
+/** Get traces for a coin sorted newest-first. */
+export function getDecisionTracesForCoin(coin: string): DecisionTrace[] {
+  return Array.from(decisionTraceState.values())
+    .filter(trace => trace.coin === coin)
+    .sort((a, b) => b.ts - a.ts)
+}
+
 /** Get all currently active setups. */
 export function getActiveSetups(): ActiveSetup[] {
   return Array.from(activeSetups.values())
@@ -394,12 +813,19 @@ export function clearCoinState(coin: string): void {
     if (k.includes(setupNeedle)) removeSetupById(k)
   }
   for (const k of statusState.keys()) { if (k.startsWith(prefix)) statusState.delete(k) }
+  for (const k of decisionTraceState.keys()) { if (k.startsWith(prefix)) decisionTraceState.delete(k) }
   for (const k of lastCandleTs.keys()) { if (k.startsWith(prefix)) lastCandleTs.delete(k) }
   for (const k of activeSetupCounts.keys()) { if (k.startsWith(prefix)) activeSetupCounts.delete(k) }
   for (const k of lastStatusUpdateBarClock.keys()) { if (k.startsWith(prefix)) lastStatusUpdateBarClock.delete(k) }
   for (const k of statusRefreshCounts.keys()) { if (k.startsWith(prefix)) statusRefreshCounts.delete(k) }
   for (const k of scanCandlesBuffers.keys()) { if (k.startsWith(prefix)) scanCandlesBuffers.delete(k) }
   for (const k of htfCandlesBuffers.keys()) { if (k.startsWith(prefix)) htfCandlesBuffers.delete(k) }
+  for (const [setupId, key] of traceKeyBySetupId) {
+    if (key.startsWith(prefix)) traceKeyBySetupId.delete(setupId)
+  }
+  for (const [positionId, key] of traceKeyByPositionId) {
+    if (key.startsWith(prefix)) traceKeyByPositionId.delete(positionId)
+  }
   clearIndicatorCacheForCoin(coin)
 }
 
@@ -419,6 +845,9 @@ export function clearPipelineState(strategyId?: string): void {
     activeSetups.clear()
     activeSetupCounts.clear()
     statusState.clear()
+    decisionTraceState.clear()
+    traceKeyBySetupId.clear()
+    traceKeyByPositionId.clear()
     lastCandleTs.clear()
     lastStatusUpdateBarClock.clear()
     statusRefreshCounts.clear()

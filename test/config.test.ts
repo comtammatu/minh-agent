@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
-import { getActiveExchange, tryGetActiveExchange, getDefaultCoins, BYBIT_STATIC_COINS } from '../src/config.js'
+import {
+  getActiveExchange,
+  tryGetActiveExchange,
+  getBybitTradingEnv,
+  getDefaultCoins,
+  getFocusedTrackedCoinsOverride,
+  BYBIT_STATIC_COINS,
+} from '../src/config.js'
 
 describe('getDefaultCoins', () => {
   it('BB returns BYBIT_STATIC_COINS', () => {
@@ -85,5 +92,84 @@ describe('tryGetActiveExchange', () => {
   it('returns BB when set to BB', () => {
     process.env['ACTIVE_EXCHANGE'] = 'BB'
     expect(tryGetActiveExchange()).toBe('BB')
+  })
+})
+
+describe('getFocusedTrackedCoinsOverride', () => {
+  let origEnv: string | undefined
+
+  beforeEach(() => {
+    origEnv = process.env['FOCUSED_TRACKED_COINS']
+  })
+
+  afterEach(() => {
+    if (origEnv === undefined) {
+      delete process.env['FOCUSED_TRACKED_COINS']
+    } else {
+      process.env['FOCUSED_TRACKED_COINS'] = origEnv
+    }
+  })
+
+  it('returns null when env is unset', () => {
+    delete process.env['FOCUSED_TRACKED_COINS']
+    expect(getFocusedTrackedCoinsOverride()).toBeNull()
+  })
+
+  it('parses uppercase unique coins from CSV', () => {
+    process.env['FOCUSED_TRACKED_COINS'] = 'btc, ETH ,btc, sol'
+    expect(getFocusedTrackedCoinsOverride()).toEqual(['BTC', 'ETH', 'SOL'])
+  })
+
+  it('returns null when env has only blanks', () => {
+    process.env['FOCUSED_TRACKED_COINS'] = ' ,  , '
+    expect(getFocusedTrackedCoinsOverride()).toBeNull()
+  })
+})
+
+describe('getBybitTradingEnv', () => {
+  let origTestnet: string | undefined
+  let origDemo: string | undefined
+
+  beforeEach(() => {
+    origTestnet = process.env['BYBIT_TESTNET']
+    origDemo = process.env['BYBIT_DEMO_TRADING']
+  })
+
+  afterEach(() => {
+    if (origTestnet === undefined) {
+      delete process.env['BYBIT_TESTNET']
+    } else {
+      process.env['BYBIT_TESTNET'] = origTestnet
+    }
+
+    if (origDemo === undefined) {
+      delete process.env['BYBIT_DEMO_TRADING']
+    } else {
+      process.env['BYBIT_DEMO_TRADING'] = origDemo
+    }
+  })
+
+  it('defaults to mainnet', () => {
+    delete process.env['BYBIT_TESTNET']
+    delete process.env['BYBIT_DEMO_TRADING']
+    expect(getBybitTradingEnv()).toBe('mainnet')
+  })
+
+  it('returns testnet when BYBIT_TESTNET=true', () => {
+    process.env['BYBIT_TESTNET'] = 'true'
+    delete process.env['BYBIT_DEMO_TRADING']
+    expect(getBybitTradingEnv()).toBe('testnet')
+  })
+
+  it('returns demo when BYBIT_DEMO_TRADING=true', () => {
+    delete process.env['BYBIT_TESTNET']
+    process.env['BYBIT_DEMO_TRADING'] = 'true'
+    expect(getBybitTradingEnv()).toBe('demo')
+  })
+
+  it('throws when both demo and testnet are enabled', () => {
+    process.env['BYBIT_TESTNET'] = 'true'
+    process.env['BYBIT_DEMO_TRADING'] = 'true'
+    expect(() => getBybitTradingEnv()).toThrow('BYBIT_TESTNET and BYBIT_DEMO_TRADING')
   })
 })

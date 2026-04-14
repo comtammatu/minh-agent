@@ -19,6 +19,7 @@
 import { TELEGRAM, getEffectivePaperTrade } from '../../config.js'
 import { log } from '../../lib/logger.js'
 import type { AgentAction } from '../../agent/types.js'
+import type { DecisionTrace } from '../../types.js'
 import { getPositionMonitor } from '../../agent/position-monitor.js'
 import { getTotalPaperBalance } from '../../agent/paper-tracker.js'
 import { getHLExchangeService as getExchangeService } from '../../execution/hl-exchange-service.js'
@@ -204,6 +205,102 @@ function formatSignalRiskReward(details: Record<string, unknown>): string | null
   if (risk === 0) return null
   const reward = Math.abs(tp - entry)
   return (reward / risk).toFixed(2)
+}
+
+function getLatestTimelineEntry(trace: DecisionTrace): DecisionTrace['timeline'][number] | null {
+  return trace.timeline.length > 0 ? trace.timeline[trace.timeline.length - 1]! : null
+}
+
+function decisionTraceTitle(trace: DecisionTrace): string {
+  if (trace.outcome.action === 'trail_sl' || trace.outcome.action === 'partial_close') {
+    return 'GUARDIAN UPDATE'
+  }
+  return 'DELIBERATION'
+}
+
+function formatTimelineActor(actor: DecisionTrace['timeline'][number]['actor']): string {
+  switch (actor) {
+    case 'scanner':
+      return 'Scanner'
+    case 'judge':
+      return 'Judge'
+    case 'executor':
+      return 'Executor'
+    case 'guardian':
+      return 'Guardian'
+  }
+}
+
+export function getDecisionTraceAlertFingerprint(trace: DecisionTrace): string | null {
+  const judge = trace.roles.judge
+  if (judge == null) return null
+
+  if (trace.outcome.action === 'watch') {
+    if (trace.outcome.setupId == null || judge.verdict !== 'approve') return null
+    return `deliberation:${trace.outcome.setupId}`
+  }
+
+  if (trace.outcome.action === 'trail_sl' || trace.outcome.action === 'partial_close') {
+    const latest = getLatestTimelineEntry(trace)
+    const subject = trace.outcome.positionId ?? trace.traceId
+    const detail = latest?.summary ?? trace.outcome.summary
+    return `guardian:${trace.outcome.action}:${subject}:${detail}`
+  }
+
+  return null
+}
+
+export function shouldSendDecisionTraceAlert(trace: DecisionTrace): boolean {
+  return getDecisionTraceAlertFingerprint(trace) !== null
+}
+
+export function formatDecisionTraceAlert(trace: DecisionTrace): FormattedTelegramAlert | null {
+  const h = escapeHtml
+  const judge = trace.roles.judge
+  if (judge == null) return null
+
+  const bull = trace.roles.bull
+  const bear = trace.roles.bear
+  const risk = trace.roles.risk
+  const guardian = trace.roles.guardian
+  const timeline = trace.timeline.slice(-3)
+  const lines = [
+    `🧠 <b>${decisionTraceTitle(trace)}</b>`,
+    ``,
+    `Market: <code>${h(trace.coin)} ${h(trace.interval)}</code>`,
+    `Strategy: <code>${h(trace.strategyId)}</code>`,
+    `Verdict: <b>${h(judge.verdict.toUpperCase())}</b> | Action: <b>${h(trace.outcome.action.toUpperCase())}</b>`,
+    `Confidence: <b>${h(String(Math.round(trace.outcome.confidence * 100)))}%</b>`,
+    `Regime: <code>${h(trace.regime.state)} x${h(trace.regime.modifier.toFixed(2))}</code>`,
+    `Summary: ${h(trace.outcome.summary)}`,
+  ]
+
+  if (bull != null) {
+    lines.push(`Bull: <b>${h(String(Math.round(bull.confidence * 100)))}%</b> — ${h(bull.summary)}`)
+  }
+  if (bear != null) {
+    lines.push(`Bear: <b>${h(String(Math.round(bear.confidence * 100)))}%</b> — ${h(bear.summary)}`)
+  }
+  if (risk != null) {
+    lines.push(`Risk: <b>${h(String(Math.round(risk.confidence * 100)))}%</b> — ${h(risk.summary)}`)
+  }
+  if (guardian != null && (trace.outcome.action === 'trail_sl' || trace.outcome.action === 'partial_close')) {
+    lines.push(`Guardian: ${h(guardian.summary)}`)
+  }
+  if (trace.outcome.setupId != null) {
+    lines.push(`Setup: <code>${h(trace.outcome.setupId)}</code>`)
+  }
+  if (trace.outcome.positionId != null) {
+    lines.push(`Position: <code>${h(trace.outcome.positionId)}</code>`)
+  }
+  if (timeline.length > 0) {
+    lines.push('', '<b>Recent</b>')
+    for (const item of timeline) {
+      lines.push(`${h(formatTimelineActor(item.actor))}: ${h(item.summary)}`)
+    }
+  }
+
+  return { text: lines.join('\n'), parseMode: 'HTML' }
 }
 
 /**
@@ -403,5 +500,152 @@ export function formatDailySummaryHtml(
   if (summary.entryCount != null) {
     lines.push(`Journal rows: <code>${h(String(summary.entryCount))}</code>`)
   }
+  return lines.join('\n')
+}
+
+export interface ScheduledBriefingOperatorItem {
+  action: string
+  target: string
+  source: string
+  at: string
+}
+
+export interface ScheduledBriefingLiveItem {
+  coin: string
+  interval: string
+  action: string
+  guardian: string
+  executor: string
+}
+
+export interface ScheduledBriefingAttention {
+  level: string
+  summary: string
+}
+
+export interface ScheduledBriefingBucketItem {
+  coin: string
+  interval: string
+  action: string
+}
+
+export interface ScheduledBriefingLiveBucket {
+  label: string
+  count: number
+  items: ScheduledBriefingBucketItem[]
+}
+
+export interface ScheduledBriefingIncident {
+  peakState: string
+  status: string
+  target?: string | null
+  cause?: string | null
+  recommendedAction?: string | null
+}
+
+function formatScheduledBriefingIncidentAction(
+  incident: ScheduledBriefingIncident,
+  h: (text: string) => string,
+): string | null {
+  if (incident.status !== 'ACTIVE') return null
+  const severity = incident.peakState === 'CRITICAL' ? 'Immediate action' : 'Needs review'
+  const cause =
+    incident.cause != null && incident.cause.length > 0
+      ? `<b>${h(incident.cause)}</b>`
+      : '<b>Briefing health incident is still active.</b>'
+  const action =
+    incident.recommendedAction != null && incident.recommendedAction.length > 0
+      ? h(incident.recommendedAction)
+      : incident.target != null && incident.target.length > 0
+        ? `Investigate <b>${h(incident.target)}</b> from the health controls below.`
+        : 'Open the health controls below before acting on the recap.'
+
+  return `${h(severity)}: ${cause} ${action}`
+}
+
+/** HTML scheduled recap for morning/evening bot briefings. */
+export function formatScheduledBriefingHtml(
+  title: string,
+  summary: {
+    date: string
+    totalTrades: number
+    wins: number
+    losses: number
+    winRate: number
+    totalPnl: number
+    largestWin: number
+    largestLoss: number
+    entryCount?: number
+  },
+  context: {
+    openPositions: number
+    attention?: ScheduledBriefingAttention | null
+    incident?: ScheduledBriefingIncident | null
+    liveBuckets?: ScheduledBriefingLiveBucket[]
+    operatorRecent?: {
+      totalActions: number
+      submitted: number
+      failed: number
+      items: ScheduledBriefingOperatorItem[]
+    }
+    liveOversight?: ScheduledBriefingLiveItem[]
+  },
+): string {
+  const h = escapeHtml
+  const lines = [
+    formatDailySummaryHtml(title, summary),
+    ``,
+    `Open positions: <b>${h(String(context.openPositions))}</b>`,
+  ]
+
+  if (context.attention != null) {
+    lines.push(`${h(context.attention.level)}: <b>${h(context.attention.summary)}</b>`)
+  }
+
+  if (context.incident != null) {
+    const actionLine = formatScheduledBriefingIncidentAction(context.incident, h)
+    if (actionLine != null) {
+      lines.push(actionLine)
+    }
+    const targetSuffix =
+      context.incident.target != null && context.incident.target.length > 0
+        ? ` — ${h(context.incident.target)}`
+        : ''
+    lines.push(
+      `Incident: <b>${h(context.incident.peakState)} ${h(context.incident.status)}</b>${targetSuffix}`,
+    )
+  }
+
+  if (context.operatorRecent != null && context.operatorRecent.totalActions > 0) {
+    lines.push(``, `<b>Operator Recent</b>`)
+    lines.push(
+      `${h(String(context.operatorRecent.totalActions))} actions | ${h(String(context.operatorRecent.submitted))} submitted | ${h(String(context.operatorRecent.failed))} failed`,
+    )
+    for (const item of context.operatorRecent.items) {
+      lines.push(
+        `• <code>${h(item.action)}</code> ${h(item.target)} | ${h(item.source)} | <code>${h(item.at)}</code>`,
+      )
+    }
+  }
+
+  if (context.liveBuckets != null && context.liveBuckets.length > 0) {
+    lines.push(``, `<b>Case Buckets</b>`)
+    for (const bucket of context.liveBuckets) {
+      const itemSummary = bucket.items
+        .map(item => `${h(item.coin)} ${h(item.interval)} ${h(item.action)}`)
+        .join(', ')
+      lines.push(`• <b>${h(bucket.label)}</b> (${h(String(bucket.count))}): ${itemSummary}`)
+    }
+  }
+
+  if (context.liveOversight != null && context.liveOversight.length > 0) {
+    lines.push(``, `<b>Live Oversight</b>`)
+    for (const item of context.liveOversight) {
+      lines.push(
+        `• <b>${h(item.coin)}</b> ${h(item.interval)} | ${h(item.action)} | G ${h(item.guardian)} | E ${h(item.executor)}`,
+      )
+    }
+  }
+
   return lines.join('\n')
 }

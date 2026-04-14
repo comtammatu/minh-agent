@@ -16,7 +16,7 @@
  */
 
 import type { Candle, ActiveSetup, SignalSide, CandleInterval } from '../types.js'
-import type { BacktestTrade, PartialCloseDetail, ExitMode } from './types.js'
+import type { BacktestTrade, BacktestTradeDiagnostics, PartialCloseDetail, ExitMode } from './types.js'
 import { computePositionSize } from '../agent/exits.js'
 import { shouldBlockCorrelatedEntry } from '../agent/correlation-guard.js'
 import { DEFAULT_RISK_PERCENT, MULTI_TP_SPLIT, TRAIL_ACTIVATION_R, MAX_HOLDING_BARS, TIMEFRAME_MS, BACKTEST_MAX_OPEN_POSITIONS, BACKTEST_RISK_PER_TRADE_PCT, BACKTEST_CIRCUIT_BREAKER_DD } from '../config.js'
@@ -465,9 +465,38 @@ export class TradeSimulator {
       pnlPct: pos.sizeUsd > 0 ? pnl / pos.sizeUsd : 0,
       exitReason,
       strategyId: this.strategyId,
+      diagnostics: buildTradeDiagnostics(pos),
       ...(pos.partialCloses.length > 0 ? { partialCloses: [...pos.partialCloses] } : {}),
     })
 
     this.positions.delete(pos.coin)
   }
+}
+
+function buildTradeDiagnostics(pos: OpenPosition): BacktestTradeDiagnostics {
+  const patternData = pos.setup.patternData
+  const explicitZoneOrigin = getStringPatternData(patternData, 'zoneOrigin')
+  const htfZoneOrigin = getStringPatternData(patternData, 'htfZoneOrigin')
+
+  return {
+    setupVariant: inferSetupVariant(pos),
+    regime: getStringPatternData(patternData, 'regime'),
+    zoneOrigin: explicitZoneOrigin ?? htfZoneOrigin,
+    killzoneName: getStringPatternData(patternData, 'killzoneName'),
+  }
+}
+
+function inferSetupVariant(pos: OpenPosition): string {
+  const patternData = pos.setup.patternData
+  if (patternData['microEntry'] === true) return '5m_micro_entry'
+  if (patternData['amd'] === true) return '15m_amd_scalp'
+  if (getStringPatternData(patternData, 'tradeStyle') === 'scalp') return '15m_scalp'
+  if (getStringPatternData(patternData, 'tradeStyle') === 'swing') return '4h_swing'
+  if (pos.interval === '1h') return '1h_same_tf'
+  return `${pos.interval}_setup`
+}
+
+function getStringPatternData(patternData: Record<string, unknown>, key: string): string | null {
+  const value = patternData[key]
+  return typeof value === 'string' && value.length > 0 ? value : null
 }

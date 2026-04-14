@@ -29,6 +29,19 @@ import { log } from '../lib/logger.js'
 
 /** Default strategy ID for backward compatibility (single-strategy mode). */
 const DEFAULT_STRATEGY = 'smc-sd'
+type RecoverySide = 'long' | 'short'
+type RecoveryExchangePosition = {
+  coin: string
+  size: number
+  entryPrice: number
+  strategyId?: string
+}
+type RecoveryDbPosition = {
+  coin: string
+  positionId: string
+  side: string
+  strategyId?: string
+}
 
 // ─── State Key Helpers ──────────────────────────────────────────────────────
 
@@ -42,6 +55,16 @@ export function parseStateKey(key: string): { coin: string; strategyId: string }
   const idx = key.lastIndexOf(':')
   if (idx === -1) return { coin: key, strategyId: DEFAULT_STRATEGY }
   return { coin: key.slice(0, idx), strategyId: key.slice(idx + 1) }
+}
+
+function normalizedRecoveryStrategyId(strategyId?: string): string {
+  return strategyId ?? DEFAULT_STRATEGY
+}
+
+function sideFromPositionSize(size: number): RecoverySide | null {
+  if (size > 0) return 'long'
+  if (size < 0) return 'short'
+  return null
 }
 
 // ─── Trading Agent (Orchestrator) ───────────────────────────────────────────
@@ -358,26 +381,59 @@ export class TradingAgent {
   // ── Crash Recovery Skeleton (R1) ─────────────────────────────────────────
 
   recoverFromCrash(
-    exchangePositions: Array<{ coin: string; size: number; entryPrice: number }>,
-    dbPositions: Array<{ coin: string; positionId: string; side: string; strategyId?: string }>,
+    exchangePositions: RecoveryExchangePosition[],
+    dbPositions: RecoveryDbPosition[],
   ): void {
+    const openExchangeKeys = new Set<string>()
+    const openExchangeStrategyKeys = new Set<string>()
+    const matchedDbPositionIds = new Set<string>()
+
     for (const pos of exchangePositions) {
-      if (Math.abs(pos.size) > 0) {
-        const dbMatch = dbPositions.find(p => p.coin === pos.coin)
-        const strategyId = dbMatch?.strategyId ?? DEFAULT_STRATEGY
-        const key = stateKey(pos.coin, strategyId)
-        const ctx = this.getOrCreateCoinContext(key, pos.coin, strategyId)
-        ctx.state = 'IN_POSITION'
-        ctx.positionId = dbMatch?.positionId ?? `orphan-${pos.coin}`
-        ctx.stateEnteredAt = Date.now()
-        this.coins.set(key, ctx)
+      const side = sideFromPositionSize(pos.size)
+      if (side == null) continue
+
+      openExchangeKeys.add(`${pos.coin}:${side}`)
+      const exchangeStrategyId = normalizedRecoveryStrategyId(pos.strategyId)
+      if (pos.strategyId != null) {
+        openExchangeStrategyKeys.add(`${pos.coin}:${side}:${exchangeStrategyId}`)
+      }
+
+      const sideCandidates = dbPositions.filter(p => p.coin === pos.coin && p.side === side)
+      const exactStrategyCandidates = pos.strategyId != null
+        ? sideCandidates.filter(p => normalizedRecoveryStrategyId(p.strategyId) === exchangeStrategyId)
+        : []
+      const candidates = exactStrategyCandidates.length > 0 ? exactStrategyCandidates : sideCandidates
+      const dbMatch = candidates.length === 1 ? candidates[0] : null
+
+      if (candidates.length > 1) {
+        log.warn(
+          'agent',
+          `Crash recovery ambiguous for ${pos.coin} ${side}${pos.strategyId != null ? ` [${exchangeStrategyId}]` : ''}: ${candidates.length} DB positions match; preserving orphan ownership`,
+        )
+      }
+
+      const strategyId = dbMatch?.strategyId ?? DEFAULT_STRATEGY
+      const key = stateKey(pos.coin, strategyId)
+      const ctx = this.getOrCreateCoinContext(key, pos.coin, strategyId)
+      ctx.state = 'IN_POSITION'
+      ctx.positionId = dbMatch?.positionId ?? `orphan-${pos.coin}`
+      ctx.stateEnteredAt = Date.now()
+      this.coins.set(key, ctx)
+
+      if (dbMatch != null) {
+        matchedDbPositionIds.add(dbMatch.positionId)
       }
     }
 
     for (const dbPos of dbPositions) {
-      const onExchange = exchangePositions.some(p => p.coin === dbPos.coin && Math.abs(p.size) > 0)
+      const side = dbPos.side === 'long' || dbPos.side === 'short' ? dbPos.side : null
+      const strategyId = normalizedRecoveryStrategyId(dbPos.strategyId)
+      const hasStrategyScopedExchangeMatch = side != null
+        && Array.from(openExchangeStrategyKeys).some(key => key.startsWith(`${dbPos.coin}:${side}:`))
+      const onExchange = matchedDbPositionIds.has(dbPos.positionId)
+        || (side != null && openExchangeStrategyKeys.has(`${dbPos.coin}:${side}:${strategyId}`))
+        || (side != null && !hasStrategyScopedExchangeMatch && openExchangeKeys.has(`${dbPos.coin}:${side}`))
       if (!onExchange) {
-        const strategyId = dbPos.strategyId ?? DEFAULT_STRATEGY
         const key = stateKey(dbPos.coin, strategyId)
         const ctx = this.getOrCreateCoinContext(key, dbPos.coin, strategyId)
         ctx.state = 'IDLE'

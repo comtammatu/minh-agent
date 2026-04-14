@@ -3,7 +3,7 @@
  *
  * Layout:
  *   ┌─ Header Bar ──────────────────────────────────────────────┐
- *   ├─ Account ──────────┬─ Strategy ──┬─ System ──────────────┤
+ *   ├─ Account ──────────┬─ Strategy ──┬─ Deliberation ──┬─ Health ───────┤
  *   ├─ Positions (½) │ Watchlist (½) — side-by-side tables ────┤
  *   └──────────────────────────────────────────────────────────-┘
  *
@@ -15,12 +15,35 @@ import React, { useState, useEffect, useMemo, memo, useRef } from 'react'
 import { render, Box, Text, useApp, useInput, useStdout } from 'ink'
 import type { AgentSnapshot } from '../agent/types.js'
 import type { StatusSnapshot } from '../strategy/orchestrator.js'
+import type {
+  getBriefingRefreshStats as getBriefingRefreshStatsFn,
+  getBriefingRefreshHealth as getBriefingRefreshHealthFn,
+  getBriefingRefreshHistory as getBriefingRefreshHistoryFn,
+  getBriefingRefreshIncidents as getBriefingRefreshIncidentsFn,
+} from '../alert/telegram/briefing-refresh-stats.js'
 import { getEffectivePaperTrade, WS_MAX_SUBSCRIPTIONS, TIMEFRAMES, MIN_CANDLES_FOR_SCAN, PAPER_WALLET_STRATEGY_IDS } from '../config.js'
+import {
+  buildDeliberationFocusCandidates,
+  buildDeliberationFocusSlots,
+  cycleDeliberationFocus,
+  describeDeliberationFocus,
+  resolveFocusedCoin,
+  resolveFocusedOperatorAudit,
+  resolveBriefingHealthFocus,
+  resolveFocusedPosition,
+  resolveFocusedSetup,
+  resolveFocusedStrategyId,
+  resolveDeliberationFocusDigit,
+  resolveFocusedDecisionTrace,
+  type DeliberationFocusSlot,
+  type DeliberationFocus,
+} from './deliberation-focus.js'
 import { normalizeStrategyId, type LiveStrategyWalletStats } from './live-account-stats.js'
 import { candleCount } from '../feed/store.js'
-import type { CandleInterval, ActiveSetup } from '../types.js'
+import type { CandleInterval, ActiveSetup, DecisionTrace } from '../types.js'
 import type { InvalidationBridgeStats } from '../agent/invalidation-bridge.js'
 import type { AccountState } from '../execution/exchange-service.js'
+import type { PositionState } from '../agent/types.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -79,8 +102,18 @@ export interface TuiDataSources {
   getLiveAccountStatesByStrategy: () => ReadonlyMap<string, AccountState> | null
   getAssetPrice: (coin: string) => AssetPrice | null
   getActiveSetups: () => ActiveSetup[]
+  getDecisionTraces: () => DecisionTrace[]
+  getOperatorAuditEntries: () => OperatorAuditEntry[]
+  getBriefingRefreshStats: () => ReturnType<typeof getBriefingRefreshStatsFn>
+  getBriefingRefreshHealth: () => ReturnType<typeof getBriefingRefreshHealthFn>
+  getBriefingRefreshHistory: () => ReturnType<typeof getBriefingRefreshHistoryFn>
+  getBriefingRefreshIncidents: () => ReturnType<typeof getBriefingRefreshIncidentsFn>
+  getTrackedPosition: (positionId: string) => PositionState | null
   /** Invalidation bridge: matched vs skipped per strategy (live session). */
   getInvalidationStats: () => InvalidationBridgeStats
+  setStrategyPaused: (strategyId: string, paused: boolean, reason: string) => boolean
+  closePosition: (positionId: string, reason: string) => boolean
+  partialClosePosition: (positionId: string, closePct: number, reason: string) => boolean
 }
 
 // ─── State (module-level for backfill progress) ─────────────────────────────
@@ -102,6 +135,7 @@ const BORDER_COLOR = 'gray'
 const TITLE_COLOR = 'white'
 const ACCENT = 'cyan'
 const DIM = 'gray'
+const MAX_OPERATOR_AUDIT_ENTRIES = 6
 
 /** Watchlist: space between columns (10 cols → 9 gaps). Budget subtracted before width math. */
 const WL_GAP = 1
@@ -118,7 +152,7 @@ function computeTuiLayout(termRows: number): {
   positionsRowsPerCol: number
   watchlistRowsPerCol: number
 } {
-  const RESERVED_TOP = 20 // header + Account / Strategies / Buddy / System row
+  const RESERVED_TOP = 27 // header + focus/action/audit strips + top panel row + position detail
   const contentBudget = Math.max(12, termRows - RESERVED_TOP)
   const innerLines = Math.max(3, contentBudget - 3)
 
@@ -344,6 +378,27 @@ function truncateStr(str: string, max: number): string {
   return str.slice(0, max - 1) + '\u2026'
 }
 
+function formatStateLabel(value: string): string {
+  return value.replace(/_/g, ' ').toUpperCase()
+}
+
+function formatClockTime(ts: number): string {
+  return new Date(ts).toISOString().slice(11, 19)
+}
+
+function shortTraceRef(value: string | undefined): string {
+  if (value == null || value.length === 0) return '—'
+  return truncateStr(value, 20)
+}
+
+function getTimelineEvent(
+  trace: DecisionTrace | null,
+  predicate: (item: DecisionTrace['timeline'][number]) => boolean,
+): DecisionTrace['timeline'][number] | null {
+  if (trace == null) return null
+  return trace.timeline.find(predicate) ?? null
+}
+
 /**
  * Ink 6 `<Text>` defaults to flexShrink:1 + wrap — table cells shift and break lines.
  * Lock each column with Box width + truncate.
@@ -397,6 +452,35 @@ function Panel({ title, children, width, height, minHeight, flexGrow, flexShrink
   )
 }
 
+export type OperatorAuditEntry = {
+  ts: number
+  action: string
+  target: string
+  status: 'armed' | 'submitted' | 'failed'
+  coin?: string | null
+  strategyId?: string | null
+  positionId?: string | null
+}
+
+function mergeOperatorAuditEntries(
+  persisted: OperatorAuditEntry[],
+  ephemeral: OperatorAuditEntry[],
+): OperatorAuditEntry[] {
+  const merged = [...persisted, ...ephemeral]
+  merged.sort((a, b) => a.ts - b.ts)
+
+  const deduped: OperatorAuditEntry[] = []
+  const seen = new Set<string>()
+  for (const entry of merged) {
+    const key = `${entry.ts}|${entry.action}|${entry.target}|${entry.status}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(entry)
+  }
+
+  return deduped.slice(-MAX_OPERATOR_AUDIT_ENTRIES)
+}
+
 // ─── Header ─────────────────────────────────────────────────────────────────
 
 const HeaderBar = memo(function HeaderBar({ snapshot, coinCount }: { snapshot: AgentSnapshot; coinCount: number }) {
@@ -427,6 +511,163 @@ const HeaderBar = memo(function HeaderBar({ snapshot, coinCount }: { snapshot: A
         <Text color={DIM}>{time}</Text>
       </Box>
     </Box>
+  )
+})
+
+const FocusStrip = memo(function FocusStrip({
+  slots,
+  current,
+}: {
+  slots: DeliberationFocusSlot[]
+  current: DeliberationFocus
+}) {
+  if (slots.length === 0) {
+    return (
+      <Box borderStyle="single" borderColor={BORDER_COLOR} paddingLeft={1} paddingRight={1}>
+        <Text color={DIM}>Focus 0 AUTO | No active positions or setups</Text>
+      </Box>
+    )
+  }
+
+  const currentKey = current.kind === 'auto'
+    ? 'auto'
+    : current.kind === 'position'
+      ? `position:${current.positionId}`
+      : `setup:${current.setupId}`
+
+  return (
+    <Box borderStyle="single" borderColor={BORDER_COLOR} paddingLeft={1} paddingRight={1}>
+      <Text color={DIM}>Focus </Text>
+      <Text color={current.kind === 'auto' ? ACCENT : DIM}>[0 AUTO]</Text>
+      <Text color={DIM}> </Text>
+      {slots.map((slot, idx) => {
+        const slotKey = slot.focus.kind === 'position'
+          ? `position:${slot.focus.positionId}`
+          : slot.focus.kind === 'setup'
+            ? `setup:${slot.focus.setupId}`
+            : 'auto'
+        const active = currentKey === slotKey
+        return (
+          <React.Fragment key={`${slot.digit}-${slot.label}`}>
+            {idx > 0 && <Text color={DIM}> </Text>}
+            <Text color={active ? ACCENT : DIM}>
+              [{slot.digit} {truncateStr(slot.label, 16)}]
+            </Text>
+          </React.Fragment>
+        )
+      })}
+      <Text color={DIM}>  n/p cycle</Text>
+    </Box>
+  )
+})
+
+const ActionStrip = memo(function ActionStrip({
+  strategyId,
+  strategyPaused,
+  pendingPauseConfirm,
+  positionLabel,
+  pendingCloseConfirm,
+  pendingReduceConfirm,
+  banner,
+}: {
+  strategyId: string | null
+  strategyPaused: boolean
+  pendingPauseConfirm: string | null
+  positionLabel: string | null
+  pendingCloseConfirm: string | null
+  pendingReduceConfirm: string | null
+  banner: { color: 'green' | 'yellow' | 'red'; text: string } | null
+}) {
+  if (strategyId == null && positionLabel == null) {
+    return (
+      <Box borderStyle="single" borderColor={BORDER_COLOR} paddingLeft={1} paddingRight={1}>
+        <Text color={DIM}>Actions Select a setup/position focus to enable strategy controls</Text>
+      </Box>
+    )
+  }
+
+  const pauseLabel = strategyPaused ? 'resume' : 'pause'
+  const pauseColor = strategyPaused ? 'green' : 'yellow'
+
+  return (
+    <Box borderStyle="single" borderColor={BORDER_COLOR} paddingLeft={1} paddingRight={1}>
+      <Text color={DIM}>Actions </Text>
+      {strategyId != null ? (
+        <>
+          <Text color={ACCENT}>{strategyId}</Text>
+          <Text color={DIM}> </Text>
+          <Text color={pauseColor}>[s {pauseLabel}]</Text>
+          <Text color={DIM}> </Text>
+          <Text color={strategyPaused ? 'green' : DIM}>{strategyPaused ? 'PAUSED' : 'RUNNING'}</Text>
+        </>
+      ) : null}
+      {positionLabel != null ? (
+        <>
+          {strategyId != null ? <Text color={DIM}> </Text> : null}
+          <Text color="red">[x close {truncateStr(positionLabel, 18)}]</Text>
+          <Text color={DIM}> </Text>
+          <Text color="yellow">[r 25%]</Text>
+          <Text color={DIM}> </Text>
+          <Text color="yellow">[f 50%]</Text>
+        </>
+      ) : null}
+      {pendingPauseConfirm != null ? (
+        <>
+          <Text color={DIM}> </Text>
+          <Text color="yellow">Confirm: press s again to pause {truncateStr(pendingPauseConfirm, 20)}</Text>
+        </>
+      ) : null}
+      {pendingCloseConfirm != null ? (
+        <>
+          <Text color={DIM}> </Text>
+          <Text color="yellow">Confirm: press x again to close {truncateStr(pendingCloseConfirm, 18)}</Text>
+        </>
+      ) : null}
+      {pendingReduceConfirm != null ? (
+        <>
+          <Text color={DIM}> </Text>
+          <Text color="yellow">Confirm: press same key again to reduce {truncateStr(pendingReduceConfirm, 20)}</Text>
+        </>
+      ) : null}
+      {banner != null ? (
+        <>
+          <Text color={DIM}> </Text>
+          <Text color={banner.color}>{truncateStr(banner.text, 72)}</Text>
+        </>
+      ) : null}
+    </Box>
+  )
+})
+
+const OperatorAuditPanel = memo(function OperatorAuditPanel({
+  entries,
+}: {
+  entries: OperatorAuditEntry[]
+}) {
+  return (
+    <Panel title="Operator" minHeight={5}>
+      {entries.length === 0 ? (
+        <Text color={DIM}>No manual operator actions yet</Text>
+      ) : (
+        entries.slice(-3).reverse().map(entry => {
+          const statusColor = entry.status === 'submitted'
+            ? 'green'
+            : entry.status === 'failed'
+              ? 'red'
+              : 'yellow'
+          const stamp = new Date(entry.ts).toISOString().slice(11, 19)
+          return (
+            <Box key={`${entry.ts}-${entry.action}-${entry.target}`}>
+              <Text color={DIM}>{stamp}</Text>
+              <Text color={DIM}> </Text>
+              <Text color={statusColor}>{entry.status.toUpperCase()}</Text>
+              <Text color={DIM}> </Text>
+              <Text>{truncateStr(`${entry.action} ${entry.target}`, 72)}</Text>
+            </Box>
+          )
+        })
+      )}
+    </Panel>
   )
 })
 
@@ -547,37 +788,124 @@ const AccountPanel = memo(function AccountPanel({
   )
 })
 
-// ─── System ─────────────────────────────────────────────────────────────────
+// ─── Health ────────────────────────────────────────────────────────────────
 
-const SystemPanel = memo(function SystemPanel({ report, subCount }: {
+const UnifiedHealthPanel = memo(function UnifiedHealthPanel({
+  report,
+  subCount,
+  stats,
+  briefingHealth,
+  history,
+  incidents,
+}: {
   report: TuiDataSources['getHealthReport'] extends () => infer R ? R : never
   subCount: number
+  stats: ReturnType<TuiDataSources['getBriefingRefreshStats']>
+  briefingHealth: ReturnType<TuiDataSources['getBriefingRefreshHealth']>
+  history: ReturnType<TuiDataSources['getBriefingRefreshHistory']>
+  incidents: ReturnType<TuiDataSources['getBriefingRefreshIncidents']>
 }) {
   const rss = (report.rssBytes / 1024 / 1024).toFixed(0)
   const subPct = ((subCount / WS_MAX_SUBSCRIPTIONS) * 100).toFixed(0)
+  const overallColor = statusColor(report.overall)
+  const briefingHealthColor =
+    briefingHealth.state === 'critical'
+      ? 'red'
+      : briefingHealth.state === 'degraded'
+        ? 'yellow'
+        : 'green'
 
   return (
-    <Panel title="System" flexGrow={1}>
+    <Panel title="Health" flexGrow={1}>
       <Box justifyContent="space-between">
-        <Text color={DIM}>Feed</Text>
-        <Text color={statusColor(report.components.feed.status)}>{statusDot(report.components.feed.status)} {report.components.feed.status}</Text>
+        <Text color={DIM}>Core</Text>
+        <Text color={overallColor}>
+          {statusDot(report.overall)} {report.overall}
+          <Text color={DIM}> up {uptimeStr(report.uptime)}</Text>
+        </Text>
       </Box>
       <Box justifyContent="space-between">
-        <Text color={DIM}>Database</Text>
-        <Text color={statusColor(report.components.db.status)}>{statusDot(report.components.db.status)} {report.components.db.status}</Text>
+        <Text color={DIM}>Mem/WS</Text>
+        <Text>
+          {rss} MB
+          <Text color={DIM}> | </Text>
+          {subCount}<Text color={DIM}>/{WS_MAX_SUBSCRIPTIONS} ({subPct}%)</Text>
+        </Text>
       </Box>
-      <Box justifyContent="space-between">
-        <Text color={DIM}>Exchange</Text>
-        <Text color={statusColor(report.components.exchange.status)}>{statusDot(report.components.exchange.status)} {report.components.exchange.status}</Text>
-      </Box>
-      <Box justifyContent="space-between">
-        <Text color={DIM}>Memory</Text>
-        <Text>{rss} MB</Text>
-      </Box>
-      <Box justifyContent="space-between">
-        <Text color={DIM}>WS Subs</Text>
-        <Text>{subCount}<Text color={DIM}>/{WS_MAX_SUBSCRIPTIONS} ({subPct}%)</Text></Text>
-      </Box>
+      <Text color={DIM} wrap="truncate-end">
+        {truncateStr(
+          `Feed ${statusDot(report.components.feed.status)} ${report.components.feed.status}(${report.components.feed.consecutiveErrors})`
+          + ` | DB ${statusDot(report.components.db.status)} ${report.components.db.status}(${report.components.db.consecutiveErrors})`
+          + ` | Exch ${statusDot(report.components.exchange.status)} ${report.components.exchange.status}(${report.components.exchange.consecutiveErrors})`,
+          58,
+        )}
+      </Text>
+      <Text color={briefingHealthColor} wrap="truncate-end">
+        {truncateStr(
+          `Briefing ${briefingHealth.state.toUpperCase()} | ${Math.round(briefingHealth.editRatio * 100)}% edit`
+          + ` | fail ${briefingHealth.failed} | coal ${briefingHealth.coalesced}`,
+          58,
+        )}
+      </Text>
+      <Text color={DIM} wrap="truncate-end">
+        {truncateStr(
+          `Briefing req ${stats.requested} edit ${stats.edited} skip ${stats.skippedIdentical} coal ${stats.coalesced} fail ${stats.failed}`,
+          58,
+        )}
+      </Text>
+      <Text color={briefingHealthColor} wrap="truncate-end">
+        {stats.lastOutcome != null
+          ? truncateStr(`Last ${stats.lastOutcome.replace(/_/g, ' ')} ${stats.lastKind ?? ''}`.trim(), 58)
+          : 'Last none'}
+      </Text>
+      {briefingHealth.state === 'healthy' && briefingHealth.recoveredFrom != null ? (
+        <Text color="green" wrap="truncate-end">
+          {truncateStr(
+            `Recovered ${briefingHealth.recoveredFrom.toUpperCase()}`
+            + `${briefingHealth.recoveredTarget != null ? ` | ${briefingHealth.recoveredTarget}` : ''}`
+            + `${briefingHealth.recoveredAttention != null ? ` | ${briefingHealth.recoveredAttention}` : ''}`,
+            58,
+          )}
+        </Text>
+      ) : null}
+      {(briefingHealth.lastTarget != null || briefingHealth.lastAttention != null) ? (
+        <Text color={DIM} wrap="truncate-end">
+          {truncateStr(
+            `Target ${briefingHealth.lastTarget ?? '—'}`
+            + `${briefingHealth.lastAttention != null ? ` | ${briefingHealth.lastAttention}` : ''}`,
+            58,
+          )}
+        </Text>
+      ) : null}
+      <Text color={DIM} wrap="truncate-end">
+        {stats.lastAt != null ? formatClockTime(stats.lastAt) : 'No briefing refresh yet'}
+      </Text>
+      {incidents.length > 0 ? (
+        <Text color={DIM} wrap="truncate-end">
+          {truncateStr(
+            `Incident ${incidents.map(item => `${item.peakState.toUpperCase()} ${item.status.toUpperCase()}${item.target != null ? ` ${item.target}` : ''}`).join(' | ')}`,
+            58,
+          )}
+        </Text>
+      ) : null}
+      {history.length > 0 ? (
+        <Text color={DIM} wrap="truncate-end">
+          {truncateStr(
+            `History ${history.map(item => `${item.from}->${item.to}`).join(' | ')}`,
+            58,
+          )}
+        </Text>
+      ) : null}
+      {(
+        briefingHealth.lastTarget != null ||
+        briefingHealth.lastCoin != null ||
+        briefingHealth.recoveredTarget != null ||
+        briefingHealth.recoveredCoin != null
+      ) ? (
+        <Text color={DIM} wrap="truncate-end">
+          Press h to jump health target
+        </Text>
+      ) : null}
     </Panel>
   )
 })
@@ -590,7 +918,7 @@ function positionsStrategyHeader(w: number): string {
   return s.padEnd(w)
 }
 
-const PositionRow = memo(function PositionRow({ p, PC, getAssetPrice, priceTick }: {
+const PositionRow = memo(function PositionRow({ p, PC, getAssetPrice, priceTick, isFocused }: {
   p: {
     rowKey?: string
     positionId?: string
@@ -608,6 +936,7 @@ const PositionRow = memo(function PositionRow({ p, PC, getAssetPrice, priceTick 
   getAssetPrice: (coin: string) => AssetPrice | null
   /** Bumps every UI tick so memo() re-renders when mark price changes (position `p` ref is stable). */
   priceTick: number
+  isFocused: boolean
 }) {
   const asset = getAssetPrice(p.coin)
   const upnl = asset
@@ -630,7 +959,7 @@ const PositionRow = memo(function PositionRow({ p, PC, getAssetPrice, priceTick 
 
   return (
     <Box flexDirection="row" flexWrap="nowrap">
-      <TableCell w={PC.coin} trailingGap={POS_GAP} bold>{p.coin.padEnd(PC.coin)}</TableCell>
+      <TableCell w={PC.coin} trailingGap={POS_GAP} bold {...(isFocused ? { color: ACCENT } : {})}>{p.coin.padEnd(PC.coin)}</TableCell>
       <TableCell w={PC.lev} trailingGap={POS_GAP} color={DIM}>{levStr}</TableCell>
       <TableCell w={PC.side} trailingGap={POS_GAP} bold color={p.side === 'long' ? 'green' : 'red'}>
         {p.side.slice(0, 1).toUpperCase().padEnd(PC.side)}
@@ -639,7 +968,7 @@ const PositionRow = memo(function PositionRow({ p, PC, getAssetPrice, priceTick 
       <TableCell w={PC.sl} trailingGap={POS_GAP} color="red">{slStr}</TableCell>
       <TableCell w={PC.tp} trailingGap={POS_GAP} color="green">{tpStr}</TableCell>
       <TableCell w={PC.upnl} trailingGap={POS_GAP} {...(upnlColor != null ? { color: upnlColor } : {})}>{upnlStr}</TableCell>
-      <TableCell w={PC.strategy} color={DIM}>{strat}</TableCell>
+      <TableCell w={PC.strategy} color={isFocused ? ACCENT : DIM}>{strat}</TableCell>
     </Box>
   )
 })
@@ -653,7 +982,7 @@ function positionRowReactKey(p: {
   return p.rowKey ?? p.positionId ?? `${p.coin}-${p.strategyId}`
 }
 
-const PositionsPanel = memo(function PositionsPanel({ positions, getAssetPrice, rowsPerCol, pc, priceTick }: {
+const PositionsPanel = memo(function PositionsPanel({ positions, getAssetPrice, rowsPerCol, pc, priceTick, focusedPositionId }: {
   positions: Array<{
     rowKey?: string
     positionId?: string
@@ -673,6 +1002,7 @@ const PositionsPanel = memo(function PositionsPanel({ positions, getAssetPrice, 
   pc: PositionsColumnWidths
   /** 1s UI clock — forces PositionRow to re-read mark for UPNL (memo + stable `p` ref). */
   priceTick: number
+  focusedPositionId: string | null
 }) {
   const [page, setPage] = useState(0) // 0 = first page
   const total = positions.length
@@ -701,7 +1031,14 @@ const PositionsPanel = memo(function PositionsPanel({ positions, getAssetPrice, 
     </Box>
   )
   const renderRow = (p: typeof positions[number]) => (
-    <PositionRow key={positionRowReactKey(p)} p={p} PC={pc} getAssetPrice={getAssetPrice} priceTick={priceTick} />
+    <PositionRow
+      key={positionRowReactKey(p)}
+      p={p}
+      PC={pc}
+      getAssetPrice={getAssetPrice}
+      priceTick={priceTick}
+      isFocused={focusedPositionId != null && p.positionId === focusedPositionId}
+    />
   )
   /** One full-width table shows up to `pageSize` rows (was 2× columns). */
   const panelMinH = pageSize + 3
@@ -909,14 +1246,26 @@ function formatWatchlistPriceCell(priceCore: string, colWidth: number, priceArro
   return (core.padEnd(bodyW) + priceArrow).slice(0, colWidth)
 }
 
-const WatchlistCoinRow = memo(function WatchlistCoinRow({ coin, info, col, priceTick }: { coin: string; info: CoinInfo | undefined; col: WatchlistColumnWidths; priceTick: number }) {
+const WatchlistCoinRow = memo(function WatchlistCoinRow({
+  coin,
+  info,
+  col,
+  priceTick,
+  isFocused,
+}: {
+  coin: string
+  info: CoinInfo | undefined
+  col: WatchlistColumnWidths
+  priceTick: number
+  isFocused: boolean
+}) {
   const priceFlash = useFlashOnChange(info?.price ?? null)
   if (!info) {
     return (
       <Box flexDirection="row" flexWrap="nowrap">
-        <TableCell w={col.coin} marginRight={WL_GAP} color={DIM}>{coin.padEnd(col.coin)}</TableCell>
+        <TableCell w={col.coin} marginRight={WL_GAP} color={isFocused ? ACCENT : DIM}>{coin.padEnd(col.coin)}</TableCell>
         <TableCell w={col.grade} marginRight={WL_GAP} color={DIM}>{'\u2014'.padEnd(col.grade)}</TableCell>
-        <TableCell w={col.setups} marginRight={WL_GAP} color={DIM}>{'0'.padEnd(col.setups)}</TableCell>
+        <TableCell w={col.setups} marginRight={WL_GAP} color={isFocused ? ACCENT : DIM}>{'0'.padEnd(col.setups)}</TableCell>
         <TableCell w={col.price} marginRight={WL_GAP} color={DIM}>{formatWatchlistPriceCell('\u2014', col.price, ' ')}</TableCell>
         <TableCell w={col.dayPct} marginRight={WL_GAP} color={DIM}>{'\u2014'.padStart(col.dayPct)}</TableCell>
         <TableCell w={col.fund} marginRight={WL_GAP} color={DIM}>{'\u2014'.padStart(col.fund)}</TableCell>
@@ -946,13 +1295,13 @@ const WatchlistCoinRow = memo(function WatchlistCoinRow({ coin, info, col, price
 
   return (
     <Box flexDirection="row" flexWrap="nowrap">
-      <TableCell w={col.coin} marginRight={WL_GAP} bold>{coin.padEnd(col.coin)}</TableCell>
+      <TableCell w={col.coin} marginRight={WL_GAP} bold {...(isFocused ? { color: ACCENT } : {})}>{coin.padEnd(col.coin)}</TableCell>
       {gradeCol !== undefined ? (
         <TableCell
           w={col.grade}
           marginRight={WL_GAP}
           bold={info.grade.startsWith('A')}
-          color={gradeCol}
+          color={isFocused ? ACCENT : gradeCol}
         >
           {info.grade.padEnd(col.grade)}
         </TableCell>
@@ -961,11 +1310,12 @@ const WatchlistCoinRow = memo(function WatchlistCoinRow({ coin, info, col, price
           w={col.grade}
           marginRight={WL_GAP}
           bold={info.grade.startsWith('A')}
+          {...(isFocused ? { color: ACCENT } : {})}
         >
           {info.grade.padEnd(col.grade)}
         </TableCell>
       )}
-      <TableCell w={col.setups} marginRight={WL_GAP}>{String(info.setups).padEnd(col.setups)}</TableCell>
+      <TableCell w={col.setups} marginRight={WL_GAP} {...(isFocused ? { color: ACCENT } : {})}>{String(info.setups).padEnd(col.setups)}</TableCell>
       <TableCell w={col.price} marginRight={WL_GAP} {...(priceColor !== undefined ? { color: priceColor } : {})}>{priceStr}</TableCell>
       <TableCell w={col.dayPct} marginRight={WL_GAP} {...(dCol != null ? { color: dCol } : {})}>{dayStr}</TableCell>
       {fundingCol !== undefined ? (
@@ -994,7 +1344,16 @@ const WatchlistCoinRow = memo(function WatchlistCoinRow({ coin, info, col, price
   )
 })
 
-const WatchlistPanel = memo(function WatchlistPanel({ statuses, trackedCoins, getAssetPrice, rowsPerCol, col, priceTick }: {
+const WatchlistPanel = memo(function WatchlistPanel({
+  statuses,
+  trackedCoins,
+  getAssetPrice,
+  rowsPerCol,
+  col,
+  priceTick,
+  focusedCoin,
+  focusLabel,
+}: {
   statuses: StatusSnapshot[]
   trackedCoins: string[]
   getAssetPrice: (coin: string) => AssetPrice | null
@@ -1003,6 +1362,8 @@ const WatchlistPanel = memo(function WatchlistPanel({ statuses, trackedCoins, ge
   col: WatchlistColumnWidths
   /** 1s UI clock — `statuses` ref can be stable; re-aggregate marks + bust row memo. */
   priceTick: number
+  focusedCoin: string | null
+  focusLabel: string
 }) {
   const byCoin = useMemo(() => aggregateCoins(statuses, getAssetPrice), [statuses, getAssetPrice, priceTick])
   const [page, setPage] = useState(0)
@@ -1035,14 +1396,22 @@ const WatchlistPanel = memo(function WatchlistPanel({ statuses, trackedCoins, ge
 
   const pageInfo = totalPages > 1 ? ` {}/  ${clampedPage + 1}/${totalPages}` : ''
   const rangeEnd = Math.min(startIdx + pageCoins.length, total)
-  const title = `Watchlist ${startIdx + 1}-${rangeEnd} (${total})${pageInfo}`
+  const focusSuffix = focusedCoin != null ? ` | ${truncateStr(focusLabel, 12)}` : ''
+  const title = `Watchlist ${startIdx + 1}-${rangeEnd} (${total})${pageInfo}${focusSuffix}`
 
   return (
     <Box flexGrow={1} width="100%">
       <Panel title={title} flexGrow={1} minHeight={panelMinH} flexShrink={1}>
         <WatchlistHeaderRow col={col} />
         {pageCoins.map((coin: string) => (
-          <WatchlistCoinRow key={coin} coin={coin} info={byCoin.get(coin)} col={col} priceTick={priceTick} />
+          <WatchlistCoinRow
+            key={coin}
+            coin={coin}
+            info={byCoin.get(coin)}
+            col={col}
+            priceTick={priceTick}
+            isFocused={focusedCoin === coin}
+          />
         ))}
       </Panel>
     </Box>
@@ -1129,130 +1498,278 @@ const StrategyPanel = memo(function StrategyPanel({ snapshot, activeSetups, invS
   )
 })
 
-// ─── Buddy Pet (明 Dragon) ──────────────────────────────────────────────────
+// ─── Deliberation ───────────────────────────────────────────────────────────
 
-type BuddyMood = 'idle' | 'scanning' | 'signal' | 'profit' | 'loss' | 'paused' | 'alert'
-
-function getBuddyMood(snapshot: AgentSnapshot, positions: number, dailyPnl: number): BuddyMood {
-  if (snapshot.global.globalPaused) return 'paused'
-  if (dailyPnl < -50) return 'loss'
-  if (dailyPnl > 50) return 'profit'
-  if (positions > 0) return 'alert'
-  const coins = Object.values(snapshot.coins)
-  // [SIGNAL] = agent actually placing an order (ENTERING state), not just pipeline detections
-  if (coins.some(c => c.state === 'ENTERING')) return 'signal'
-  if (coins.some(c => c.state !== 'IDLE')) return 'scanning'
-  return 'idle'
+function stanceColor(stance: 'bullish' | 'bearish' | 'neutral'): 'green' | 'red' | 'yellow' {
+  return stance === 'bullish' ? 'green' : stance === 'bearish' ? 'red' : 'yellow'
 }
 
-// Each mood has multiple frames for animation (outer = frames, inner = 5 sprite lines)
-const BUDDY_SPRITES: Record<BuddyMood, string[][]> = {
-  idle: [
-    // F0: eyes open (shown 9/10 ticks → blink every ~1s)
-    ['   /\\_/\\  ', '  ( o.o ) ', '   > ^ <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-    // F1: blink
-    ['   /\\_/\\  ', '  ( -.- ) ', '   > ^ <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-  ],
-  scanning: [
-    // 4-frame eye scan: forward → right → forward → left (400ms cycle)
-    ['   /\\_/\\  ', '  ( \u25C9.\u25C9 ) ', '   > ^ <  ', '  /| ~ |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-    ['   /\\_/\\  ', '  (  .\u25C9@) ', '   > ~ <  ', '  /| ~ |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-    ['   /\\_/\\  ', '  ( \u25C9.\u25C9 ) ', '   > ^ <  ', '  /| ~ |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-    ['   /\\_/\\  ', '  (@\u25C9.  ) ', '   > ~ <  ', '  /| ~ |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-  ],
-  signal: [
-    // 4-frame sparkle flash (400ms cycle)
-    ['   /\\_/\\  ', '  ( \u2727.\u2727 ) ', '   > \u2605 <  ', ' \u26A1/|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-    ['   /\\_/\\  ', '  ( \u2605.\u2605 ) ', '   > \u2727 <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-    ['   /\\_/\\  ', '  ( \u2727.\u2727 ) ', '   > \u2605 <  ', ' \u26A1/|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-    ['   /\\_/\\  ', '  ( *.* ) ', '   > * <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-  ],
-  profit: [
-    // 4-frame happy bounce (400ms cycle)
-    ['   /\\_/\\  ', '  ( ^.^ ) ', '   > w <  ', ' \u2728/|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-    ['   /\\_/\\  ', '  ( ^o^ ) ', '   > W <  ', ' \u2728/|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-    ['   /\\_/\\  ', '  ( ^.^ ) ', '   > w <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-    ['   /\\_/\\  ', '  ( ^v^ ) ', '   > w <  ', ' \u2728/|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-  ],
-  loss: [
-    // 4-frame sad cycle (400ms cycle)
-    ['   /\\_/\\  ', '  ( ;.; ) ', '   > n <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-    ['   /\\_/\\  ', '  ( ;_; ) ', '   > ~ <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-    ['   /\\_/\\  ', '  ( ;.; ) ', '   > n <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-    ['   /\\_/\\  ', '  ( ToT ) ', '   > ~ <  ', '  /|   |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-  ],
-  paused: [
-    // 4-frame growing zzZ (400ms cycle)
-    ['   /\\_/\\  ', '  ( -.- ) ', '   > ~ <  ', '  /|   |\\ ', '  z       '],
-    ['   /\\_/\\  ', '  ( -.- ) ', '   > ~ <  ', '  /|   |\\ ', '  zZ      '],
-    ['   /\\_/\\  ', '  ( -_- ) ', '   > ~ <  ', '  /|   |\\ ', '  zZZ     '],
-    ['   /\\_/\\  ', '  ( -.- ) ', '   > ~ <  ', '  /|   |\\ ', '  zZZZ    '],
-  ],
-  alert: [
-    // 2-frame fast flash (200ms cycle)
-    ['   /\\_/\\  ', '  ( \u25B2.\u25B2 ) ', '   > ! <  ', '  /| \u2191 |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-    ['   /\\_/\\  ', '  ( \u25CF.\u25CF ) ', '   > \u203C <  ', '  /| \u2191 |\\ ', '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500 '],
-  ],
+function verdictColor(verdict: 'approve' | 'reject' | 'watch' | undefined): 'green' | 'red' | 'yellow' | 'gray' {
+  if (verdict === 'approve') return 'green'
+  if (verdict === 'reject') return 'red'
+  if (verdict === 'watch') return 'yellow'
+  return 'gray'
 }
 
-const BUDDY_SPEECH: Record<BuddyMood, string[]> = {
-  idle: ['Scanning...', 'Watching markets', 'All quiet', 'Waiting for setups'],
-  scanning: ['Eyes on chart', 'Structure forming', 'Analyzing...', 'Reading PA'],
-  signal: ['Setup found!', 'Signal detected!', 'Check this out!', 'Entry nearby!'],
-  profit: ['Nice trade!', 'Green day!', 'Money printer go', 'We cooking!'],
-  loss: ['Rough patch...', 'Stay disciplined', 'Part of the game', 'Next one...'],
-  paused: ['Taking a break', 'System paused', 'Standing by...', 'Resting...'],
-  alert: ['Position open!', 'Monitoring trade', 'Watching entry', 'In the market!'],
+function timelineActorColor(actor: 'scanner' | 'judge' | 'executor' | 'guardian'): 'cyan' | 'yellow' | 'green' | 'magenta' {
+  if (actor === 'scanner') return 'cyan'
+  if (actor === 'judge') return 'magenta'
+  if (actor === 'executor') return 'green'
+  return 'yellow'
 }
 
-function getBuddySpeech(mood: BuddyMood, tick: number): string {
-  const phrases = BUDDY_SPEECH[mood]
-  return phrases[tick % phrases.length]!
-}
+const DeliberationPanel = memo(function DeliberationPanel({
+  trace,
+  focusLabel,
+}: {
+  trace: DecisionTrace | null
+  focusLabel: string
+}) {
+  if (trace == null) {
+    return (
+      <Panel title="Deliberation" width={42} minHeight={9}>
+        <Text color={DIM}>No decision trace yet</Text>
+        <Text color={DIM}>Waiting for the next closed bar...</Text>
+      </Panel>
+    )
+  }
 
-const BuddyPanel = memo(function BuddyPanel({ mood, tick }: { mood: BuddyMood; tick: number }) {
-  // Local 100ms animation tick — independent of the 1s main tick
-  const [animTick, setAnimTick] = useState(0)
-  useEffect(() => {
-    const id = setInterval(() => setAnimTick(t => t + 1), 100)
-    return () => clearInterval(id)
-  }, [])
-
-  const frames = BUDDY_SPRITES[mood]
-  // idle: blink for 100ms every 1s (1 frame out of 10)
-  // alert: fast 200ms flash (2 frames)
-  // others: cycle all frames at 100ms each
-  const frameIdx = mood === 'idle'
-    ? (animTick % 10 === 9 ? 1 : 0)
-    : animTick % frames.length
-  const sprite = frames[frameIdx]!
-  const speech = getBuddySpeech(mood, tick)
-
-  const moodColor: 'green' | 'red' | 'yellow' | 'cyan' | 'magenta' =
-    mood === 'profit' ? 'green'
-      : mood === 'loss' ? 'red'
-        : mood === 'paused' ? 'yellow'
-          : mood === 'signal' ? 'magenta'
-            : mood === 'alert' ? 'cyan'
-              : 'cyan'
-
-  const bubbleWidth = Math.max(speech.length + 2, 12)
-  const bubbleTop = '\u250C' + '\u2500'.repeat(bubbleWidth) + '\u2510'
-  const bubbleBot = '\u2514' + '\u2500'.repeat(bubbleWidth) + '\u2518'
-  const bubbleMid = '\u2502 ' + speech.padEnd(bubbleWidth - 1) + '\u2502'
-  const pointer = '    \u2514\u2500\u2510'
+  const judge = trace.roles.judge
+  const bull = trace.roles.bull
+  const bear = trace.roles.bear
+  const risk = trace.roles.risk
+  const guardian = trace.roles.guardian
+  const executor = trace.roles.executor
+  const header = `${trace.coin} ${trace.interval} [${trace.strategyId}]`
+  const action = trace.outcome.action.toUpperCase()
+  const confPct = `${Math.round(trace.outcome.confidence * 100)}%`
 
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor={BORDER_COLOR} paddingLeft={1} paddingRight={1} width={30} minHeight={9}>
-      <Text bold color={TITLE_COLOR}>Buddy <Text color={moodColor}>[{mood.toUpperCase()}]</Text></Text>
-      <Text color={DIM}>{bubbleTop}</Text>
-      <Text color={DIM}>{bubbleMid}</Text>
-      <Text color={DIM}>{bubbleBot}</Text>
-      <Text color={DIM}>{pointer}</Text>
-      {sprite.map((line, i) => (
-        <Text key={i} color={moodColor}>{line}</Text>
+    <Panel title="Deliberation" width={42} minHeight={9}>
+      <Text bold>{truncateStr(header, 36)}</Text>
+      <Text color={DIM}>{truncateStr(`Focus ${focusLabel} | n/p cycle | 0 auto`, 38)}</Text>
+      <Box justifyContent="space-between">
+        <Text color={verdictColor(judge?.verdict)}>
+          {judge != null ? judge.verdict.toUpperCase() : 'WAIT'}
+        </Text>
+        <Text color={ACCENT}>{action} {confPct}</Text>
+      </Box>
+      <Text color={DIM} wrap="truncate-end">{truncateStr(trace.outcome.summary, 38)}</Text>
+      {bull != null && (
+        <Text color={stanceColor(bull.stance)} wrap="truncate-end">
+          BULL {Math.round(bull.confidence * 100)}% {truncateStr(bull.summary, 29)}
+        </Text>
+      )}
+      {bear != null && (
+        <Text color={stanceColor(bear.stance)} wrap="truncate-end">
+          BEAR {Math.round(bear.confidence * 100)}% {truncateStr(bear.summary, 29)}
+        </Text>
+      )}
+      {risk != null && (
+        <Text color={DIM} wrap="truncate-end">
+          RISK {Math.round(risk.confidence * 100)}% {truncateStr(risk.summary, 29)}
+        </Text>
+      )}
+      {executor != null && (
+        <Text color={ACCENT} wrap="truncate-end">
+          EXEC {executor.state.toUpperCase()} {truncateStr(executor.summary, 27)}
+        </Text>
+      )}
+      {guardian != null && (
+        <Text color="yellow" wrap="truncate-end">
+          GUARD {guardian.state.toUpperCase()} {truncateStr(guardian.summary, 25)}
+        </Text>
+      )}
+      {trace.timeline.slice(-3).map((item, idx) => (
+        <Text key={`${item.ts}-${idx}`} color={timelineActorColor(item.actor)} wrap="truncate-end">
+          {truncateStr(`${item.actor.toUpperCase()} ${item.action}: ${item.summary}`, 38)}
+        </Text>
       ))}
-    </Box>
+      <Text color={DIM} wrap="truncate-end">
+        {truncateStr(`Regime ${trace.regime.state} x${trace.regime.modifier.toFixed(2)}`, 38)}
+      </Text>
+    </Panel>
+  )
+})
+
+const FocusDetailPanel = memo(function FocusDetailPanel({
+  position,
+  setup,
+  trace,
+  linkedOperatorAudit,
+  getAssetPrice,
+  focusLabel,
+}: {
+  position: PositionState | null
+  setup: ActiveSetup | null
+  trace: DecisionTrace | null
+  linkedOperatorAudit: OperatorAuditEntry | null
+  getAssetPrice: (coin: string) => AssetPrice | null
+  focusLabel: string
+}) {
+  if (position == null && setup == null) {
+    return (
+      <Panel title="Focus Detail" minHeight={8}>
+        <Text color={DIM}>Focus a setup or tracked position to inspect thesis and lifecycle</Text>
+        <Text color={DIM}>{truncateStr(`Current focus ${focusLabel}`, 56)}</Text>
+      </Panel>
+    )
+  }
+
+  if (setup != null && position == null) {
+    const judge = trace?.roles.judge
+    const bull = trace?.roles.bull
+    const bear = trace?.roles.bear
+    const risk = trace?.roles.risk
+    const ttlBars = Math.max(0, setup.expiresAtBar - setup.detectedAtBar)
+    const setupAgeMin = Math.max(0, Math.floor((Date.now() - setup.detectedAt) / 60_000))
+    const judgeEvent = getTimelineEvent(trace, item => item.actor === 'judge')
+    const fillEvent = getTimelineEvent(trace, item => item.actor === 'executor' && item.action === 'filled')
+
+    return (
+      <Panel title="Focus Detail" minHeight={8}>
+        <Text bold>{truncateStr(`${setup.coin} ${setup.interval} ${setup.side.toUpperCase()} [${setup.strategyId ?? 'default'}]`, 56)}</Text>
+        <Text color={DIM}>{truncateStr(`Focus ${focusLabel} | setup age ${setupAgeMin}m | ttl ${ttlBars} bars`, 56)}</Text>
+        <Box justifyContent="space-between">
+          <Text color={setup.side === 'long' ? 'green' : 'red'}>{setup.type.toUpperCase()} {setup.side.toUpperCase()}</Text>
+          <Text color={ACCENT}>{Math.round(setup.confidence * 100)}%</Text>
+        </Box>
+        <Text wrap="truncate-end">
+          Entry {formatUsd(setup.entryPrice)}
+          <Text color={DIM}> | </Text>
+          <Text color="red">SL {formatUsd(setup.slPrice)}</Text>
+          <Text color={DIM}> | </Text>
+          <Text color="green">TP {formatUsd(setup.tpPrice)}</Text>
+        </Text>
+        <Text wrap="truncate-end">
+          Grade <Text color={gradeColor(setup.confluenceGrade ?? 'C') ?? DIM}>{setup.confluenceGrade ?? '—'}</Text>
+          <Text color={DIM}> | Cfx </Text>
+          <Text>{setup.confluenceCount ?? 0}</Text>
+          <Text color={DIM}> | Judge </Text>
+          <Text color={verdictColor(judge?.verdict)}>{judge != null ? judge.verdict.toUpperCase() : 'WAIT'}</Text>
+        </Text>
+        <Text color={DIM} wrap="truncate-end">
+          {truncateStr(
+            `Trace ${shortTraceRef(trace?.outcome.setupId ?? setup.id)} | Judge ${judgeEvent != null ? formatClockTime(judgeEvent.ts) : 'pending'}`
+            + `${fillEvent != null ? ` | Fill ${formatClockTime(fillEvent.ts)}` : ' | Waiting executor fill'}`,
+            56,
+          )}
+        </Text>
+        {linkedOperatorAudit != null ? (
+          <Text color={linkedOperatorAudit.status === 'failed' ? 'red' : linkedOperatorAudit.status === 'submitted' ? 'green' : 'yellow'} wrap="truncate-end">
+            {truncateStr(`OP ${linkedOperatorAudit.status.toUpperCase()} ${linkedOperatorAudit.action} @ ${formatClockTime(linkedOperatorAudit.ts)}`, 56)}
+          </Text>
+        ) : null}
+        {bull != null ? (
+          <Text color={stanceColor(bull.stance)} wrap="truncate-end">
+            {truncateStr(`Bull ${Math.round(bull.confidence * 100)}% ${bull.summary}`, 56)}
+          </Text>
+        ) : null}
+        {bear != null ? (
+          <Text color={stanceColor(bear.stance)} wrap="truncate-end">
+            {truncateStr(`Bear ${Math.round(bear.confidence * 100)}% ${bear.summary}`, 56)}
+          </Text>
+        ) : null}
+        {risk != null ? (
+          <Text color={DIM} wrap="truncate-end">
+            {truncateStr(`Risk ${Math.round(risk.confidence * 100)}% ${risk.summary}`, 56)}
+          </Text>
+        ) : (
+          <Text color={DIM} wrap="truncate-end">
+            Waiting for risk and judge detail on this setup
+          </Text>
+        )}
+      </Panel>
+    )
+  }
+
+  if (position == null) {
+    return (
+      <Panel title="Focus Detail" minHeight={8}>
+        <Text color={DIM}>Tracked position is temporarily unavailable</Text>
+        <Text color={DIM}>{truncateStr(`Current focus ${focusLabel}`, 56)}</Text>
+      </Panel>
+    )
+  }
+
+  const asset = getAssetPrice(position.coin)
+  const mark = asset?.markPrice ?? null
+  const upnl = mark != null
+    ? (mark - position.entryPrice) * Math.abs(position.currentSize) * (position.side === 'long' ? 1 : -1)
+    : null
+  const guardian = trace?.roles.guardian
+  const executor = trace?.roles.executor
+  const latestLifecycle = trace?.timeline.slice().reverse().find(item =>
+    item.actor === 'guardian' || item.actor === 'executor',
+  ) ?? null
+  const judgeEvent = getTimelineEvent(trace, item => item.actor === 'judge')
+  const fillEvent = getTimelineEvent(trace, item => item.actor === 'executor' && item.action === 'filled')
+  const guardianStart = getTimelineEvent(trace, item => item.actor === 'guardian')
+  const openedAgoMin = Math.max(0, Math.floor((Date.now() - position.openedAt) / 60_000))
+  const remainingPct = position.originalSize > 0
+    ? Math.max(0, Math.min(100, Math.round((position.currentSize / position.originalSize) * 100)))
+    : 0
+
+  return (
+    <Panel title="Focus Detail" minHeight={8}>
+      <Text bold>{truncateStr(`${position.coin} ${position.side.toUpperCase()} [${position.strategyId}]`, 56)}</Text>
+      <Text color={DIM}>{truncateStr(`Focus ${focusLabel} | tracked | open ${openedAgoMin}m`, 56)}</Text>
+      <Box justifyContent="space-between">
+        <Text color={position.side === 'long' ? 'green' : 'red'}>{position.side.toUpperCase()}</Text>
+        <Text color={ACCENT}>
+          {mark != null ? `MARK ${formatUsd(mark)}` : 'MARK ---'}
+          {upnl != null ? ` | ${upnl >= 0 ? '+' : ''}${upnl.toFixed(2)}` : ''}
+        </Text>
+      </Box>
+      <Text>
+        Size <Text color={ACCENT}>{position.currentSize.toFixed(4)}</Text>
+        <Text color={DIM}>/{position.originalSize.toFixed(4)} ({remainingPct}%)</Text>
+        <Text color={DIM}> | Lev </Text>
+        <Text>{position.leverage.toFixed(0)}x</Text>
+      </Text>
+      <Text wrap="truncate-end">
+        Entry {formatUsd(position.entryPrice)}
+        <Text color={DIM}> | </Text>
+        <Text color="red">SL {formatUsd(position.slPrice)}</Text>
+        <Text color={DIM}> | </Text>
+        <Text color="green">TP {formatUsd(position.tpPrice)}</Text>
+      </Text>
+      <Text wrap="truncate-end">
+        <Text color={guardian != null ? 'yellow' : DIM}>
+          Guard {guardian != null ? formatStateLabel(guardian.state) : 'WAITING'}
+        </Text>
+        <Text color={DIM}> | </Text>
+        <Text color={executor != null ? ACCENT : DIM}>
+          Exec {executor != null ? formatStateLabel(executor.state) : 'IDLE'}
+        </Text>
+      </Text>
+      <Text color={DIM} wrap="truncate-end">
+        Partials {position.partialClosesFired.length > 0 ? position.partialClosesFired.map(idx => idx + 1).join(',') : 'none'}
+        <Text color={DIM}> | Sync {formatClockTime(position.lastSyncAt)}</Text>
+      </Text>
+      <Text color={DIM} wrap="truncate-end">
+        {truncateStr(
+          `Origin ${shortTraceRef(trace?.outcome.setupId)} | Judge ${judgeEvent != null ? formatClockTime(judgeEvent.ts) : '—'}`
+          + ` | Fill ${fillEvent != null ? formatClockTime(fillEvent.ts) : formatClockTime(position.openedAt)}`
+          + `${guardianStart != null ? ` | Guard ${formatClockTime(guardianStart.ts)}` : ''}`,
+          56,
+        )}
+      </Text>
+      {linkedOperatorAudit != null ? (
+        <Text color={linkedOperatorAudit.status === 'failed' ? 'red' : linkedOperatorAudit.status === 'submitted' ? 'green' : 'yellow'} wrap="truncate-end">
+          {truncateStr(`OP ${linkedOperatorAudit.status.toUpperCase()} ${linkedOperatorAudit.action} @ ${formatClockTime(linkedOperatorAudit.ts)}`, 56)}
+        </Text>
+      ) : null}
+      {latestLifecycle != null ? (
+        <Text color={timelineActorColor(latestLifecycle.actor)} wrap="truncate-end">
+          {truncateStr(`${latestLifecycle.actor.toUpperCase()} ${latestLifecycle.summary}`, 56)}
+        </Text>
+      ) : (
+        <Text color={DIM} wrap="truncate-end">
+          Waiting for guardian or executor lifecycle updates
+        </Text>
+      )}
+    </Panel>
   )
 })
 
@@ -1327,12 +1844,23 @@ function App({ sources }: { sources: TuiDataSources }) {
   const [tick, setTick] = useState(0)
   const [account, setAccount] = useState<{ effectiveBalance: number; accountValue: number; spotUsdcBalance: number; totalMarginUsed: number; withdrawable: number } | null>(null)
   const [isBackfillDone, setIsBackfillDone] = useState(_backfillDone)
+  const [deliberationFocus, setDeliberationFocus] = useState<DeliberationFocus>({ kind: 'auto' })
+  const [pendingPauseConfirm, setPendingPauseConfirm] = useState<{ strategyId: string; expiresAt: number } | null>(null)
+  const [pendingCloseConfirm, setPendingCloseConfirm] = useState<{ positionId: string; expiresAt: number } | null>(null)
+  const [pendingReduceConfirm, setPendingReduceConfirm] = useState<{ positionId: string; closePct: number; expiresAt: number } | null>(null)
+  const [actionBanner, setActionBanner] = useState<{ color: 'green' | 'yellow' | 'red'; text: string; expiresAt: number } | null>(null)
+  const [ephemeralOperatorAudit, setEphemeralOperatorAudit] = useState<OperatorAuditEntry[]>([])
+
+  const appendEphemeralOperatorAudit = (entry: Omit<OperatorAuditEntry, 'ts'>) => {
+    const next: OperatorAuditEntry = { ts: Date.now(), ...entry }
+    setEphemeralOperatorAudit(current => [...current.slice(-(MAX_OPERATOR_AUDIT_ENTRIES - 1)), next])
+  }
 
   // Keyboard
   useInput((input, key) => {
     if (input === 'q' || (key.ctrl && input === 'c')) {
       exit()
-      process.emit('SIGINT' as any)
+      process.emit('SIGINT')
     }
   })
 
@@ -1387,7 +1915,301 @@ function App({ sources }: { sources: TuiDataSources }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const activeSetups = useMemo(() => sources.getActiveSetups(), [tick])
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  const decisionTraces = useMemo(() => sources.getDecisionTraces(), [tick])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const invStats = useMemo(() => sources.getInvalidationStats(), [tick])
+  const focusCandidates = useMemo(
+    () => buildDeliberationFocusCandidates(positions, activeSetups),
+    [positions, activeSetups],
+  )
+  const focusSlots = useMemo(
+    () => buildDeliberationFocusSlots(focusCandidates, positions, activeSetups),
+    [focusCandidates, positions, activeSetups],
+  )
+  const focusedTrace = useMemo(
+    () => resolveFocusedDecisionTrace(decisionTraces, deliberationFocus),
+    [decisionTraces, deliberationFocus],
+  )
+  const deliberationFocusLabel = useMemo(
+    () => describeDeliberationFocus(deliberationFocus, positions, activeSetups),
+    [deliberationFocus, positions, activeSetups],
+  )
+  const focusedCoin = useMemo(
+    () => resolveFocusedCoin(deliberationFocus, positions, activeSetups),
+    [deliberationFocus, positions, activeSetups],
+  )
+  const focusedStrategyId = useMemo(
+    () => resolveFocusedStrategyId(deliberationFocus, positions, activeSetups),
+    [deliberationFocus, positions, activeSetups],
+  )
+  const focusedPosition = useMemo(
+    () => resolveFocusedPosition(deliberationFocus, positions),
+    [deliberationFocus, positions],
+  )
+  const focusedSetup = useMemo(
+    () => resolveFocusedSetup(deliberationFocus, activeSetups),
+    [deliberationFocus, activeSetups],
+  )
+  const focusedPositionId = focusedPosition?.positionId ?? null
+  const focusedTrackedPosition = useMemo(
+    () => focusedPositionId != null ? sources.getTrackedPosition(focusedPositionId) : null,
+    [focusedPositionId, sources, tick],
+  )
+  const focusedPositionLabel = focusedPosition != null
+    ? `${focusedPosition.coin} ${focusedPosition.side.toUpperCase()}`
+    : null
+  const focusedStrategyPaused = focusedStrategyId != null
+    ? (snapshot.strategyGlobals?.[focusedStrategyId]?.globalPaused ?? false)
+    : false
+  const persistedOperatorAudit = sources.getOperatorAuditEntries()
+  const briefingRefreshStats = useMemo(() => sources.getBriefingRefreshStats(), [tick])
+  const briefingRefreshHealth = useMemo(() => sources.getBriefingRefreshHealth(), [tick])
+  const briefingRefreshHistory = useMemo(() => sources.getBriefingRefreshHistory(), [tick])
+  const briefingRefreshIncidents = useMemo(() => sources.getBriefingRefreshIncidents(), [tick])
+  const operatorAudit = useMemo(
+    () => mergeOperatorAuditEntries(persistedOperatorAudit, ephemeralOperatorAudit),
+    [persistedOperatorAudit, ephemeralOperatorAudit],
+  )
+  const focusedOperatorAudit = useMemo(
+    () => resolveFocusedOperatorAudit(operatorAudit, deliberationFocus, positions, activeSetups),
+    [operatorAudit, deliberationFocus, positions, activeSetups],
+  )
+  const healthTargetFocus = useMemo(
+    () => resolveBriefingHealthFocus(briefingRefreshHealth, positions, activeSetups),
+    [briefingRefreshHealth, positions, activeSetups],
+  )
+
+  useEffect(() => {
+    if (deliberationFocus.kind === 'auto') return
+    const stillExists = focusCandidates.some(candidate => {
+      if (candidate.kind !== deliberationFocus.kind) return false
+      if (candidate.kind === 'position' && deliberationFocus.kind === 'position') {
+        return candidate.positionId === deliberationFocus.positionId
+      }
+      if (candidate.kind === 'setup' && deliberationFocus.kind === 'setup') {
+        return candidate.setupId === deliberationFocus.setupId
+      }
+      return false
+    })
+    if (!stillExists) setDeliberationFocus({ kind: 'auto' })
+  }, [focusCandidates, deliberationFocus])
+
+  useEffect(() => {
+    const now = Date.now()
+    if (pendingPauseConfirm != null && pendingPauseConfirm.expiresAt <= now) {
+      setPendingPauseConfirm(null)
+    }
+    if (actionBanner != null && actionBanner.expiresAt <= now) {
+      setActionBanner(null)
+    }
+    if (pendingCloseConfirm != null && pendingCloseConfirm.expiresAt <= now) {
+      setPendingCloseConfirm(null)
+    }
+    if (pendingReduceConfirm != null && pendingReduceConfirm.expiresAt <= now) {
+      setPendingReduceConfirm(null)
+    }
+  }, [tick, pendingPauseConfirm, pendingCloseConfirm, pendingReduceConfirm, actionBanner])
+
+  useEffect(() => {
+    if (pendingPauseConfirm == null) return
+    if (focusedStrategyId == null || focusedStrategyId !== pendingPauseConfirm.strategyId) {
+      setPendingPauseConfirm(null)
+    }
+  }, [focusedStrategyId, pendingPauseConfirm])
+
+  useEffect(() => {
+    if (pendingCloseConfirm == null) return
+    if (focusedPositionId == null || focusedPositionId !== pendingCloseConfirm.positionId) {
+      setPendingCloseConfirm(null)
+    }
+  }, [focusedPositionId, pendingCloseConfirm])
+
+  useEffect(() => {
+    if (pendingReduceConfirm == null) return
+    if (focusedPositionId == null || focusedPositionId !== pendingReduceConfirm.positionId) {
+      setPendingReduceConfirm(null)
+    }
+  }, [focusedPositionId, pendingReduceConfirm])
+
+  useInput((input) => {
+    if (input === 'n') {
+      setDeliberationFocus(current => cycleDeliberationFocus(current, focusCandidates, 1))
+    }
+    if (input === 'p') {
+      setDeliberationFocus(current => cycleDeliberationFocus(current, focusCandidates, -1))
+    }
+    if (input === '0') {
+      setDeliberationFocus({ kind: 'auto' })
+    }
+    if (input === 'h') {
+      if (healthTargetFocus != null) {
+        setDeliberationFocus(healthTargetFocus)
+        setActionBanner({
+          color: 'green',
+          text: `Focused health target ${describeDeliberationFocus(healthTargetFocus, positions, activeSetups)}`,
+          expiresAt: Date.now() + 4_000,
+        })
+      } else {
+        setActionBanner({
+          color: 'yellow',
+          text: 'No health target available to focus right now',
+          expiresAt: Date.now() + 4_000,
+        })
+      }
+    }
+    const directFocus = resolveDeliberationFocusDigit(input, focusSlots)
+    if (directFocus != null) {
+      setDeliberationFocus(directFocus)
+    }
+    if (input === 's') {
+      if (focusedStrategyId == null) {
+        setActionBanner({
+          color: 'yellow',
+          text: 'Select a focused setup or position before using strategy actions',
+          expiresAt: Date.now() + 4_000,
+        })
+        return
+      }
+
+      const strategyLabel = focusedStrategyId
+      if (focusedStrategyPaused) {
+        const ok = sources.setStrategyPaused(
+          focusedStrategyId,
+          false,
+          `manual via TUI (${deliberationFocusLabel})`,
+        )
+        setPendingPauseConfirm(null)
+        setActionBanner({
+          color: ok ? 'green' : 'red',
+          text: ok
+            ? `${strategyLabel} resumed from TUI focus`
+            : `${strategyLabel} resume failed`,
+          expiresAt: Date.now() + 5_000,
+        })
+        return
+      }
+
+      if (pendingPauseConfirm?.strategyId !== focusedStrategyId) {
+        setPendingPauseConfirm({ strategyId: focusedStrategyId, expiresAt: Date.now() + 5_000 })
+        appendEphemeralOperatorAudit({
+          action: 'pause',
+          target: strategyLabel,
+          status: 'armed',
+          coin: focusedCoin,
+          strategyId: focusedStrategyId,
+        })
+        setActionBanner({
+          color: 'yellow',
+          text: `${strategyLabel} pause is armed. Press s again to confirm. This may close live positions.`,
+          expiresAt: Date.now() + 5_000,
+        })
+        return
+      }
+
+      const ok = sources.setStrategyPaused(
+        focusedStrategyId,
+        true,
+        `manual via TUI (${deliberationFocusLabel})`,
+      )
+      setPendingPauseConfirm(null)
+      setActionBanner({
+        color: ok ? 'green' : 'red',
+        text: ok
+          ? `${strategyLabel} paused from TUI focus`
+          : `${strategyLabel} pause failed`,
+        expiresAt: Date.now() + 5_000,
+      })
+      return
+    }
+    if (input === 'x') {
+      if (focusedPositionId == null || focusedPositionLabel == null) {
+        setActionBanner({
+          color: 'yellow',
+          text: 'Focus a tracked position before using close action',
+          expiresAt: Date.now() + 4_000,
+        })
+        return
+      }
+
+      if (pendingCloseConfirm?.positionId !== focusedPositionId) {
+        setPendingCloseConfirm({ positionId: focusedPositionId, expiresAt: Date.now() + 5_000 })
+        appendEphemeralOperatorAudit({
+          action: 'close',
+          target: focusedPositionLabel,
+          status: 'armed',
+          coin: focusedTrackedPosition?.coin ?? focusedCoin,
+          strategyId: focusedTrackedPosition?.strategyId ?? focusedStrategyId,
+          positionId: focusedPositionId,
+        })
+        setActionBanner({
+          color: 'yellow',
+          text: `${focusedPositionLabel} close is armed. Press x again to confirm.`,
+          expiresAt: Date.now() + 5_000,
+        })
+        return
+      }
+
+      const ok = sources.closePosition(
+        focusedPositionId,
+        `manual via TUI (${focusedPositionLabel})`,
+      )
+      setPendingCloseConfirm(null)
+      setActionBanner({
+        color: ok ? 'green' : 'red',
+        text: ok
+          ? `${focusedPositionLabel} close submitted from TUI focus`
+          : `${focusedPositionLabel} close failed`,
+        expiresAt: Date.now() + 5_000,
+      })
+      return
+    }
+    const reducePct = input === 'r' ? 0.25 : input === 'f' ? 0.5 : null
+    if (reducePct != null) {
+      if (focusedPositionId == null || focusedPositionLabel == null) {
+        setActionBanner({
+          color: 'yellow',
+          text: 'Focus a tracked position before using reduce action',
+          expiresAt: Date.now() + 4_000,
+        })
+        return
+      }
+
+      const isSamePending = pendingReduceConfirm?.positionId === focusedPositionId
+        && Math.abs(pendingReduceConfirm.closePct - reducePct) < 0.0001
+
+      if (!isSamePending) {
+        setPendingReduceConfirm({ positionId: focusedPositionId, closePct: reducePct, expiresAt: Date.now() + 5_000 })
+        appendEphemeralOperatorAudit({
+          action: `reduce ${(reducePct * 100).toFixed(0)}%`,
+          target: focusedPositionLabel,
+          status: 'armed',
+          coin: focusedTrackedPosition?.coin ?? focusedCoin,
+          strategyId: focusedTrackedPosition?.strategyId ?? focusedStrategyId,
+          positionId: focusedPositionId,
+        })
+        setActionBanner({
+          color: 'yellow',
+          text: `${focusedPositionLabel} reduce ${(reducePct * 100).toFixed(0)}% is armed. Press the same key again to confirm.`,
+          expiresAt: Date.now() + 5_000,
+        })
+        return
+      }
+
+      const ok = sources.partialClosePosition(
+        focusedPositionId,
+        reducePct,
+        `manual via TUI (${focusedPositionLabel})`,
+      )
+      setPendingReduceConfirm(null)
+      setActionBanner({
+        color: ok ? 'green' : 'red',
+        text: ok
+          ? `${focusedPositionLabel} reduced ${(reducePct * 100).toFixed(0)}% from TUI focus`
+          : `${focusedPositionLabel} reduce failed`,
+        expiresAt: Date.now() + 5_000,
+      })
+    }
+  })
 
   const layout = useMemo(() => computeTuiLayout(termRows), [termRows])
   const halfInner = useMemo(() => computeHalfInnerWidth(termCols), [termCols])
@@ -1441,6 +2263,21 @@ function App({ sources }: { sources: TuiDataSources }) {
   return (
     <Box flexDirection="column" height={termRows} overflow="hidden">
       <HeaderBar snapshot={snapshot} coinCount={trackedCoins.length} />
+      <FocusStrip slots={focusSlots} current={deliberationFocus} />
+      <ActionStrip
+        strategyId={focusedStrategyId}
+        strategyPaused={focusedStrategyPaused}
+        pendingPauseConfirm={pendingPauseConfirm?.strategyId ?? null}
+        positionLabel={focusedPositionLabel}
+        pendingCloseConfirm={pendingCloseConfirm?.positionId === focusedPositionId ? focusedPositionLabel : null}
+        pendingReduceConfirm={
+          pendingReduceConfirm?.positionId === focusedPositionId && focusedPositionLabel != null
+            ? `${focusedPositionLabel} ${(pendingReduceConfirm.closePct * 100).toFixed(0)}%`
+            : null
+        }
+        banner={actionBanner == null ? null : { color: actionBanner.color, text: actionBanner.text }}
+      />
+      <OperatorAuditPanel entries={operatorAudit} />
 
       <Box flexShrink={0}>
         <AccountPanel
@@ -1453,18 +2290,34 @@ function App({ sources }: { sources: TuiDataSources }) {
           liveStrategyStats={liveStrategyStats}
         />
         <StrategyPanel snapshot={snapshot} activeSetups={activeSetups} invStats={invStats} />
-        <BuddyPanel mood={getBuddyMood(snapshot, positions.length, snapshot.global.dailyPnl)} tick={tick} />
-        <SystemPanel report={health} subCount={subCount} />
+        <DeliberationPanel trace={focusedTrace} focusLabel={deliberationFocusLabel} />
+        <UnifiedHealthPanel
+          report={health}
+          subCount={subCount}
+          stats={briefingRefreshStats}
+          briefingHealth={briefingRefreshHealth}
+          history={briefingRefreshHistory}
+          incidents={briefingRefreshIncidents}
+        />
       </Box>
 
       <Box flexDirection="row" flexGrow={1} minHeight={0} width="100%">
         <Box flexGrow={1} flexBasis="50%" minWidth={0} width="50%" flexDirection="column">
+          <FocusDetailPanel
+            position={focusedTrackedPosition}
+            setup={focusedSetup}
+            trace={focusedTrace}
+            linkedOperatorAudit={focusedOperatorAudit}
+            getAssetPrice={sources.getAssetPrice}
+            focusLabel={deliberationFocusLabel}
+          />
           <PositionsPanel
             positions={positions}
             getAssetPrice={sources.getAssetPrice}
             rowsPerCol={layout.positionsRowsPerCol}
             pc={positionsColumnWidths}
             priceTick={tick}
+            focusedPositionId={focusedPositionId}
           />
         </Box>
         <Box flexGrow={1} flexBasis="50%" minWidth={0} width="50%" flexDirection="column">
@@ -1475,6 +2328,8 @@ function App({ sources }: { sources: TuiDataSources }) {
             rowsPerCol={layout.watchlistRowsPerCol}
             col={watchlistColumnWidths}
             priceTick={tick}
+            focusedCoin={focusedCoin}
+            focusLabel={deliberationFocusLabel}
           />
         </Box>
       </Box>

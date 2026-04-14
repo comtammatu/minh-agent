@@ -17,6 +17,7 @@ import type {
   JournalEntry,
   JournalFilter,
   DailySummary,
+  JournalEventType,
 } from './types.js'
 import type { ExchangeId } from '../types.js'
 
@@ -26,7 +27,7 @@ import type { ExchangeId } from '../types.js'
  * Persist a journal entry. Fire-and-forget — never throws.
  */
 export async function logJournalEntry(
-  eventType: string,
+  eventType: JournalEventType,
   coin: string | null,
   details: Record<string, unknown>,
   agentState?: string | null,
@@ -52,7 +53,30 @@ export function handleJournalAction(action: AgentAction, agentState?: string): v
   // Extract strategyId from details if present (Sprint 4.5)
   const strategyId = (action.details.strategyId as string) ?? null
   // Fire-and-forget — no await needed at call site
-  logJournalEntry(action.eventType, action.coin, action.details, agentState ?? null, strategyId)
+  logJournalEntry(action.eventType as JournalEventType, action.coin, action.details, agentState ?? null, strategyId)
+}
+
+export async function logOperatorAuditEntry(
+  action: string,
+  target: string,
+  status: 'submitted' | 'failed',
+  options: {
+    coin?: string | null
+    strategyId?: string | null
+    exchange?: ExchangeId
+    source?: string
+    details?: Record<string, unknown>
+  } = {},
+): Promise<void> {
+  const { coin = null, strategyId = null, exchange = 'HL', source = 'tui', details = {} } = options
+  await logJournalEntry(
+    'operator',
+    coin,
+    { action, target, status, operatorSource: source, ...(strategyId != null ? { strategyId } : {}), ...details },
+    null,
+    strategyId,
+    exchange,
+  )
 }
 
 // ─── Read ───────────────────────────────────────────────────────────────────

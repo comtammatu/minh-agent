@@ -57,6 +57,13 @@ export interface PartialCloseDetail {
   reason: 'tp1_zone' | 'tp2_swing' | 'tp3_trail' | 'sl_hit' | 'be_hit' | 'end_of_data' | 'max_hold'
 }
 
+export interface BacktestTradeDiagnostics {
+  setupVariant: string
+  regime: string | null
+  zoneOrigin: string | null
+  killzoneName: string | null
+}
+
 // ─── Trade Record ───────────────────────────────────────────────────────────
 
 export interface BacktestTrade {
@@ -83,6 +90,9 @@ export interface BacktestTrade {
 
   /** Strategy that generated this trade. */
   strategyId?: string
+
+  /** Strategy metadata copied from setup.patternData for post-run diagnostics. */
+  diagnostics?: BacktestTradeDiagnostics
 
   /** Partial close breakdown (empty for single-exit trades). */
   partialCloses?: PartialCloseDetail[]

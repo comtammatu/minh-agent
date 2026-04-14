@@ -66,6 +66,12 @@ function isValidOrderUuid(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
 }
 
+function sideFromSnapshotSize(size: number): 'long' | 'short' | null {
+  if (size > 0) return 'long'
+  if (size < 0) return 'short'
+  return null
+}
+
 function clampPositiveFinite(n: number, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback
 }
@@ -123,6 +129,7 @@ export async function submitToExchange(
   svc?: IExchangeService,
   slPrice?: number,
   tpPrice?: number,
+  reduceOnly = false,
 ): Promise<ExchangeOrderResult> {
   try {
     const exchange = svc ?? getExchangeService()
@@ -132,7 +139,7 @@ export async function submitToExchange(
       type,
       price,
       size,
-      reduceOnly: false,
+      reduceOnly,
       cloid,
       ...(slPrice !== undefined ? { slPrice } : {}),
       ...(tpPrice !== undefined ? { tpPrice } : {}),
@@ -364,6 +371,10 @@ export class OrderManager {
   private dispatchToAgent: ((coin: string, event: AgentEvent, strategyId?: string) => void) | null = null
   /** Callback to register position with PositionMonitor on fill. */
   private onPositionOpen: ((params: { positionId: string; coin: string; side: 'long' | 'short'; entryPrice: number; size: number; slPrice: number; tpPrice: number; entryOrderId: string; leverage: number; strategyId?: string }) => void) | null = null
+  /** Callback to apply executed partial closes back into PositionMonitor. */
+  private onPositionPartialClose: ((positionId: string, closePct: number) => void) | null = null
+  /** Resolver for current tracked size (keeps closes aligned after partial exits). */
+  private resolveTrackedPositionSize: ((positionId: string) => number | null) | null = null
   /** ExchangePool for per-strategy exchange routing (Sprint 4.5). */
   private exchangePool: ExchangePool | null = null
 
@@ -375,6 +386,16 @@ export class OrderManager {
   /** Set callback to register positions with PositionMonitor on order fill. */
   setPositionOpenCallback(fn: (params: { positionId: string; coin: string; side: 'long' | 'short'; entryPrice: number; size: number; slPrice: number; tpPrice: number; entryOrderId: string; leverage: number; strategyId?: string }) => void): void {
     this.onPositionOpen = fn
+  }
+
+  /** Set callback to mirror successful partial closes into PositionMonitor. */
+  setPositionPartialCloseCallback(fn: (positionId: string, closePct: number) => void): void {
+    this.onPositionPartialClose = fn
+  }
+
+  /** Set resolver for current tracked position size. */
+  setPositionSizeResolver(fn: (positionId: string) => number | null): void {
+    this.resolveTrackedPositionSize = fn
   }
 
   /** Set the ExchangePool for per-strategy exchange routing (Sprint 4.5). */
@@ -1044,8 +1065,11 @@ export class OrderManager {
         // Find the entry order for this position, update its SL trigger
         await this.updateStopForPosition(action.positionId, action.newStopPrice)
         break
+      case 'partial_close':
+        await this.partialClosePosition(action.positionId, action.closePct)
+        break
       default:
-        // Other actions (watch, log_journal, partial_close, none) not handled here
+        // Other actions (watch, log_journal, none) not handled here
         break
     }
   }
@@ -1084,7 +1108,8 @@ export class OrderManager {
 
     // Place close order (opposite side) — use entry fillPrice as reference (HL needs a valid price even for market orders)
     const closeSide: 'long' | 'short' = entryOrder.side === 'long' ? 'short' : 'long'
-    const closeSize = entryOrder.fillSize > 0 ? entryOrder.fillSize : entryOrder.size
+    const closeSize = this.resolveTrackedPositionSize?.(positionId)
+      ?? (entryOrder.fillSize > 0 ? entryOrder.fillSize : entryOrder.size)
     const refPrice = entryOrder.fillPrice ?? entryOrder.price
     const cloid = generateCloid()
     if (getEffectivePaperTrade()) {
@@ -1110,6 +1135,42 @@ export class OrderManager {
     log.info('order-manager', `Position close submitted: ${entryOrder.coin} reason=${reason}`)
   }
 
+  /** Reduce an open position by a fraction of current tracked size. */
+  private async partialClosePosition(positionId: string, closePct: number): Promise<void> {
+    const entryOrder = this.findOrderByPositionContext(positionId)
+    if (!entryOrder || closePct <= 0 || closePct >= 1) return
+
+    const currentSize = this.resolveTrackedPositionSize?.(positionId)
+      ?? (entryOrder.fillSize > 0 ? entryOrder.fillSize : entryOrder.size)
+    if (!(currentSize > 0)) return
+
+    const closeSize = currentSize * closePct
+    const remainingSize = Math.max(0, currentSize - closeSize)
+    const svc = this.getExchangeForStrategy(entryOrder.strategyId)
+    const closeSide: 'long' | 'short' = entryOrder.side === 'long' ? 'short' : 'long'
+    const refPrice = entryOrder.fillPrice ?? entryOrder.price
+    const cloid = generateCloid()
+
+    if (getEffectivePaperTrade()) {
+      const slippageDir = closeSide === 'long' ? 1 : -1
+      const closePrice = refPrice * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
+      paperSimulateFill(entryOrder.coin, closeSide, closePrice, closeSize, cloid)
+      const partial = getPaperTracker(entryOrder.strategyId).recordPartialExit(entryOrder.id, closePrice, closePct)
+      if (!partial) return
+    } else {
+      const closeRef = computeMarketRefPrice(entryOrder.coin, closeSide, refPrice)
+      const result = await submitToExchange(entryOrder.coin, closeSide, 'market', closeRef, closeSize, cloid, svc, undefined, undefined, true)
+      if (!result.success) {
+        log.error('order-manager', `Partial close failed for ${entryOrder.coin}: ${result.error}`)
+        return
+      }
+    }
+
+    await this.resizeProtectiveOrders(entryOrder, remainingSize, svc)
+    this.onPositionPartialClose?.(positionId, closePct)
+    log.info('order-manager', `Partial close submitted: ${entryOrder.coin} ${(closePct * 100).toFixed(0)}%`)
+  }
+
   /** Update SL trigger for a position (trail stop). */
   private async updateStopForPosition(positionId: string, newStopPrice: number): Promise<void> {
     const entryOrder = this.findOrderByPositionContext(positionId)
@@ -1132,6 +1193,27 @@ export class OrderManager {
     // No match — position not found
     log.warn('order-manager', `findOrderByPositionContext: no filled order with positionId=${positionId}`)
     return null
+  }
+
+  /** Resize SL/TP protection to the remaining position size after a scale-out. */
+  private async resizeProtectiveOrders(entryOrder: Order, remainingSize: number, svc: IExchangeService): Promise<void> {
+    if (remainingSize <= 0 || getEffectivePaperTrade() || svc.exchangeId === 'BB') return
+
+    const triggers = this.triggerOrders.get(entryOrder.id)
+    if (!triggers) return
+
+    for (const trigger of triggers) {
+      trigger.size = remainingSize
+      if (trigger.exchangeOrderId) {
+        await cancelOnExchange(trigger.exchangeOrderId, trigger.coin, svc)
+      }
+      const newResult = await placeTriggerOnExchange(trigger, svc)
+      if (newResult.success) {
+        trigger.exchangeOrderId = newResult.exchangeOrderId
+      } else {
+        log.error('order-manager', `Trigger resize failed for ${entryOrder.coin} ${trigger.type}: ${newResult.error}`)
+      }
+    }
   }
 
   // ── Query ─────────────────────────────────────────────────────────────
@@ -1218,39 +1300,51 @@ export class OrderManager {
    * Called once at startup, after setPositionOpenCallback is wired.
    */
   restoreOpenPositions(exchangeSnaps: ExchangePositionSnapshot[]): void {
-    // Build set of coins currently open on exchange
-    const openCoins = new Set<string>()
-    for (const snap of exchangeSnaps) {
-      if (snap.size !== 0) openCoins.add(snap.coin)
-    }
-    if (openCoins.size === 0) return
-
-    // For each open coin, find the most recent filled order in our cache
-    const latestByCoin = new Map<string, Order>()
-    for (const [, order] of this.orders) {
-      if (order.status !== 'filled') continue
-      if (!order.positionId || !order.fillPrice) continue
-      if (!openCoins.has(order.coin)) continue
-      const existing = latestByCoin.get(order.coin)
-      const orderTs = order.filledAt ?? order.updatedAt
-      const existingTs = existing ? (existing.filledAt ?? existing.updatedAt) : 0
-      if (!existing || orderTs > existingTs) latestByCoin.set(order.coin, order)
-    }
+    const openSnaps = exchangeSnaps.filter(snap => sideFromSnapshotSize(snap.size) != null)
+    if (openSnaps.length === 0) return
 
     let restored = 0
-    for (const [, order] of latestByCoin) {
+    const restoredPositionIds = new Set<string>()
+    for (const snap of openSnaps) {
+      const side = sideFromSnapshotSize(snap.size)
+      if (side == null) continue
+
+      const baseCandidates: Order[] = []
+      for (const [, order] of this.orders) {
+        if (order.status !== 'filled') continue
+        if (!order.positionId || !order.fillPrice) continue
+        if (restoredPositionIds.has(order.positionId)) continue
+        if (order.coin !== snap.coin || order.side !== side) continue
+        baseCandidates.push(order)
+      }
+
+      const candidates = snap.strategyId != null
+        ? baseCandidates.filter(order => order.strategyId === snap.strategyId)
+        : baseCandidates
+      const rankedCandidates = (candidates.length > 0 ? candidates : baseCandidates)
+        .sort((a, b) => (b.filledAt ?? b.updatedAt) - (a.filledAt ?? a.updatedAt))
+      const order = rankedCandidates[0]
+      if (!order) {
+        log.warn(
+          'order-manager',
+          `restoreOpenPositions: no filled order match for ${snap.coin} ${side}${snap.strategyId != null ? ` [${snap.strategyId}]` : ''}`,
+        )
+        continue
+      }
+
       this.onPositionOpen?.({
         positionId: order.positionId!,
         coin: order.coin,
         side: order.side,
         entryPrice: order.fillPrice!,
-        size: order.size,  // fillSize not persisted; original size is close enough for trail/TUI
+        size: order.fillSize > 0 ? order.fillSize : order.size,
         slPrice: order.slPrice ?? 0,
         tpPrice: order.tpPrice ?? 0,
         entryOrderId: order.id,
         leverage: 0,  // unknown at restore time; TUI merge uses exchange value as fallback
         strategyId: order.strategyId,
       })
+      restoredPositionIds.add(order.positionId!)
       restored++
     }
 
