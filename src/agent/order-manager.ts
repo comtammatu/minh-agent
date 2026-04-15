@@ -363,7 +363,9 @@ export class OrderManager {
   /** Callback to dispatch events back to TradingAgent (with strategyId). */
   private dispatchToAgent: ((coin: string, event: AgentEvent, strategyId?: string) => void) | null = null
   /** Callback to register position with PositionMonitor on fill. */
-  private onPositionOpen: ((params: { positionId: string; coin: string; side: 'long' | 'short'; entryPrice: number; size: number; slPrice: number; tpPrice: number; entryOrderId: string; leverage: number; strategyId?: string }) => void) | null = null
+  private onPositionOpen: ((params: { positionId: string; coin: string; side: 'long' | 'short'; entryPrice: number; size: number; slPrice: number; tpPrice: number; entryOrderId: string; leverage: number; strategyId?: string; entryInterval?: import('../types.js').CandleInterval }) => void) | null = null
+  /** Tracks entry interval per order (for thesis capture at fill time). */
+  private orderIntervals: Map<string, import('../types.js').CandleInterval> = new Map()
   /** ExchangePool for per-strategy exchange routing (Sprint 4.5). */
   private exchangePool: ExchangePool | null = null
 
@@ -373,7 +375,7 @@ export class OrderManager {
   }
 
   /** Set callback to register positions with PositionMonitor on order fill. */
-  setPositionOpenCallback(fn: (params: { positionId: string; coin: string; side: 'long' | 'short'; entryPrice: number; size: number; slPrice: number; tpPrice: number; entryOrderId: string; leverage: number; strategyId?: string }) => void): void {
+  setPositionOpenCallback(fn: (params: { positionId: string; coin: string; side: 'long' | 'short'; entryPrice: number; size: number; slPrice: number; tpPrice: number; entryOrderId: string; leverage: number; strategyId?: string; entryInterval?: import('../types.js').CandleInterval }) => void): void {
     this.onPositionOpen = fn
   }
 
@@ -480,6 +482,8 @@ export class OrderManager {
     // Persist pending
     await insertOrder(order)
     this.orders.set(order.id, order)
+    // Track entry interval for thesis capture at fill time
+    this.orderIntervals.set(order.id, setup.interval)
     log.info('order-manager', `Order created: ${order.id} ${coin} ${side} @ ${entryPrice} strategy=${strategyId} [cloid=${cloid.slice(0, 10)}...]`)
 
     // Submit to exchange (or simulate in paper mode) — route to strategy-specific wallet
@@ -644,7 +648,10 @@ export class OrderManager {
         entryOrderId: order.id,
         leverage,
         strategyId: order.strategyId,
+        entryInterval: this.orderIntervals.get(order.id),
       })
+      // Clean up interval tracking
+      this.orderIntervals.delete(order.id)
     }
 
     // Dispatch to agent (with strategyId for correct routing)

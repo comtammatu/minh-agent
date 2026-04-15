@@ -750,6 +750,38 @@ export const PARTIAL_CLOSE = {
   secondTpRatio: 3.0,   // second TP at 3R (remainder rides full target)
 } as const
 
+/** Active thesis monitor: re-evaluate trade thesis during open position.
+ * Checks if multi-TF regime/bias alignment that justified entry still holds.
+ * Deterioration score 0.0 (fully aligned) → 1.0 (fully opposed).
+ * HTF flips weighted 2x entry TF — a 4h regime flip matters more than a 5m flip. */
+export const THESIS_MONITOR = {
+  enabled: true,
+  /** Minimum ms between thesis checks = entry TF duration × this multiplier. */
+  cooldownMultiplier: 1.0,
+  /** HTF weight relative to entry TF (higher = HTF flips matter more). */
+  htfWeight: 2.0,
+  /** Score below this = aligned, no action. */
+  minorThreshold: 0.3,
+  /** Score at or above this → move SL to breakeven. */
+  moderateThreshold: 0.5,
+  /** Score at or above this → close position immediately. */
+  severeThreshold: 0.8,
+} as const
+
+/** Timeframes to monitor for thesis per entry TF.
+ * Each entry TF checks itself + its HTF chain (via HTF_MAP). */
+export function getThesisMonitorTFs(entryTf: CandleInterval): CandleInterval[] {
+  const tfs: CandleInterval[] = [entryTf]
+  let current = entryTf
+  while (true) {
+    const htf = HTF_MAP[current]
+    if (htf === current || tfs.includes(htf)) break
+    tfs.push(htf)
+    current = htf
+  }
+  return tfs
+}
+
 /** Minimum position size as fraction of account. Below → skip. */
 export const MIN_POSITION_SIZE_PCT = 0.001
 

@@ -35,6 +35,7 @@ Runtime: Bun | SDK: @nktkas/hyperliquid | Store: In-memory Map<string, Candle[]>
 
 - `src/indicators/` — Pure functions: ATR, SMA, EMA, RSI, ADX, FVG, OB, BOS, VSA, Wyckoff
 - `src/strategy/` — Orchestrator + diagnostics + registry + strategies (layered/quant/smc-sd) + shared (regime/invalidation)
+- `src/agent/` — Trading agent state machine, order manager, position monitor, thesis monitor, exits, circuit breakers
 - `src/feed/` — REST backfill, WS subscribe, in-memory store (I/O boundary)
 - `src/config.ts` — All thresholds, regime multipliers, coin/TF lists
 - `src/types.ts` — Core type definitions
@@ -57,6 +58,7 @@ Runtime: Bun | SDK: @nktkas/hyperliquid | Store: In-memory Map<string, Candle[]>
 - **Staleness**: Track `lastCandleTime` per coin/tf, WARNING after 60s silence
 - **Regime filter**: Soft — does NOT block counter-trend, reduces confidence (×1.0/×0.8/×0.3)
 - **detectRegime**: Requires 50+ candles (SMA/ATR/ADX/volume)
+- **Thesis Monitor**: Active positions re-evaluate multi-TF regime/bias every sync cycle. Score 0→1 deterioration: <0.3 hold, 0.3–0.5 alert, 0.5–0.8 SL→breakeven, ≥0.8 close. Config in `THESIS_MONITOR`. Legacy positions (null thesis) are skipped
 
 ## Code Patterns
 

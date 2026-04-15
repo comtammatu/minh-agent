@@ -32,9 +32,16 @@ import type { SignalSide } from '../types.js'
 import {
   EXCHANGE_SYNC_INTERVAL_MS,
   PAPER_WALLET_STRATEGY_IDS,
+  THESIS_MONITOR,
+  TIMEFRAME_MS,
   TRAIL_UPDATE_THRESHOLD,
+  getThesisMonitorTFs,
   tryGetActiveExchange,
 } from '../config.js'
+import { captureThesis, evaluateThesis, shouldCheckThesis, thesisToActions } from './thesis-monitor.js'
+import type { ThesisTFSnapshot } from './types.js'
+import { getStatus } from '../strategy/orchestrator.js'
+import type { MarketRegime } from '../types.js'
 import { getHLExchangeService as getExchangeService } from '../execution/hl-exchange-service.js'
 import type { IExchangeService as ExchangeService, AccountState } from '../execution/exchange-service.js'
 import { getExchangePool, type IExchangeService as PoolExchangeService } from '../execution/exchange-pool.js'
@@ -285,6 +292,7 @@ export class PositionMonitor {
     entryOrderId: string
     leverage: number
     strategyId?: string
+    entryInterval?: import('../types.js').CandleInterval
   }): PositionState {
     const state: PositionState = {
       positionId: params.positionId,
@@ -302,10 +310,35 @@ export class PositionMonitor {
       partialClosesFired: [],
       lastSyncAt: Date.now(),
       openedAt: Date.now(),
+      thesis: null,
+      lastThesisCheckAt: 0,
     }
     this.positions.set(params.positionId, state)
     log.info('position-monitor', `Tracking position: ${params.coin} ${params.side} @ ${params.entryPrice} size=${params.size}`)
+
+    // Auto-capture thesis from current regime/bias status if entry interval provided
+    if (THESIS_MONITOR.enabled && params.entryInterval) {
+      try {
+        const snapshots = this.gatherCurrentSnapshots({ ...state, thesis: { entryInterval: params.entryInterval, side: params.side, snapshots: [], capturedAt: 0 } })
+        if (snapshots && snapshots.length > 0) {
+          state.thesis = captureThesis(params.side, params.entryInterval, snapshots)
+          log.info('position-monitor', `Thesis captured for ${params.coin}: ${snapshots.map(s => `${s.interval}=${s.regime}/${s.bias}`).join(', ')}`)
+        }
+      } catch (err) {
+        log.warn('position-monitor', `Thesis capture failed for ${params.coin}: ${err instanceof Error ? err.message : err}`)
+      }
+    }
+
     return state
+  }
+
+  /** Set trade thesis for active position monitoring. Called after openPosition. */
+  setPositionThesis(positionId: string, thesis: import('./types.js').TradeThesis): void {
+    const pos = this.positions.get(positionId)
+    if (pos) {
+      pos.thesis = thesis
+      log.info('position-monitor', `Thesis set for ${pos.coin}: ${thesis.snapshots.map(s => `${s.interval}=${s.regime}/${s.bias}`).join(', ')}`)
+    }
   }
 
   /** Remove a position from monitoring (called on close). */
@@ -502,6 +535,36 @@ export class PositionMonitor {
 
       if (this.positions.size === 0) return []
 
+      // Thesis evaluation: re-check multi-TF regime/bias for open positions.
+      // Runs in BOTH paper and live modes (before the paper/live split below).
+      if (THESIS_MONITOR.enabled) {
+        for (const [, pos] of this.positions) {
+          if (!pos.thesis) continue
+          const entryTfMs = TIMEFRAME_MS[pos.thesis.entryInterval] ?? 300_000
+          const now = Date.now()
+          if (!shouldCheckThesis(pos, now, entryTfMs)) continue
+          pos.lastThesisCheckAt = now
+          const currentSnaps = this.gatherCurrentSnapshots(pos)
+          if (!currentSnaps) continue
+          const evaluation = evaluateThesis(pos.thesis, currentSnaps)
+          const thesisActions = thesisToActions(evaluation, pos)
+          for (const action of thesisActions) {
+            await this.executeAction(pos, action)
+            if (action.type === 'close') {
+              // Position closed by thesis — dispatch to agent and stop further checks
+              this.dispatchToAgent?.(pos.coin, {
+                type: 'position_closed',
+                closePrice: pos.entryPrice,  // approximate — actual close may differ
+                pnl: 0,
+                reason: action.reason,
+              } as AgentEvent, pos.strategyId)
+              this.positions.delete(pos.positionId)
+              break
+            }
+          }
+        }
+      }
+
       // Paper mode: simulate SL/TP hits using current mark prices instead of exchange query
       if (getEffectivePaperTrade()) {
         await this.checkPaperExits()
@@ -542,6 +605,31 @@ export class PositionMonitor {
   }
 
   // ── Paper SL/TP Simulation ────────────────────────────────────────────
+
+  /**
+   * Gather current regime + bias snapshots for thesis evaluation.
+   * Uses orchestrator's cached StatusSnapshot (updated on each candle close).
+   * Returns null if insufficient data for any monitored TF.
+   */
+  private gatherCurrentSnapshots(pos: PositionState): ThesisTFSnapshot[] | null {
+    if (!pos.thesis) return null
+    const monitorTFs = getThesisMonitorTFs(pos.thesis.entryInterval)
+    const statusSnaps = getStatus()
+    const result: ThesisTFSnapshot[] = []
+
+    for (const tf of monitorTFs) {
+      const snap = statusSnaps.find(s => s.coin === pos.coin && s.interval === tf)
+      if (!snap) continue  // TF not yet populated — skip rather than fail
+      result.push({
+        interval: tf,
+        regime: snap.regime as MarketRegime,
+        bias: (snap.bias === 'long' || snap.bias === 'short') ? snap.bias : 'neutral',
+        biasConfidence: snap.biasConfidence,
+      })
+    }
+
+    return result.length > 0 ? result : null
+  }
 
   /**
    * Paper mode: check each tracked position against current mark price.

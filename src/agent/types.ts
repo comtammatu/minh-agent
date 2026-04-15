@@ -8,7 +8,7 @@
  *   - Actions are discriminated unions — orchestrator executes them in S6/S7
  */
 
-import type { ActiveSetup, ConfluenceGrade, ExchangeId } from '../types.js'
+import type { ActiveSetup, CandleInterval, ConfluenceGrade, ExchangeId, MarketRegime } from '../types.js'
 export type { ActiveSetup, ExchangeId } from '../types.js'
 
 // ─── Agent States ────────────────────────────────────────────────────────────
@@ -185,6 +185,10 @@ export interface PositionState {
   /** Timestamp of last exchange sync. */
   lastSyncAt: number
   openedAt: number
+  /** Trade thesis at entry — multi-TF regime/bias state. Null for legacy positions. */
+  thesis: TradeThesis | null
+  /** Timestamp of last thesis evaluation (cooldown tracking). */
+  lastThesisCheckAt: number
 }
 
 /** Action returned by monitor() — tells orchestrator what to do. */
@@ -194,6 +198,40 @@ export type MonitorAction =
   | { type: 'partial_close'; positionId: string; closePct: number; newSlPrice?: number | null }
   | { type: 'close'; positionId: string; reason: string }
   | { type: 'alert'; positionId: string; message: string }
+
+// ─── Thesis Monitor ────────────────────────────────────────────────────────
+
+/** Regime + bias snapshot for a single timeframe at a point in time. */
+export interface ThesisTFSnapshot {
+  interval: CandleInterval
+  regime: MarketRegime
+  bias: 'long' | 'short' | 'neutral'
+  biasConfidence: number
+}
+
+/** Full thesis captured at trade entry — multi-TF regime/bias state. */
+export interface TradeThesis {
+  entryInterval: CandleInterval
+  side: 'long' | 'short'
+  snapshots: ThesisTFSnapshot[]
+  capturedAt: number
+}
+
+/** Result of evaluating current conditions against the entry thesis. */
+export interface ThesisEvaluation {
+  /** Overall deterioration score: 0.0 = fully aligned, 1.0 = fully opposed. */
+  score: number
+  severity: 'aligned' | 'minor' | 'moderate' | 'severe'
+  /** Per-TF comparison detail (for logging). */
+  details: Array<{
+    interval: CandleInterval
+    entryRegime: MarketRegime
+    currentRegime: MarketRegime
+    entryBias: string
+    currentBias: string
+    contribution: number
+  }>
+}
 
 /** Exchange position snapshot from clearinghouseState (stubbed until S10). */
 export interface ExchangePositionSnapshot {
