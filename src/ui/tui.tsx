@@ -378,7 +378,7 @@ function Panel({ title, children, width, height, minHeight, flexGrow, flexShrink
 // ─── Header ─────────────────────────────────────────────────────────────────
 
 const HeaderBar = memo(function HeaderBar({ snapshot, coinCount }: { snapshot: AgentSnapshot; coinCount: number }) {
-  const mode = process.env['BYBIT_TESTNET'] === 'true' ? 'DEMO' : 'LIVE'
+  const mode = process.env['BYBIT_DEMO'] === 'true' ? 'DEMO' : 'LIVE'
   const modeColor = 'red'
   const paused = snapshot.global.globalPaused
   const uptime = uptimeStr(snapshot.global.uptime)

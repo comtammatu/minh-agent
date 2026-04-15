@@ -123,7 +123,7 @@ describe('BybitExchangeService', () => {
   beforeEach(() => {
     process.env['BYBIT_API_KEY'] = 'test-key'
     process.env['BYBIT_API_SECRET'] = 'test-secret'
-    process.env['BYBIT_TESTNET'] = 'true'
+    process.env['BYBIT_DEMO'] = 'true'
 
     // Reset mocks to defaults
     mockSubmitOrder = mock(() =>

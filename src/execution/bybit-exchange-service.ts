@@ -136,7 +136,7 @@ export class BybitExchangeService {
     // Store privately — NEVER log these values
     this.apiKey = apiKey
     this.apiSecret = apiSecret
-    this.testnet = process.env['BYBIT_TESTNET'] === 'true'
+    this.testnet = process.env['BYBIT_DEMO'] === 'true'
 
     this.client = new RestClientV5({
       key: this.apiKey,
@@ -180,7 +180,7 @@ export class BybitExchangeService {
     }
 
     this.initialized = true
-    log.info('bybit-svc', `BybitExchangeService initialized (testnet=${this.testnet})`)
+    log.info('bybit-svc', `BybitExchangeService initialized (demo=${this.testnet})`)
   }
 
   /** Ensure init() has been called. */

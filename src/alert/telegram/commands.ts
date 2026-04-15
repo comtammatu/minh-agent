@@ -40,9 +40,9 @@ import {
   TELEGRAM_BOT,
 } from '../../config.js'
 
-/** Returns 'DEMO' when BYBIT_TESTNET=true, 'LIVE' otherwise. Read-only — requires restart to change. */
+/** Returns 'DEMO' when BYBIT_DEMO=true, 'LIVE' otherwise. Read-only — requires restart to change. */
 function getTradingMode(): 'DEMO' | 'LIVE' {
-  return process.env['BYBIT_TESTNET'] === 'true' ? 'DEMO' : 'LIVE'
+  return process.env['BYBIT_DEMO'] === 'true' ? 'DEMO' : 'LIVE'
 }
 import type { CommandDef } from './types.js'
 import type { DecisionTrace } from '../../types.js'
@@ -1354,10 +1354,10 @@ function modeHandler(): string {
     `*Trading Mode*`,
     `Hiện tại: *${esc(mode)}*`,
     mode === 'DEMO'
-      ? `Đang chạy Bybit Demo Trading \\(testnet\\)\\.`
-      : `Đang chạy Bybit Mainnet \\(live\\)\\.`,
+      ? `Đang chạy Bybit Demo Trading\\.`
+      : `Đang chạy Bybit Live Trading\\.`,
     ``,
-    `Để thay đổi mode, cập nhật \`BYBIT_TESTNET\` trong \\.env và restart\\.`,
+    `Để thay đổi mode, cập nhật \`BYBIT_DEMO\` trong \\.env và restart\\.`,
   ].join('\n')
 }
 
