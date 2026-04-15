@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import type { Candle, PatternType } from '../../src/types.js'
-import { MIN_CANDLES_FOR_SCAN, STATUS_UPDATE_EVERY_BARS } from '../../src/config.js'
+import { READY_BARS, STATUS_UPDATE_EVERY_BARS } from '../../src/config.js'
 import {
   clearPipelineState,
   getStatus,
@@ -29,11 +29,23 @@ function makeCandle(i: number): Candle {
 }
 
 describe('orchestrator status cadence', () => {
+  let originalActiveExchange: string | undefined
+
   beforeEach(() => {
+    originalActiveExchange = process.env['ACTIVE_EXCHANGE']
+    process.env['ACTIVE_EXCHANGE'] = 'HL'
     clearPipelineState()
     clearStore()
     clearOnPersist()
     setSetupGeneratorForTests(null)
+  })
+
+  afterEach(() => {
+    if (originalActiveExchange === undefined) {
+      delete process.env['ACTIVE_EXCHANGE']
+      return
+    }
+    process.env['ACTIVE_EXCHANGE'] = originalActiveExchange
   })
 
   test('status refresh runs slower than setup scan on 5m cadence', () => {
@@ -51,7 +63,7 @@ describe('orchestrator status cadence', () => {
 
     const stride = STATUS_UPDATE_EVERY_BARS['5m']
     const scannedBars = stride * 3 + 1
-    const totalCandles = MIN_CANDLES_FOR_SCAN + scannedBars
+    const totalCandles = READY_BARS['5m'] + scannedBars
 
     for (let i = 0; i < totalCandles; i++) {
       onCandleTick('BTC', '5m', makeCandle(i))

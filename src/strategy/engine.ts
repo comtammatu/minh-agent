@@ -1,5 +1,6 @@
 import type { Candle, CandleInterval, Signal, StrategyContext } from '../types.js'
 import type { StrategyParams } from '../backtest/types.js'
+import { MIN_CANDLES_FOR_SCAN, STATE_REPLAY_BARS } from '../config.js'
 import { SmcSdStrategy } from './strategies/smc-sd/index.js'
 
 // ── Window Requirements ────────────────────────────────────────────────────
@@ -33,23 +34,36 @@ export interface SetupGenerator {
   minCandles(): number
 
   /** Declare data depth + replay needs. Orchestrator uses this to size windows. */
-  windowRequirements(): WindowRequirements
+  windowRequirements?(): WindowRequirements
 
   clearState(): void
 }
 
 let setupGenerator: SetupGenerator = new SmcSdStrategy()
 
+function legacyWindowRequirements(): WindowRequirements {
+  return {
+    planningBars: {},
+    htfContextBars: {},
+    replayBars: { ...STATE_REPLAY_BARS },
+    preseedTFs: [],
+  }
+}
+
 export function getSetupGenerator(): SetupGenerator {
   return setupGenerator
 }
 
 export function getSetupGeneratorMinCandles(): number {
-  return setupGenerator.minCandles()
+  return typeof setupGenerator.minCandles === 'function'
+    ? setupGenerator.minCandles()
+    : MIN_CANDLES_FOR_SCAN
 }
 
 export function getSetupGeneratorWindowRequirements(): WindowRequirements {
-  return setupGenerator.windowRequirements()
+  return typeof setupGenerator.windowRequirements === 'function'
+    ? setupGenerator.windowRequirements()
+    : legacyWindowRequirements()
 }
 
 export function runSetupGenerator(

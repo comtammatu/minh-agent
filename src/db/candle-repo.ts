@@ -125,6 +125,56 @@ export async function loadCandles(
 }
 
 /**
+ * Load candles ending before `beforeMs` (exclusive), newest-first query, ascending return.
+ * Used by the dashboard chart history route to satisfy TradingView `countBack`.
+ */
+export async function loadCandlesBefore(
+  coin: string,
+  interval: CandleInterval,
+  beforeMs: number,
+  count: number,
+): Promise<Candle[]> {
+  const rows = await sql<{ t: Date; o: number; h: number; l: number; c: number; v: number }[]>`
+    SELECT t, o, h, l, c, v FROM candles
+    WHERE coin = ${coin} AND interval = ${interval} AND t < ${new Date(beforeMs)}
+    ORDER BY t DESC
+    LIMIT ${count}
+  `
+
+  return rows.reverse().map(r => ({
+    t: r.t.getTime(),
+    o: r.o,
+    h: r.h,
+    l: r.l,
+    c: r.c,
+    v: r.v,
+  }))
+}
+
+/** Load the most recent persisted candle for a coin/interval, or null if absent. */
+export async function loadLatestCandle(
+  coin: string,
+  interval: CandleInterval,
+): Promise<Candle | null> {
+  const rows = await sql<{ t: Date; o: number; h: number; l: number; c: number; v: number }[]>`
+    SELECT t, o, h, l, c, v FROM candles
+    WHERE coin = ${coin} AND interval = ${interval}
+    ORDER BY t DESC
+    LIMIT 1
+  `
+  const row = rows[0]
+  if (!row) return null
+  return {
+    t: row.t.getTime(),
+    o: row.o,
+    h: row.h,
+    l: row.l,
+    c: row.c,
+    v: row.v,
+  }
+}
+
+/**
  * Get last timestamps for all coin/interval pairs in one query.
  * Used during startup to compute gap-fill ranges efficiently.
  */

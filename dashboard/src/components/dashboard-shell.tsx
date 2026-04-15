@@ -30,7 +30,7 @@ function NavRail({ mobile = false }: { mobile?: boolean }) {
               cn(buttonVariants({ variant: isActive ? 'secondary' : 'ghost' }), 'w-full justify-start')
             }
           >
-            <Icon className="h-4 w-4" />
+            <Icon className="h-4 w-4" aria-hidden="true" />
             <span>{item.label}</span>
           </NavLink>
         )
@@ -45,9 +45,15 @@ export function DashboardShell() {
   const isReady = data?.bootstrap.phase === 'ready'
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.06),_transparent_28%),linear-gradient(180deg,_#18181b_0%,_#101113_100%)] text-foreground">
+      <a
+        href="#dashboard-main"
+        className="sr-only absolute left-4 top-4 z-50 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground shadow-sm focus:not-sr-only focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        Skip to main content
+      </a>
       <div className="grid min-h-screen lg:grid-cols-[240px_1fr]">
-        <aside className="hidden border-r bg-muted/20 lg:flex lg:flex-col">
+        <aside className="hidden border-r border-white/5 bg-card/60 lg:flex lg:flex-col lg:backdrop-blur">
           <div className="flex h-full flex-col p-6">
             <div className="space-y-1">
               <h1 className="text-lg font-semibold">Minh Dashboard</h1>
@@ -72,13 +78,13 @@ export function DashboardShell() {
         </aside>
 
         <div className="flex min-h-screen flex-col">
-          <header className="border-b">
+          <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur">
             <div className="flex items-center justify-between gap-4 px-4 py-4 md:px-6">
               <div className="flex items-start gap-3">
                 <Sheet>
                   <SheetTrigger asChild>
-                    <Button variant="outline" size="icon" className="lg:hidden">
-                      <Menu className="h-4 w-4" />
+                    <Button variant="outline" size="icon" className="lg:hidden" aria-label="Open navigation menu">
+                      <Menu className="h-4 w-4" aria-hidden="true" />
                     </Button>
                   </SheetTrigger>
                   <SheetContent side="left">
@@ -107,7 +113,7 @@ export function DashboardShell() {
           </header>
 
           <ScrollArea className="flex-1">
-            <main className="space-y-4 p-4 md:p-6">
+            <main id="dashboard-main" className="space-y-4 p-4 md:p-6">
               {snapshot.error && data ? (
                 <Alert variant="destructive">
                   <AlertTitle>Snapshot refresh degraded</AlertTitle>

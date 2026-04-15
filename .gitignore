@@ -12,3 +12,6 @@ results/optimize-*.json
 results/wf-universe-compare-*.json
 results/pipeline-benchmark-*.json
 .omc*
+dashboard/dist/
+dashboard/public/charting_library/
+dashboard/public/datafeeds/
