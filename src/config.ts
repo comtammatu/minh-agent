@@ -1008,6 +1008,8 @@ export const TELEGRAM_BOT = {
   reportTimezone: process.env.TELEGRAM_REPORT_TZ?.trim() || 'UTC',
   /** Set `TELEGRAM_DAY_REPORTS=false` to disable scheduled morning/evening summaries. */
   dayReportsEnabled: process.env.TELEGRAM_DAY_REPORTS !== 'false',
+  /** Debounce window for briefing refresh edits (ms). */
+  briefingRefreshDebounceMs: 2_000,
 } as const
 
 /** Health monitoring configuration. */

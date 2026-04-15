@@ -15,6 +15,11 @@ export {
   clearCoinState,
   getPipelineEmitter,
   type StatusSnapshot,
+  getDecisionTraces,
+  getDecisionTracesForCoin,
+  getDecisionTraceByPositionId,
+  getDecisionTraceBySetupId,
+  recordDecisionTraceAgentAction,
 } from './orchestrator.js'
 
 // ── Registry (strategy interface + fan-out) ─────────────────────────────────

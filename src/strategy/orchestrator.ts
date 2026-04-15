@@ -12,6 +12,7 @@ import type {
   ConfluenceGrade,
   MarketRegime,
   StrategyContext,
+  DecisionTrace,
 } from '../types.js'
 import { appendCandle, getCandles, getCandlesInto } from '../feed/store.js'
 import { getStrategyRegistry, type StrategyRegistry } from './registry.js'
@@ -446,4 +447,71 @@ export function getStatusRefreshCount(coin: string, interval: CandleInterval): n
 /** Get the mutable activeSetups map (for pipeline.ts to read/write during runPipeline). */
 export function getActiveSetupsMap(): Map<string, ActiveSetup> {
   return activeSetups
+}
+
+// ── Decision Trace store (briefing / operator oversight) ───────────────────
+
+const decisionTraces = new Map<string, DecisionTrace>()
+
+function traceKey(trace: DecisionTrace): string {
+  return `${trace.strategyId}:${trace.coin}:${trace.interval}`
+}
+
+/** Record or update a decision trace (called during pipeline evaluation). */
+export function recordDecisionTrace(trace: DecisionTrace): void {
+  decisionTraces.set(traceKey(trace), trace)
+}
+
+/** Get all active decision traces. */
+export function getDecisionTraces(): DecisionTrace[] {
+  return [...decisionTraces.values()]
+}
+
+/** Get decision traces filtered by coin, sorted by ts descending. */
+export function getDecisionTracesForCoin(coin: string): DecisionTrace[] {
+  return [...decisionTraces.values()]
+    .filter(t => t.coin === coin)
+    .sort((a, b) => b.ts - a.ts)
+}
+
+/** Find a trace by position ID. */
+export function getDecisionTraceByPositionId(positionId: string): DecisionTrace | null {
+  for (const trace of decisionTraces.values()) {
+    if (trace.outcome.positionId === positionId) return trace
+  }
+  return null
+}
+
+/** Find a trace by setup ID. */
+export function getDecisionTraceBySetupId(setupId: string): DecisionTrace | null {
+  for (const trace of decisionTraces.values()) {
+    if (trace.outcome.setupId === setupId) return trace
+  }
+  return null
+}
+
+/** Append an operator action to the most recent trace timeline. */
+export function recordDecisionTraceAgentAction(
+  action: { type: string; positionId?: string; reason?: string },
+): void {
+  // Find the matching trace by positionId, or fall back to most recent
+  let target: DecisionTrace | undefined
+  if (action.positionId != null) {
+    target = getDecisionTraceByPositionId(action.positionId) ?? undefined
+  }
+  if (target == null) {
+    // Fall back to most recent trace
+    const all = getDecisionTraces().sort((a, b) => b.ts - a.ts)
+    target = all[0]
+  }
+  if (target == null) return
+  target.timeline.push({
+    actor: 'executor',
+    summary: `${action.type}${action.reason != null ? ` — ${action.reason}` : ''}`,
+  })
+}
+
+/** Clear all decision traces (for tests). */
+export function clearDecisionTraces(): void {
+  decisionTraces.clear()
 }

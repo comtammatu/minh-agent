@@ -203,3 +203,29 @@ export type InvalidationReason =
 // ─── Confluence ──────────────────────────────────────────────────────────────
 
 export type ConfluenceGrade = 'C' | 'B' | 'A' | 'A+'
+
+// ─── Decision Trace (briefing / operator oversight) ───────────────────────
+
+/** A decision trace captures a single strategy evaluation for briefing and oversight. */
+export interface DecisionTrace {
+  coin: string
+  interval: string
+  strategyId: string
+  ts: number
+  outcome: {
+    action: string
+    confidence: number
+    summary: string
+    positionId: string | null
+    setupId: string | null
+  }
+  roles: {
+    guardian?: { state: string; summary: string; actions: string[] }
+    executor?: { state: string; summary: string }
+    judge?: { verdict?: string }
+  }
+  timeline: Array<{
+    actor: 'scanner' | 'judge' | 'executor' | 'guardian'
+    summary: string
+  }>
+}

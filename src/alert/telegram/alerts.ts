@@ -405,3 +405,108 @@ export function formatDailySummaryHtml(
   }
   return lines.join('\n')
 }
+
+/** HTML scheduled briefing with live context (positions, oversight, operator activity). */
+export function formatScheduledBriefingHtml(
+  title: string,
+  summary: {
+    date: string
+    totalTrades: number
+    wins: number
+    losses: number
+    winRate: number
+    totalPnl: number
+    largestWin: number
+    largestLoss: number
+    entryCount?: number
+  },
+  context: {
+    openPositions: number
+    attention: { level: string; summary: string } | null
+    incident: {
+      peakState: string
+      status: string
+      target: string | null
+      cause: string
+      recommendedAction: string
+    } | null
+    liveBuckets: Array<{
+      label: string
+      count: number
+      coin: string
+      items: Array<{ coin: string; interval: string; action: string }>
+    }>
+    operatorRecent: {
+      totalActions: number
+      submitted: number
+      failed: number
+      items: Array<{ action: string; target: string; source: string; at: string }>
+    }
+    liveOversight: Array<{
+      coin: string
+      interval: string
+      action: string
+      guardian: string
+      executor: string
+    }>
+  },
+): string {
+  const h = escapeHtml
+  const pnlStr = summary.totalPnl >= 0
+    ? `+${summary.totalPnl.toFixed(2)}`
+    : summary.totalPnl.toFixed(2)
+  const emoji = summary.totalPnl >= 0 ? '📈' : '📉'
+  const winRatePct = (summary.winRate * 100).toFixed(0)
+
+  const lines = [
+    `${emoji} <b>${h(title)}</b> — <code>${h(summary.date)}</code>`,
+    ``,
+    `Trades: <b>${h(String(summary.totalTrades))}</b> · Open: <b>${h(String(context.openPositions))}</b>`,
+    `Win rate: <b>${h(winRatePct)}%</b> (${h(String(summary.wins))}W / ${h(String(summary.losses))}L)`,
+    `PnL: <b>${h(pnlStr)} USDC</b>`,
+  ]
+
+  if (context.attention != null) {
+    lines.push(``, `⚠️ <b>${h(context.attention.level)}</b>: ${h(context.attention.summary)}`)
+  }
+
+  if (context.incident != null) {
+    lines.push(
+      ``,
+      `🔴 <b>Incident</b> (${h(context.incident.peakState)} ${h(context.incident.status)})`,
+      `  Cause: ${h(context.incident.cause)}`,
+      `  Action: ${h(context.incident.recommendedAction)}`,
+    )
+    if (context.incident.target != null) {
+      lines.push(`  Target: ${h(context.incident.target)}`)
+    }
+  }
+
+  if (context.liveOversight.length > 0) {
+    lines.push(``, `<b>Live Oversight</b>`)
+    for (const trace of context.liveOversight) {
+      lines.push(
+        `  ${h(trace.coin)} ${h(trace.interval)} — ${h(trace.action)} (G:${h(trace.guardian)} E:${h(trace.executor)})`,
+      )
+    }
+  }
+
+  if (context.liveBuckets.length > 0) {
+    lines.push(``, `<b>Decision Buckets</b>`)
+    for (const bucket of context.liveBuckets) {
+      lines.push(`  ${h(bucket.label)}: ${h(String(bucket.count))} (${h(bucket.coin)})`)
+    }
+  }
+
+  if (context.operatorRecent.totalActions > 0) {
+    lines.push(
+      ``,
+      `<b>Operator</b>: ${h(String(context.operatorRecent.submitted))} ok / ${h(String(context.operatorRecent.failed))} fail`,
+    )
+    for (const item of context.operatorRecent.items) {
+      lines.push(`  ${h(item.action)} → ${h(item.target)} (${h(item.source)} ${h(item.at)})`)
+    }
+  }
+
+  return lines.join('\n')
+}

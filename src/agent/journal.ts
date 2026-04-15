@@ -55,6 +55,36 @@ export function handleJournalAction(action: AgentAction, agentState?: string): v
   logJournalEntry(action.eventType, action.coin, action.details, agentState ?? null, strategyId)
 }
 
+/**
+ * Log an operator audit entry (remote operator action from Telegram / API).
+ * Fire-and-forget — never throws.
+ */
+export async function logOperatorAuditEntry(
+  action: string,
+  target: string,
+  status: 'submitted' | 'failed',
+  context: {
+    coin?: string
+    strategyId?: string
+    source?: string
+    details?: Record<string, unknown>
+  } = {},
+): Promise<void> {
+  await logJournalEntry(
+    'operator',
+    context.coin ?? null,
+    {
+      action,
+      target,
+      status,
+      operatorSource: context.source ?? null,
+      ...(context.details ?? {}),
+    },
+    null,
+    context.strategyId ?? null,
+  )
+}
+
 // ─── Read ───────────────────────────────────────────────────────────────────
 
 /**
