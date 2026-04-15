@@ -9,5 +9,6 @@ bun.lockb.bak
 .gstack/
 results/ci/
 results/optimize-*.json
+results/wf-universe-compare-*.json
 results/pipeline-benchmark-*.json
 .omc*
