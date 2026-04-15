@@ -96,18 +96,18 @@ describe('invalidation — 0-bar skip', () => {
 })
 
 describe('setupId', () => {
-  it('generates correct id with default strategyId', () => {
-    expect(setupId('BTC', '4h', 'smc-sd')).toBe('smc-sd:BTC|4h|smc-sd')
+  it('generates canonical id without strategy prefix', () => {
+    expect(setupId('BTC', '4h', 'smc-sd')).toBe('BTC|4h|smc-sd')
   })
 
-  it('generates correct id with explicit strategyId', () => {
-    expect(setupId('BTC', '4h', 'smc-sd', 'alpha')).toBe('alpha:BTC|4h|smc-sd')
+  it('ignores extra trailing args and still returns the canonical id', () => {
+    expect(setupId('BTC', '4h', 'smc-sd', 'alpha')).toBe('BTC|4h|smc-sd')
   })
 
-  it('different strategies produce different ids for same coin/tf/type', () => {
+  it('same coin/tf/type always resolves to the same canonical id', () => {
     const a = setupId('ETH', '1h', 'smc-sd', 'smc-sd')
     const b = setupId('ETH', '1h', 'smc-sd', 'alpha')
-    expect(a).not.toBe(b)
+    expect(a).toBe(b)
   })
 })
 

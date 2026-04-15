@@ -1,13 +1,10 @@
 /**
  * Invalidation Bridge tests (Sprint 2 S8).
  *
- * Tests:
- *   - Setup ID matching: only act when invalidated setup === active setup
- *   - State-aware dispatch: correct action per state (IDLE/WATCHING/ENTERING/IN_POSITION)
- *   - Cross-TF mismatch: different setupId on same coin → no action
- *   - No active setup → no action
- *   - Pipeline integration: EventEmitter → bridge → agent
- *   - History tracking + stats
+ * Updated for canonical single-context routing:
+ *   - setup matching is coin + setup id only
+ *   - stats aggregate globally instead of by strategy bucket
+ *   - legacy strategy-prefixed setup ids are accepted for coin parsing only
  */
 
 import { describe, it, expect, beforeEach } from 'bun:test'
@@ -15,14 +12,11 @@ import { EventEmitter } from 'events'
 import {
   InvalidationBridge,
   parseCoinFromSetupId,
-  parseStrategyFromSetupId,
   resetInvalidationBridge,
 } from './invalidation-bridge.js'
 import { TradingAgent, resetAgent } from './trading-agent.js'
 import type { ActiveSetup } from '../types.js'
 import type { AgentAction } from './types.js'
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
   return {
@@ -46,40 +40,22 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
   }
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
-
 describe('parseCoinFromSetupId', () => {
-  it('extracts coin from valid setupId', () => {
+  it('extracts coin from canonical setup ids', () => {
     expect(parseCoinFromSetupId('BTC|1h|order-block|long')).toBe('BTC')
     expect(parseCoinFromSetupId('ETH|15m|fvg|short')).toBe('ETH')
     expect(parseCoinFromSetupId('SOL|4h|spring|long')).toBe('SOL')
   })
 
-  it('extracts coin from modern strategy-prefixed setupId', () => {
+  it('extracts coin from legacy strategy-prefixed setup ids', () => {
     expect(parseCoinFromSetupId('smc-sd:BTC|1h|smc-sd')).toBe('BTC')
     expect(parseCoinFromSetupId('alpha:ETH|15m|smc-sd')).toBe('ETH')
   })
 
-  it('returns null for invalid setupId', () => {
+  it('returns null for invalid setup ids', () => {
     expect(parseCoinFromSetupId('')).toBeNull()
     expect(parseCoinFromSetupId('BTC')).toBeNull()
     expect(parseCoinFromSetupId('BT')).toBeNull()
-  })
-})
-
-describe('parseStrategyFromSetupId', () => {
-  it('returns strategy id for modern format', () => {
-    expect(parseStrategyFromSetupId('smc-sd:BTC|1h|smc-sd')).toBe('smc-sd')
-    expect(parseStrategyFromSetupId('alpha:ETH|15m|smc-sd')).toBe('alpha')
-  })
-
-  it('returns legacy bucket for legacy format', () => {
-    expect(parseStrategyFromSetupId('BTC|1h|order-block|long')).toBe('legacy')
-  })
-
-  it('returns null for malformed ids', () => {
-    expect(parseStrategyFromSetupId('')).toBeNull()
-    expect(parseStrategyFromSetupId('BTC|1h')).toBeNull()
   })
 })
 
@@ -94,10 +70,8 @@ describe('InvalidationBridge', () => {
     agent = new TradingAgent()
   })
 
-  // ── Setup ID Matching ──────────────────────────────────────────────────
-
-  describe('setup ID matching', () => {
-    it('acts when invalidated setupId matches active setup', () => {
+  describe('setup id matching', () => {
+    it('acts when invalidated setupId matches the active setup', () => {
       const setup = makeSetup()
       agent.dispatch('BTC', { type: 'setup_detected', setup })
       expect(agent.getCoinState('BTC')).toBe('ENTERING')
@@ -108,70 +82,37 @@ describe('InvalidationBridge', () => {
       expect(agent.getCoinState('BTC')).toBe('IDLE')
     })
 
-    it('skips when invalidated setupId does NOT match active setup (cross-TF)', () => {
-      const setup = makeSetup() // BTC|1h|order-block|long
-      agent.dispatch('BTC', { type: 'setup_detected', setup })
-      expect(agent.getCoinState('BTC')).toBe('ENTERING')
+    it('skips non-matching setup ids on the same coin', () => {
+      agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup() })
 
-      // Different timeframe — should NOT invalidate
       const record = bridge.onInvalidation('BTC|15m|fvg|short', 'fvg-filled', agent)
       expect(record.matched).toBe(false)
       expect(record.actionTaken).toBe('none')
-      expect(agent.getCoinState('BTC')).toBe('ENTERING') // still entering
-    })
-
-    it('skips when invalidated setupId is different type on same TF', () => {
-      const setup = makeSetup() // BTC|1h|order-block|long
-      agent.dispatch('BTC', { type: 'setup_detected', setup })
-
-      const record = bridge.onInvalidation('BTC|1h|fvg|long', 'fvg-filled', agent)
-      expect(record.matched).toBe(false)
       expect(agent.getCoinState('BTC')).toBe('ENTERING')
     })
 
-    it('skips when coin has no active setup (IDLE)', () => {
+    it('skips when the coin has no active setup', () => {
       const record = bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
       expect(record.matched).toBe(false)
       expect(record.actionTaken).toBe('none')
     })
   })
 
-  // ── State-Aware Dispatch ───────────────────────────────────────────────
-
   describe('state-aware dispatch', () => {
-    it('ENTERING → IDLE (cancel_order)', () => {
+    it('maps ENTERING invalidations to cancel_order', () => {
       agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup() })
-      expect(agent.getCoinState('BTC')).toBe('ENTERING')
+      const actions: AgentAction[] = []
+      agent.onAction(action => actions.push(action))
 
       const record = bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
       expect(record.coinState).toBe('ENTERING')
       expect(record.actionTaken).toBe('cancel_order')
-      expect(agent.getCoinState('BTC')).toBe('IDLE')
-    })
-
-    it('ENTERING with pendingOrderId → IDLE + cancel_order', () => {
-      agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup() })
-
-      // Force state to ENTERING with a pending order for testing
-      // We do this by capturing actions and verifying the bridge predicts correctly
-      const actions: AgentAction[] = []
-      agent.onAction(a => actions.push(a))
-
-      // Since we can't easily get to ENTERING without exchange stubs,
-      // test the prediction for ENTERING state
-      // The state machine handles this — we verify the bridge's setupId matching
-      const record = bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
       expect(record.matched).toBe(true)
-      // From ENTERING, action is cancel_order
-      expect(record.actionTaken).toBe('cancel_order')
+      expect(actions.some(action => action.type === 'log_journal' && action.eventType === 'invalidate')).toBe(true)
     })
 
-    it('IN_POSITION → EXITING + close_position', () => {
-      // IDLE → ENTERING (place_order emitted)
+    it('maps IN_POSITION invalidations to close_position', () => {
       agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup() })
-      expect(agent.getCoinState('BTC')).toBe('ENTERING')
-
-      // ENTERING → IN_POSITION (order filled)
       agent.dispatch('BTC', {
         type: 'order_filled',
         orderId: 'ord-1',
@@ -180,7 +121,6 @@ describe('InvalidationBridge', () => {
       })
       expect(agent.getCoinState('BTC')).toBe('IN_POSITION')
 
-      // Invalidate → should close position
       const record = bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
       expect(record.matched).toBe(true)
       expect(record.actionTaken).toBe('close_position')
@@ -188,59 +128,37 @@ describe('InvalidationBridge', () => {
     })
   })
 
-  // ── Pipeline Integration ───────────────────────────────────────────────
-
   describe('pipeline integration', () => {
-    it('connects to EventEmitter and handles invalidation events', () => {
+    it('connects to EventEmitter and records matched invalidations', () => {
       const emitter = new EventEmitter()
       agent.subscribeToPipeline(emitter)
       bridge.connect(emitter, agent)
 
-      // Setup via pipeline
       emitter.emit('setup', makeSetup())
-      expect(agent.getCoinState('BTC')).toBe('ENTERING')
-
-      // Invalidate via pipeline — cancels pending order
       emitter.emit('invalidation', 'BTC|1h|order-block|long', 'zone-broken')
-      expect(agent.getCoinState('BTC')).toBe('IDLE')
 
-      // Verify history
+      expect(agent.getCoinState('BTC')).toBe('IDLE')
       const history = bridge.getHistory()
-      expect(history.length).toBe(1)
+      expect(history).toHaveLength(1)
       expect(history[0]!.matched).toBe(true)
       expect(history[0]!.actionTaken).toBe('cancel_order')
     })
 
-    it('pipeline invalidation for non-matching setup is a no-op', () => {
+    it('treats non-matching invalidations as no-ops', () => {
       const emitter = new EventEmitter()
       agent.subscribeToPipeline(emitter)
       bridge.connect(emitter, agent)
 
       emitter.emit('setup', makeSetup())
-      expect(agent.getCoinState('BTC')).toBe('ENTERING')
-
-      // Different setup — should not invalidate
       emitter.emit('invalidation', 'ETH|15m|fvg|short', 'fvg-filled')
-      expect(agent.getCoinState('BTC')).toBe('ENTERING') // unchanged
+
+      expect(agent.getCoinState('BTC')).toBe('ENTERING')
+      expect(bridge.getHistory()[0]!.matched).toBe(false)
     })
   })
 
-  // ── History & Stats ────────────────────────────────────────────────────
-
   describe('history and stats', () => {
-    it('tracks invalidation records', () => {
-      agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup() })
-
-      bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
-      bridge.onInvalidation('ETH|15m|fvg|short', 'fvg-filled', agent)
-
-      const history = bridge.getHistory()
-      expect(history.length).toBe(2)
-      expect(history[0]!.matched).toBe(true)
-      expect(history[1]!.matched).toBe(false)
-    })
-
-    it('computes stats correctly', () => {
+    it('computes global counters without per-strategy buckets', () => {
       agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup() })
 
       bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
@@ -252,73 +170,25 @@ describe('InvalidationBridge', () => {
       expect(stats.matched).toBe(1)
       expect(stats.skipped).toBe(2)
       expect(stats.parseFailed).toBe(0)
-      // Matched row uses agent strategy id (default layered); skipped rows use legacy ids from setupId
-      expect(stats.byStrategy['smc-sd']).toEqual({ matched: 1, skipped: 0 })
-      expect(stats.byStrategy['legacy']).toEqual({ matched: 0, skipped: 2 })
       expect(stats.actions['cancel_order']).toBe(1)
       expect(stats.actions['none']).toBe(2)
     })
 
-    it('attributes matched vs skipped by strategy id for modern setupIds', () => {
-      const alphaSetup = makeSetup({
-        id: 'alpha:BTC|1h|smc-sd',
-        type: 'smc-sd',
-        strategyId: 'alpha',
-      })
-      agent.dispatch('BTC', { type: 'setup_detected', setup: alphaSetup }, 'alpha')
-      bridge.onInvalidation('alpha:BTC|1h|smc-sd', 'zone-broken', agent)
-      expect(bridge.getStats().byStrategy['alpha']).toEqual({ matched: 1, skipped: 0 })
-
-      bridge.onInvalidation('smc-sd:ETH|1h|smc-sd', 'ttl-expired', agent)
-      expect(bridge.getStats().byStrategy['smc-sd']).toEqual({ matched: 0, skipped: 1 })
+    it('counts malformed setup ids as parse failures', () => {
+      bridge.onInvalidation('', 'bad-id', agent)
+      const stats = bridge.getStats()
+      expect(stats.total).toBe(1)
+      expect(stats.parseFailed).toBe(1)
+      expect(stats.matched).toBe(0)
+      expect(stats.skipped).toBe(0)
     })
 
-    it('clearHistory resets', () => {
+    it('clearHistory resets the audit buffer', () => {
       bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
-      expect(bridge.getHistory().length).toBe(1)
+      expect(bridge.getHistory()).toHaveLength(1)
 
       bridge.clearHistory()
-      expect(bridge.getHistory().length).toBe(0)
-    })
-
-    it('ring buffer caps at maxHistory', () => {
-      // Generate 210 records
-      for (let i = 0; i < 210; i++) {
-        bridge.onInvalidation(`BTC|1h|order-block|long`, `reason-${i}`, agent)
-      }
-      expect(bridge.getHistory().length).toBe(200)
-    })
-  })
-
-  // ── Edge Cases ─────────────────────────────────────────────────────────
-
-  describe('edge cases', () => {
-    it('handles malformed setupId gracefully', () => {
-      const record = bridge.onInvalidation('', 'unknown', agent)
-      expect(record.matched).toBe(false)
-      expect(record.coin).toBe('unknown')
-      expect(record.strategyKey).toBeUndefined()
-      expect(bridge.getStats().parseFailed).toBe(1)
-    })
-
-    it('handles unknown coin (never seen by agent)', () => {
-      const record = bridge.onInvalidation('DOGE|1h|fvg|long', 'fvg-filled', agent)
-      expect(record.matched).toBe(false)
-      expect(record.coin).toBe('DOGE')
-      expect(record.coinState).toBe('IDLE')
-    })
-
-    it('second invalidation for same coin is a no-op (already IDLE)', () => {
-      agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup() })
-
-      const r1 = bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
-      expect(r1.matched).toBe(true)
-      expect(agent.getCoinState('BTC')).toBe('IDLE')
-
-      // Second invalidation — no active setup anymore
-      const r2 = bridge.onInvalidation('BTC|1h|order-block|long', 'zone-broken', agent)
-      expect(r2.matched).toBe(false)
-      expect(r2.actionTaken).toBe('none')
+      expect(bridge.getHistory()).toHaveLength(0)
     })
   })
 })

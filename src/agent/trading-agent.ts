@@ -382,6 +382,6 @@ function journalAction(eventType: string, coin: string, details: Record<string, 
   return { type: 'log_journal', eventType, coin, details }
 }
 
-// ─── Re-exports from trading-orchestrator.ts (backward compatibility) ───────
+// ─── Re-exports from trading-orchestrator.ts ────────────────────────────────
 
-export { TradingAgent, getAgent, resetAgent, stateKey, parseStateKey } from './trading-orchestrator.js'
+export { TradingAgent, getAgent, resetAgent, stateKey } from './trading-orchestrator.js'

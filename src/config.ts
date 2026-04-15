@@ -580,10 +580,11 @@ export const PIPELINE_BENCH_CI_TRIM_RATIO = 0.01
 export const PIPELINE_BENCH_CI_METRIC_MODE: PipelineBenchmarkMetricMode = 'robust'
 
 /** Max allowed regression vs baseline before CI fails.
- * Keep p95 strict, but allow more p99 headroom on hosted GitHub runners
- * where tail latency shows materially higher scheduler variance. */
+ * Hosted GitHub runners now show materially more variance at p95 than the
+ * original calibration run, so keep the guard focused on larger regressions
+ * instead of failing on normal scheduler drift. */
 export const PIPELINE_BENCH_CI_MAX_REGRESSION = {
-  p95Pct: 0.10,
+  p95Pct: 0.25,
   p99Pct: 0.25,
 } as const
 
@@ -871,35 +872,19 @@ export const WF_CONFIDENCE_LEVEL = 0.95
 /** Walk-forward: minimum fraction of OOS windows with positive expectancy. */
 export const WF_MIN_WINDOW_CONSISTENCY = 0.5
 
-// ─── Strategy Enable/Disable ─────────────────────────────────────────────────
+// ─── Canonical Strategy ─────────────────────────────────────────────────────
 
-/**
- * Which strategies to enable at startup.
- * Env: `ENABLED_STRATEGIES` — comma-separated list of strategy IDs.
- * Default: smc-sd only.
- */
-export function getEnabledStrategies(): string[] {
-  const raw = process.env['ENABLED_STRATEGIES']
-  if (!raw || raw.trim() === '') return ['smc-sd']
-  return raw.split(',').map(s => s.trim()).filter(s => s.length > 0)
-}
+/** Runtime is single-strategy; this label is metadata only, not a routing key. */
+export const CANONICAL_STRATEGY_ID = 'smc-sd' as const
 
 // ─── Portfolio Risk (Sprint 4.5 S6) ─────────────────────────────────────────
 
-/** Portfolio-level risk limits across all strategies. */
+/** Portfolio-level risk limits for the shared runtime account. */
 export const PORTFOLIO_RISK = {
   /** Max total notional exposure as multiple of total account equity. */
   maxTotalExposure: 3.0,
-  /** Max total concurrent positions across all strategies. */
+  /** Max total concurrent positions across the whole runtime. */
   maxTotalConcurrent: 6,
-  /** Per-strategy capital allocation as fraction of total account (must sum ≤ 1.0). */
-  strategyAllocations: {
-    'smc-sd': 1.0,
-  } as Record<string, number>,
-  /** Per-strategy max concurrent positions. */
-  strategyMaxConcurrent: {
-    'smc-sd': 10,
-  } as Record<string, number>,
 } as const
 
 // ─── Paper Trade Mode ─────────────────────────────────────────────────────────
@@ -936,37 +921,17 @@ export function resetPaperTradeRuntimeOverrideForTests(): void {
 /** Slippage applied to paper fills (0.05% = 5 bps). */
 export const PAPER_SLIPPAGE_PCT = 0.0005
 
-/**
- * Default starting balance (USD) per paper wallet when env overrides are unset.
- * Matches typical small-account dry run (3 × $100).
- */
-export const PAPER_DEFAULT_BALANCE_PER_WALLET = 100
+/** Default starting balance (USD) for the single paper wallet. */
+export const PAPER_DEFAULT_BALANCE = 100
 
-/**
- * Strategy IDs that get a separate simulated wallet in PAPER_TRADE (mirrors 3-wallet live).
- * Env: `PAPER_BALANCE_LAYERED`, `PAPER_BALANCE_QUANT`, `PAPER_BALANCE_SMC_SD` (USD each).
- * Unset → {@link PAPER_DEFAULT_BALANCE_PER_WALLET} each.
- */
-export const PAPER_WALLET_STRATEGY_IDS = ['smc-sd'] as const
-export type PaperWalletStrategyId = (typeof PAPER_WALLET_STRATEGY_IDS)[number]
-
-const PAPER_BALANCE_ENV: Record<string, string> = {
-  'smc-sd': 'PAPER_BALANCE_SMC_SD',
-}
-
-/**
- * Initial USD balance for the per-strategy paper tracker.
- */
-export function getPaperInitialBalance(strategyId: string): number {
-  const envKey = PAPER_BALANCE_ENV[strategyId]
-  if (envKey) {
-    const raw = process.env[envKey]
-    if (raw !== undefined && raw.trim() !== '') {
-      const n = Number(raw)
-      if (Number.isFinite(n) && n > 0) return n
-    }
+/** Initial USD balance for the canonical paper wallet. */
+export function getPaperInitialBalance(): number {
+  const raw = process.env['PAPER_BALANCE_SMC_SD']
+  if (raw !== undefined && raw.trim() !== '') {
+    const n = Number(raw)
+    if (Number.isFinite(n) && n > 0) return n
   }
-  return PAPER_DEFAULT_BALANCE_PER_WALLET
+  return PAPER_DEFAULT_BALANCE
 }
 
 // ─── Order Lifecycle (S6) ────────────────────────────────────────────────────

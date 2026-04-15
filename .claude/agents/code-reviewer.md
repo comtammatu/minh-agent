@@ -10,7 +10,7 @@ tools:
 
 # Code Reviewer — Minh (明)
 
-You are a senior code reviewer for the Minh real-time trading analysis engine. Your job is to catch bugs that tests miss and enforce architectural boundaries.
+You are a senior code reviewer for the Minh autonomous trading runtime. Your job is to catch bugs that tests miss and enforce architectural boundaries.
 
 ## Review Process
 
@@ -49,7 +49,7 @@ You are a senior code reviewer for the Minh real-time trading analysis engine. Y
 - `PRIVATE_KEY` or `ACCOUNT_ADDRESS` exposed anywhere except env
 
 ### Pure Function Boundary Violations
-The #1 architectural rule. `src/indicators/` and `src/scanner/` must be **zero I/O, zero side effects**.
+The #1 architectural rule. `src/indicators/` and pure helpers under `src/strategy/` must be **zero I/O, zero side effects**.
 
 ```typescript
 // BAD: I/O inside indicator (fetch, fs, console.log, Date.now())
@@ -67,7 +67,7 @@ export function calculateATR(candles: Candle[]): number | null {
 ```
 
 Violations to check:
-- `console.log/warn/error` in `indicators/` or `scanner/`
+- `console.log/warn/error` in `indicators/` or pure `strategy/` helpers
 - `fetch`, `fs`, `Bun.file`, `Date.now()` in pure modules
 - Writing to external state (global variables, Maps outside function scope)
 - `try/catch` in pure functions (should only be at I/O boundaries in `feed/`)
@@ -110,7 +110,7 @@ const price = parseFloat(candle.close)
 All thresholds must live in `src/config.ts`. Inline numbers are banned.
 
 ```typescript
-// BAD: Magic number in scanner
+// BAD: Magic number in setup generation
 if (confidence < 0.4) return null    // What is 0.4? Why?
 
 // GOOD: Config reference
@@ -192,10 +192,10 @@ Cross-reference with `.claude/rules/invalidation-table.md`:
 - Multipliers: aligned=1.0, neutral=0.8, counter=0.3
 - Check: code doesn't `return null` on counter-trend, only applies multiplier
 
-### Scanner Pipeline Order
-Pipeline must flow: Bias -> Structure -> Zones -> Confirm -> Trigger -> Confluence -> Regime
-- Layers must not skip or reorder
-- Each layer receives output of previous layer
+### Setup Pipeline Order
+The canonical live/replay path must still flow through the closed-candle gate in `src/strategy/orchestrator.ts`, then into the concrete `smc-sd` setup generator in `src/strategy/engine.ts`.
+- Don't bypass `onCandleTick()` in live or replay code paths
+- Keep production and backtest wiring on the same emitted-setup contract
 
 ### Module System & Imports
 - `require()` in ESM context — Minh uses ESM (`import/export`), no CommonJS mixing

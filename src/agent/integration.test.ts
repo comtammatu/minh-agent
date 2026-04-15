@@ -7,7 +7,7 @@
  * Validates that index.ts wiring pattern works correctly.
  */
 
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { describe, it, expect, beforeEach, beforeAll, afterAll, mock } from 'bun:test'
 import { EventEmitter } from 'events'
 
 // Mock DB before any imports
@@ -86,9 +86,9 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
   }
 }
 
-/** Get coin state from snapshot. Key is `coin:strategyId` (Sprint 4.5). */
-function getCoinState(agent: TradingAgent, coin: string, strategyId: string = 'smc-sd') {
-  return agent.getSnapshot().coins[`${coin}:${strategyId}`]
+/** Get coin state from the single-context snapshot. */
+function getCoinState(agent: TradingAgent, coin: string) {
+  return agent.getSnapshot().coins[coin]
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -101,6 +101,10 @@ describe('End-to-end integration', () => {
   let pipelineEmitter: EventEmitter
   let actions: AgentAction[]
   const originalActiveExchange = process.env.ACTIVE_EXCHANGE
+
+  beforeAll(() => {
+    process.env.ACTIVE_EXCHANGE = 'HL'
+  })
 
   beforeEach(() => {
     process.env.ACTIVE_EXCHANGE = 'HL'
@@ -127,7 +131,7 @@ describe('End-to-end integration', () => {
     pm.setAgentDispatch((coin, event) => agent.dispatch(coin, event))
   })
 
-  afterEach(() => {
+  afterAll(() => {
     if (originalActiveExchange === undefined) {
       delete process.env.ACTIVE_EXCHANGE
     } else {

@@ -28,8 +28,6 @@ import type { BacktestConfig, StrategyParams, WalkForwardConfig } from './types.
 import { fetchBybitCandlesBatched } from '../feed/bybit/bybit-rest.js'
 import { inferScanMode } from './optimize.js'
 import { walkForward } from './walk-forward.js'
-import { getStrategyRegistry } from '../strategy/registry.js'
-import { SmcSdStrategy } from '../strategy/strategies/smc-sd/index.js'
 import {
   BACKTEST_SLIPPAGE_PCT,
   HTF_MAP,
@@ -247,9 +245,6 @@ async function main() {
   const extended =
     process.env.WF_COMPARE_EXTENDED_HISTORY === '1' ||
     process.env.WF_COMPARE_EXTENDED_HISTORY === 'true'
-
-  const registry = getStrategyRegistry()
-  try { registry.register(new SmcSdStrategy()) } catch { /* already registered */ }
 
   const unionCoins = [...new Set([...baselineCoins, ...subsetCoins])]
 

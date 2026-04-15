@@ -1,10 +1,5 @@
 /**
- * Trading Orchestrator — extracted from trading-agent.ts (E28).
- *
- * Sprint 4.5: Per-strategy state isolation.
- *   - State map keyed by `coin:strategyId` (V2)
- *   - Per-strategy GlobalContext (V6) — each strategy has own dailyPnl, circuit breakers
- *   - Cross-strategy allowed (V7) — same coin can be traded by different strategies
+ * Trading Orchestrator — canonical single-context runtime state.
  *
  * Pure handlers remain in trading-agent.ts. This file owns the orchestrator class.
  */
@@ -27,30 +22,33 @@ import { checkPortfolioEntry, type PortfolioPosition } from './portfolio-risk.js
 import { DEFAULT_RISK_PERCENT } from '../config.js'
 import { log } from '../lib/logger.js'
 
-/** Default strategy ID for backward compatibility (single-strategy mode). */
-const DEFAULT_STRATEGY = 'smc-sd'
+function createGlobalContext(startedAt: number): GlobalContext {
+  return {
+    dailyPnl: 0,
+    peakAccountValue: 0,
+    totalConsecutiveLosses: 0,
+    lastTradeTime: 0,
+    globalPaused: false,
+    globalPauseReason: null,
+    startedAt,
+    pnlHistory: [],
+  }
+}
 
 // ─── State Key Helpers ──────────────────────────────────────────────────────
 
-/** Build state map key from coin + strategyId. */
-export function stateKey(coin: string, strategyId: string = DEFAULT_STRATEGY): string {
-  return `${coin}:${strategyId}`
-}
-
-/** Parse state map key back to coin + strategyId. */
-export function parseStateKey(key: string): { coin: string; strategyId: string } {
-  const idx = key.lastIndexOf(':')
-  if (idx === -1) return { coin: key, strategyId: DEFAULT_STRATEGY }
-  return { coin: key.slice(0, idx), strategyId: key.slice(idx + 1) }
+/** Build state map key from the canonical per-coin runtime state. */
+export function stateKey(coin: string): string {
+  return coin
 }
 
 // ─── Trading Agent (Orchestrator) ───────────────────────────────────────────
 
 export class TradingAgent {
-  /** Per-coin-strategy state: keyed by `coin:strategyId`. */
+  /** Per-coin state keyed by coin. */
   private coins: Map<string, CoinContext> = new Map()
-  /** Per-strategy global context. */
-  private globals: Map<string, GlobalContext> = new Map()
+  /** Shared runtime global context. */
+  private global: GlobalContext
   private emitter = new EventEmitter()
   private tradeCloseListeners: Array<(coin: string, pnl: number) => void> = []
   private startedAt: number
@@ -59,8 +57,7 @@ export class TradingAgent {
 
   constructor() {
     this.startedAt = Date.now()
-    // Initialize default strategy global
-    this.getOrCreateGlobal(DEFAULT_STRATEGY)
+    this.global = createGlobalContext(this.startedAt)
   }
 
   /** Set account equity (called by position monitor / exchange sync). */
@@ -73,31 +70,6 @@ export class TradingAgent {
     return this.accountEquity
   }
 
-  // ── Per-Strategy Global Context ─────────────────────────────────────────
-
-  /** Get or create GlobalContext for a strategy. */
-  private getOrCreateGlobal(strategyId: string): GlobalContext {
-    const existing = this.globals.get(strategyId)
-    if (existing) return existing
-    const g: GlobalContext = {
-      dailyPnl: 0,
-      peakAccountValue: 0,
-      totalConsecutiveLosses: 0,
-      lastTradeTime: 0,
-      globalPaused: false,
-      globalPauseReason: null,
-      startedAt: this.startedAt,
-      pnlHistory: [],
-    }
-    this.globals.set(strategyId, g)
-    return g
-  }
-
-  /** Get strategy's global context (read-only). */
-  getStrategyGlobal(strategyId: string): Readonly<GlobalContext> {
-    return this.getOrCreateGlobal(strategyId)
-  }
-
   // ── Pipeline Integration (R10) ───────────────────────────────────────────
 
   subscribeToPipeline(pipelineEmitter: EventEmitter): void {
@@ -108,11 +80,10 @@ export class TradingAgent {
 
   /** Handle incoming setup from pipeline. */
   onSetup(setup: ActiveSetup): void {
-    const strategyId = setup.strategyId ?? DEFAULT_STRATEGY
-    const key = stateKey(setup.coin, strategyId)
+    const key = stateKey(setup.coin)
     const coinState = this.getCoinStateByKey(key)
 
-    // Guard: skip if coin+strategy already has a pending order or is mid-entry.
+    // Guard: skip if the coin already has a pending order or is mid-entry.
     // Without this, the pipeline re-detects the same setup every tick and spams
     // IDLE → ENTERING → order_rejected → IDLE cycles against the DB idempotency guard.
     const ctx = this.coins.get(key)
@@ -125,32 +96,29 @@ export class TradingAgent {
       const openCoins = this.getOpenPositionCoins()
       const check = shouldBlockCorrelatedEntry(setup.coin, openCoins)
       if (check.blocked) {
-        const strategyTag = strategyId !== DEFAULT_STRATEGY ? ` [${strategyId}]` : ''
-        log.info('agent', `${setup.coin.padEnd(8)} SKIP correlation guard: ${check.reason}${strategyTag}`)
+        log.info('agent', `${setup.coin.padEnd(8)} SKIP correlation guard: ${check.reason}`)
         this.emitter.emit('action', journalAction('skip', setup.coin, {
           reason: check.reason,
           setupId: setup.id,
           blockedGroups: check.blockedGroups,
-          strategyId,
         }))
         return
       }
     }
 
-    this.dispatch(setup.coin, { type: 'setup_detected', setup }, strategyId)
+    this.dispatch(setup.coin, { type: 'setup_detected', setup })
   }
 
   // ── Event Dispatch ───────────────────────────────────────────────────────
 
-  /** Dispatch an event to a coin+strategy state machine. */
-  dispatch(coin: string, event: AgentEvent, strategyId: string = DEFAULT_STRATEGY): import('./types.js').TransitionResult {
-    const key = stateKey(coin, strategyId)
-    const ctx = this.getOrCreateCoinContext(key, coin, strategyId)
-    const global = this.getOrCreateGlobal(strategyId)
+  /** Dispatch an event to a coin state machine. */
+  dispatch(coin: string, event: AgentEvent): import('./types.js').TransitionResult {
+    const key = stateKey(coin)
+    const ctx = this.getOrCreateCoinContext(key, coin)
+    const global = this.global
     const prevState = ctx.state
     const handler = handlers[ctx.state]
     const result = handler(ctx, event, global)
-    const strategyTag = strategyId !== DEFAULT_STRATEGY ? ` [${strategyId}]` : ''
 
     // Apply transition
     if (result.nextState !== prevState) {
@@ -159,12 +127,12 @@ export class TradingAgent {
       const setup = ctx.activeSetup ?? (event.type === 'setup_detected' ? event.setup : null)
       const detail = setup ? ` | ${setup.type} ${setup.side}` : ''
       const reason = event.type === 'setup_invalidated' ? ` | reason: ${event.reason}` : ''
-      log.info('agent', `${coin.padEnd(8)} ${prevState} → ${result.nextState}${detail}${reason}${strategyTag}`)
+      log.info('agent', `${coin.padEnd(8)} ${prevState} → ${result.nextState}${detail}${reason}`)
     }
     ctx.state = result.nextState
 
     // Portfolio risk check: block place_order if over-exposed (S6)
-    const filteredActions = this.filterByPortfolioRisk(result.actions, coin, strategyId, ctx)
+    const filteredActions = this.filterByPortfolioRisk(result.actions, coin, ctx)
     if (filteredActions !== result.actions) {
       // place_order was blocked — stay IDLE when entry was direct from IDLE (no watch/activeSetup)
       ctx.state = prevState === 'IDLE' ? 'IDLE' : prevState
@@ -176,7 +144,7 @@ export class TradingAgent {
       if (action.type === 'log_journal' && action.eventType === 'skip') {
         const r = action.details?.reason
         const reason = typeof r === 'string' && r.length > 0 ? r : '(reason missing)'
-        log.info('agent', `${coin.padEnd(8)} SKIP ${reason}${strategyTag}`)
+        log.info('agent', `${coin.padEnd(8)} SKIP ${reason}`)
       }
     }
 
@@ -198,9 +166,8 @@ export class TradingAgent {
 
   /** Dispatch event to all coins (e.g., tick, global pause). */
   dispatchAll(event: AgentEvent): void {
-    for (const [key] of this.coins) {
-      const { coin, strategyId } = parseStateKey(key)
-      this.dispatch(coin, event, strategyId)
+    for (const [coin] of this.coins) {
+      this.dispatch(coin, event)
     }
   }
 
@@ -211,58 +178,28 @@ export class TradingAgent {
 
   // ── Global Controls ──────────────────────────────────────────────────────
 
-  /** Emergency pause all strategies. */
+  /** Emergency pause the runtime. */
   pauseAll(reason: string): void {
-    for (const [, g] of this.globals) {
-      g.globalPaused = true
-      g.globalPauseReason = reason
-    }
+    this.global.globalPaused = true
+    this.global.globalPauseReason = reason
     this.dispatchAll({ type: 'pause', reason })
   }
 
-  /** Resume all strategies. */
+  /** Resume the runtime. */
   resumeAll(): void {
-    for (const [, g] of this.globals) {
-      g.globalPaused = false
-      g.globalPauseReason = null
-    }
+    this.global.globalPaused = false
+    this.global.globalPauseReason = null
     this.dispatchAll({ type: 'resume' })
   }
 
-  /** Pause a specific strategy only. */
-  pauseStrategy(strategyId: string, reason: string): void {
-    const g = this.getOrCreateGlobal(strategyId)
-    g.globalPaused = true
-    g.globalPauseReason = reason
-    for (const [key] of this.coins) {
-      const parsed = parseStateKey(key)
-      if (parsed.strategyId === strategyId) {
-        this.dispatch(parsed.coin, { type: 'pause', reason }, strategyId)
-      }
-    }
-  }
-
-  /** Resume a specific strategy only. */
-  resumeStrategy(strategyId: string): void {
-    const g = this.getOrCreateGlobal(strategyId)
-    g.globalPaused = false
-    g.globalPauseReason = null
-    for (const [key] of this.coins) {
-      const parsed = parseStateKey(key)
-      if (parsed.strategyId === strategyId) {
-        this.dispatch(parsed.coin, { type: 'resume' }, strategyId)
-      }
-    }
-  }
-
   /**
-   * Update daily PnL + pnlHistory for a strategy.
+   * Update daily PnL + pnlHistory for the shared runtime.
    * Runs circuit breaker checks after recording. If tripped, pauses
-   * non-IN_POSITION coins for that strategy only (R5).
+   * non-IN_POSITION coins only (R5).
    */
-  recordPnl(pnl: number, accountValue?: number, coin?: string, strategyId: string = DEFAULT_STRATEGY): void {
+  recordPnl(pnl: number, accountValue?: number, coin?: string): void {
     const now = Date.now()
-    const g = this.getOrCreateGlobal(strategyId)
+    const g = this.global
     g.dailyPnl += pnl
     g.lastTradeTime = now
     g.pnlHistory.push({ ts: now, pnl })
@@ -278,7 +215,7 @@ export class TradingAgent {
     }
 
     if (accountValue !== undefined) {
-      this.checkCircuitBreakers(accountValue, now, strategyId)
+      this.checkCircuitBreakers(accountValue, now)
     }
 
     if (coin) {
@@ -288,27 +225,25 @@ export class TradingAgent {
     }
   }
 
-  /** Reset daily PnL for all strategies (called at UTC midnight). */
+  /** Reset daily PnL for the runtime (called at UTC midnight). */
   resetDailyPnl(): void {
-    for (const [, g] of this.globals) {
-      g.dailyPnl = 0
-    }
+    this.global.dailyPnl = 0
   }
 
-  /** Update account value for a strategy. */
-  updateAccountValue(accountValue: number, strategyId: string = DEFAULT_STRATEGY): void {
-    const g = this.getOrCreateGlobal(strategyId)
+  /** Update account value for the shared runtime. */
+  updateAccountValue(accountValue: number): void {
+    const g = this.global
     if (accountValue > g.peakAccountValue) {
       g.peakAccountValue = accountValue
     }
   }
 
   /**
-   * Run circuit breaker checks for a specific strategy.
-   * If tripped, pause only that strategy's non-IN_POSITION coins (R5).
+   * Run circuit breaker checks for the shared runtime.
+   * If tripped, pause non-IN_POSITION coins only (R5).
    */
-  checkCircuitBreakers(accountValue: number, now: number = Date.now(), strategyId: string = DEFAULT_STRATEGY): void {
-    const g = this.getOrCreateGlobal(strategyId)
+  checkCircuitBreakers(accountValue: number, now: number = Date.now()): void {
+    const g = this.global
     g.pnlHistory = prunePnlHistory(g.pnlHistory, now)
 
     const result = runAllChecks({
@@ -321,21 +256,19 @@ export class TradingAgent {
     })
 
     if (result.tripped && !g.globalPaused) {
-      const strategyTag = strategyId !== DEFAULT_STRATEGY ? ` [${strategyId}]` : ''
-      log.warn('agent', `CIRCUIT BREAK${strategyTag} | ${result.reason} | dailyPnl=$${g.dailyPnl.toFixed(2)} | pause until ${result.pauseUntil ? new Date(result.pauseUntil).toISOString().slice(11, 19) : 'manual resume'}`)
+      log.warn('agent', `CIRCUIT BREAK | ${result.reason} | dailyPnl=$${g.dailyPnl.toFixed(2)} | pause until ${result.pauseUntil ? new Date(result.pauseUntil).toISOString().slice(11, 19) : 'manual resume'}`)
 
       g.globalPaused = true
       g.globalPauseReason = result.reason
 
-      // Dispatch circuit_break to this strategy's coins NOT in position (R5)
-      for (const [key, ctx] of this.coins) {
-        const parsed = parseStateKey(key)
-        if (parsed.strategyId === strategyId && ctx.state !== 'IN_POSITION') {
-          this.dispatch(parsed.coin, {
+      // Dispatch circuit_break to non-IN_POSITION coins only (R5)
+      for (const [coin, ctx] of this.coins) {
+        if (ctx.state !== 'IN_POSITION') {
+          this.dispatch(coin, {
             type: 'circuit_break',
             reason: result.reason!,
             pauseUntil: result.pauseUntil,
-          }, strategyId)
+          })
         }
       }
 
@@ -349,7 +282,6 @@ export class TradingAgent {
           dailyPnl: g.dailyPnl,
           accountValue,
           peakAccountValue: g.peakAccountValue,
-          strategyId,
         },
       })
     }
@@ -359,14 +291,13 @@ export class TradingAgent {
 
   recoverFromCrash(
     exchangePositions: Array<{ coin: string; size: number; entryPrice: number }>,
-    dbPositions: Array<{ coin: string; positionId: string; side: string; strategyId?: string }>,
+    dbPositions: Array<{ coin: string; positionId: string; side: string }>,
   ): void {
     for (const pos of exchangePositions) {
       if (Math.abs(pos.size) > 0) {
         const dbMatch = dbPositions.find(p => p.coin === pos.coin)
-        const strategyId = dbMatch?.strategyId ?? DEFAULT_STRATEGY
-        const key = stateKey(pos.coin, strategyId)
-        const ctx = this.getOrCreateCoinContext(key, pos.coin, strategyId)
+        const key = stateKey(pos.coin)
+        const ctx = this.getOrCreateCoinContext(key, pos.coin)
         ctx.state = 'IN_POSITION'
         ctx.positionId = dbMatch?.positionId ?? `orphan-${pos.coin}`
         ctx.stateEnteredAt = Date.now()
@@ -377,9 +308,8 @@ export class TradingAgent {
     for (const dbPos of dbPositions) {
       const onExchange = exchangePositions.some(p => p.coin === dbPos.coin && Math.abs(p.size) > 0)
       if (!onExchange) {
-        const strategyId = dbPos.strategyId ?? DEFAULT_STRATEGY
-        const key = stateKey(dbPos.coin, strategyId)
-        const ctx = this.getOrCreateCoinContext(key, dbPos.coin, strategyId)
+        const key = stateKey(dbPos.coin)
+        const ctx = this.getOrCreateCoinContext(key, dbPos.coin)
         ctx.state = 'IDLE'
         ctx.positionId = null
         ctx.activeSetup = null
@@ -387,7 +317,6 @@ export class TradingAgent {
         this.emitter.emit('action', journalAction('exit', dbPos.coin, {
           reason: 'crash_recovery_closed',
           positionId: dbPos.positionId,
-          strategyId,
         }))
       }
     }
@@ -395,7 +324,7 @@ export class TradingAgent {
 
   // ── Query ────────────────────────────────────────────────────────────────
 
-  /** Get snapshot for API (backward-compat: aggregates across strategies). */
+  /** Get snapshot for API consumers. */
   getSnapshot(): AgentSnapshot {
     const coins: AgentSnapshot['coins'] = {}
     const now = Date.now()
@@ -407,48 +336,34 @@ export class TradingAgent {
         positionId: ctx.positionId,
         consecutiveLosses: ctx.consecutiveLosses,
         stateAge: now - ctx.stateEnteredAt,
-        strategyId: ctx.strategyId,
-      }
-    }
-
-    const defaultGlobal = this.getOrCreateGlobal(DEFAULT_STRATEGY)
-    const strategyGlobals: Record<string, GlobalSnapshotEntry> = {}
-    for (const [sid, g] of this.globals) {
-      strategyGlobals[sid] = {
-        dailyPnl: g.dailyPnl,
-        totalConsecutiveLosses: g.totalConsecutiveLosses,
-        globalPaused: g.globalPaused,
-        globalPauseReason: g.globalPauseReason,
-        uptime: now - g.startedAt,
       }
     }
 
     return {
       coins,
       global: {
-        dailyPnl: defaultGlobal.dailyPnl,
-        totalConsecutiveLosses: defaultGlobal.totalConsecutiveLosses,
-        globalPaused: defaultGlobal.globalPaused,
-        globalPauseReason: defaultGlobal.globalPauseReason,
-        uptime: now - defaultGlobal.startedAt,
+        dailyPnl: this.global.dailyPnl,
+        totalConsecutiveLosses: this.global.totalConsecutiveLosses,
+        globalPaused: this.global.globalPaused,
+        globalPauseReason: this.global.globalPauseReason,
+        uptime: now - this.global.startedAt,
       },
-      strategyGlobals,
     }
   }
 
-  /** Get state for a specific coin+strategy. Defaults to 'smc-sd'. */
-  getCoinState(coin: string, strategyId: string = DEFAULT_STRATEGY): AgentState {
-    const key = stateKey(coin, strategyId)
+  /** Get state for a specific coin. */
+  getCoinState(coin: string): AgentState {
+    const key = stateKey(coin)
     return this.coins.get(key)?.state ?? 'IDLE'
   }
 
   /** Get full coin context (for invalidation bridge setup ID matching). */
-  getCoinContext(coin: string, strategyId: string = DEFAULT_STRATEGY): Readonly<CoinContext> | null {
-    const key = stateKey(coin, strategyId)
+  getCoinContext(coin: string): Readonly<CoinContext> | null {
+    const key = stateKey(coin)
     return this.coins.get(key) ?? null
   }
 
-  /** Get coins that are currently in position or entering (across ALL strategies). */
+  /** Get coins that are currently in position or entering. */
   getOpenPositionCoins(): string[] {
     const coins: string[] = []
     for (const [, ctx] of this.coins) {
@@ -461,9 +376,9 @@ export class TradingAgent {
     return coins
   }
 
-  /** Get global context for default strategy (backward compat). */
+  /** Get the shared global runtime context. */
   getGlobal(): Readonly<GlobalContext> {
-    return this.getOrCreateGlobal(DEFAULT_STRATEGY)
+    return this.global
   }
 
   /** Subscribe to agent actions (for orchestrator in S6/S7). */
@@ -478,13 +393,12 @@ export class TradingAgent {
 
   // ── Internal ─────────────────────────────────────────────────────────────
 
-  private getOrCreateCoinContext(key: string, coin: string, strategyId: string): CoinContext {
+  private getOrCreateCoinContext(key: string, coin: string): CoinContext {
     const existing = this.coins.get(key)
     if (existing) return existing
     const ctx: CoinContext = {
       state: 'IDLE',
       coin,
-      strategyId,
       activeSetup: null,
       pendingOrderId: null,
       positionId: null,
@@ -530,7 +444,7 @@ export class TradingAgent {
       ctx.positionId = null
       ctx.activeSetup = null
       // Update global dailyPnl + circuit breakers
-      this.recordPnl(pnl, undefined, ctx.coin, ctx.strategyId)
+      this.recordPnl(pnl, undefined, ctx.coin)
     }
 
     if (event.type === 'pause' || event.type === 'circuit_break') {
@@ -559,17 +473,16 @@ export class TradingAgent {
   private filterByPortfolioRisk(
     actions: AgentAction[],
     coin: string,
-    strategyId: string,
     ctx: CoinContext,
   ): AgentAction[] {
     const hasPlaceOrder = actions.some(a => a.type === 'place_order')
     if (!hasPlaceOrder || this.accountEquity <= 0) return actions
 
     // Build current portfolio positions from IN_POSITION/ENTERING coins.
-    // Exclude the current coin:strategy — ctx.state was already set to ENTERING before this check,
+    // Exclude the current coin — ctx.state was already set to ENTERING before this check,
     // so it would otherwise count against itself (off-by-one: effective max becomes max-1).
     const portfolioPositions = this.getPortfolioPositions()
-      .filter(p => !(p.coin === coin && p.strategyId === strategyId))
+      .filter(p => p.coin !== coin)
 
     // Estimate proposed notional from setup (use risk per trade × account as fallback)
     const placeAction = actions.find(a => a.type === 'place_order')
@@ -580,7 +493,6 @@ export class TradingAgent {
     const check = checkPortfolioEntry({
       positions: portfolioPositions,
       accountEquity: this.accountEquity,
-      strategyId,
       proposedNotional,
     })
 
@@ -590,7 +502,6 @@ export class TradingAgent {
         ...actions.filter(a => a.type !== 'place_order'),
         journalAction('skip', coin, {
           reason: `portfolio risk: ${check.reason}`,
-          strategyId,
           setupId: ctx.activeSetup?.id,
         }),
       ]
@@ -608,7 +519,6 @@ export class TradingAgent {
         // Real notional tracked by PositionMonitor in S7
         positions.push({
           coin: ctx.coin,
-          strategyId: ctx.strategyId,
           notionalValue: this.accountEquity * DEFAULT_RISK_PERCENT,
         })
       }

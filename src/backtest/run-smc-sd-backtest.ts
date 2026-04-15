@@ -13,8 +13,6 @@ import type { BacktestConfig } from './types.js'
 import { fetchCandlesBatched } from '../feed/rest.js'
 import { runBacktest } from './engine.js'
 import { formatMetricsSummary } from './report.js'
-import { getStrategyRegistry } from '../strategy/registry.js'
-import { SmcSdStrategy } from '../strategy/strategies/smc-sd/index.js'
 import { log } from '../lib/logger.js'
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -33,10 +31,6 @@ async function main() {
   console.log('  TFs  :', TIMEFRAMES.join(', '))
   console.log('  Bars :', CANDLE_COUNT, 'per series')
   console.log('====================================================\n')
-
-  // Register SMC-SD strategy
-  const reg = getStrategyRegistry()
-  reg.register(new SmcSdStrategy())
 
   // Fetch candles
   const candleMap = new Map<string, Candle[]>()

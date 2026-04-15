@@ -1,6 +1,6 @@
 # TODOS
 
-Active backlog only. Historical review notes and superseded plans live in [docs/plan/decisions.md](docs/plan/decisions.md).
+Active backlog only. Historical review notes and superseded plans live in [docs/archive/plan/decisions.md](docs/archive/plan/decisions.md).
 Priority: P1 (do next), P2 (soon), P3 (someday).
 
 Current implementation source of truth:
@@ -14,7 +14,7 @@ Current implementation source of truth:
 
 Planning note:
 
-- `docs/plan/` contains historical sprint plans and roadmap drafts.
+- `docs/archive/plan/` contains historical sprint plans and roadmap drafts.
 - Do not treat sprint `[DONE]` markers as proof that `src/server/`, `dashboard/`, `src/advisor/`, or `src/memory/` exist on the current branch.
 
 ---
@@ -37,7 +37,7 @@ Planning note:
 
 ### [DONE] Debug Drilldown Cascade — Why does 4H→15m→5m fire zero times?
 
-**Status:** DIAGNOSED 2026-04-12. Root cause: 5m FVG-only entry requirement (8,703 kills), CHoCH gate (1,293 kills), short TTL (907 expirations). See `docs/plan/decisions.md` "Drilldown Cascade Diagnostic Results".
+**Status:** DIAGNOSED 2026-04-12. Root cause: 5m FVG-only entry requirement (8,703 kills), CHoCH gate (1,293 kills), short TTL (907 expirations). See `docs/archive/plan/decisions.md` "Drilldown Cascade Diagnostic Results".
 
 **Diagnostic tool:** `src/backtest/run-drilldown-diag.ts`
 

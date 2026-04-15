@@ -82,9 +82,8 @@ TELEGRAM_CHAT_ID=...
 ```
 
 Notes:
-- `.env.example` defaults to `PAPER_TRADE=true`. Keep it that way until you explicitly want live trading.
-- `ACTIVE_EXCHANGE` is process-wide. One process runs one exchange.
-- `ENABLED_STRATEGIES` can narrow which registered strategies are active.
+- `.env.example` defaults to `PAPER_TRADE=true`. Keep it that way until you explicitly want live trading
+- `ACTIVE_EXCHANGE` is process-wide. One process runs one exchange
 
 ## 4. Verify the repo before first run
 
@@ -117,10 +116,10 @@ bun run src/index.ts
 
 ## Startup sequence
 
-`src/index.ts` currently boots in this order:
+`src/index.ts` is now a thin entrypoint. Long-lived orchestration lives in `src/runtime/app.ts`, which currently boots in this order:
 
-1. run DB migrations
-2. choose active exchange and build coin selector
+1. choose active exchange and build coin selector
+2. run DB migrations
 3. fetch ranked coins
 4. subscribe websocket feeds first
 5. start the TUI immediately
@@ -133,7 +132,7 @@ bun run src/index.ts
 12. start Telegram bot if configured
 13. bootstrap pipeline from store and enter steady-state loops
 
-This order matters. Do not “clean up” the boot sequence casually.
+This order matters. Do not "clean up" the boot sequence casually.
 
 ## What you should see
 
@@ -141,10 +140,28 @@ Healthy startup usually includes:
 - `COINS | ...`
 - `ARMED | ...`
 - exchange/account mode summary
-- strategy enablement summary
 - TUI visible in the terminal
 
-The TUI starts before backfill completes, then switches into the full dashboard view after bootstrap.
+The current branch starts an Ink terminal dashboard, not a web dashboard. You should see:
+- backfill progress while candles are loading
+- account, scanner, system, positions, and watchlist panels after warmup
+- positions and setup state refreshing roughly once per second
+
+### Logs
+
+Watch for:
+- `ARMED` status = required timeframes loaded and pipeline active
+- `STATUS` line every 60s = system alive
+- `SETUP` logs = trade setups detected
+- `WARNING` with staleness = data feed issues
+
+### Telegram bot
+
+If `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are configured, the bot should respond to commands like:
+- `/help`
+- `/status`
+- `/positions`
+- `/risk`
 
 ## Quick reference
 
@@ -162,19 +179,19 @@ The TUI starts before backfill completes, then switches into the full dashboard 
 
 ### Hyperliquid
 
-- REST is weight-limited, so bootstrap/backfill goes through the repo rate limiter.
-- WS provides real-time updates, not full historical recovery.
-- Agent wallet signs orders; main account address is used for account info queries.
+- REST is weight-limited, so bootstrap/backfill goes through the repo rate limiter
+- WS provides real-time updates, not full historical recovery
+- Agent wallet signs orders; main account address is used for account info queries
 
 ### Bybit
 
-- Current runtime uses one shared Bybit exchange service per process.
-- TUI price display uses the latest 1m candle close as the mark-price proxy in BB mode.
-- On shutdown in live BB mode, the runtime attempts cancel-all for open orders.
+- Current runtime uses one shared Bybit exchange service per process
+- TUI price display uses the latest 1m candle close as the mark-price proxy in BB mode
+- On shutdown in live BB mode, the runtime attempts cancel-all for open orders
 
 ## Troubleshooting
 
-### DB won’t come up
+### DB won't come up
 
 ```bash
 lsof -i :5432
@@ -184,31 +201,34 @@ docker-compose logs -f
 
 ### Startup stops with no tracked coins
 
-- Coin selection returned an empty ranked list.
-- Check network access, exchange availability, and exchange-specific credentials where relevant.
+- Coin selection returned an empty ranked list
+- Check network access, exchange availability, and exchange-specific credentials where relevant
 
 ### TUI opens but data looks stale
 
-- Backfill may still be running.
-- Later in runtime, stale-feed warnings point to feed/orderbook connectivity rather than the UI itself.
+- Backfill may still be running
+- Later in runtime, stale-feed warnings point to feed/orderbook connectivity rather than the UI itself
 
 ### Live mode account bootstrap fails
 
-- For `HL`, paper mode can continue without wallet bootstrap.
-- For `BB`, exchange bootstrap failure is treated as fatal at startup.
+- For `HL`, paper mode can continue without wallet bootstrap
+- For `BB`, exchange bootstrap failure is treated as fatal at startup
 
 ### Telegram commands do nothing
 
-- Confirm both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set.
-- The bot is optional; the runtime still works without it.
+- Confirm both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set
+- The bot is optional; the runtime still works without it
 
 ## Repo map
 
-- `src/index.ts` — runtime bootstrap and lifecycle
+- `src/index.ts` — thin runtime entrypoint
+- `src/runtime/` — lifecycle orchestration
 - `src/feed/` — HL/BB feeds, coin selection, in-memory store
-- `src/strategy/` — pure scan/orchestration layer
+- `src/strategy/` — pure setup generation and orchestration layer
 - `src/agent/` — stateful trading logic and reconciliation
 - `src/execution/` — exchange adapters and shared wallet pool
 - `src/db/` — persistence and migrations
 - `src/ui/` — terminal dashboard
 - `src/backtest/` — replay, simulator, optimization, reports
+
+For historical architecture details and older roadmap context, see `docs/archive/spec/architecture.md`.

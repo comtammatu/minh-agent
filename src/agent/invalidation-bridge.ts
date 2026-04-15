@@ -32,8 +32,6 @@ export interface InvalidationRecord {
   coinState: AgentState
   matched: boolean
   actionTaken: 'none' | 'drop_watch' | 'cancel_order' | 'close_position'
-  /** Strategy bucket for TUI/stats; omitted when setupId did not parse to a coin */
-  strategyKey?: string
   ts: number
 }
 
@@ -44,8 +42,6 @@ export interface InvalidationBridgeStats {
   skipped: number
   parseFailed: number
   actions: Record<string, number>
-  /** Per-strategy matched vs skipped (no active setup / wrong setup). */
-  byStrategy: Record<string, { matched: number; skipped: number }>
 }
 
 // ─── Bridge ────────────────────────────────────────────────────────────────
@@ -78,29 +74,18 @@ export class InvalidationBridge {
     const coin = parseCoinFromSetupId(setupId)
     if (!coin) {
       log.warn('invalidation-bridge', `Cannot parse coin from setupId: ${setupId}`)
-      return this.record(setupId, reason, 'unknown', 'IDLE', false, 'none', undefined)
+      return this.record(setupId, reason, 'unknown', 'IDLE', false, 'none')
     }
 
-    // Check all strategies for this coin (multi-strategy support)
-    const snapshot = agent.getSnapshot()
-    let matchedCtx: { state: string; strategyId: string } | null = null
-
-    for (const [key, entry] of Object.entries(snapshot.coins)) {
-      // key format: "coin:strategyId"
-      if (!key.startsWith(coin + ':') && key !== coin) continue
-      // Look for matching setupId in the active setup
-      const ctx = agent.getCoinContext(coin, entry.strategyId)
-      if (ctx?.activeSetup?.id === setupId) {
-        matchedCtx = { state: entry.state, strategyId: entry.strategyId }
-        break
-      }
-    }
+    const ctx = agent.getCoinContext(coin)
+    const matchedCtx = ctx?.activeSetup?.id === setupId
+      ? { state: ctx.state }
+      : null
 
     if (!matchedCtx) {
       const coinState = agent.getCoinState(coin)
-      const strategyKey = parseStrategyFromSetupId(setupId) ?? 'legacy'
-      log.debug('invalidation-bridge', `Invalidation for ${setupId}: no matching active setup in any strategy — skipping`)
-      return this.record(setupId, reason, coin, coinState, false, 'none', strategyKey)
+      log.debug('invalidation-bridge', `Invalidation for ${setupId}: no matching active setup — skipping`)
+      return this.record(setupId, reason, coin, coinState, false, 'none')
     }
 
     const coinState = matchedCtx.state as AgentState
@@ -111,9 +96,9 @@ export class InvalidationBridge {
       `INVALIDATION → ACTION | ${coin} | state=${coinState} | setup=${setupId} | reason=${reason} | action=${actionTaken}`,
     )
 
-    agent.dispatch(coin, { type: 'setup_invalidated', setupId, reason }, matchedCtx.strategyId)
+    agent.dispatch(coin, { type: 'setup_invalidated', setupId, reason })
 
-    return this.record(setupId, reason, coin, coinState, true, actionTaken, matchedCtx.strategyId)
+    return this.record(setupId, reason, coin, coinState, true, actionTaken)
   }
 
   /** Get recent invalidation history (for API / journal). */
@@ -126,32 +111,20 @@ export class InvalidationBridge {
     let matched = 0
     let skipped = 0
     let parseFailed = 0
-    const byStrategy: Record<string, { matched: number; skipped: number }> = {}
-
-    const bump = (sid: string, kind: 'matched' | 'skipped'): void => {
-      let row = byStrategy[sid]
-      if (!row) {
-        row = { matched: 0, skipped: 0 }
-        byStrategy[sid] = row
-      }
-      row[kind]++
-    }
 
     for (const r of this.history) {
       actions[r.actionTaken] = (actions[r.actionTaken] ?? 0) + 1
-      if (r.strategyKey === undefined) {
+      if (r.coin === 'unknown') {
         parseFailed++
         continue
       }
       if (r.matched) {
         matched++
-        bump(r.strategyKey, 'matched')
       } else {
         skipped++
-        bump(r.strategyKey, 'skipped')
       }
     }
-    return { total: this.history.length, matched, skipped, parseFailed, actions, byStrategy }
+    return { total: this.history.length, matched, skipped, parseFailed, actions }
   }
 
   /** Clear history (tests). */
@@ -168,7 +141,6 @@ export class InvalidationBridge {
     coinState: AgentState,
     matched: boolean,
     actionTaken: InvalidationRecord['actionTaken'],
-    strategyKey: string | undefined,
   ): InvalidationRecord {
     const record: InvalidationRecord = {
       setupId,
@@ -177,7 +149,6 @@ export class InvalidationBridge {
       coinState,
       matched,
       actionTaken,
-      ...(strategyKey !== undefined ? { strategyKey } : {}),
       ts: Date.now(),
     }
     this.history.push(record)
@@ -195,14 +166,15 @@ export class InvalidationBridge {
  * Parse coin name from setupId.
  *
  * Supported formats:
- * - Modern: `strategyId:COIN|interval|type` (from strategy/shared/invalidation.ts setupId())
+ * - Canonical: `COIN|interval|type`
+ * - Legacy prefixed: `prefix:COIN|interval|type`
  * - Legacy: `COIN|interval|type|side`
  */
 export function parseCoinFromSetupId(setupId: string): string | null {
   const parts = setupId.split('|')
   if (!parts[0] || parts.length < 3) return null
 
-  // Modern prefix: "strategyId:COIN"
+  // Legacy prefixed setup ids used "<prefix>:COIN" as the first segment.
   const first = parts[0]
   const idx = first.lastIndexOf(':')
   if (idx !== -1) {
@@ -212,23 +184,6 @@ export function parseCoinFromSetupId(setupId: string): string | null {
 
   // Legacy: "COIN"
   return first
-}
-
-/**
- * Strategy id from setupId for stats/TUI bucketing.
- * - Modern `strategyId:COIN|interval|type` → strategyId
- * - Legacy `COIN|interval|type|side` → `legacy`
- */
-export function parseStrategyFromSetupId(setupId: string): string | null {
-  const parts = setupId.split('|')
-  if (!parts[0] || parts.length < 3) return null
-
-  const first = parts[0]
-  const idx = first.indexOf(':')
-  if (idx === -1) return 'legacy'
-
-  const sid = first.slice(0, idx)
-  return sid.length > 0 ? sid : null
 }
 
 /**

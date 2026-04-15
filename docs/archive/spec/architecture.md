@@ -1,13 +1,15 @@
 # Minh (明) — Architecture
 
-> **Current runtime snapshot (2026-04-15)**  
-> Autonomous trading agent with:
-> - pure strategy pipeline
-> - stateful agent/execution layer
+> **Archive note (2026-04-15)**: this document is preserved as historical architecture and roadmap context, not as the active implementation source of truth.
+>
+> **Current runtime snapshot (2026-04-15)**:
 > - one active exchange per process (`HL` or `BB`)
 > - one shared exchange wallet/service per process
-> - PostgreSQL/TimescaleDB persistence
+> - one concrete `smc-sd` setup engine on the active path
+> - thin `src/index.ts` entrypoint with long-lived orchestration in `src/runtime/app.ts`
 > - Ink TUI + optional Telegram operator surface
+>
+> Current branch does **not** contain the planned `src/server/`, `dashboard/`, `src/advisor/`, or `src/memory/` modules referenced in older roadmap material. Use `README.md`, `docs/CODEBASE_MAP.md`, `docs/runtime-and-feed.md`, `docs/strategy-engine.md`, `docs/agent-and-execution.md`, and `docs/data-and-backtesting.md` as the live branch source of truth.
 
 ## System overview
 

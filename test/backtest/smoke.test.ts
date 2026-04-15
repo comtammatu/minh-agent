@@ -16,8 +16,6 @@ import { describe, test, expect, beforeAll } from 'bun:test'
 import { runBacktest } from '../../src/backtest/engine.js'
 import type { BacktestConfig } from '../../src/backtest/types.js'
 import type { Candle, CandleInterval } from '../../src/types.js'
-import { getStrategyRegistry, resetStrategyRegistry } from '../../src/strategy/registry.js'
-import { SmcSdStrategy } from '../../src/strategy/strategies/smc-sd/index.js'
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -55,12 +53,8 @@ function generateCandles(count: number, startPrice: number, startTime: number): 
 
 // ─── Smoke Test ────────────────────────────────────────────────────────────
 
-// Register strategies before any test runs
 beforeAll(() => {
   process.env['ACTIVE_EXCHANGE'] = 'HL'
-  resetStrategyRegistry()
-  const reg = getStrategyRegistry()
-  reg.register(new SmcSdStrategy())
 })
 
 describe('backtest E2E smoke', () => {

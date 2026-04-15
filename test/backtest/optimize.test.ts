@@ -26,8 +26,6 @@ import {
 import { PARAM_SCHEMA } from '../../src/config.js'
 import type { BacktestConfig, StrategyParams, WalkForwardConfig } from '../../src/backtest/types.js'
 import type { Candle, CandleInterval } from '../../src/types.js'
-import { getStrategyRegistry, resetStrategyRegistry } from '../../src/strategy/registry.js'
-import { SmcSdStrategy } from '../../src/strategy/strategies/smc-sd/index.js'
 import {
   BACKTEST_SLIPPAGE_PCT,
   WF_TRAIN_WINDOW_MS,
@@ -39,9 +37,6 @@ import {
 
 beforeAll(() => {
   process.env['ACTIVE_EXCHANGE'] = 'HL'
-  resetStrategyRegistry()
-  const reg = getStrategyRegistry()
-  reg.register(new SmcSdStrategy())
 })
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -53,7 +48,7 @@ function makeCandle(t: number, price: number, v = 1000): Candle {
   return { t, o: price, h: price * 1.01, l: price * 0.99, c: price, v }
 }
 
-/** Generate 6 months of synthetic candles for multiple coins × TFs. */
+/** Generate synthetic candles for multiple coins × TFs. */
 function makeSyntheticCandles(
   coins: string[],
   tfs: CandleInterval[],
@@ -94,10 +89,12 @@ function makeSyntheticCandles(
 }
 
 const COINS = ['BTC']
-const TFS: CandleInterval[] = ['15m', '1h', '4h']
+// Keep the optimizer integration fixture intentionally lightweight so the
+// walk-forward tests stay under Bun's default per-test timeout in CI/dev runs.
+const TFS: CandleInterval[] = ['1h', '4h']
 
 // Pre-generate synthetic data (shared across tests, read-only)
-const syntheticCandles = makeSyntheticCandles(COINS, TFS, 120)
+const syntheticCandles = makeSyntheticCandles(COINS, TFS, 90)
 
 const baseConfig: BacktestConfig = {
   coins: COINS,

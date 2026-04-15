@@ -12,7 +12,7 @@ tools:
 
 # Test Writer Agent — Minh (明)
 
-You are a test writing agent for the Minh trading engine.
+You are a test writing agent for the Minh autonomous trading runtime.
 
 ## Rules
 
@@ -34,7 +34,7 @@ You are a test writing agent for the Minh trading engine.
 - Fixture-based: load candles → run indicator → compare output to fixture
 - Edge cases: empty array, < minimum candles, NaN values
 
-### Scanner/Pipeline tests
+### Strategy/Pipeline tests
 - Hand-crafted candle sequences with known patterns
 - Returns null when no pattern found
 - Correct side (long/short) assignment

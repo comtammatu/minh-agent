@@ -12,15 +12,9 @@ import { describe, test, expect, beforeAll } from 'bun:test'
 import { runBacktest, runBacktestAsync, type BacktestProgress } from '../../src/backtest/engine.js'
 import type { BacktestConfig } from '../../src/backtest/types.js'
 import type { Candle, CandleInterval } from '../../src/types.js'
-import { getStrategyRegistry, resetStrategyRegistry } from '../../src/strategy/registry.js'
-import { SmcSdStrategy } from '../../src/strategy/strategies/smc-sd/index.js'
 
-// Register strategies before any test runs
 beforeAll(() => {
   process.env['ACTIVE_EXCHANGE'] = 'HL'
-  resetStrategyRegistry()
-  const reg = getStrategyRegistry()
-  reg.register(new SmcSdStrategy())
 })
 
 // ─── Test Helpers ───────────────────────────────────────────────────────────

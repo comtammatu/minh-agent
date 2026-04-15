@@ -1,11 +1,11 @@
 /**
- * Exchange Pool — shared ExchangeService factory (Sprint 4.5 S4/S10).
+ * Exchange Pool — shared ExchangeService factory for the active runtime.
  *
- * Both HL and Bybit use a single shared wallet/account for all strategies:
+ * Both HL and Bybit use a single shared wallet/account for the whole process:
  *   HL:  one shared HLExchangeService (Hyperliquid Vault main wallet)
  *   BB:  one shared BybitExchangeService (Bybit main wallet)
  *
- * All strategies route to the same shared instance — no per-strategy split.
+ * All requests route to the same shared instance — no per-strategy split.
  *
  * Design decisions:
  *   - S10: activeExchange read once in init(), cached — never per-get()
@@ -23,7 +23,7 @@ import type { ExchangeId } from '../types.js'
 import { log } from '../lib/logger.js'
 
 export class ExchangePool {
-  /** Shared instance for all strategies. */
+  /** Shared instance for the active runtime. */
   private shared: IExchangeService | null = null
 
   /** Active exchange, read once in init() and cached. */
@@ -63,32 +63,16 @@ export class ExchangePool {
   }
 
   /**
-   * Get exchange service for a strategy.
-   * Always returns the shared instance — all strategies share one wallet.
-   *
-   * @param strategyId Strategy identifier (e.g. 'smc-sd'). Ignored — kept for API compat.
-   * @param exchange Override exchange for this lookup. Defaults to {@link activeExchange}.
+   * Get the exchange service for the active runtime.
+   * Always returns the shared instance — the process uses one wallet.
    */
-  get(_strategyId: string, exchange?: ExchangeId): IExchangeService {
+  get(exchange?: ExchangeId): IExchangeService {
     if (!this.initialized) {
       throw new Error('ExchangePool not initialized — call init() first')
     }
     const ex = exchange ?? this.activeExchange
     if (this.shared) return this.shared
     return this.getFallback(ex)
-  }
-
-  /**
-   * Get ExchangeService for a strategy (typed as ExchangeService for backward compat).
-   * Only valid when activeExchange === 'HL'. Throws if called in BB mode.
-   * @deprecated Prefer {@link get} which returns IExchangeService.
-   */
-  getHL(strategyId: string): ExchangeService {
-    const svc = this.get(strategyId, 'HL')
-    if (!(svc instanceof ExchangeService)) {
-      throw new Error(`ExchangePool.getHL: pool is not in HL mode (activeExchange=${this.activeExchange})`)
-    }
-    return svc
   }
 
   /** Get the shared instance. */
@@ -99,17 +83,7 @@ export class ExchangePool {
     return this.shared!
   }
 
-  /** Always false — single shared wallet, no dedicated per-strategy instances. */
-  hasDedicatedWallet(_strategyId: string): boolean {
-    return false
-  }
-
-  /** Always empty — no per-strategy instances. */
-  getStrategyIds(): string[] {
-    return []
-  }
-
-  /** Always false — single shared wallet for all strategies. */
+  /** Always false — the runtime uses one shared wallet. */
   isMultiWallet(): boolean {
     return false
   }
@@ -150,13 +124,13 @@ export function resetExchangePool(): void {
 }
 
 /**
- * Cached effective balance (USD) for the main account.
+ * Cached effective balance (USD) for the shared runtime wallet.
  * Routes through {@link ExchangePool.get} when the pool is initialized; otherwise
  * falls back to the singleton {@link getExchangeService} (pre-init, tests, scripts).
  */
-export function getCachedAccountValueForStrategy(strategyId: string): number {
+export function getCachedAccountValue(): number {
   try {
-    const svc = getExchangePool().get(strategyId)
+    const svc = getExchangePool().get()
     return svc.getCachedAccountValue() || SIMULATED_ACCOUNT
   } catch {
     return getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT

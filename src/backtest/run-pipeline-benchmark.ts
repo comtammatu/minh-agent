@@ -66,20 +66,16 @@ async function main(): Promise<void> {
 
   const [
     { onCandleTick, clearPipelineState, setActiveStrategyParams },
-    { getStrategyRegistry },
-    { SmcSdStrategy },
+    { clearSetupGeneratorState, resetSetupGenerator },
     { clearStore, clearOnPersist },
   ] = await Promise.all([
     import('../strategy/orchestrator.js'),
-    import('../strategy/registry.js'),
-    import('../strategy/strategies/smc-sd/index.js'),
+    import('../strategy/engine.js'),
     import('../feed/store.js'),
   ])
 
-  const registry = getStrategyRegistry()
-  registry.clear()
-  registry.register(new SmcSdStrategy())
-  registry.activateOnly('smc-sd')
+  resetSetupGenerator()
+  clearSetupGeneratorState()
 
   const candleMap = generateSyntheticCandles(
     options.coins,
@@ -108,7 +104,7 @@ async function main(): Promise<void> {
 
   // Warmup
   for (let i = 0; i < options.warmupRuns; i++) {
-    runReplay(replayEvents, onCandleTick, clearPipelineState, clearStore, clearOnPersist, registry, setActiveStrategyParams, null)
+    runReplay(replayEvents, onCandleTick, clearPipelineState, clearStore, clearOnPersist, clearSetupGeneratorState, setActiveStrategyParams, null)
   }
 
   // Measured runs
@@ -126,7 +122,7 @@ async function main(): Promise<void> {
       clearPipelineState,
       clearStore,
       clearOnPersist,
-      registry,
+      clearSetupGeneratorState,
       setActiveStrategyParams,
       { runDurations, byIntervalDurations },
     )
@@ -226,7 +222,6 @@ async function main(): Promise<void> {
   }
 
   // Cleanup so this runner doesn't leak singleton state if reused in-process.
-  registry.activateOnly(null)
   clearPipelineState()
   clearStore()
   clearOnPersist()
@@ -241,7 +236,7 @@ function runReplay(
   clearPipelineState: () => void,
   clearStore: () => void,
   clearOnPersist: () => void,
-  registry: { clearAllState: () => void },
+  clearSetupGeneratorState: () => void,
   setActiveStrategyParams: (params: null) => void,
   collector: {
     runDurations: number[]
@@ -251,7 +246,7 @@ function runReplay(
   clearPipelineState()
   clearStore()
   clearOnPersist()
-  registry.clearAllState()
+  clearSetupGeneratorState()
   setActiveStrategyParams(null)
 
   const runStart = performance.now()

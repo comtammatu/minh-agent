@@ -49,7 +49,12 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   filled_at TIMESTAMPTZ,
   fill_price DOUBLE PRECISION,
-  exchange_order_id TEXT
+  fill_size DOUBLE PRECISION,
+  exchange_order_id TEXT,
+  cloid TEXT,
+  position_id TEXT,
+  exchange TEXT NOT NULL DEFAULT 'HL'
+    CHECK (exchange IN ('HL', 'BB'))
 );
 
 -- ============================================================
@@ -69,7 +74,9 @@ CREATE TABLE IF NOT EXISTS positions (
   opened_at TIMESTAMPTZ DEFAULT NOW(),
   closed_at TIMESTAMPTZ,
   close_price DOUBLE PRECISION,
-  realized_pnl DOUBLE PRECISION
+  realized_pnl DOUBLE PRECISION,
+  exchange TEXT NOT NULL DEFAULT 'HL'
+    CHECK (exchange IN ('HL', 'BB'))
 );
 
 -- ============================================================
@@ -81,7 +88,9 @@ CREATE TABLE IF NOT EXISTS trade_journal (
   event_type TEXT NOT NULL,
   coin TEXT,
   details JSONB NOT NULL DEFAULT '{}',
-  agent_state TEXT
+  agent_state TEXT,
+  exchange TEXT NOT NULL DEFAULT 'HL'
+    CHECK (exchange IN ('HL', 'BB'))
 );
 
 SELECT create_hypertable('trade_journal', 'ts', if_not_exists => TRUE);

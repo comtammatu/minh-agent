@@ -1,5 +1,7 @@
 # Minh (明) — Domain Knowledge Specification
 
+> Archive note (2026-04-15): research/reference spec only. The live runtime currently implements one concrete `smc-sd` setup engine and does not treat this file as executable architecture.
+
 Complete detect / validate / invalidate rules for all trading schools used by Minh.
 For domain understanding (philosophy, concepts, pros/cons), see [`domain-knowledge.md`](../ref/domain-knowledge.md).
 Tue source reference: `~/Downloads/Personal/gettueapp/src/entities/hanh/features/research/indicators/`.

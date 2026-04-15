@@ -46,7 +46,6 @@ function makeCoinCtx(overrides: Partial<CoinContext> = {}): CoinContext {
   return {
     state: 'IDLE',
     coin: 'BTC',
-    strategyId: 'smc-sd',
     activeSetup: null,
     pendingOrderId: null,
     positionId: null,
@@ -448,8 +447,8 @@ describe('TradingAgent', () => {
     agent.dispatch('BTC', { type: 'setup_detected', setup: makeSetup({ confluenceGrade: 'A' }) })
 
     const snap = agent.getSnapshot()
-    expect(snap.coins['BTC:smc-sd']).toBeDefined()
-    expect(snap.coins['BTC:smc-sd']!.state).toBe('ENTERING')
+    expect(snap.coins['BTC']).toBeDefined()
+    expect(snap.coins['BTC']!.state).toBe('ENTERING')
     expect(snap.global.dailyPnl).toBe(0)
     expect(snap.global.globalPaused).toBe(false)
     expect(typeof snap.global.uptime).toBe('number')
@@ -530,7 +529,7 @@ describe('TradingAgent', () => {
     )
     expect(agent.getCoinState('SOL')).toBe('IN_POSITION')
     const snap = agent.getSnapshot()
-    expect(snap.coins['SOL:smc-sd']!.positionId).toContain('orphan')
+    expect(snap.coins['SOL']!.positionId).toContain('orphan')
   })
 
   // ── Circuit Breaker Integration (S11) ───────────────────────────────────
@@ -550,7 +549,7 @@ describe('TradingAgent', () => {
   it('checkCircuitBreakers does NOT pause IN_POSITION coins (R5)', () => {
     // Put BTC in IN_POSITION
     const btcCtx = (agent as unknown as { coins: Map<string, CoinContext> }).coins
-    btcCtx.set('BTC:smc-sd', makeCoinCtx({ state: 'IN_POSITION', positionId: 'pos-1', coin: 'BTC' }))
+    btcCtx.set('BTC', makeCoinCtx({ state: 'IN_POSITION', positionId: 'pos-1', coin: 'BTC' }))
 
     // Put ETH in ENTERING
     agent.dispatch('ETH', { type: 'setup_detected', setup: makeSetup({ coin: 'ETH', id: 'ETH|1h|ob|long', confluenceGrade: 'A' }) })

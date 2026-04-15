@@ -5,7 +5,7 @@
 - [ ] `bun test --run` — all tests pass
 - [ ] No `any` without justification comment
 - [ ] No magic numbers — all thresholds in `config.ts`
-- [ ] Pure function boundary maintained (indicators have zero I/O)
+- [ ] Pure function boundary maintained (`src/indicators/` and pure `src/strategy/` helpers stay zero-I/O)
 - [ ] No secrets in code (.env patterns, API keys)
 
 ## New Indicators

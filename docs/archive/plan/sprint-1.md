@@ -1,5 +1,7 @@
 # Minh (明) — Sprint 1: Layered Analysis Engine
 
+> Archive note (2026-04-15): historical sprint plan only. The current branch no longer uses this file as the implementation source of truth; see `README.md` and the active docs in `docs/`.
+
 ## Goal
 
 Refactor the flat 8-detector scanner into a **Layered Decision Framework**: 5 layers tuần tự + regime context song song. Add HTF cross-reference, Order Flow data (Funding + Trades + L2 Book), confluence scoring, and risk filtering.
@@ -69,7 +71,7 @@ REGIME CONTEXT (parallel)  LAYER 1: BIAS
 git init && git add -A && git commit -m "chore: initial commit — flat architecture baseline"
 ```
 
-- [x] Sync `docs/ref/domain-knowledge.md` — sections 11+12 already present (verified 2026-03-30)
+- [x] Sync `docs/archive/ref/domain-knowledge.md` — sections 11+12 already present (verified 2026-03-30)
 - [x] Export `classifySwings`, `detectStructuralBias`, `compileKeyZones` from `indicators/structure.ts` ← Done in Step 1
 - [x] `findPivots` already exported in `indicators/smc.ts`
 - [x] Verify: `bun test --run` passes (79 pass, 3 skip)

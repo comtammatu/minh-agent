@@ -1,14 +1,8 @@
 /**
- * Portfolio Risk Manager — global exposure cap across all strategies (S6).
+ * Portfolio Risk Manager — portfolio-level exposure cap for the shared runtime account.
  *
  * Pure functions. No I/O, no side effects.
  * Takes position snapshot data as input, returns allow/block decision.
- *
- * Checks:
- *   1. Total notional exposure vs account equity (maxTotalExposure)
- *   2. Total concurrent positions (maxTotalConcurrent)
- *   3. Per-strategy allocation cap (strategyAllocations)
- *   4. Per-strategy concurrent positions (strategyMaxConcurrent)
  */
 
 import { PORTFOLIO_RISK } from '../config.js'
@@ -18,7 +12,6 @@ import { PORTFOLIO_RISK } from '../config.js'
 /** Minimal position info needed for portfolio risk checks. */
 export interface PortfolioPosition {
   coin: string
-  strategyId: string
   /** Absolute notional value = |size| × currentPrice. */
   notionalValue: number
 }
@@ -31,12 +24,10 @@ export interface PortfolioCheckResult {
 
 /** Input for checking whether a new entry is allowed. */
 export interface PortfolioCheckInput {
-  /** Current open positions across all strategies. */
+  /** Current open positions across the runtime. */
   positions: readonly PortfolioPosition[]
-  /** Total account equity (shared balance across all strategies). */
+  /** Total account equity. */
   accountEquity: number
-  /** The strategy requesting entry. */
-  strategyId: string
   /** Notional value of the proposed new position. */
   proposedNotional: number
 }
@@ -50,7 +41,7 @@ export interface PortfolioCheckInput {
  * Checks run in order — first failure short-circuits.
  */
 export function checkPortfolioEntry(input: PortfolioCheckInput): PortfolioCheckResult {
-  const { positions, accountEquity, strategyId, proposedNotional } = input
+  const { positions, accountEquity, proposedNotional } = input
 
   // Guard: zero/negative equity → block (can't compute ratios)
   if (accountEquity <= 0) {
@@ -77,32 +68,6 @@ export function checkPortfolioEntry(input: PortfolioCheckInput): PortfolioCheckR
     }
   }
 
-  // 3. Per-strategy concurrent positions
-  const strategyPositions = positions.filter(p => p.strategyId === strategyId).length
-  const strategyMaxConcurrent = PORTFOLIO_RISK.strategyMaxConcurrent[strategyId]
-  if (strategyMaxConcurrent !== undefined && strategyPositions >= strategyMaxConcurrent) {
-    return {
-      allowed: false,
-      reason: `strategy '${strategyId}' concurrent positions ${strategyPositions} >= max ${strategyMaxConcurrent}`,
-    }
-  }
-
-  // 4. Per-strategy allocation cap
-  const strategyAllocation = PORTFOLIO_RISK.strategyAllocations[strategyId]
-  if (strategyAllocation !== undefined) {
-    const strategyNotional = positions
-      .filter(p => p.strategyId === strategyId)
-      .reduce((sum, p) => sum + p.notionalValue, 0)
-    const allocatedCapital = accountEquity * strategyAllocation
-    const newStrategyNotional = strategyNotional + proposedNotional
-    if (newStrategyNotional > allocatedCapital * PORTFOLIO_RISK.maxTotalExposure) {
-      return {
-        allowed: false,
-        reason: `strategy '${strategyId}' notional $${newStrategyNotional.toFixed(0)} would exceed allocation cap $${(allocatedCapital * PORTFOLIO_RISK.maxTotalExposure).toFixed(0)} (${(strategyAllocation * 100).toFixed(0)}% × ${PORTFOLIO_RISK.maxTotalExposure}x)`,
-      }
-    }
-  }
-
   return { allowed: true, reason: null }
 }
 
@@ -113,7 +78,6 @@ export interface PortfolioRiskSnapshot {
   totalPositions: number
   totalNotional: number
   exposureRatio: number
-  perStrategy: Record<string, { positions: number; notional: number }>
 }
 
 /** Build a portfolio risk snapshot from current positions. */
@@ -121,21 +85,15 @@ export function getPortfolioRiskSnapshot(
   positions: readonly PortfolioPosition[],
   accountEquity: number,
 ): PortfolioRiskSnapshot {
-  const perStrategy: Record<string, { positions: number; notional: number }> = {}
   let totalNotional = 0
 
   for (const pos of positions) {
     totalNotional += pos.notionalValue
-    const entry = perStrategy[pos.strategyId] ?? { positions: 0, notional: 0 }
-    entry.positions++
-    entry.notional += pos.notionalValue
-    perStrategy[pos.strategyId] = entry
   }
 
   return {
     totalPositions: positions.length,
     totalNotional,
     exposureRatio: accountEquity > 0 ? totalNotional / accountEquity : 0,
-    perStrategy,
   }
 }

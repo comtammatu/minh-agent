@@ -146,23 +146,14 @@ describe('PaperTracker', () => {
   })
 })
 
-// ── Per-strategy registry ───────────────────────────────────────────────────
+// ── Shared tracker registry ────────────────────────────────────────────────
 
-describe('getPaperTracker (per strategy)', () => {
+describe('getPaperTracker', () => {
   beforeEach(() => {
     resetPaperTracker()
   })
 
-  it('isolates balances per strategyId', () => {
-    const layered = getPaperTracker('smc-sd')
-    const quant = getPaperTracker('alpha')
-    layered.recordEntry('o1', 'BTC', 'long', 50_000, 0.1)
-    layered.recordExit('o1', 51_000)
-    expect(layered.getBalance()).not.toBe(quant.getBalance())
-    expect(quant.getTrades()).toHaveLength(0)
-  })
-
-  it('returns same instance for same strategyId', () => {
-    expect(getPaperTracker('smc-sd')).toBe(getPaperTracker('smc-sd'))
+  it('returns the same singleton for repeated lookups', () => {
+    expect(getPaperTracker()).toBe(getPaperTracker())
   })
 })

@@ -421,7 +421,6 @@ function buildBriefingBuckets(liveTraces: DecisionTrace[]): Array<{
 
 function getLiveOversightTraces(): DecisionTrace[] {
   return [...getDecisionTraces()]
-    .filter(trace => trace.strategyId !== 'system' || trace.outcome.positionId != null)
     .sort((a, b) => {
       const severityDelta = computeBriefingSeverity(b) - computeBriefingSeverity(a)
       if (severityDelta !== 0) return severityDelta

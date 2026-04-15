@@ -1,5 +1,5 @@
 /**
- * Pipeline diagnostic stats — counters per strategy for monitoring funnel drop-off.
+ * Pipeline diagnostic stats for the single active strategy scanner.
  */
 
 export interface PipelineStats {
@@ -61,40 +61,26 @@ export function zeroPipelineStats(): PipelineStats {
   }
 }
 
-/** Per-strategy pipeline stats. Key = strategyId. */
-const pipelineStatsMap = new Map<string, PipelineStats>()
+let pipelineStats = zeroPipelineStats()
 
-/** Get or create mutable stats for a strategy. */
-export function getOrCreateStats(strategyId: string): PipelineStats {
-  let stats = pipelineStatsMap.get(strategyId)
-  if (!stats) {
-    stats = zeroPipelineStats()
-    pipelineStatsMap.set(strategyId, stats)
-  }
-  return stats
+/** Get the mutable stats bucket. */
+export function getPipelineStatsMutable(): PipelineStats {
+  return pipelineStats
 }
 
-/** Get pipeline stats for a specific strategy (snapshot copy). */
-export function getPipelineStats(strategyId: string = 'smc-sd'): PipelineStats {
-  return { ...(pipelineStatsMap.get(strategyId) ?? zeroPipelineStats()) }
+/** Get pipeline stats snapshot. */
+export function getPipelineStats(): PipelineStats {
+  return { ...pipelineStats }
 }
 
-/** Get full per-strategy stats map (snapshot copies). */
+/** Backward-compatible snapshot map for UI/tests that still expect keyed access. */
 export function getPipelineStatsMap(): Map<string, PipelineStats> {
-  const result = new Map<string, PipelineStats>()
-  for (const [id, stats] of pipelineStatsMap) {
-    result.set(id, { ...stats })
-  }
-  return result
+  return new Map([['smc-sd', getPipelineStats()]])
 }
 
-/** Reset pipeline diagnostic stats. If strategyId given, reset only that strategy. */
-export function resetPipelineStats(strategyId?: string): void {
-  if (strategyId) {
-    pipelineStatsMap.set(strategyId, zeroPipelineStats())
-  } else {
-    pipelineStatsMap.clear()
-  }
+/** Reset pipeline diagnostic stats. */
+export function resetPipelineStats(): void {
+  pipelineStats = zeroPipelineStats()
 }
 
 /** Format pipeline stats as a human-readable report. */

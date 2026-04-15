@@ -1,7 +1,7 @@
 /**
  * ExchangePool tests (Sprint 4.5 S4).
  *
- * Both HL and Bybit use a single shared wallet for all strategies.
+ * Both HL and Bybit use a single shared wallet for the whole runtime.
  * Tests: single-wallet routing, pool lifecycle, singleton.
  *
  * Mocks: HL SDK, viem, rate-limiter (same as exchange-service.test.ts).
@@ -88,17 +88,17 @@ describe('ExchangePool', () => {
   })
 
   describe('single-wallet mode (HL)', () => {
-    it('should create shared instance for all strategies', async () => {
+    it('should create a shared instance for repeated lookups', async () => {
       const pool = new ExchangePool()
       await pool.init()
 
-      const layered = pool.get('smc-sd')
-      const quant = pool.get('alpha')
-      const unknown = pool.get('unknown-strategy')
+      const first = pool.get()
+      const override = pool.get('HL')
+      const second = pool.get()
 
       // All return the same shared instance
-      expect(layered).toBe(quant)
-      expect(quant).toBe(unknown)
+      expect(first).toBe(override)
+      expect(override).toBe(second)
     })
 
     it('isInitialized is false before init and true after', async () => {
@@ -114,18 +114,10 @@ describe('ExchangePool', () => {
       expect(pool.isMultiWallet()).toBe(false)
     })
 
-    it('should report no dedicated wallets', async () => {
-      const pool = new ExchangePool()
-      await pool.init()
-      expect(pool.hasDedicatedWallet('smc-sd')).toBe(false)
-      expect(pool.hasDedicatedWallet('alpha')).toBe(false)
-      expect(pool.getStrategyIds()).toEqual([])
-    })
-
     it('getShared returns the shared instance', async () => {
       const pool = new ExchangePool()
       await pool.init()
-      expect(pool.getShared()).toBe(pool.get('anything'))
+      expect(pool.getShared()).toBe(pool.get())
     })
 
     it('getActiveExchangeId returns HL', async () => {
@@ -138,7 +130,7 @@ describe('ExchangePool', () => {
   describe('lifecycle', () => {
     it('should throw if get() called before init()', () => {
       const pool = new ExchangePool()
-      expect(() => pool.get('smc-sd')).toThrow('not initialized')
+      expect(() => pool.get()).toThrow('not initialized')
     })
 
     it('should throw if getShared() called before init()', () => {

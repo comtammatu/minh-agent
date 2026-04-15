@@ -15,8 +15,8 @@ import React, { useState, useEffect, useMemo, memo, useRef } from 'react'
 import { render, Box, Text, useApp, useInput, useStdout } from 'ink'
 import type { AgentSnapshot } from '../agent/types.js'
 import type { StatusSnapshot } from '../strategy/orchestrator.js'
-import { getEffectivePaperTrade, WS_MAX_SUBSCRIPTIONS, TIMEFRAMES, MIN_CANDLES_FOR_SCAN, PAPER_WALLET_STRATEGY_IDS } from '../config.js'
-import { normalizeStrategyId, type LiveStrategyWalletStats } from './live-account-stats.js'
+import { CANONICAL_STRATEGY_ID, getEffectivePaperTrade, WS_MAX_SUBSCRIPTIONS, TIMEFRAMES, MIN_CANDLES_FOR_SCAN } from '../config.js'
+import type { LiveWalletStats } from './live-account-stats.js'
 import { candleCount } from '../feed/store.js'
 import type { CandleInterval, ActiveSetup } from '../types.js'
 import type { InvalidationBridgeStats } from '../agent/invalidation-bridge.js'
@@ -24,9 +24,9 @@ import type { AccountState } from '../execution/exchange-service.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-/** One simulated wallet in paper mode (matches a live strategy wallet). */
+/** One simulated wallet in paper mode (matches the shared live runtime wallet). */
 export interface PaperWalletRow {
-  strategyId: string
+  label: string
   balance: number
   tradeCount: number
   wins: number
@@ -35,7 +35,7 @@ export interface PaperWalletRow {
 }
 
 export interface PaperStats {
-  /** Sum of per-strategy paper balances (cash, excludes open uPnL in this field) */
+  /** Sum of paper balances (cash, excludes open uPnL in this field). */
   totalBalance: number
   wallets: PaperWalletRow[]
   tradeCount: number
@@ -63,7 +63,6 @@ export interface TuiDataSources {
     entryPrice: number
     slPrice: number
     tpPrice: number
-    strategyId: string
     /** Live: HL row without a matching bot-tracked position (manual / external fill). */
     exchangeOnly?: boolean
   }>
@@ -73,13 +72,13 @@ export interface TuiDataSources {
   getSubscriptionCount: () => number
   getTrackedCoins: () => string[]
   getPaperStats: () => PaperStats | null
-  /** Live: closed-trade stats per strategy (DB); null in paper or before first fetch. */
-  getLiveStrategyWalletStats: () => LiveStrategyWalletStats | null
-  /** Live: cached account state per strategy view for the shared runtime wallet. */
-  getLiveAccountStatesByStrategy: () => ReadonlyMap<string, AccountState> | null
+  /** Live: closed-trade stats for the shared runtime wallet (DB); null in paper or before first fetch. */
+  getLiveWalletStats: () => LiveWalletStats | null
+  /** Live: cached account state for the shared runtime wallet. */
+  getLiveAccountStates: () => ReadonlyMap<string, AccountState> | null
   getAssetPrice: (coin: string) => AssetPrice | null
   getActiveSetups: () => ActiveSetup[]
-  /** Invalidation bridge: matched vs skipped per strategy (live session). */
+  /** Invalidation bridge: matched vs skipped invalidations for the live session. */
   getInvalidationStats: () => InvalidationBridgeStats
 }
 
@@ -440,16 +439,6 @@ const HeaderBar = memo(function HeaderBar({ snapshot, coinCount }: { snapshot: A
  * - **Available**: Free collateral ≈ Equity − Margin (see `liveFreeMarginUsd`). Not HL `withdrawable` (often $0 while in perps).
  */
 
-/** Sum realized day P&L across the three strategy wallets (paper + live multi-strategy). */
-function sumStrategiesDailyPnl(strategyGlobals: AgentSnapshot['strategyGlobals'] | undefined): number {
-  if (!strategyGlobals) return 0
-  let s = 0
-  for (const id of PAPER_WALLET_STRATEGY_IDS) {
-    s += strategyGlobals[id]?.dailyPnl ?? 0
-  }
-  return s
-}
-
 /**
  * Hyperliquid `withdrawable` is USDC that can be sent off-platform; it is often $0 while balance
  * sits in perp/cross margin. The Account panel uses **Available = balance − margin used**, not
@@ -465,17 +454,14 @@ const AccountPanel = memo(function AccountPanel({
   unrealizedPnl,
   paperStats,
   paperDerived,
-  strategyGlobals,
-  liveStrategyStats,
+  liveWalletStats,
 }: {
   account: { effectiveBalance: number; accountValue: number; spotUsdcBalance: number; totalMarginUsed: number; withdrawable: number } | null
-  /** Fallback when strategyGlobals has no per-strategy daily rows yet. */
   dailyPnlGlobal: number
   unrealizedPnl: number
   paperStats: PaperStats | null
   paperDerived: { marginUsed: number; available: number } | null
-  strategyGlobals: AgentSnapshot['strategyGlobals'] | undefined
-  liveStrategyStats: LiveStrategyWalletStats | null
+  liveWalletStats: LiveWalletStats | null
 }) {
   const isPaper = paperStats != null
 
@@ -490,11 +476,7 @@ const AccountPanel = memo(function AccountPanel({
       ? liveFreeMarginUsd(account)
       : (account?.withdrawable ?? null))
 
-  const sumStratDaily = sumStrategiesDailyPnl(strategyGlobals)
-  const hasStratGlobals = Boolean(strategyGlobals && Object.keys(strategyGlobals).length > 0)
-  const dailyShown = isPaper
-    ? sumStratDaily
-    : (hasStratGlobals ? sumStratDaily : dailyPnlGlobal)
+  const dailyShown = dailyPnlGlobal
   const unrealShown = unrealizedPnl
 
   const balanceShown = isPaper ? totalEquityPaper : (account?.effectiveBalance ?? null)
@@ -503,7 +485,7 @@ const AccountPanel = memo(function AccountPanel({
   const dSign = dailyShown >= 0 ? '+' : ''
   const uSign = unrealShown >= 0 ? '+' : ''
 
-  const aggTrades = isPaper ? paperStats! : liveStrategyStats
+  const aggTrades = isPaper ? paperStats! : liveWalletStats
 
   return (
     <Panel title="Account" flexGrow={1}>
@@ -601,7 +583,6 @@ const PositionRow = memo(function PositionRow({ p, PC, getAssetPrice, priceTick 
     entryPrice: number
     slPrice: number
     tpPrice: number
-    strategyId: string
     exchangeOnly?: boolean
   }
   PC: { coin: number; lev: number; side: number; entry: number; sl: number; tp: number; upnl: number; strategy: number }
@@ -623,7 +604,7 @@ const PositionRow = memo(function PositionRow({ p, PC, getAssetPrice, priceTick 
     ? (upnlFlash === 'up' ? 'green' : upnlFlash === 'down' ? 'red' : (upnl >= 0 ? 'green' : 'red'))
     : undefined
 
-  const strat = truncateStr(p.strategyId, PC.strategy).padEnd(PC.strategy)
+  const strat = truncateStr(CANONICAL_STRATEGY_ID, PC.strategy).padEnd(PC.strategy)
   const levStr = `${p.leverage}x`.padEnd(PC.lev)
   const slStr = p.exchangeOnly ? '—'.padStart(PC.sl) : formatUsd(p.slPrice).padStart(PC.sl)
   const tpStr = p.exchangeOnly ? '—'.padStart(PC.tp) : formatUsd(p.tpPrice).padStart(PC.tp)
@@ -648,9 +629,8 @@ function positionRowReactKey(p: {
   rowKey?: string
   positionId?: string
   coin: string
-  strategyId: string
 }): string {
-  return p.rowKey ?? p.positionId ?? `${p.coin}-${p.strategyId}`
+  return p.rowKey ?? p.positionId ?? p.coin
 }
 
 const PositionsPanel = memo(function PositionsPanel({ positions, getAssetPrice, rowsPerCol, pc, priceTick }: {
@@ -664,7 +644,6 @@ const PositionsPanel = memo(function PositionsPanel({ positions, getAssetPrice, 
     entryPrice: number
     slPrice: number
     tpPrice: number
-    strategyId: string
     exchangeOnly?: boolean
   }>
   getAssetPrice: (coin: string) => AssetPrice | null
@@ -1052,39 +1031,23 @@ const WatchlistPanel = memo(function WatchlistPanel({ statuses, trackedCoins, ge
 // ─── Strategy Panel ─────────────────────────────────────────────────────────
 
 interface StrategySummary {
-  strategyId: string
   totalCoins: number
   activeCoins: number
   setupCount: number
 }
 
-function aggregateStrategies(snapshot: AgentSnapshot, activeSetups: ActiveSetup[]): StrategySummary[] {
-  const byStrategy = new Map<string, StrategySummary>()
-
+function aggregateStrategies(snapshot: AgentSnapshot, activeSetups: ActiveSetup[]): StrategySummary {
+  let totalCoins = 0
+  let activeCoins = 0
   for (const [, coin] of Object.entries(snapshot.coins)) {
-    const sid = coin.strategyId
-    let s = byStrategy.get(sid)
-    if (!s) {
-      s = { strategyId: sid, totalCoins: 0, activeCoins: 0, setupCount: 0 }
-      byStrategy.set(sid, s)
-    }
-    s.totalCoins++
-    if (coin.state !== 'IDLE') s.activeCoins++
+    totalCoins++
+    if (coin.state !== 'IDLE') activeCoins++
   }
-
-  // Count current active setups per strategy.
-  // Setup IDs are formatted as 'strategyId:coin|interval|type' — parse strategyId from prefix.
-  for (const setup of activeSetups) {
-    const sid = setup.id.split(':')[0] ?? 'unknown'
-    let s = byStrategy.get(sid)
-    if (!s) {
-      s = { strategyId: sid, totalCoins: 0, activeCoins: 0, setupCount: 0 }
-      byStrategy.set(sid, s)
-    }
-    s.setupCount++
+  return {
+    totalCoins,
+    activeCoins,
+    setupCount: activeSetups.length,
   }
-
-  return Array.from(byStrategy.values())
 }
 
 const StrategyPanel = memo(function StrategyPanel({ snapshot, activeSetups, invStats }: {
@@ -1092,38 +1055,32 @@ const StrategyPanel = memo(function StrategyPanel({ snapshot, activeSetups, invS
   activeSetups: ActiveSetup[]
   invStats: InvalidationBridgeStats
 }) {
-  const strategies = useMemo(() => aggregateStrategies(snapshot, activeSetups), [snapshot, activeSetups])
+  const summary = useMemo(() => aggregateStrategies(snapshot, activeSetups), [snapshot, activeSetups])
 
   return (
-    <Panel title="Strategies" flexGrow={1}>
-      {strategies.length === 0 ? (
-        <Text color={DIM}>No strategies</Text>
-      ) : (
-        <>
-          {strategies.map(s => {
-            const inv = invStats.byStrategy[s.strategyId]
-            const m = inv?.matched ?? 0
-            const sk = inv?.skipped ?? 0
-            return (
-              <Box key={s.strategyId} justifyContent="space-between">
-                <Text bold color={ACCENT}>{s.strategyId.slice(0, 10)}</Text>
-                <Text>
-                  <Text color={s.activeCoins > 0 ? 'cyan' : DIM}>{s.activeCoins}</Text>
-                  <Text color={DIM}>/{s.totalCoins} </Text>
-                  {s.setupCount > 0 && <Text color="yellow">{s.setupCount} setups</Text>}
-                  {s.setupCount === 0 && <Text color={DIM}>0 setups</Text>}
-                  <Text color={DIM}> | inv </Text>
-                  <Text color="green">{'\u2713'}{m}</Text>
-                  <Text color={DIM}> </Text>
-                  <Text color="yellow">{'\u2717'}{sk}</Text>
-                </Text>
-              </Box>
-            )
-          })}
-          {invStats.parseFailed > 0 && (
-            <Text color="yellow">inv parse err: {invStats.parseFailed}</Text>
+    <Panel title="Scanner" flexGrow={1}>
+      <Box justifyContent="space-between">
+        <Text bold color={ACCENT}>{CANONICAL_STRATEGY_ID}</Text>
+        <Text>
+          <Text color={summary.activeCoins > 0 ? 'cyan' : DIM}>{summary.activeCoins}</Text>
+          <Text color={DIM}>/{summary.totalCoins} </Text>
+          {summary.setupCount > 0 ? (
+            <Text color="yellow">{summary.setupCount} setups</Text>
+          ) : (
+            <Text color={DIM}>0 setups</Text>
           )}
-        </>
+        </Text>
+      </Box>
+      <Box justifyContent="space-between">
+        <Text color={DIM}>Invalidations</Text>
+        <Text>
+          <Text color="green">{'\u2713'}{invStats.matched}</Text>
+          <Text color={DIM}> </Text>
+          <Text color="yellow">{'\u2717'}{invStats.skipped}</Text>
+        </Text>
+      </Box>
+      {invStats.parseFailed > 0 && (
+        <Text color="yellow">inv parse err: {invStats.parseFailed}</Text>
       )}
     </Panel>
   )
@@ -1422,7 +1379,7 @@ function App({ sources }: { sources: TuiDataSources }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paperStats, positions, unrealizedPnl, tick])
 
-  const liveStrategyStats = useMemo(() => sources.getLiveStrategyWalletStats(), [tick])
+  const liveWalletStats = useMemo(() => sources.getLiveWalletStats(), [tick])
 
   // ── Backfill progress screen ──
   if (!isBackfillDone) {
@@ -1449,8 +1406,7 @@ function App({ sources }: { sources: TuiDataSources }) {
           unrealizedPnl={unrealizedPnl}
           paperStats={paperStats}
           paperDerived={paperDerived}
-          strategyGlobals={snapshot.strategyGlobals}
-          liveStrategyStats={liveStrategyStats}
+          liveWalletStats={liveWalletStats}
         />
         <StrategyPanel snapshot={snapshot} activeSetups={activeSetups} invStats={invStats} />
         <BuddyPanel mood={getBuddyMood(snapshot, positions.length, snapshot.global.dailyPnl)} tick={tick} />

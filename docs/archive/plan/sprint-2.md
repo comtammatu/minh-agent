@@ -1,5 +1,7 @@
 # Minh (明) — Sprint 2: Algorithmic Agent Trading
 
+> Archive note (2026-04-15): historical sprint plan only. The current branch implements the trading agent, but this file still reflects the planning-stage architecture and terminology of that sprint.
+
 ## Goal
 
 Transform the Sprint 1 analysis engine into an **autonomous trading agent** — self-deciding, self-executing, self-adapting. No human in the loop for trade execution.

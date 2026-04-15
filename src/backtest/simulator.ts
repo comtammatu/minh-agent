@@ -76,15 +76,12 @@ export class TradeSimulator {
   private slippagePct: number
   private commissionPct: number
   private exitMode: ExitMode
-  private strategyId: string
-
-  constructor(initialCapital: number, slippagePct: number, commissionPct: number, exitMode: ExitMode = 'multi', strategyId: string = 'smc-sd') {
+  constructor(initialCapital: number, slippagePct: number, commissionPct: number, exitMode: ExitMode = 'multi') {
     this.equity = initialCapital
     this.initialCapital = initialCapital
     this.slippagePct = slippagePct
     this.commissionPct = commissionPct
     this.exitMode = exitMode
-    this.strategyId = strategyId
   }
 
   /**
@@ -464,7 +461,6 @@ export class TradeSimulator {
       pnl,
       pnlPct: pos.sizeUsd > 0 ? pnl / pos.sizeUsd : 0,
       exitReason,
-      strategyId: this.strategyId,
       ...(pos.partialCloses.length > 0 ? { partialCloses: [...pos.partialCloses] } : {}),
     })
 

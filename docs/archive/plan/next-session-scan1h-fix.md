@@ -1,5 +1,7 @@
 # Next Session Prompt — Evolution Phase 2: Decision Point
 
+> Archive note (2026-04-15): preserved as a historical handoff prompt from an earlier research session, not as an active session plan for the current branch.
+
 Copy-paste this as the opening message of a new Claude Code session.
 
 ---
@@ -15,7 +17,7 @@ Evolution Phase 2. scan1hSameTF 6-fix implementation **DONE** (session trước,
 - Optimizer quick-check (1-trial, 10 coins): **trades=1, PF=0.00** → 1H trade volume collapsed
 - Hard stop **inconclusive** — cần ≥ 40 trades để đánh giá
 
-Full decisions log: `docs/plan/decisions.md` section "scan1hSameTF Fix Implementation Results (2026-04-12)".
+Full decisions log: `docs/archive/plan/decisions.md` section "scan1hSameTF Fix Implementation Results (2026-04-12)".
 
 ## Decision Tree cho session này
 
@@ -87,7 +89,7 @@ ESTIMATE: 10-14 exchanges / 25-35 min
 ## Files to read first
 
 1. `CLAUDE.md` — constraints + architecture
-2. `docs/plan/decisions.md` — full history, search "scan1hSameTF Fix Implementation Results"
+2. `docs/archive/plan/decisions.md` — full history, search "scan1hSameTF Fix Implementation Results"
 3. `src/strategy/strategies/smc-sd/index.ts` — scan4hPOI (~line 600), scan15mConfirm (~line 650), scan5mMicroEntry (~line 700)
 4. `TODOS.md` — P2 drilldown cascade description
 5. `src/config.ts` — thresholds for all scan modes

@@ -1,6 +1,8 @@
 # Oracle Analysis Summary
 
-Method: direct source reading plus generated static artifacts in `docs/oracle-data/tree-sitter-analysis.json` and `docs/oracle-data/import-graph.json`.
+> Archive note (2026-04-15): generated static-analysis snapshot kept for refactor history. Counts below are historical and may not exactly match the live branch after later cleanup.
+
+Method: direct source reading plus generated static artifacts in `docs/archive/oracle-data/tree-sitter-analysis.json` and `docs/archive/oracle-data/import-graph.json`.
 
 ## Snapshot
 

@@ -1,3 +1,5 @@
+> Historical scratch-plan note (2026-04-15): this file is preserved as an ad hoc implementation memo from before the single-strategy cleanup. It may reference pre-cleanup paths such as `src/scanner/*`; do not treat it as the source of truth for the current runtime layout.
+
 # Backtest Exit Strategy Overhaul — Implementation Plan
 
 ## Problem Summary

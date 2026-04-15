@@ -21,12 +21,12 @@ Template này được tối ưu cho Claude Agent Teams:
 ## Template
 
 ```
-Bạn là session-lead cho dự án Minh (明) — Trading Analysis Engine.
+Bạn là session-lead cho dự án Minh (明) — Autonomous Trading Runtime.
 Dùng Agent Teams song song hóa. Chat tiếng Việt, code/docs/commits tiếng Anh.
 
 ## Context
 Sprint: {{SPRINT_NUMBER}} — {{SPRINT_NAME}}
-Plan: `docs/plan/sprint-{{SPRINT_NUMBER}}.md`
+Plan: `docs/archive/plan/sprint-{{SPRINT_NUMBER}}.md`
 Previous: {{PREV_SESSION}} — {{PREV_STATUS}}
 Current: **{{SESSION_ID}} — {{SESSION_TITLE}}**
 Test baseline: {{CURRENT_TEST_COUNT}} tests passing
@@ -80,7 +80,7 @@ Sau khi Task Contract được approve:
 
 ## Constraints
 - TypeScript strict, no `any` (trừ justified comment), no magic numbers
-- Pure functions: `indicators/` + `scanner/` = zero I/O
+- Pure functions: `indicators/` + `strategy/` = zero I/O
 - `bun test --run` PHẢI pass
 - Stay in scope — out-of-scope → note, don't do
 ```
@@ -90,15 +90,15 @@ Sau khi Task Contract được approve:
 ## Ví dụ đã điền
 
 ```
-Bạn là session-lead cho dự án Minh (明) — Trading Analysis Engine.
+Bạn là session-lead cho dự án Minh (明) — Autonomous Trading Runtime.
 Dùng Agent Teams song song hóa. Chat tiếng Việt, code/docs/commits tiếng Anh.
 
 ## Context
-Sprint: 4.5 — ISOLATE (Multi-Strategy Architecture)
-Plan: `docs/plan/sprint-4.5.md`
-Previous: S1 — DONE (IStrategy + Registry + adapters + 35 tests)
-Current: **S2 — Pipeline Refactor (Remove Global State)**
-Test baseline: 1013 tests passing
+Sprint: 4.5 — CLEANUP (Canonical Single-Strategy Runtime)
+Plan: `docs/archive/plan/sprint-4.5.md`
+Previous: S11 — DONE (shared wallet + exchange-boundary cleanup)
+Current: **S12 — Runtime + Strategy Simplification**
+Test baseline: 1150 tests passing
 
 ## START
 1. Đọc sprint plan → tìm session S2
@@ -107,24 +107,26 @@ Test baseline: 1013 tests passing
 4. Viết Task Contract → CHỜ tôi approve → rồi mới BUILD
 
 ## Scope
-- Remove globals: xóa `activeStrategy`, `setStrategy()`, `getStrategy()`
-- Fan-out dispatch: `onCandleTick` → `registry.runAll()`
-- Setup key: `activeSetups` keyed by `strategyId:coin|tf|type`
-- Invalidation: `setupId()` includes strategyId
-- Per-strategy stats: `PipelineStats` per strategy (Map)
+- Make `src/index.ts` a thin entrypoint
+- Move long-lived orchestration into `src/runtime/`
+- Remove legacy registry/multi-strategy fan-out from active path
+- Collapse runtime state and execution routing to one canonical strategy context
+- Clean active docs and archive historical docs under `docs/archive/`
 
 ## Files (chỉ modify files này)
-- `src/scanner/pipeline.ts` (611 lines)
-- `src/scanner/invalidation.ts` (181 lines)
-- `test/pipeline.test.ts` (208 lines)
-- `test/invalidation.test.ts` (194 lines)
+- `src/index.ts`
+- `src/runtime/app.ts`
+- `src/strategy/engine.ts`
+- `src/strategy/orchestrator.ts`
+- `src/agent/*`
+- `docs/*.md`
 
 ## BUILD — Agent Teams
 
 Sau khi Task Contract được approve:
 
 1. **Phân tích file dependencies** từ Scope + Files ở trên
-2. **Tạo team** `s2-pipeline-refactor`
+2. **Tạo team** `s12-single-strategy-cleanup`
 3. **Spawn agents** song song cho independent file groups:
    - Mỗi agent chạy `isolation: "worktree"` (tránh conflict)
    - KHÔNG assign cùng file cho 2 agents
@@ -142,21 +144,21 @@ Sau khi Task Contract được approve:
 5. **Resolve conflicts** nếu có (merge, không overwrite)
 
 ## VERIFY (lead tự làm, không delegate)
-1. `bun test --run` → ALL tests pass (1013+ tests)
+1. `bun test --run` → ALL tests pass (1150+ tests)
 2. Spawn `code-reviewer` agent → review toàn bộ diff
 3. Fix issues từ reviewer (CRITICAL/HIGH phải fix, MEDIUM tùy)
 4. Nếu test fail > 3 attempts → `git checkout .` → kết thúc session
 
 ## CLOSE (BẮT BUỘC)
-1. Commit: `feat(scanner): remove global strategy state, fan-out dispatch (S2)`
-2. Update sprint plan: mark S2 DONE + date + notes + test count
+1. Commit: `refactor(runtime): canonicalize single-strategy runtime (S12)`
+2. Update sprint plan: mark S12 DONE + date + notes + test count
 3. Update memory nếu context thay đổi đáng kể
-4. Commit docs: `chore(plan): update sprint progress after S2`
+4. Commit docs: `chore(plan): update sprint progress after S12`
 5. Shutdown team → TeamDelete
 
 ## Constraints
 - TypeScript strict, no `any` (trừ justified comment), no magic numbers
-- Pure functions: `indicators/` + `scanner/` = zero I/O
+- Pure functions: `indicators/` + `strategy/` = zero I/O
 - `bun test --run` PHẢI pass
 - Stay in scope — out-of-scope → note, don't do
 ```

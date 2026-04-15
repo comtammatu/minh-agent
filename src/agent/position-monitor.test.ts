@@ -34,11 +34,12 @@ function makePosition(overrides: Partial<PositionState> = {}): PositionState {
     tpPrice: 110,     // 10% TP
     entryOrderId: 'ord-1',
     leverage: 10,
-    strategyId: 'smc-sd',
     trailingState: null,
     partialClosesFired: [],
     lastSyncAt: Date.now(),
     openedAt: Date.now(),
+    thesis: null,
+    lastThesisCheckAt: 0,
     ...overrides,
   }
 }
@@ -346,25 +347,18 @@ describe('reconcilePositions', () => {
     }
   })
 
-  it('matches exchange row by strategyId when snapshots are tagged', () => {
+  it('matches exchange rows by coin only', () => {
     const tracked = new Map<string, PositionState>()
-    tracked.set('pos-q', makePosition({ positionId: 'pos-q', coin: 'BTC', strategyId: 'alpha' }))
-    // Exchange has BTC for layered only — quant position missing on its account
-    const snaps: ExchangePositionSnapshot[] = [{
+    tracked.set('pos-q', makePosition({ positionId: 'pos-q', coin: 'BTC' }))
+    const snaps = [{
       coin: 'BTC',
       size: 1.0,
       entryPrice: 100,
       unrealizedPnl: 0,
       liquidationPrice: null,
-      strategyId: 'smc-sd',
-    }]
+    }] as ExchangePositionSnapshot[]
     const actions = reconcilePositions(tracked, snaps)
-    expect(actions).toHaveLength(1)
-    expect(actions[0]!.type).toBe('close')
-    if (actions[0]!.type === 'close') {
-      expect(actions[0]!.positionId).toBe('pos-q')
-      expect(actions[0]!.reason).toBe('exchange_position_not_found')
-    }
+    expect(actions).toHaveLength(0)
   })
 
   it('returns empty for no tracked positions', () => {

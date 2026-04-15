@@ -22,13 +22,16 @@ export {
   recordDecisionTraceAgentAction,
 } from './orchestrator.js'
 
-// ── Registry (strategy interface + fan-out) ─────────────────────────────────
+// ── Concrete setup generator ────────────────────────────────────────────────
 export {
-  getStrategyRegistry,
-  resetStrategyRegistry,
-  type IStrategy,
-  type StrategyRegistry,
-} from './registry.js'
+  getSetupGenerator,
+  getSetupGeneratorMinCandles,
+  runSetupGenerator,
+  clearSetupGeneratorState,
+  resetSetupGenerator,
+  setSetupGeneratorForTests,
+  type SetupGenerator,
+} from './engine.js'
 
 // ── Diagnostics (pipeline stats) ────────────────────────────────────────────
 export {

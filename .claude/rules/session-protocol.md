@@ -27,12 +27,12 @@ Run before the first session of a new Sprint.
    - Data flow diagrams, edge cases, test matrices
    - Identify risky sessions, flag dependencies
 
-4. **Update `sprint-N.md`**
+4. **Update `docs/archive/plan/sprint-N.md`**
    - Finalize session roadmap (only detail next 2-3 sessions)
    - Estimate sessions + dependencies
    - Set Definition of Done checkboxes
 
-5. **Update `decisions.md`**
+5. **Update `docs/archive/plan/decisions.md`**
    - Log new architectural decisions with rationale
 
 6. **Checkpoint commit**
@@ -44,7 +44,7 @@ Run before the first session of a new Sprint.
 
 ### START
 
-1. Read current sprint plan (`docs/plan/sprint-N.md`) → find next session
+1. Read current sprint plan (`docs/archive/plan/sprint-N.md`) → find next session
 2. Read `CLAUDE.md`
 3. `git status` → clean working tree?
 4. Checkpoint commit (if uncommitted work exists)
@@ -78,7 +78,7 @@ Run before the first session of a new Sprint.
 11. Checkpoint commit
     - `feat(agent): implement state machine`
     - Follow commit convention: `<type>(<scope>): <description>`
-12. Update `sprint-N.md` Session Progress table
+12. Update `docs/archive/plan/sprint-N.md` Session Progress table
     - Mark session DONE + date + notes
 13. Update `.claude/memory.md` if significant context changed
 14. **END SESSION**
@@ -89,7 +89,7 @@ Run before the first session of a new Sprint.
 
 Run when all sessions in a phase (e.g., Phase 2A) are done.
 
-1. **Verify all phase sessions DONE** in sprint-N.md
+1. **Verify all phase sessions DONE** in `docs/archive/plan/sprint-N.md`
 2. **`/plan-eng-review`** for the next phase
    - Re-evaluate: did building this phase change assumptions?
    - Adjust next phase session estimates if needed
@@ -104,7 +104,7 @@ Run when all sessions in a phase (e.g., Phase 2A) are done.
 
 Run after the last session of the Sprint.
 
-1. **Verify Definition of Done** — all checkboxes in sprint-N.md
+1. **Verify Definition of Done** — all checkboxes in `docs/archive/plan/sprint-N.md`
 2. **Live verification** — run the system, confirm behavior
    - Tag `[CONFIRMED]` in docs for verified items
    - Tag `[CARRIED]` for items deferred to next Sprint

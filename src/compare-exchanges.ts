@@ -30,8 +30,7 @@ import {
   clearStore,
   candleCount,
 } from './feed/store.js'
-import { StrategyRegistry } from './strategy/registry.js'
-import { SmcSdStrategy } from './strategy/strategies/smc-sd/index.js'
+import { getSetupGeneratorMinCandles, resetSetupGenerator, runSetupGenerator } from './strategy/engine.js'
 import { getPipelineEmitter, clearPipelineState } from './strategy/orchestrator.js'
 import type {
   Candle,
@@ -70,7 +69,6 @@ interface CollectedSignal {
   exchange: ExchangeId
   coin: string
   interval: CandleInterval
-  strategyId: string
   signal: Signal
   timestamp: number
 }
@@ -96,7 +94,6 @@ interface CandleComparison {
 interface SignalMatch {
   coin: string
   interval: CandleInterval
-  strategyId: string
   hlSignal: CollectedSignal | null
   bbSignal: CollectedSignal | null
   /** Absolute entry price difference (%) — null if only one exchange */
@@ -224,19 +221,17 @@ function runStrategiesForExchange(exchangeId: ExchangeId): CollectedSignal[] {
     }
   }
 
-  // 2. Create a fresh strategy registry
-  const registry = new StrategyRegistry()
-  registry.register(new SmcSdStrategy())
+  // 2. Reset the concrete scanner before each exchange run
+  resetSetupGenerator()
 
   // 3. Listen for layered/quant signals via pipelineEmitter (singleton)
   const emitter = getPipelineEmitter()
   const onSetup = (setup: ActiveSetup) => {
-    collected.push({
-      exchange: exchangeId,
-      coin: setup.coin,
-      interval: setup.interval,
-      strategyId: setup.strategyId ?? 'unknown',
-      signal: {
+      collected.push({
+        exchange: exchangeId,
+        coin: setup.coin,
+        interval: setup.interval,
+        signal: {
         type: setup.type,
         side: setup.side,
         confidence: setup.confidence,
@@ -253,7 +248,7 @@ function runStrategiesForExchange(exchangeId: ExchangeId): CollectedSignal[] {
   emitter.on('setup', onSetup)
 
   // 4. Run closed-bar scan for each coin/TF
-  const maxMin = Math.max(INDICATOR_WINDOW, ...registry.getAll().map(s => s.minCandles()))
+  const maxMin = Math.max(INDICATOR_WINDOW, getSetupGeneratorMinCandles())
 
   for (const coin of coins) {
     for (const tf of signalTfs) {
@@ -261,15 +256,12 @@ function runStrategiesForExchange(exchangeId: ExchangeId): CollectedSignal[] {
       if (candles.length < MIN_CANDLES_FOR_SCAN + 1) continue
 
       const idx = candles.length - 2
-      const results = registry.runAll(coin, tf, candles, idx)
-
-      // Collect smc-sd (and future direct-return strategies)
-      for (const { strategyId, signal } of results) {
+      const signal = runSetupGenerator(coin, tf, candles, idx)
+      if (signal !== null) {
         collected.push({
           exchange: exchangeId,
           coin,
           interval: tf,
-          strategyId,
           signal,
           timestamp: Date.now(),
         })
@@ -294,10 +286,10 @@ function matchSignals(
 ): SignalMatch[] {
   const matches: SignalMatch[] = []
 
-  // Key: coin|interval|strategyId|side
+  // Key: coin|interval|side
   type SigKey = string
   function sigKey(s: CollectedSignal): SigKey {
-    return `${s.coin}|${s.interval}|${s.strategyId}|${s.signal.side}`
+    return `${s.coin}|${s.interval}|${s.signal.side}`
   }
 
   const hlMap = new Map<SigKey, CollectedSignal>()
@@ -329,7 +321,6 @@ function matchSignals(
     const parts = k.split('|')
     const coin = parts[0]!
     const interval = parts[1]! as CandleInterval
-    const strategyId = parts[2]!
 
     let entryDiffPct: number | null = null
     let confDelta: number | null = null
@@ -344,7 +335,6 @@ function matchSignals(
     matches.push({
       coin,
       interval,
-      strategyId,
       hlSignal: hl,
       bbSignal: bb,
       entryDiffPct,
@@ -383,12 +373,11 @@ async function startLiveComparison(
     appendCandle(coin, interval, candle, 'HL')
 
     // Run smc-sd directly (pure, no store dependency beyond passed candles)
-    const smcSd = new SmcSdStrategy()
     const candles = getCandles(coin, interval, INDICATOR_WINDOW + 2, exchangeId)
     if (candles.length < MIN_CANDLES_FOR_SCAN + 1) return
 
     const idx = candles.length - 2
-    const signal = smcSd.scan(coin, interval, candles, idx)
+    const signal = runSetupGenerator(coin, interval, candles, idx)
 
     if (signal) {
       const key = `${coin}|${interval}|${candle.t}`
@@ -397,7 +386,6 @@ async function startLiveComparison(
         exchange: exchangeId,
         coin,
         interval,
-        strategyId: 'smc-sd',
         signal,
         timestamp: Date.now(),
       }
@@ -509,14 +497,14 @@ function printSignalReport(matches: SignalMatch[]): void {
   // Signals found on BOTH exchanges
   if (bothExchanges.length > 0) {
     console.log(`\n  ✅ MATCHED (both exchanges): ${bothExchanges.length}`)
-    console.log(`  ${'Coin'.padEnd(8)} ${'TF'.padEnd(5)} ${'Strategy'.padEnd(12)} ${'Side'.padEnd(6)} ${'HL Entry'.padStart(12)} ${'BB Entry'.padStart(12)} ${'ΔEntry%'.padStart(9)} ${'HL Conf'.padStart(8)} ${'BB Conf'.padStart(8)} ${'ΔConf'.padStart(7)}`)
-    console.log(`  ${'─'.repeat(88)}`)
+    console.log(`  ${'Coin'.padEnd(8)} ${'TF'.padEnd(5)} ${'Engine'.padEnd(8)} ${'Side'.padEnd(6)} ${'HL Entry'.padStart(12)} ${'BB Entry'.padStart(12)} ${'ΔEntry%'.padStart(9)} ${'HL Conf'.padStart(8)} ${'BB Conf'.padStart(8)} ${'ΔConf'.padStart(7)}`)
+    console.log(`  ${'─'.repeat(84)}`)
 
     for (const m of bothExchanges) {
       const hl = m.hlSignal!.signal
       const bb = m.bbSignal!.signal
       console.log(
-        `  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${m.strategyId.padEnd(12)} ${hl.side.padEnd(6)} ` +
+        `  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${'smc-sd'.padEnd(8)} ${hl.side.padEnd(6)} ` +
         `${('$' + fmt(hl.entryPrice)).padStart(12)} ${('$' + fmt(bb.entryPrice)).padStart(12)} ` +
         `${fmt(m.entryDiffPct!, 4).padStart(9)} ${fmt(hl.confidence, 2).padStart(8)} ` +
         `${fmt(bb.confidence, 2).padStart(8)} ${(m.confDelta! >= 0 ? '+' : '') + fmt(m.confDelta!, 3)}`.padStart(7),
@@ -529,7 +517,7 @@ function printSignalReport(matches: SignalMatch[]): void {
     console.log(`\n  🔵 HL-ONLY: ${hlOnly.length}`)
     for (const m of hlOnly) {
       const s = m.hlSignal!.signal
-      console.log(`  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${m.strategyId.padEnd(12)} ${s.side.padEnd(6)} entry=$${fmt(s.entryPrice)} conf=${fmt(s.confidence)}`)
+      console.log(`  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${'smc-sd'.padEnd(8)} ${s.side.padEnd(6)} entry=$${fmt(s.entryPrice)} conf=${fmt(s.confidence)}`)
     }
   }
 
@@ -538,7 +526,7 @@ function printSignalReport(matches: SignalMatch[]): void {
     console.log(`\n  🟡 BB-ONLY: ${bbOnly.length}`)
     for (const m of bbOnly) {
       const s = m.bbSignal!.signal
-      console.log(`  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${m.strategyId.padEnd(12)} ${s.side.padEnd(6)} entry=$${fmt(s.entryPrice)} conf=${fmt(s.confidence)}`)
+      console.log(`  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${'smc-sd'.padEnd(8)} ${s.side.padEnd(6)} entry=$${fmt(s.entryPrice)} conf=${fmt(s.confidence)}`)
     }
   }
 

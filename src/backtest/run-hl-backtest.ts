@@ -1,8 +1,8 @@
 /**
  * Hyperliquid Comprehensive Backtest — 15 coins × 4 TFs × ~3 months.
  *
- * Usage: bun run src/backtest/run-hl-backtest.ts [strategy]
- *   strategy: smc-sd | layered | quant | all (default: smc-sd)
+ * Usage: bun run src/backtest/run-hl-backtest.ts [smc-sd]
+ * Legacy alias `all` is accepted and maps to `smc-sd`.
  *
  * Mirrors the Bybit runner but uses HL REST feed.
  * No PostgreSQL required — all data fetched directly into memory.
@@ -15,8 +15,6 @@ import { runBacktest } from './engine.js'
 import { walkForward } from './walk-forward.js'
 import { formatExpectancyReport, formatMetricsSummary } from './report.js'
 import { formatPipelineStats } from '../strategy/diagnostics.js'
-import { getStrategyRegistry } from '../strategy/registry.js'
-import { SmcSdStrategy } from '../strategy/strategies/smc-sd/index.js'
 import {
   BACKTEST_SLIPPAGE_PCT,
   BACKTEST_COMMISSION_PCT,
@@ -242,24 +240,23 @@ function runStrategyBacktest(
   }
 }
 
+function normalizeStrategyArg(raw: string | undefined): StrategyType {
+  const value = raw?.trim().toLowerCase() ?? 'smc-sd'
+  if (value === 'smc-sd' || value === 'all') return 'smc-sd'
+  log.warn('hl-backtest', `Unsupported strategy "${value}" - using canonical setup engine smc-sd`)
+  return 'smc-sd'
+}
+
 // ─── Main ──────────────────────────────────────────────────────────────────
 
 async function main() {
-  const registry = getStrategyRegistry()
-  
-  
-  try { registry.register(new SmcSdStrategy()) } catch { /* already registered */ }
-
-  const arg = process.argv[2] ?? 'smc-sd'
-  const strategies: StrategyType[] = arg === 'all'
-    ? ['smc-sd']
-    : [arg as StrategyType]
+  const strategy = normalizeStrategyArg(process.argv[2])
 
   console.log('='.repeat(60))
   console.log('  HYPERLIQUID BACKTEST RUNNER')
   console.log(`  Coins: ${COINS.join(', ')}`)
   console.log(`  Timeframes: ${TIMEFRAMES.join(', ')}`)
-  console.log(`  Strategies: ${strategies.join(', ')}`)
+  console.log(`  Setup engine: ${strategy}`)
   console.log(`  Commission: ${(HL_COMMISSION_PCT * 100).toFixed(3)}% (HL taker)`)
   console.log('='.repeat(60))
 
@@ -281,9 +278,7 @@ async function main() {
 
   log.info('hl-backtest', `Total: ${totalCandles} candles across ${candles.size} series`)
 
-  for (const strategy of strategies) {
-    runStrategyBacktest(candles, strategy)
-  }
+  runStrategyBacktest(candles, strategy)
 
   log.info('hl-backtest', 'Done.')
 }

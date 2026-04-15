@@ -81,9 +81,6 @@ export interface BacktestTrade {
   pnlPct: number      // PnL as fraction of entry notional
   exitReason: 'sl_hit' | 'tp_hit' | 'trail_stop' | 'invalidated' | 'end_of_data' | 'max_hold'
 
-  /** Strategy that generated this trade. */
-  strategyId?: string
-
   /** Partial close breakdown (empty for single-exit trades). */
   partialCloses?: PartialCloseDetail[]
 }

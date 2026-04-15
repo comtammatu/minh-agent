@@ -30,13 +30,12 @@ export async function logJournalEntry(
   coin: string | null,
   details: Record<string, unknown>,
   agentState?: string | null,
-  strategyId?: string | null,
   exchange: ExchangeId = 'HL',
 ): Promise<void> {
   try {
     await sql`
-      INSERT INTO trade_journal (event_type, coin, details, agent_state, strategy_id, exchange)
-      VALUES (${eventType}, ${coin}, ${sql.json(details as JSONValue)}, ${agentState ?? null}, ${strategyId ?? 'smc-sd'}, ${exchange})
+      INSERT INTO trade_journal (event_type, coin, details, agent_state, exchange)
+      VALUES (${eventType}, ${coin}, ${sql.json(details as JSONValue)}, ${agentState ?? null}, ${exchange})
     `
   } catch (err) {
     log.error('journal', `Failed to write entry: ${eventType} ${coin ?? ''} — ${(err as Error).message}`)
@@ -49,10 +48,8 @@ export async function logJournalEntry(
  */
 export function handleJournalAction(action: AgentAction, agentState?: string): void {
   if (action.type !== 'log_journal') return
-  // Extract strategyId from details if present (Sprint 4.5)
-  const strategyId = (action.details.strategyId as string) ?? null
   // Fire-and-forget — no await needed at call site
-  logJournalEntry(action.eventType, action.coin, action.details, agentState ?? null, strategyId)
+  logJournalEntry(action.eventType, action.coin, action.details, agentState ?? null)
 }
 
 /**
@@ -65,7 +62,6 @@ export async function logOperatorAuditEntry(
   status: 'submitted' | 'failed',
   context: {
     coin?: string
-    strategyId?: string
     source?: string
     details?: Record<string, unknown>
   } = {},
@@ -81,7 +77,6 @@ export async function logOperatorAuditEntry(
       ...(context.details ?? {}),
     },
     null,
-    context.strategyId ?? null,
   )
 }
 

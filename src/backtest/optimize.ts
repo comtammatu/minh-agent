@@ -19,8 +19,6 @@ import type { Candle, CandleInterval } from '../types.js'
 import type { BacktestConfig, StrategyParams, WalkForwardConfig, WalkForwardResult } from './types.js'
 import { fetchBybitCandlesBatched } from '../feed/bybit/bybit-rest.js'
 import { walkForward } from './walk-forward.js'
-import { getStrategyRegistry } from '../strategy/registry.js'
-import { SmcSdStrategy } from '../strategy/strategies/smc-sd/index.js'
 import {
   PARAM_SCHEMA,
   BACKTEST_SLIPPAGE_PCT,
@@ -480,10 +478,6 @@ async function main() {
     )
   )
   const runId = crypto.randomUUID()
-
-  // Register strategy
-  const registry = getStrategyRegistry()
-  try { registry.register(new SmcSdStrategy()) } catch { /* already registered */ }
 
   console.log('='.repeat(60))
   console.log('  PARAMETER OPTIMIZER — Evolution Phase 1')
