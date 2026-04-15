@@ -592,12 +592,14 @@ async function main(): Promise<void> {
     }
 
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    if (activeExchange === 'BB') {
-      log.error('startup', `FATAL | BB startup exchange bootstrap failed: ${msg}`)
-      throw new StartupFatalError(`BB startup exchange bootstrap failed: ${msg}`)
+    const msg = err instanceof Error ? err.message : typeof err === 'object' ? JSON.stringify(err) : String(err)
+    if (!pool.isInitialized()) {
+      log.error('startup', `FATAL | Exchange pool init failed: ${msg}`)
+      throw new StartupFatalError(`Exchange pool init failed: ${msg}`)
     }
-    log.warn('startup', `ACCT  | Could not fetch account info: ${msg}`)
+    // Pool initialized but account query failed — non-fatal, continue with degraded state.
+    // Common on Bybit Demo Trading when account has no balance yet.
+    log.warn('startup', `ACCT  | Could not fetch account info (non-fatal): ${msg}`)
   }
 
   // 8. Start health monitor periodic check (S13: Self-Healing)

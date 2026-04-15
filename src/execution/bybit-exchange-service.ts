@@ -141,7 +141,9 @@ export class BybitExchangeService {
     this.client = new RestClientV5({
       key: this.apiKey,
       secret: this.apiSecret,
-      testnet: this.testnet,
+      // Demo Trading uses api-demo.bybit.com (demoTrading flag), NOT api-testnet.bybit.com (testnet flag).
+      // Bybit Demo Trading has real market data + virtual balance. Testnet is a separate deprecated environment.
+      demoTrading: this.testnet,
     })
 
     // Load maxLeverage + lot-size specs per coin from getInstrumentsInfo.
@@ -586,7 +588,7 @@ export class BybitExchangeService {
       getHealthMonitor().recordSuccess('exchange')
       return state
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = err instanceof Error ? err.message : typeof err === 'object' ? JSON.stringify(err) : String(err)
       log.error('bybit-exec', `getAccountState exception: ${msg}`)
       getHealthMonitor().recordError('exchange', msg)
       throw err
