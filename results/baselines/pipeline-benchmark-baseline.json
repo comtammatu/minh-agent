@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-04-13T15:54:23.202Z",
-  "sourceResult": "https://github.com/comtammatu/minh-agent/actions/runs/24353032687/job/71112432981",
+  "generatedAt": "2026-04-15T08:37:58.710Z",
+  "sourceResult": "https://github.com/comtammatu/minh-agent/actions/runs/24444794485/job/71418263025",
   "metrics": {
     "raw": {
-      "p95Ms": 0.0645,
-      "p99Ms": 0.0987
+      "p95Ms": 0.0713,
+      "p99Ms": 0.1076
     },
     "robust": {
-      "p95Ms": 0.0628,
-      "p99Ms": 0.0796
+      "p95Ms": 0.0667,
+      "p99Ms": 0.0975
     }
   }
 }
