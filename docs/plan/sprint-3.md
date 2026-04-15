@@ -1,5 +1,7 @@
 # Minh (明) — Sprint 3: Validate + Visualize + Scale + Learn
 
+> Historical note (2026-04-15): this sprint file is preserved for planning history. The current branch does **not** contain the planned `src/server/` or `dashboard/` modules referenced below. Use `README.md`, `TODOS.md`, and `docs/CODEBASE_MAP.md` for the live repo inventory.
+
 ## Goal
 
 Add a **Backtesting Engine** to validate strategy, **Performance Analytics** to understand what works, and a **Web Dashboard MVP** for visibility. Nothing more.

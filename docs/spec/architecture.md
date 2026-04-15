@@ -1,12 +1,18 @@
 # Minh (明) — Architecture
 
-> **v4.5.2 (post-S12 cleanup, 2026-04-13)** — Autonomous trading agent with multi-strategy state/risk isolation and a single shared exchange wallet per process.
+> **Status note (2026-04-15)**: this document mixes implemented runtime architecture with historical sprint planning. For the current branch, use `README.md`, `docs/CODEBASE_MAP.md`, `docs/runtime-and-feed.md`, `docs/strategy-engine.md`, `docs/agent-and-execution.md`, and `docs/data-and-backtesting.md` as the implementation source of truth.
+>
+> Current branch implements: Bun runtime, PostgreSQL/TimescaleDB, Hyperliquid + Bybit feeds, strategy registry/orchestrator, SMC-SD strategy, trading agent, Telegram bot, TUI, backtest and analytics tooling.
+>
+> Current branch does **not** contain the planned `src/server/`, `dashboard/`, `src/advisor/`, or `src/memory/` modules referenced in historical sprint plans.
+
+> **v4.5.2 (post-S12 cleanup, 2026-04-13)** — Historical architecture snapshot for the broader roadmap; some later planned layers were not carried onto the current branch.
 >
 > - Sprint 1: Layered analysis engine (scanner pipeline, indicators, invalidation)
 > - Sprint 2: Agent execution (state machine, order manager, position monitor, circuit breakers, HL exchange, PostgreSQL/TimescaleDB)
-> - Sprint 3: Backtest engine, analytics metrics, SSE streaming, dashboard MVP (React + Vite)
-> - Sprint 4: Telegram bot (command interface), backtest-from-browser, comparison view, journal detail, mobile layout, dark/light theme
-> - Sprint 4.5: Multi-strategy architecture (IStrategy interface, StrategyRegistry fan-out, shared ExchangePool, PortfolioRiskManager, dashboard strategy selector, Telegram /strategy commands)
+> - Sprint 3: Backtest engine, analytics metrics, and research tooling
+> - Sprint 4: Telegram bot, TUI/operator polish, and strategy evaluation workflows
+> - Sprint 4.5: Multi-strategy architecture (IStrategy interface, StrategyRegistry fan-out, shared ExchangePool, PortfolioRiskManager, Telegram `/strategy` commands)
 
 ## System Overview — Layered Decision Framework (Sprint 1)
 

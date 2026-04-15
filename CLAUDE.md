@@ -1,64 +1,75 @@
-# Minh (明) — Real-time Trading Analysis Engine
+# Minh (明) — Autonomous Trading Runtime
 
-Pure-computation trading analysis: Historical Candles → Market Structure (multi-TF) → Domain Knowledge (PA, SMC, VSA, Wyckoff) → Setup Detection. No LLM. Sub-10ms per tick.
+Deterministic Bun trading runtime: exchange feeds → PostgreSQL + in-memory store → strategy registry/orchestrator → trading agent → exchange execution → TUI + Telegram. Current branch does not ship the historical `src/server/`, `dashboard/`, `src/advisor/`, or `src/memory/` modules described in older sprint plans.
 
 ## Commands
 
 ```bash
 bun install               # Install dependencies
-bun run src/index.ts      # Start (backfill → subscribe → scan)
-bun test                  # Run all tests (watch mode)
-bun test --run            # Run all tests (single run, MUST pass before done)
+bun run src/index.ts      # Start runtime (migrate → hydrate → backfill → scan)
+bun test                  # Run tests (watch mode)
+bun test --run            # Run tests (single run, MUST pass before done)
+bun run typecheck         # Type-check runtime code
 ```
 
 ## Constraints
 
 - MUST use TypeScript strict mode. NEVER use `any` without justification comment
-- NEVER do I/O in `indicators/` or `strategy/` — pure functions only, zero side effects
-- I/O lives at edges: `feed/` and `index.ts` only
+- NEVER do I/O in `indicators/` and pure strategy helpers
+- I/O lives at edges: `index.ts`, `feed/`, `execution/`, `alert/telegram/`, `db/`, and `ui/`
 - MUST run `bun test --run` before marking any task complete
 - Task Contract REQUIRED for 3+ step tasks (see `.claude/rules/session-protocol.md`)
 - No magic numbers — all thresholds in `config.ts`
-- NEVER commit secrets (.env, API keys, private keys)
+- NEVER commit secrets (`.env`, API keys, private keys)
 - Simplest working solution wins: `slice()` over ring buffer, `Map` over SQLite
 
 ## Architecture
 
-```
-Browser → Hyperliquid REST (backfill) + WS (live) → In-memory Store → Strategy Pipeline
-Strategy: Bias → Structure → Zones → Confirm → Trigger → Confluence → Regime filter
+```text
+Hyperliquid / Bybit REST + WS
+  → PostgreSQL + in-memory candle store
+  → strategy orchestrator / registry
+  → TradingAgent + OrderManager + PositionMonitor
+  → exchange execution + Telegram + TUI
+
+Backtest / optimize / walk-forward reuse the same strategy path.
 ```
 
-Runtime: Bun | SDK: @nktkas/hyperliquid | Store: In-memory Map<string, Candle[]>
+Runtime: Bun | DB: PostgreSQL/TimescaleDB | Exchanges: Hyperliquid + Bybit | UI: Ink TUI + Telegram
 
 ## Key Directories
 
-- `src/indicators/` — Pure functions: ATR, SMA, EMA, RSI, ADX, FVG, OB, BOS, VSA, Wyckoff
-- `src/strategy/` — Orchestrator + diagnostics + registry + strategies (layered/quant/smc-sd) + shared (regime/invalidation)
+- `src/indicators/` — Pure indicator building blocks
+- `src/strategy/` — Orchestrator, registry, strategies, shared caches/invalidation helpers
 - `src/agent/` — Trading agent state machine, order manager, position monitor, thesis monitor, exits, circuit breakers
-- `src/feed/` — REST backfill, WS subscribe, in-memory store (I/O boundary)
-- `src/config.ts` — All thresholds, regime multipliers, coin/TF lists
-- `src/types.ts` — Core type definitions
+- `src/execution/` — Exchange service boundary and exchange pool
+- `src/feed/` — REST backfill, WS subscribe, store hydration, exchange adapters
+- `src/db/` — Migrations, candle repository, analytics persistence
+- `src/backtest/` — Backtest, optimizer, walk-forward, benchmark tools
+- `src/analytics/` — Metrics repo and live metrics service
+- `src/alert/telegram/` — Telegram alerts and operator commands
+- `src/ui/` — Ink TUI
+- `src/config.ts` — Thresholds, risk controls, exchange/timeframe settings
+- `src/types.ts` — Core market and signal types
 
 ## Things That Will Bite You
 
-- **HL SDK**: All numeric values are **strings** → `parseFloat()` everywhere
-- **HL WS**: Returns 0 historical candles, only current bar → MUST REST backfill first
-- **HL REST rate limit**: **Weight-based** 1200 weight/min per IP. Info=20, candleSnapshot=20+ceil(items/60) surcharge (500 candles→~29w, 5000→~104w), l2Book/allMids/clearinghouseState/orderStatus=2, exchange=1. All REST callers go through `feed/rate-limiter.ts` (burst 12 + 1 req/3s sustained)
-- **HL REST candles**: Max 5000/request. Per-TF counts: 500 for 1m/5m, 5000 for 15m+ (config `BACKFILL_CANDLE_COUNTS`)
-- **HL address rate limit**: 1 req per 1 USDC traded (cumulative). Initial buffer 10K. Stale `expiresAfter` cancels cost **5x weight**
-- **HL order precision**: Prices max 5 sig figs + `(6 - szDecimals)` decimals. Sizes rounded to `szDecimals`. Remove trailing zeroes. Min order value $10. Asset ID = index from `meta.universe`, NOT coin name
-- **HL signing**: Two schemes (l1_action vs user_signed_action). Field order matters. Lowercase addresses. Wrong signature → opaque error ("missing wallet"). Use SDK, don't DIY
-- **HL OI cap**: Some assets at OI cap → can't open positions. Check `perpsAtOpenInterestCap()` before placing
-- **HL dead man's switch**: `scheduleCancel` auto-cancels all orders after timestamp. Max 10/day. Critical for bot safety
-- **HL WS limits**: 1000 subs, 10 connections, 2000 msg/min. Currently ~121 subs (12%). Guard in `registerSubscription()` blocks at 1000, warns at 80%
-- **HL agent wallet**: Bot uses agent wallet PK (`PRIVATE_KEY`) for signing, main account address (`ACCOUNT_ADDRESS`) for info queries. Agent wallet can trade but **cannot withdraw**. Nonces tracked per agent address. Agent expires (check HL UI) — renew before expiry. Never reuse deregistered agent addresses (replay attack risk)
-- **HL unified account**: Balance lives in spot (`spotClearinghouseState`), not perp (`clearinghouseState`). `getAccountState()` queries both and returns `effectiveBalance = perp + spot USDC`
-- **Candle dedup**: WS may resend same timestamp as REST → store upserts by timestamp
-- **Staleness**: Track `lastCandleTime` per coin/tf, WARNING after 60s silence
-- **Regime filter**: Soft — does NOT block counter-trend, reduces confidence (×1.0/×0.8/×0.3)
-- **detectRegime**: Requires 50+ candles (SMA/ATR/ADX/volume)
-- **Thesis Monitor**: Active positions re-evaluate multi-TF regime/bias every sync cycle. Score 0→1 deterioration: <0.3 hold, 0.3–0.5 alert, 0.5–0.8 SL→breakeven, ≥0.8 close. Config in `THESIS_MONITOR`. Legacy positions (null thesis) are skipped
+- **HL SDK**: All numeric values are strings → `parseFloat()` everywhere
+- **HL WS**: Returns only live bars, not historical candles → REST or DB hydration must happen first
+- **HL REST rate limit**: Weight-based 1200 weight/min per IP. All callers go through `feed/rate-limiter.ts`
+- **HL REST candles**: Max 5000/request. Per-TF counts live in `BACKFILL_CANDLE_COUNTS`
+- **HL order precision**: Prices max 5 sig figs + `(6 - szDecimals)` decimals. Sizes rounded to `szDecimals`
+- **HL signing**: Use SDK, do not DIY. Field order and lowercase addresses matter
+- **HL OI cap**: Some assets cannot open new positions when OI capped
+- **HL dead man's switch**: `scheduleCancel` exists and matters for live safety
+- **HL unified account**: Effective balance = perp + spot USDC
+- **Single exchange per process**: `ACTIVE_EXCHANGE` is mutually exclusive (`HL` or `BB`). Run two processes if you want both
+- **Single shared live wallet per process**: strategy isolation is in software state and risk controls, not separate live wallets
+- **Candle dedup**: WS can resend the same timestamp as REST/DB hydration → store upserts by timestamp
+- **Staleness**: Track `lastCandleTime` per coin/tf, warn after 60s silence
+- **Regime filter**: Soft — reduces confidence, does not hard-block every counter-trend setup
+- **detectRegime**: Requires 50+ candles
+- **Thesis Monitor**: Active positions re-evaluate multi-TF regime and bias every sync cycle; legacy positions with null thesis are skipped
 
 ## Code Patterns
 
@@ -68,11 +79,13 @@ Runtime: Bun | SDK: @nktkas/hyperliquid | Store: In-memory Map<string, Candle[]>
 
 ## References
 
-- Sprint plans: `docs/plan/sprint-1.md`, `docs/plan/sprint-2.md`, `docs/plan/sprint-3.md`
-- Architecture + diagrams: `docs/spec/architecture.md`
-- Knowledge spec (detect/invalidate rules): `docs/spec/knowledge-spec.md`
-- Domain knowledge (trading schools): `docs/ref/domain-knowledge.md`
-- Decision log: `docs/plan/decisions.md`
+- Current branch overview: `README.md`, `SETUP.md`, `TODOS.md`
+- Architecture map: `docs/CODEBASE_MAP.md`
+- Runtime/feed: `docs/runtime-and-feed.md`
+- Strategy runtime: `docs/strategy-engine.md`
+- Agent/execution: `docs/agent-and-execution.md`
+- Data/backtesting: `docs/data-and-backtesting.md`
+- Historical architecture + roadmap context: `docs/spec/architecture.md`, `docs/spec/market-memory.md`, `docs/plan/decisions.md`, `docs/plan/sprint-*.md`
 - Session protocol + task contract: `.claude/rules/session-protocol.md`
 - Quality gates: `.claude/rules/quality-gates.md`
 - Pattern invalidation rules: `.claude/rules/invalidation-table.md`

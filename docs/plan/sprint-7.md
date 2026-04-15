@@ -1,5 +1,7 @@
 # Minh (明) — Sprint 7: REMEMBER II — Memory Intelligence
 
+> Roadmap note (2026-04-15): this sprint remains a forward-looking design doc. The current branch does not contain the `src/memory/`, `src/advisor/`, or memory-dashboard modules referenced below.
+
 ## Goal
 
 Complete the memory system with **causal reasoning** (Pattern Knowledge Graph), **multi-angle retrieval** (RAG-Fusion + HyDE), and a **continuous learning loop** that auto-extracts insights and promotes durable facts over time. The advisor becomes genuinely smarter with every trade.

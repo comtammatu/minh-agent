@@ -2,6 +2,8 @@
 
 All architectural and engineering decisions made during plan reviews.
 
+> Status note (2026-04-15): this log contains both active decisions and historical plan decisions from branches or roadmap directions that are not fully present on the current branch. Use `README.md`, `TODOS.md`, and `docs/CODEBASE_MAP.md` to confirm what is actually implemented before treating any decision below as current runtime behavior.
+
 ---
 
 ## Active Repository Decisions

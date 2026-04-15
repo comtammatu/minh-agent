@@ -1,5 +1,7 @@
 # Minh (明) — Sprint 5: ADVISE — Basic LLM Advisor
 
+> Roadmap note (2026-04-15): this sprint was never landed on the current branch. There is no `src/advisor/` implementation in the repo today. Treat this file as a future-design draft, not current project status.
+
 ## Goal
 
 Build the **Basic LLM Advisor Layer** — a stateless (naive) but useful Claude-powered analysis on top of the trade journal. Daily/weekly review, anomaly explanation, and config suggestions backed by the Sprint 3 backtest engine.

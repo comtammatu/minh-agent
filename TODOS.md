@@ -3,6 +3,20 @@
 Active backlog only. Historical review notes and superseded plans live in [docs/plan/decisions.md](docs/plan/decisions.md).
 Priority: P1 (do next), P2 (soon), P3 (someday).
 
+Current implementation source of truth:
+
+- `README.md`
+- `SETUP.md`
+- `docs/CODEBASE_MAP.md`
+- `docs/runtime-and-feed.md`
+- `docs/strategy-engine.md`
+- `docs/agent-and-execution.md`
+
+Planning note:
+
+- `docs/plan/` contains historical sprint plans and roadmap drafts.
+- Do not treat sprint `[DONE]` markers as proof that `src/server/`, `dashboard/`, `src/advisor/`, or `src/memory/` exist on the current branch.
+
 ---
 
 ## Strategy

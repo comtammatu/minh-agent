@@ -1,6 +1,8 @@
-# Setup Guide — Minh (明) Trading Analysis Engine
+# Setup Guide — Minh (明) Trading Runtime
 
-Step-by-step guide to get the project running from scratch.
+Step-by-step guide to get the current branch running from scratch.
+
+> Status note: the current repo boots a Bun runtime with PostgreSQL, exchange feeds, a TUI, Telegram commands, and backtest tooling. It does **not** currently ship the historical `src/server/` or `dashboard/` layers mentioned in older sprint docs.
 
 ## Prerequisites
 
@@ -32,7 +34,7 @@ The project uses TimescaleDB (PostgreSQL extension) for time-series candle stora
 docker-compose up -d
 ```
 
-This starts a TimescaleDB container with:
+This starts a PostgreSQL + TimescaleDB container with:
 - **User**: `minh`
 - **Password**: `minh_dev`
 - **Database**: `minh`
@@ -45,7 +47,7 @@ docker-compose ps
 # Should show minh-timescaledb as "Up (healthy)"
 ```
 
-> Database migrations run automatically on startup (`src/index.ts` calls `runMigrations()`).
+> Database migrations run automatically on startup.
 
 ---
 
@@ -98,7 +100,7 @@ PAPER_SLIPPAGE_PCT=0.0005
 6. Copy your main account address → `ACCOUNT_ADDRESS`
 
 > **IMPORTANT**: Start with `PAPER_TRADE=true` to test without risking real funds.
-> The current architecture is single-wallet and single-exchange per process. Old multi-wallet env vars are intentionally removed from `.env.example`.
+> The current runtime is single-exchange per process and uses one shared live wallet per process.
 
 ---
 
@@ -132,41 +134,52 @@ bun run src/index.ts
 
 ### Startup Sequence
 
-The engine performs these steps automatically:
+The runtime performs these steps automatically:
 
 1. Run DB migrations
-2. Fetch top 15 coins by Open Interest from Hyperliquid
-3. Backfill historical candles (REST API) → store in DB + memory
-4. Subscribe to WebSocket (live candles, trades, order book)
-5. Start funding rate + OI polling
-6. Initialize trading agent, order manager, position monitor
-7. Start HTTP server on `http://127.0.0.1:3000`
-8. Start Telegram bot (if configured)
-9. Begin scanning for trade setups
+2. Select the active exchange and tracked coins
+3. Subscribe WebSocket feeds first
+4. Load candles from PostgreSQL into memory
+5. Gap-fill and REST backfill missing history
+6. Enable write-through candle persistence
+7. Start funding or asset-context polling as needed
+8. Start the TUI and health/status loops
+9. Wire strategy pipeline, agent, order manager, and position monitor
+10. Start Telegram bot if configured
+11. Begin live scanning and management
 
-You should see log output indicating each step completing. The system is ready when you see the `STATUS` line printing every 60 seconds.
+You should see log output indicating each step completing. The system is ready when the TUI transitions out of backfill mode and the `STATUS` line begins printing every 60 seconds.
 
 ---
 
 ## Step 6 — Verify Running State
 
-### HTTP API
+### TUI
 
-```bash
-# Health check
-curl http://127.0.0.1:3000/health
+The current branch starts an Ink terminal dashboard, not a web dashboard. You should see:
 
-# System status (requires API token if configured)
-curl -H "Authorization: Bearer YOUR_TOKEN" http://127.0.0.1:3000/api/status
-```
+- backfill progress while candles are loading
+- account, strategy, system, positions, and watchlist panels after warmup
+- positions and setup state refreshing roughly once per second
 
 ### Logs
 
 Watch for:
-- `ARMED` status = system ready to detect setups
+- `ARMED` status = required timeframes loaded and pipeline active
 - `STATUS` line every 60s = system alive
 - `SETUP` logs = trade setups detected
 - `WARNING` with staleness = data feed issues
+
+### Telegram Bot
+
+If `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are configured, the bot should respond to commands like:
+
+- `/help`
+- `/status`
+- `/positions`
+- `/risk`
+
+> There is no built-in HTTP `/health` or `/api/status` surface on the current branch.
 
 ---
 
@@ -178,6 +191,7 @@ Watch for:
 | `bun run src/index.ts` | Start the engine |
 | `bun test` | Run tests (watch mode) |
 | `bun test --run` | Run tests (single run) |
+| `bun run typecheck` | Type-check runtime code |
 | `ACTIVE_EXCHANGE=HL bun run bench:pipeline:ci` | Run pipeline latency budget gate |
 | `docker-compose up -d` | Start TimescaleDB |
 | `docker-compose down` | Stop TimescaleDB |
@@ -191,7 +205,7 @@ All trading thresholds and parameters live in `src/config.ts`. Key settings:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `TOP_COINS_LIMIT` | 15 | Number of coins to track (by OI) |
+| `TOP_COINS_LIMIT` | 20 | Number of native HL coins to track (by OI) |
 | `TIMEFRAMES` | 1m,5m,15m,1h,4h,1d | Candle timeframes |
 | `MIN_CONFIDENCE` | 0.58 | Minimum setup confidence to alert |
 | `RISK_PER_POSITION` | 2% | Max equity at risk per trade |
@@ -237,27 +251,21 @@ bun test --run
 
 ## Architecture Overview
 
-```
-Hyperliquid REST (backfill) + WS (live)
+```text
+Hyperliquid or Bybit REST/WS
            │
            ▼
-   In-memory Store ──► PostgreSQL/TimescaleDB
+ PostgreSQL/TimescaleDB + In-memory Store
            │
            ▼
-   Scanner Pipeline (pure functions)
-   Bias → Structure → Zones → Confirm → Trigger → Confluence → Regime
+ Strategy Orchestrator / Registry
            │
            ▼
-   Trading Agent (state machine)
+ Trading Agent + Order Manager + Position Monitor
            │
-           ▼
-   Order Manager ──► Hyperliquid Exchange API
-           │
-           ▼
-   Position Monitor + Risk Management
-           │
-           ▼
-   Alerts (HTTP SSE + Telegram)
+           ├──► Exchange execution service
+           ├──► Telegram operator surface
+           └──► Ink TUI
 ```
 
 For full architecture details, see `docs/spec/architecture.md`.

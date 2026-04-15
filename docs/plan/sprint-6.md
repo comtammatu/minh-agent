@@ -1,5 +1,7 @@
 # Minh (明) — Sprint 6: REMEMBER I — Memory Foundation
 
+> Roadmap note (2026-04-15): this sprint remains a design draft on the current branch. There is no `src/memory/` implementation or advisor-memory subsystem in the repo today.
+
 ## Goal
 
 Upgrade the Sprint 5 stateless LLM Advisor into a **memory-augmented system** by adding: layered memory architecture (working → episodic → semantic), contextual trade preprocessing, and hybrid retrieval (pgvector + BM25 + RRF). The advisor stops starting from zero on every query.

@@ -1,5 +1,7 @@
 # Minh (明) — Sprint 4: EXPAND — Telegram Control + Dashboard Extensions
 
+> Historical note (2026-04-15): Telegram functionality exists on the current branch, but the Elysia and web-dashboard sections in this plan are historical planning artifacts. Verify against the filesystem before assuming any `src/server/` or `dashboard/` path exists today.
+
 ## Goal
 
 Add **Telegram bot control interface** for mobile monitoring/control and **extend the Dashboard** with missing features identified during Sprint 3. Fix carried tech debt.
