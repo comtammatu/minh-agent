@@ -12,15 +12,15 @@ Analytics and operator surfaces hang off that same lifecycle. `metrics-service.t
 
 The migration runner is safe under re-entry because it skips already-applied versions and executes each new migration inside a transaction (`src/db/migrate.ts:24`, `src/db/migrate.ts:35`, `src/db/migrate.ts:42`). The unresolved risk is performance or lock duration on large production datasets, not accidental duplicate application.
 
-Analytics are best-effort by design. `onTradeClose()` catches matview refresh errors and logs them without blocking the agent loop (`src/analytics/metrics-service.ts:29`, `src/analytics/metrics-service.ts:37`). That is correct for operational safety, but it means dashboards can lag behind trading state during DB incidents.
+Analytics are best-effort by design. `onTradeClose()` catches matview refresh errors and logs them without blocking the agent loop (`src/analytics/metrics-service.ts:29`, `src/analytics/metrics-service.ts:37`). That is correct for operational safety, but it means operator views can lag behind trading state during DB incidents.
 
-The operator loop is also best-effort. The Telegram bot tolerates network failure by logging repeated `getUpdates` errors rather than panicking the runtime (`src/alert/telegram/bot.ts:1460`, `src/alert/telegram/bot.ts:1470`). Health monitoring reports degraded states but does not auto-restart or auto-disable strategies (`src/agent/self-healing.ts:2`, `src/agent/self-healing.ts:140`).
+The operator loop is also best-effort. The Telegram bot tolerates network failure by logging repeated `getUpdates` errors rather than panicking the runtime (`src/alert/telegram/bot.ts:1460`, `src/alert/telegram/bot.ts:1470`). Health monitoring reports degraded states but does not auto-restart or auto-disable the runtime (`src/agent/self-healing.ts:2`, `src/agent/self-healing.ts:140`).
 
 ## Blast radius and safe change plan
 
 Changes in `backtest/engine.ts` can silently desynchronize research from production if they stop replaying through `onCandleTick()` or stop resetting shared state (`src/backtest/engine.ts:25`, `src/backtest/engine.ts:49`, `src/backtest/engine.ts:98`). Treat that file as part of the live-trading correctness surface, not just offline tooling.
 
-Changes to DB schemas or candle persistence should be staged conservatively because startup, live write-through, analytics, and replay data loading all depend on the same tables (`src/index.ts:302`, `src/index.ts:426`, `src/index.ts:444`, `src/analytics/metrics-service.ts:48`). A migration that is syntactically valid but operationally slow will delay the whole engine.
+Changes to DB schemas or candle persistence should be staged conservatively because startup, live write-through, analytics, and replay data loading all depend on the same tables (`src/runtime/app.ts`, `src/db/candle-repo.ts`, `src/analytics/metrics-service.ts`). A migration that is syntactically valid but operationally slow will delay the whole engine.
 
 ## Unknowns
 

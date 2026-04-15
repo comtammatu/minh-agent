@@ -1,6 +1,6 @@
 # Minh (明) — Autonomous Trading Runtime
 
-Deterministic Bun trading runtime: exchange feeds → PostgreSQL + in-memory store → strategy registry/orchestrator → trading agent → exchange execution → TUI + Telegram. Current branch does not ship the historical `src/server/`, `dashboard/`, `src/advisor/`, or `src/memory/` modules described in older sprint plans.
+Deterministic Bun trading runtime: exchange feeds → PostgreSQL + in-memory store → single `smc-sd` setup engine → trading agent → exchange execution → TUI + Telegram. Current branch does not ship the historical `src/server/`, `dashboard/`, `src/advisor/`, or `src/memory/` modules described in older sprint plans.
 
 ## Commands
 
@@ -28,7 +28,7 @@ bun run typecheck         # Type-check runtime code
 ```text
 Hyperliquid / Bybit REST + WS
   → PostgreSQL + in-memory candle store
-  → strategy orchestrator / registry
+  → setup generation pipeline (`smc-sd`)
   → TradingAgent + OrderManager + PositionMonitor
   → exchange execution + Telegram + TUI
 
@@ -40,7 +40,7 @@ Runtime: Bun | DB: PostgreSQL/TimescaleDB | Exchanges: Hyperliquid + Bybit | UI:
 ## Key Directories
 
 - `src/indicators/` — Pure indicator building blocks
-- `src/strategy/` — Orchestrator, registry, strategies, shared caches/invalidation helpers
+- `src/strategy/` — Setup engine, orchestrator, shared caches/invalidation helpers
 - `src/agent/` — Trading agent state machine, order manager, position monitor, thesis monitor, exits, circuit breakers
 - `src/execution/` — Exchange service boundary and exchange pool
 - `src/feed/` — REST backfill, WS subscribe, store hydration, exchange adapters
@@ -85,7 +85,7 @@ Runtime: Bun | DB: PostgreSQL/TimescaleDB | Exchanges: Hyperliquid + Bybit | UI:
 - Strategy runtime: `docs/strategy-engine.md`
 - Agent/execution: `docs/agent-and-execution.md`
 - Data/backtesting: `docs/data-and-backtesting.md`
-- Historical architecture + roadmap context: `docs/spec/architecture.md`, `docs/spec/market-memory.md`, `docs/plan/decisions.md`, `docs/plan/sprint-*.md`
+- Historical architecture + roadmap context: `docs/archive/spec/architecture.md`, `docs/archive/spec/market-memory.md`, `docs/archive/plan/decisions.md`, `docs/archive/plan/sprint-*.md`
 - Session protocol + task contract: `.claude/rules/session-protocol.md`
 - Quality gates: `.claude/rules/quality-gates.md`
 - Pattern invalidation rules: `.claude/rules/invalidation-table.md`

@@ -44,7 +44,6 @@ const mockPositions = new Map([
   ['pos-1', {
     positionId: 'pos-1',
     coin: 'ETH',
-    strategyId: 'smc-sd',
     side: 'long' as const,
     entryPrice: 3200.5,
     currentSize: 0.5,
@@ -105,7 +104,6 @@ const mockDecisionTrace = {
   traceId: 'smc-sd:BTC|1h|setup|1710',
   coin: 'BTC',
   interval: '1h' as const,
-  strategyId: 'smc-sd',
   exchange: 'HL' as const,
   ts: 1_710_000_000_000,
   regime: {
@@ -179,7 +177,6 @@ const mockOperatorEntries = [
       target: 'BTC LONG',
       status: 'submitted',
       operatorSource: 'telegram',
-      strategyId: 'smc-sd',
       positionId: 'pos-1',
       reason: 'manual via TUI (BTC LONG)',
     },
@@ -195,7 +192,6 @@ const mockOperatorEntries = [
       action: 'reduce 50%',
       target: 'ETH SHORT',
       status: 'failed',
-      strategyId: 'alpha',
       positionId: 'pos-2',
       reason: 'manual via TUI (ETH SHORT)',
     },
@@ -390,14 +386,13 @@ describe('registerBuiltinCommands', () => {
     expect(reply).toContain('/closeall')
     expect(reply).toContain('/confirm')
     expect(reply).toContain('/report')
-    expect(reply).toContain('/strategy')
     expect(reply).toContain('/menu')
     expect(reply).toContain('/paper')
   })
 
-  it('registers 15 built-in commands', () => {
+  it('registers 14 built-in commands', () => {
     registerBuiltinCommands()
-    expect(getCommands()).toHaveLength(15)
+    expect(getCommands()).toHaveLength(14)
   })
 
   it('includes operator and trace buttons in the main menu keyboard', () => {
@@ -649,7 +644,6 @@ describe('/positions command', () => {
     mockPositions.set('pos-1', {
       positionId: 'pos-1',
       coin: 'ETH',
-      strategyId: 'smc-sd',
       side: 'long' as const,
       entryPrice: 3200.5,
       currentSize: 0.5,
@@ -782,14 +776,6 @@ describe('/operator command', () => {
     expect(reply).not.toContain('BTC LONG')
   })
 
-  it('filters operator audit by strategy id', async () => {
-    const cmd = findCommand('operator')!
-    const reply = await cmd.handler('strategy smc-sd', 0)
-    expect(reply).toContain('Strategy: smc\\-sd')
-    expect(reply).toContain('close BTC LONG')
-    expect(reply).not.toContain('ETH SHORT')
-  })
-
   it('returns a no-data message when no operator audit is found', async () => {
     const cmd = findCommand('operator')!
     const reply = await cmd.handler('sol', 0)
@@ -823,7 +809,6 @@ describe('/operator command', () => {
     expect(loggedOperatorActions[0]?.[3]).toMatchObject({
       source: 'telegram',
       coin: 'ETH',
-      strategyId: 'smc-sd',
     })
   })
 

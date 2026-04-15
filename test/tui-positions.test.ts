@@ -14,7 +14,6 @@ function baseTracked(overrides: Partial<PositionState> & Pick<PositionState, 'po
     tpPrice: overrides.tpPrice ?? 120,
     entryOrderId: overrides.entryOrderId ?? 'oid-1',
     leverage: overrides.leverage ?? 5,
-    strategyId: overrides.strategyId ?? 'smc-sd',
     trailingState: overrides.trailingState ?? null,
     partialClosesFired: overrides.partialClosesFired ?? [],
     lastSyncAt: overrides.lastSyncAt ?? 0,
@@ -29,10 +28,9 @@ describe('mergeExchangeAndTrackedForTui', () => {
     ]
     const out = mergeExchangeAndTrackedForTui(new Map(), exchange)
     expect(out.size).toBe(1)
-    const row = out.get('hl:ext:BTC')
+    const row = out.get('hl:smc-sd:BTC')
     expect(row?.exchangeOnly).toBe(true)
     expect(row?.currentSize).toBe(0.05)
-    expect(row?.strategyId).toBe('ext')
   })
 
   it('enriches exchange row from tracked when coin matches', () => {

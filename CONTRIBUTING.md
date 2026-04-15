@@ -5,7 +5,7 @@ This project optimizes for deterministic behavior, low-latency scans, and safe e
 ## Before You Change Code
 
 1. Read [AGENTS.md](AGENTS.md)
-2. Read [docs/plan/decisions.md](docs/plan/decisions.md) for current architectural decisions
+2. Read [README.md](README.md) and [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md) for the current architecture; use [docs/archive/plan/decisions.md](docs/archive/plan/decisions.md) only for historical rationale
 3. Keep pure logic inside `src/indicators/` and `src/strategy/`
 4. Keep I/O at the edges: `src/feed/`, execution services, and `src/index.ts`
 
@@ -43,7 +43,7 @@ Every non-trivial change should satisfy all of these:
 - CI uses GitHub-hosted runners, not a developer laptop baseline.
 - `p95` is intentionally strict.
 - `p99` has more headroom because hosted runners show higher tail-latency variance.
-- If you need to update the benchmark baseline or budget, record the reason in [docs/plan/decisions.md](docs/plan/decisions.md).
+- If you need to update the benchmark baseline or budget, record the reason in [docs/archive/plan/decisions.md](docs/archive/plan/decisions.md).
 
 ## Config Discipline
 

@@ -58,9 +58,6 @@ import {
 } from './exits.js'
 import { DEFAULT_RISK_PERCENT, SIMULATED_ACCOUNT, TARGET_MARGIN_PCT, getActiveExchange, tryGetActiveExchange, ATR_TRAIL_MULTIPLIER } from '../config.js'
 
-/** Default strategy ID for backward compatibility (single-strategy mode). */
-const DEFAULT_STRATEGY = 'smc-sd'
-
 /** `orders.id` is UUID — reject malformed strings before querying to avoid PostgreSQL ERROR logs. */
 function isValidOrderUuid(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
@@ -262,13 +259,13 @@ export function paperSimulateTrigger(trigger: TriggerOrder): ExchangeOrderResult
 /** Insert a new order into the database. */
 async function insertOrder(order: Order): Promise<void> {
   await sql`
-    INSERT INTO orders (id, coin, side, type, price, size, status, setup_id, sl_price, tp_price, cloid, exchange_order_id, created_at, updated_at, fill_price, fill_size, filled_at, strategy_id, position_id, exchange)
+    INSERT INTO orders (id, coin, side, type, price, size, status, setup_id, sl_price, tp_price, cloid, exchange_order_id, created_at, updated_at, fill_price, fill_size, filled_at, position_id, exchange)
     VALUES (
       ${order.id}, ${order.coin}, ${order.side}, ${order.type}, ${order.price},
       ${order.size}, ${order.status}, ${order.setupId}, ${order.slPrice}, ${order.tpPrice}, ${order.cloid},
       ${order.exchangeOrderId}, ${new Date(order.createdAt)}, ${new Date(order.updatedAt)},
       ${order.fillPrice}, ${order.fillSize}, ${order.filledAt ? new Date(order.filledAt) : null},
-      ${order.strategyId}, ${order.positionId}, ${order.exchange}
+      ${order.positionId}, ${order.exchange}
     )
   `
 }
@@ -289,18 +286,13 @@ async function updateOrderInDb(order: Order): Promise<void> {
   `
 }
 
-/**
- * Pending/submitted orders for a coin **and** strategy.
- * Multi-wallet / multi-strategy: same coin may have one active entry per strategyId (V7).
- */
-async function getActiveOrdersForCoinAndStrategy(
+/** Pending/submitted orders for a coin. */
+async function getActiveOrdersForCoin(
   coin: string,
-  strategyId: string,
 ): Promise<Order[]> {
   const rows = await sql`
     SELECT * FROM orders
     WHERE coin = ${coin}
-      AND strategy_id = ${strategyId}
       AND status IN ('pending', 'submitted', 'partial')
     ORDER BY created_at DESC
   `
@@ -347,7 +339,6 @@ function rowToOrder(row: Record<string, unknown>): Order {
     filledAt: row.filled_at ? new Date(row.filled_at as string).getTime() : null,
     fillPrice: (row.fill_price as number) ?? null,
     fillSize: (row.fill_size as number) ?? 0,
-    strategyId: (row.strategy_id as string) ?? DEFAULT_STRATEGY,
     positionId: (row.position_id as string) ?? null,
     exchange,
   }
@@ -360,38 +351,38 @@ export class OrderManager {
   private orders: Map<string, Order> = new Map()
   /** In-memory trigger orders — keyed by parent order ID. */
   private triggerOrders: Map<string, TriggerOrder[]> = new Map()
-  /** Callback to dispatch events back to TradingAgent (with strategyId). */
-  private dispatchToAgent: ((coin: string, event: AgentEvent, strategyId?: string) => void) | null = null
+  /** Callback to dispatch events back to TradingAgent. */
+  private dispatchToAgent: ((coin: string, event: AgentEvent) => void) | null = null
   /** Callback to register position with PositionMonitor on fill. */
-  private onPositionOpen: ((params: { positionId: string; coin: string; side: 'long' | 'short'; entryPrice: number; size: number; slPrice: number; tpPrice: number; entryOrderId: string; leverage: number; strategyId?: string; entryInterval?: import('../types.js').CandleInterval }) => void) | null = null
+  private onPositionOpen: ((params: { positionId: string; coin: string; side: 'long' | 'short'; entryPrice: number; size: number; slPrice: number; tpPrice: number; entryOrderId: string; leverage: number; entryInterval?: import('../types.js').CandleInterval }) => void) | null = null
   /** Tracks entry interval per order (for thesis capture at fill time). */
   private orderIntervals: Map<string, import('../types.js').CandleInterval> = new Map()
-  /** ExchangePool for per-strategy exchange routing (Sprint 4.5). */
+  /** Shared exchange routing pool for the active runtime. */
   private exchangePool: ExchangePool | null = null
 
   /** Set the callback for dispatching events to the agent state machine. */
-  setAgentDispatch(fn: (coin: string, event: AgentEvent, strategyId?: string) => void): void {
+  setAgentDispatch(fn: (coin: string, event: AgentEvent) => void): void {
     this.dispatchToAgent = fn
   }
 
   /** Set callback to register positions with PositionMonitor on order fill. */
-  setPositionOpenCallback(fn: (params: { positionId: string; coin: string; side: 'long' | 'short'; entryPrice: number; size: number; slPrice: number; tpPrice: number; entryOrderId: string; leverage: number; strategyId?: string; entryInterval?: import('../types.js').CandleInterval }) => void): void {
+  setPositionOpenCallback(fn: (params: { positionId: string; coin: string; side: 'long' | 'short'; entryPrice: number; size: number; slPrice: number; tpPrice: number; entryOrderId: string; leverage: number; entryInterval?: import('../types.js').CandleInterval }) => void): void {
     this.onPositionOpen = fn
   }
 
-  /** Set the ExchangePool for per-strategy exchange routing (Sprint 4.5). */
+  /** Set the shared exchange pool used by the runtime. */
   setExchangePool(pool: ExchangePool): void {
     this.exchangePool = pool
   }
 
   /**
-   * Get exchange service for a strategy.
+   * Get the active exchange service for the runtime.
    * Fallback to HL singleton is allowed only for HL/paper paths.
    * BB live mode must never silently route to HL singleton.
    */
-  private getExchangeForStrategy(strategyId: string, exchange?: ExchangeId): IExchangeService {
+  private getExchange(exchange?: ExchangeId): IExchangeService {
     if (this.exchangePool?.isInitialized()) {
-      return this.exchangePool.get(strategyId, exchange)
+      return this.exchangePool.get(exchange)
     }
     if (isBybitLiveMode()) {
       throw new Error('OrderManager: ExchangePool must be initialized in BB live mode (HL fallback blocked)')
@@ -403,7 +394,7 @@ export class OrderManager {
 
   /**
    * Place an entry order from an ActiveSetup.
-   * 1. Check idempotency (no active order for this coin + strategyId)
+   * 1. Check idempotency (no active order for this coin)
    * 2. Generate cloid
    * 3. Persist to DB as 'pending'
    * 4. Submit to exchange (stub)
@@ -411,25 +402,24 @@ export class OrderManager {
    */
   async placeOrder(setup: ActiveSetup): Promise<Order | null> {
     const { coin, side, entryPrice, slPrice, tpPrice } = setup
-    const strategyId = setup.strategyId ?? DEFAULT_STRATEGY
 
-    // Idempotency: 1 active entry order per (coin, strategyId)
-    const active = await getActiveOrdersForCoinAndStrategy(coin, strategyId)
+    // Idempotency: 1 active entry order per coin
+    const active = await getActiveOrdersForCoin(coin)
     if (active.length >= MAX_ORDERS_PER_COIN) {
       log.warn(
         'order-manager',
-        `Blocked duplicate order for ${coin} [${strategyId}] — active order exists: ${active[0]?.id}`,
+        `Blocked duplicate order for ${coin} — active order exists: ${active[0]?.id}`,
       )
       return null
     }
 
-    const svc = this.getExchangeForStrategy(strategyId, setup.exchange)
+    const svc = this.getExchange(setup.exchange)
 
-    // Build order — compute position size if not provided (quant/smc-sd don't set it)
+    // Build order - compute position size if the setup did not specify one.
     let size = setup.patternData.positionSizeCoins as number ?? 0
     if (size <= 0 && entryPrice > 0 && slPrice > 0) {
       const accountValue = getEffectivePaperTrade()
-        ? getPaperTracker(strategyId).getBalance()
+        ? getPaperTracker().getBalance()
         : (svc.getCachedAccountValue?.() || SIMULATED_ACCOUNT)
       size = computePositionSize(accountValue, DEFAULT_RISK_PERCENT, entryPrice, slPrice)
     }
@@ -449,7 +439,7 @@ export class OrderManager {
     if (size <= 0 || entryPrice <= 0) {
       log.warn(
         'order-manager',
-        `Skip ${coin} [${strategyId}]: invalid entry/size (size=${size} entry=${entryPrice} sl=${slPrice})`,
+        `Skip ${coin}: invalid entry/size (size=${size} entry=${entryPrice} sl=${slPrice})`,
       )
       return null
     }
@@ -474,7 +464,6 @@ export class OrderManager {
       filledAt: null,
       fillPrice: null,
       fillSize: 0,
-      strategyId,
       positionId: null,
       exchange: setup.exchange ?? 'HL',
     }
@@ -484,7 +473,7 @@ export class OrderManager {
     this.orders.set(order.id, order)
     // Track entry interval for thesis capture at fill time
     this.orderIntervals.set(order.id, setup.interval)
-    log.info('order-manager', `Order created: ${order.id} ${coin} ${side} @ ${entryPrice} strategy=${strategyId} [cloid=${cloid.slice(0, 10)}...]`)
+    log.info('order-manager', `Order created: ${order.id} ${coin} ${side} @ ${entryPrice} [cloid=${cloid.slice(0, 10)}...]`)
 
     // Submit to exchange (or simulate in paper mode) — route to strategy-specific wallet
 
@@ -535,7 +524,7 @@ export class OrderManager {
       if (getEffectivePaperTrade()) {
         const slippageDir = side === 'long' ? 1 : -1
         const paperFillPrice = entryPrice * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
-        const paperTracker = getPaperTracker(strategyId)
+        const paperTracker = getPaperTracker()
 
         // Correlation guard for paper mode (mirrors live TradingAgent check)
         const corrCheck = paperTracker.canEnter(coin)
@@ -578,7 +567,7 @@ export class OrderManager {
       await updateOrderInDb(order)
       this.orders.set(order.id, order)
       log.error('order-manager', `Order rejected by exchange: ${result.error}`)
-      this.dispatchToAgent?.(coin, { type: 'order_rejected', orderId: order.id, reason: result.error ?? 'exchange_rejection' }, strategyId)
+      this.dispatchToAgent?.(coin, { type: 'order_rejected', orderId: order.id, reason: result.error ?? 'exchange_rejection' })
     }
 
     return order
@@ -622,9 +611,9 @@ export class OrderManager {
     // R9: Place SL + TP trigger orders on exchange
     await this.placeSLTP(order)
 
-    const svcForLev = this.getExchangeForStrategy(order.strategyId)
+    const svcForLev = this.getExchange()
     const accountValueForLev = getEffectivePaperTrade()
-      ? getPaperTracker(order.strategyId).getBalance()
+      ? getPaperTracker().getBalance()
       : (svcForLev?.getCachedAccountValue() || SIMULATED_ACCOUNT)
     const sizeUsd = fillPrice * fillSize
     const maxLev = svcForLev?.getMaxLeverage?.(order.coin)
@@ -648,20 +637,19 @@ export class OrderManager {
         tpPrice: order.tpPrice,
         entryOrderId: order.id,
         leverage,
-        strategyId: order.strategyId,
         ...(entryInterval != null && { entryInterval }),
       })
       // Clean up interval tracking
       this.orderIntervals.delete(order.id)
     }
 
-    // Dispatch to agent (with strategyId for correct routing)
+    // Dispatch the fill event back to the agent state machine.
     this.dispatchToAgent?.(order.coin, {
       type: 'order_filled',
       orderId: order.id,
       fillPrice,
       positionId,
-    }, order.strategyId)
+    })
   }
 
   /**
@@ -710,7 +698,7 @@ export class OrderManager {
       return
     }
 
-    const svc = this.getExchangeForStrategy(entryOrder.strategyId)
+    const svc = this.getExchange()
     if (!getEffectivePaperTrade() && svc?.exchangeId === 'BB') {
       log.info('order-manager', `SL/TP already set inline (BB): ${entryOrder.coin} sl=${entryOrder.slPrice} tp=${entryOrder.tpPrice}`)
       return
@@ -830,9 +818,9 @@ export class OrderManager {
       return
     }
 
-    // Cancel on exchange if submitted (or simulate in paper mode) — route to strategy wallet
+    // Cancel on exchange if submitted (or simulate in paper mode) — route to the shared runtime wallet
     if (order.exchangeOrderId) {
-      const svc = this.getExchangeForStrategy(order.strategyId)
+      const svc = this.getExchange()
       let cancelResult = getEffectivePaperTrade()
         ? paperSimulateCancel(order.exchangeOrderId, order.coin)
         : await cancelOnExchange(order.exchangeOrderId, order.coin, svc)
@@ -869,7 +857,7 @@ export class OrderManager {
    */
   async modifySLPrice(parentOrderId: string, newSlPrice: number): Promise<void> {
     const parentOrder = this.orders.get(parentOrderId)
-    const svc = this.getExchangeForStrategy(parentOrder?.strategyId ?? DEFAULT_STRATEGY)
+    const svc = this.getExchange()
 
     if (!getEffectivePaperTrade() && svc.exchangeId === 'BB') {
       if (!parentOrder) {
@@ -948,7 +936,7 @@ export class OrderManager {
         }
       }
 
-      // Fallback: cancel old + place new — route to strategy wallet
+      // Fallback: cancel old + place new — route to the shared runtime wallet
       await cancelOnExchange(slTrigger.exchangeOrderId, slTrigger.coin, svc)
       const newResult = await placeTriggerOnExchange(slTrigger, svc)
       if (newResult.success) {
@@ -976,7 +964,7 @@ export class OrderManager {
     if (getEffectivePaperTrade()) return
     for (const [, order] of this.orders) {
       if (order.status !== 'submitted' && order.status !== 'partial') continue
-      const svc = this.getExchangeForStrategy(order.strategyId)
+      const svc = this.getExchange()
       const hasCloid = order.cloid.trim().length > 0
       let fill = hasCloid
         ? await svc.getFillAggregateByCloid(order.cloid, order.coin)
@@ -1008,7 +996,7 @@ export class OrderManager {
       if (age > ORDER_FILL_TIMEOUT_MS) {
         log.info('order-manager', `Order timeout: ${order.id} ${order.coin} age=${Math.round(age / 1000)}s`)
         await this.cancelOrder(order.id, 'timeout')
-        this.dispatchToAgent?.(order.coin, { type: 'order_timeout', orderId: order.id }, order.strategyId)
+        this.dispatchToAgent?.(order.coin, { type: 'order_timeout', orderId: order.id })
       }
     }
   }
@@ -1023,7 +1011,6 @@ export class OrderManager {
     switch (action.type) {
       case 'place_order': {
         const setup = action.setup
-        const sid = setup.strategyId ?? DEFAULT_STRATEGY
         const order = await this.placeOrder(setup)
         if (order === null) {
           // placeOrder can skip (duplicate, min notional, sizing) — must unblock agent ENTERING
@@ -1031,13 +1018,13 @@ export class OrderManager {
             type: 'order_rejected',
             orderId: '',
             reason: 'place_order_skipped',
-          }, sid)
+          })
         } else if (order.status === 'submitted' || order.status === 'partial') {
           // Notify agent of submitted (resting limit) order so it can track pendingOrderId
           // for cancel on timeout/invalidation. Skip for filled (paper/immediate live fill —
           // agent already received order_filled) and rejected (agent already got order_rejected
           // from inside placeOrder — dispatching order_submitted would corrupt pendingOrderId).
-          this.dispatchToAgent?.(setup.coin, { type: 'order_submitted', orderId: order.id }, sid)
+          this.dispatchToAgent?.(setup.coin, { type: 'order_submitted', orderId: order.id })
         }
         break
       }
@@ -1073,7 +1060,7 @@ export class OrderManager {
     }
 
     // Route to strategy-specific exchange wallet
-    const svc = this.getExchangeForStrategy(entryOrder.strategyId)
+    const svc = this.getExchange()
 
     // Cancel SL/TP triggers
     const triggers = this.triggerOrders.get(entryOrder.id)
@@ -1099,7 +1086,7 @@ export class OrderManager {
       const slippageDir = closeSide === 'long' ? 1 : -1
       const closePrice = refPrice * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
       paperSimulateFill(entryOrder.coin, closeSide, closePrice, closeSize, cloid)
-      const trade = getPaperTracker(entryOrder.strategyId).recordExit(entryOrder.id, closePrice)
+      const trade = getPaperTracker().recordExit(entryOrder.id, closePrice)
       // Dispatch with real P&L so agent state machine + circuit breakers work
       if (trade && entryOrder.positionId) {
         this.dispatchToAgent?.(entryOrder.coin, {
@@ -1108,7 +1095,7 @@ export class OrderManager {
           closePrice,
           pnl: trade.pnl,
           reason,
-        }, entryOrder.strategyId)
+        })
       }
     } else {
       const closeRef = computeMarketRefPrice(entryOrder.coin, closeSide, refPrice)
@@ -1176,7 +1163,7 @@ export class OrderManager {
     // Reconcile: cancel stale pending/submitted orders from previous runs.
     // These are phantom orders that never completed — the bot crashed or was
     // restarted before the order lifecycle finished.  Without this, the
-    // idempotency guard blocks all new entries for the affected coin+strategy.
+    // idempotency guard blocks all new entries for the affected coin.
     await this.reconcileStaleOrders()
   }
 
@@ -1202,7 +1189,7 @@ export class OrderManager {
         order.updatedAt = now
         await updateOrderInDb(order)
         this.orders.set(order.id, order)
-        log.info('order-manager', `Reconciled stale order: ${order.id} ${order.coin} [${order.strategyId}] age=${Math.round(age / 1000)}s → cancelled`)
+        log.info('order-manager', `Reconciled stale order: ${order.id} ${order.coin} age=${Math.round(age / 1000)}s → cancelled`)
         cancelled++
       }
     }
@@ -1257,7 +1244,6 @@ export class OrderManager {
         tpPrice: order.tpPrice ?? 0,
         entryOrderId: order.id,
         leverage: 0,  // unknown at restore time; TUI merge uses exchange value as fallback
-        strategyId: order.strategyId,
       })
       restored++
     }

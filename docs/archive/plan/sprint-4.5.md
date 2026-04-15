@@ -1,6 +1,6 @@
 # Minh (明) — Sprint 4.5: ISOLATE — Multi-Strategy Architecture + Agent Wallets
 
-Historical note: this sprint plan is preserved for project history. The current `main` runtime keeps the multi-strategy state/risk model, but the per-strategy wallet plan was superseded by the single shared wallet architecture introduced in Sprint 4.5 S12.
+Historical note: this sprint plan is preserved for project history. The current branch no longer keeps the multi-strategy state/risk model described here; the active runtime has been simplified to one concrete `smc-sd` strategy, one shared context, and one shared wallet/account per process.
 
 ## Goal
 
@@ -234,9 +234,9 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 
 | Item | Description | Files |
 |------|-------------|-------|
-| Sprint 5 update | Reference strategy_id in LLM analysis queries | `docs/plan/sprint-5.md` |
-| Architecture doc | Updated diagram with multi-strategy flow | `docs/spec/architecture.md` |
-| Decision log | V1-V8 decisions logged | `docs/plan/decisions.md` |
+| Sprint 5 update | Reference strategy_id in LLM analysis queries | `docs/archive/plan/sprint-5.md` |
+| Architecture doc | Updated diagram with multi-strategy flow | `docs/archive/spec/architecture.md` |
+| Decision log | V1-V8 decisions logged | `docs/archive/plan/decisions.md` |
 
 ---
 
@@ -289,8 +289,8 @@ Risk: Strategy A losing heavily reduces shared balance, affecting Strategy B's e
 ### Phase 4.5D: UI + Docs
 - [x] Dashboard strategy selector dropdown on all pages (S9)
 - [x] Telegram `/strategy` commands functional (S9)
-- [x] `docs/spec/architecture.md` updated with multi-strategy diagram (S10)
-- [x] `docs/plan/sprint-5.md` references strategy_id in analysis queries (S10)
+- [x] `docs/archive/spec/architecture.md` updated with multi-strategy diagram (S10)
+- [x] `docs/archive/plan/sprint-5.md` references strategy_id in analysis queries (S10)
 - [x] `decisions.md` logged with V1-V8 + E25-E30 (S10)
 
 ### Always

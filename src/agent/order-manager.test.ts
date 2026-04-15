@@ -113,7 +113,6 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     filledAt: null,
     fillPrice: null,
     fillSize: 0,
-    strategyId: 'smc-sd',
     positionId: null,
     exchange: 'HL',
     ...overrides,
@@ -510,7 +509,6 @@ describe('OrderManager', () => {
     it('uses Bybit position-level stop update without requiring triggerOrders', async () => {
       const order = makeOrder({
         status: 'filled',
-        strategyId: 'smc-sd',
         exchange: 'BB',
         slPrice: 49000,
       })
@@ -552,7 +550,6 @@ describe('OrderManager', () => {
     it('keeps HL path on modifyTrigger for trailing SL updates', async () => {
       const order = makeOrder({
         status: 'filled',
-        strategyId: 'smc-sd',
         exchange: 'HL',
       })
       injectOrder(om, order)

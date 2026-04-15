@@ -2,8 +2,6 @@ import { BacktestDataManager, computeHTFIntervals, computeHTFWarmupMs } from '..
 import { runBacktest } from '../src/backtest/engine.js'
 import type { BacktestConfig } from '../src/backtest/types.js'
 import type { CandleInterval } from '../src/types.js'
-import { getStrategyRegistry } from '../src/strategy/registry.js'
-import { SmcSdStrategy } from '../src/strategy/strategies/smc-sd/index.js'
 
 const coins = ['BTC','ETH','SOL','DOGE','HYPE','XRP','ADA','AVAX','LINK','DOT','NEAR','SUI','ARB','OP','PEPE']
 const timeframes: CandleInterval[] = ['5m','15m','1h','4h','1d']
@@ -20,8 +18,6 @@ async function main() {
       await dm.downloadHistory(coin, htf, new Date(startDate.getTime() - computeHTFWarmupMs(htf)), endDate)
     }
   }
-  const reg = getStrategyRegistry()
-  reg.register(new SmcSdStrategy())
   const candles = await dm.loadForBacktest(coins, timeframes, startDate, endDate)
 
   const config: BacktestConfig = {

@@ -17,11 +17,11 @@ mock.module('../../src/execution/exchange-service.js', () => ({
 import { OrderManager } from '../../src/agent/order-manager.js'
 
 type OrderManagerPrivateApi = {
-  getExchangeForStrategy: (strategyId: string) => unknown
+  getExchange: () => unknown
 }
 
-function callGetExchangeForStrategy(orderManager: OrderManager): unknown {
-  return (orderManager as unknown as OrderManagerPrivateApi).getExchangeForStrategy('smc-sd')
+function callGetExchange(orderManager: OrderManager): unknown {
+  return (orderManager as unknown as OrderManagerPrivateApi).getExchange()
 }
 
 describe('OrderManager BB fallback guard', () => {
@@ -41,7 +41,7 @@ describe('OrderManager BB fallback guard', () => {
     setPaperTradeRuntimeOverride(false)
 
     const om = new OrderManager()
-    expect(() => callGetExchangeForStrategy(om)).toThrow('ExchangePool must be initialized in BB live mode')
+    expect(() => callGetExchange(om)).toThrow('ExchangePool must be initialized in BB live mode')
     expect(hlSingletonFallbackCalls).toBe(0)
   })
 
@@ -50,7 +50,7 @@ describe('OrderManager BB fallback guard', () => {
     setPaperTradeRuntimeOverride(false)
 
     const om = new OrderManager()
-    const svc = callGetExchangeForStrategy(om)
+    const svc = callGetExchange(om)
 
     expect(svc).toBe(hlSingletonService)
     expect(hlSingletonFallbackCalls).toBe(1)
@@ -61,7 +61,7 @@ describe('OrderManager BB fallback guard', () => {
     setPaperTradeRuntimeOverride(true)
 
     const om = new OrderManager()
-    const svc = callGetExchangeForStrategy(om)
+    const svc = callGetExchange(om)
 
     expect(svc).toBe(hlSingletonService)
     expect(hlSingletonFallbackCalls).toBe(1)

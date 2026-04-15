@@ -1,8 +1,8 @@
 /**
  * Bybit Backtest Runner — fetch candles from Bybit REST → run backtest engine.
  *
- * Usage: bun run src/backtest/run-bybit-backtest.ts [strategy]
- *   strategy: layered | quant | smc-sd | all (default: all)
+ * Usage: bun run src/backtest/run-bybit-backtest.ts [smc-sd]
+ * Legacy alias `all` is accepted and maps to `smc-sd`.
  *
  * No PostgreSQL required — all data fetched directly into memory.
  * Uses fetchBybitCandlesBatched from feed/bybit/bybit-rest.ts.
@@ -16,8 +16,6 @@ import { walkForward } from './walk-forward.js'
 import { formatExpectancyReport, formatMetricsSummary } from './report.js'
 import { formatGateReport } from './walk-forward.js'
 import { formatPipelineStats } from '../strategy/diagnostics.js'
-import { getStrategyRegistry } from '../strategy/registry.js'
-import { SmcSdStrategy } from '../strategy/strategies/smc-sd/index.js'
 import {
   BACKTEST_SLIPPAGE_PCT,
   BACKTEST_COMMISSION_PCT,
@@ -230,32 +228,28 @@ function runStrategyBacktest(
   }
 }
 
+function normalizeStrategyArg(raw: string | undefined): StrategyType {
+  const value = raw?.trim().toLowerCase() ?? 'smc-sd'
+  if (value === 'smc-sd' || value === 'all') return 'smc-sd'
+  log.warn('bb-backtest', `Unsupported strategy "${value}" - using canonical setup engine smc-sd`)
+  return 'smc-sd'
+}
+
 // ─── Main ──────────────────────────────────────────────────────────────────
 
 async function main() {
-  // Register strategies (required before engine can use them)
-  const registry = getStrategyRegistry()
-  
-  
-  try { registry.register(new SmcSdStrategy()) } catch { /* already registered */ }
-
-  // Default to smc-sd — the primary strategy under test.
-  // Use 'all' to run layered + quant + smc-sd for comparison.
-  const arg = process.argv[2] ?? 'smc-sd'
-  const strategies: StrategyType[] = arg === 'all'
-    ? ['smc-sd']
-    : [arg as StrategyType]
+  const strategy = normalizeStrategyArg(process.argv[2])
 
   // Estimate fetch time (rough): 50 coins × avg 18 batches/TF × 4 TFs = ~3600 requests
   // At Bybit kline rate limit (~20 req/s public): ~3 min fetch + ~5 min backtest = ~8 min total
   const totalBatches = COINS.length * TIMEFRAMES.reduce((s, tf) => s + Math.ceil((CANDLE_COUNTS[tf] ?? 5000) / 1000), 0)
 
   console.log('='.repeat(60))
-  console.log('  BYBIT BACKTEST RUNNER — SMC+SD Dual-Mode')
+  console.log('  BYBIT BACKTEST RUNNER — CANONICAL SMC+SD')
   console.log(`  Coins: ${COINS.length} (${COINS.slice(0, 5).join(', ')} ... ${COINS.slice(-3).join(', ')})`)
   console.log(`  Timeframes: ${TIMEFRAMES.join(', ')}`)
   console.log(`  Coverage: 5m=30d | 15m=6mo | 1h=7mo | 4h=28mo`)
-  console.log(`  Strategies: ${strategies.join(', ')}`)
+  console.log(`  Setup engine: ${strategy}`)
   console.log(`  Commission: ${(BYBIT_COMMISSION_PCT * 100).toFixed(3)}% (Bybit taker)`)
   console.log(`  Estimated API batches: ~${totalBatches} (fetch may take 5-15 min)`)
   console.log('='.repeat(60))
@@ -279,10 +273,8 @@ async function main() {
 
   log.info('bb-backtest', `Total: ${totalCandles} candles across ${candles.size} series`)
 
-  // Step 2: Run backtest for each strategy
-  for (const strategy of strategies) {
-    runStrategyBacktest(candles, strategy)
-  }
+  // Step 2: Run backtest for the canonical setup engine
+  runStrategyBacktest(candles, strategy)
 
   log.info('bb-backtest', 'Done.')
 }

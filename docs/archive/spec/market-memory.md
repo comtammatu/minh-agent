@@ -1,6 +1,6 @@
 # Minh (明) — Market Memory Spec
 
-> Draft status (2026-04-15): this is a design spec only. `src/strategy/shared/market-memory.ts` does not exist on the current branch yet.
+> Archive draft note (2026-04-15): this is a forward-looking design spec only. `src/strategy/shared/market-memory.ts` does not exist on the current branch, and the live runtime does not depend on this design yet.
 
 Design spec for a deterministic market-state representation layer that compresses raw candles into reusable structured context.
 

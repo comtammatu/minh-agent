@@ -12,7 +12,6 @@ import { PORTFOLIO_RISK } from '../../src/config.js'
 function makePosition(overrides: Partial<PortfolioPosition> = {}): PortfolioPosition {
   return {
     coin: 'BTC',
-    strategyId: 'smc-sd',
     notionalValue: 1000,
     ...overrides,
   }
@@ -22,7 +21,6 @@ function makeInput(overrides: Partial<PortfolioCheckInput> = {}): PortfolioCheck
   return {
     positions: [],
     accountEquity: 10_000,
-    strategyId: 'smc-sd',
     proposedNotional: 1000,
     ...overrides,
   }
@@ -81,26 +79,23 @@ describe('checkPortfolioEntry', () => {
     })
 
     it('allows entry exactly at the boundary', () => {
-      // 10k equity, 3x max = 30k. Split across strategies to avoid per-strategy cap.
-      // layered: 14.5k, quant: 14.5k = 29k total. Proposed 1k for unknown-strat (no alloc cap).
+      // 10k equity, 3x max = 30k. Existing 29k + proposed 1k = 30k.
       // 30k / 10k = 3.0 → not > 3.0 → allowed
       const result = checkPortfolioEntry(makeInput({
         positions: [
-          makePosition({ strategyId: 'smc-sd', notionalValue: 14_500 }),
-          makePosition({ strategyId: 'alpha', notionalValue: 14_500 }),
+          makePosition({ coin: 'BTC', notionalValue: 14_500 }),
+          makePosition({ coin: 'ETH', notionalValue: 14_500 }),
         ],
-        strategyId: 'unknown-strat',
         proposedNotional: 1_000,
       }))
       expect(result.allowed).toBe(true)
     })
   })
 
-  describe('per-strategy concurrent positions', () => {
-    it('allows entry when strategy under its concurrent cap', () => {
+  describe('portfolio-only concurrent positions', () => {
+    it('allows entry when total positions stay below the cap', () => {
       const result = checkPortfolioEntry(makeInput({
-        positions: [makePosition({ strategyId: 'smc-sd' })],
-        strategyId: 'smc-sd',
+        positions: [makePosition()],
       }))
       expect(result.allowed).toBe(true)
     })
@@ -108,70 +103,32 @@ describe('checkPortfolioEntry', () => {
     it('blocks entry when at total concurrent cap', () => {
       const positions = Array.from(
         { length: PORTFOLIO_RISK.maxTotalConcurrent },
-        (_, i) => makePosition({ coin: `COIN${i}`, strategyId: 'smc-sd' }),
+        (_, i) => makePosition({ coin: `COIN${i}` }),
       )
-      const result = checkPortfolioEntry(makeInput({
-        positions,
-        strategyId: 'smc-sd',
-      }))
+      const result = checkPortfolioEntry(makeInput({ positions }))
       expect(result.allowed).toBe(false)
-      expect(result.reason).toContain('concurrent positions')
-    })
-
-    it('allows entry for different strategy when under total cap', () => {
-      const positions = Array.from(
-        { length: 3 },
-        (_, i) => makePosition({ coin: `COIN${i}`, strategyId: 'smc-sd', notionalValue: 500 }),
-      )
-      const result = checkPortfolioEntry(makeInput({
-        positions,
-        strategyId: 'alpha',
-        proposedNotional: 500,
-      }))
-      expect(result.allowed).toBe(true)
+      expect(result.reason).toContain('total concurrent positions')
     })
   })
 
-  describe('per-strategy allocation cap', () => {
-    it('blocks entry when strategy would exceed allocated capital × exposure multiplier', () => {
-      // Use 'alpha' strategy which has no config entry → treated as 0% allocation → blocked
-      // (any notional exceeds 0% cap)
-      // But alpha has no config, so it falls through. Let's test with
-      // multiple strategies where total exposure is OK but one strategy's share is too high.
-      // Since smc-sd is 100% allocation, total exposure = strategy exposure.
-      // When total exposure exceeds 3x, the total check fires first.
-      // This is correct behavior — verify total exposure blocking.
+  describe('exposure cap', () => {
+    it('blocks entry when total exposure would exceed the global max', () => {
       const result = checkPortfolioEntry(makeInput({
         accountEquity: 100_000,
-        positions: [makePosition({ strategyId: 'smc-sd', notionalValue: 295_000 })],
-        strategyId: 'smc-sd',
+        positions: [makePosition({ notionalValue: 295_000 })],
         proposedNotional: 10_000,
       }))
       expect(result.allowed).toBe(false)
       expect(result.reason).toContain('exceed max')
     })
 
-    it('allows entry within allocation cap', () => {
-      // smc-sd allocation = 100% of 10k = 10k, × 3x = 30k cap
+    it('allows entry when total exposure stays within the global max', () => {
       // Existing 20k + proposed 5k = 25k → OK
       const result = checkPortfolioEntry(makeInput({
-        positions: [makePosition({ strategyId: 'smc-sd', notionalValue: 20_000 })],
-        strategyId: 'smc-sd',
+        positions: [makePosition({ notionalValue: 20_000 })],
         proposedNotional: 5_000,
       }))
       expect(result.allowed).toBe(true)
-    })
-
-    it('ignores allocation cap for unknown strategy (no config)', () => {
-      const result = checkPortfolioEntry(makeInput({
-        positions: [],
-        strategyId: 'unknown-strategy',
-        proposedNotional: 50_000,
-        accountEquity: 10_000,
-      }))
-      // Only total exposure check applies: 50k / 10k = 5x > 3x → blocked
-      expect(result.allowed).toBe(false)
-      expect(result.reason).toContain('total exposure')
     })
   })
 
@@ -196,17 +153,15 @@ describe('checkPortfolioEntry', () => {
       expect(result.allowed).toBe(true)
     })
 
-    it('handles multiple strategies with positions', () => {
+    it('handles multiple open positions across different coins', () => {
       const positions = [
-        makePosition({ coin: 'BTC', strategyId: 'smc-sd', notionalValue: 5000 }),
-        makePosition({ coin: 'ETH', strategyId: 'smc-sd', notionalValue: 3000 }),
-        makePosition({ coin: 'SOL', strategyId: 'alpha', notionalValue: 4000 }),
+        makePosition({ coin: 'BTC', notionalValue: 5000 }),
+        makePosition({ coin: 'ETH', notionalValue: 3000 }),
+        makePosition({ coin: 'SOL', notionalValue: 4000 }),
       ]
       // Total: 12k existing + 2k proposed = 14k. 14k / 10k = 1.4x → OK
-      // quant: 4k existing + 2k = 6k. quant allocation = 50% × 10k × 3x = 15k → OK
       const result = checkPortfolioEntry(makeInput({
         positions,
-        strategyId: 'alpha',
         proposedNotional: 2000,
       }))
       expect(result.allowed).toBe(true)
@@ -222,21 +177,18 @@ describe('getPortfolioRiskSnapshot', () => {
     expect(snap.totalPositions).toBe(0)
     expect(snap.totalNotional).toBe(0)
     expect(snap.exposureRatio).toBe(0)
-    expect(Object.keys(snap.perStrategy)).toHaveLength(0)
   })
 
-  it('aggregates across strategies', () => {
+  it('aggregates total notional across the full portfolio', () => {
     const positions: PortfolioPosition[] = [
-      { coin: 'BTC', strategyId: 'smc-sd', notionalValue: 5000 },
-      { coin: 'ETH', strategyId: 'smc-sd', notionalValue: 3000 },
-      { coin: 'SOL', strategyId: 'alpha', notionalValue: 4000 },
+      { coin: 'BTC', notionalValue: 5000 },
+      { coin: 'ETH', notionalValue: 3000 },
+      { coin: 'SOL', notionalValue: 4000 },
     ]
     const snap = getPortfolioRiskSnapshot(positions, 10_000)
     expect(snap.totalPositions).toBe(3)
     expect(snap.totalNotional).toBe(12_000)
     expect(snap.exposureRatio).toBeCloseTo(1.2)
-    expect(snap.perStrategy['smc-sd']).toEqual({ positions: 2, notional: 8000 })
-    expect(snap.perStrategy['alpha']).toEqual({ positions: 1, notional: 4000 })
   })
 
   it('handles zero equity gracefully', () => {

@@ -45,8 +45,6 @@ export interface ActiveSetup extends Signal {
   detectedAt: number      // timestamp ms
   detectedAtBar: number   // bar index when setup was created (for 0-bar skip)
   expiresAtBar: number    // bar index when detected + TTL
-  /** Strategy that generated this setup. */
-  strategyId?: string
   /** Exchange this signal came from — used by OrderManager to route to correct executor. */
   exchange: ExchangeId
 }
@@ -210,7 +208,6 @@ export type ConfluenceGrade = 'C' | 'B' | 'A' | 'A+'
 export interface DecisionTrace {
   coin: string
   interval: string
-  strategyId: string
   ts: number
   outcome: {
     action: string

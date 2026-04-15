@@ -4,7 +4,7 @@ paths: src/strategy/**/*.ts
 # Strategy Rules
 
 - Pure functions only — zero I/O, zero side effects
-- 5-layer pipeline: Bias → Structure → Zones → Confirm → Trigger
+- Live and replay both go through the same canonical setup path: `onCandleTick()` → closed-candle gate → `smc-sd` setup generation
 - Confluence scoring grades: C / B / A / A+
 - Regime filter is SOFT — reduces confidence, does NOT block signals
 - Pattern invalidation uses TTL (bars) — see `.claude/rules/invalidation-table.md`

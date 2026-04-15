@@ -51,7 +51,7 @@ export async function getLiveMetrics(): Promise<LiveMetrics> {
     getOpenPositionCount(),
   ])
 
-  // Paper mode: sum of per-strategy paper wallets (mirrors 3-wallet live)
+  // Paper mode: use the shared paper wallet balance exposed by the runtime.
   const capital = getEffectivePaperTrade()
     ? getTotalPaperBalance()
     : (getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT)

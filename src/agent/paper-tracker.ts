@@ -1,8 +1,8 @@
 /**
  * Paper P&L Tracker — simulated balance for PAPER_TRADE mode.
  *
- * One {@link PaperTracker} per strategy so paper state stays isolated by strategy.
- * Balances start at {@link getPaperInitialBalance} per strategy (env overrides).
+ * One canonical {@link PaperTracker} for the whole runtime.
+ * Balance starts at {@link getPaperInitialBalance}.
  *
  * Enhanced with multi-TP exit system (P2 upgrade):
  *   - 3-tier partial close: TP1 (35%) → TP2 (25%) → TP3 trailing (40%)
@@ -13,13 +13,13 @@
  *
  * Logic mirrors backtest TradeSimulator.checkBar() exactly.
  *
- * Access: `getPaperTracker(strategyId)` — lazy-creates the tracker for that wallet.
+ * Access: `getPaperTracker()` — returns the shared tracker.
  */
 
 import type { Candle, CandleInterval } from '../types.js'
 import {
-  PAPER_DEFAULT_BALANCE_PER_WALLET,
-  PAPER_WALLET_STRATEGY_IDS,
+  CANONICAL_STRATEGY_ID,
+  PAPER_DEFAULT_BALANCE,
   PAPER_SLIPPAGE_PCT,
   getPaperInitialBalance,
   MULTI_TP_SPLIT,
@@ -60,9 +60,9 @@ export interface EquityPoint {
   balance: number
 }
 
-/** Per-strategy paper wallet summary (TUI / metrics). */
+/** Paper wallet summary (TUI / metrics). */
 export interface PaperWalletSummary {
-  strategyId: string
+  label: string
   balance: number
   tradeCount: number
   wins: number
@@ -136,7 +136,7 @@ export class PaperTracker {
   private closedTrades: PaperTrade[] = []
   private equityCurve: EquityPoint[] = []
 
-  constructor(initialBalance: number = PAPER_DEFAULT_BALANCE_PER_WALLET) {
+  constructor(initialBalance: number = PAPER_DEFAULT_BALANCE) {
     this.balance = initialBalance
     this.equityCurve.push({ ts: Date.now(), balance: this.balance })
   }
@@ -465,7 +465,7 @@ export class PaperTracker {
   }
 
   /** Reset all state (for tests). */
-  reset(initialBalance: number = PAPER_DEFAULT_BALANCE_PER_WALLET): void {
+  reset(initialBalance: number = PAPER_DEFAULT_BALANCE): void {
     this.balance = initialBalance
     this.openPositions.clear()
     this.enhancedPositions.clear()
@@ -474,51 +474,36 @@ export class PaperTracker {
   }
 }
 
-// ─── Per-strategy registry (mirrors 3-wallet live) ──────────────────────────
+let tracker: PaperTracker | null = null
 
-const trackers = new Map<string, PaperTracker>()
-
-/**
- * Get the paper P&L tracker for a strategy wallet (lazy init).
- * Unknown `strategyId` still gets a tracker using {@link getPaperInitialBalance}.
- */
-export function getPaperTracker(strategyId: string): PaperTracker {
-  let t = trackers.get(strategyId)
-  if (!t) {
-    t = new PaperTracker(getPaperInitialBalance(strategyId))
-    trackers.set(strategyId, t)
+/** Get the shared paper P&L tracker. */
+export function getPaperTracker(): PaperTracker {
+  if (tracker == null) {
+    tracker = new PaperTracker(getPaperInitialBalance())
   }
-  return t
+  return tracker
 }
 
-/** Eager-init trackers for all configured paper wallets (optional UI/metrics). */
+/** Ensure the shared paper wallet exists before UI/metrics access. */
 export function ensurePaperWalletsInitialized(): void {
-  for (const id of PAPER_WALLET_STRATEGY_IDS) {
-    getPaperTracker(id)
-  }
+  getPaperTracker()
 }
 
-/**
- * Summaries for each known paper wallet + aggregates (TUI).
- */
+/** Single-wallet summary for TUI and metrics. */
 export function getPaperWalletSummaries(): PaperWalletSummary[] {
-  const out: PaperWalletSummary[] = []
-  for (const id of PAPER_WALLET_STRATEGY_IDS) {
-    const pt = getPaperTracker(id)
-    const trades = pt.getTrades()
-    const wins = trades.filter(t => t.pnl > 0).length
-    const losses = trades.filter(t => t.pnl <= 0).length
-    const total = trades.length
-    out.push({
-      strategyId: id,
-      balance: pt.getBalance(),
-      tradeCount: total,
-      wins,
-      losses,
-      winRate: total > 0 ? wins / total : 0,
-    })
-  }
-  return out
+  const pt = getPaperTracker()
+  const trades = pt.getTrades()
+  const wins = trades.filter(t => t.pnl > 0).length
+  const losses = trades.filter(t => t.pnl <= 0).length
+  const total = trades.length
+  return [{
+    label: CANONICAL_STRATEGY_ID,
+    balance: pt.getBalance(),
+    tradeCount: total,
+    wins,
+    losses,
+    winRate: total > 0 ? wins / total : 0,
+  }]
 }
 
 /** Sum of balances across known paper wallets. */
@@ -528,5 +513,5 @@ export function getTotalPaperBalance(): number {
 
 /** Reset all paper trackers (tests only). */
 export function resetPaperTracker(): void {
-  trackers.clear()
+  tracker = null
 }

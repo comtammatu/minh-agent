@@ -29,7 +29,6 @@ import { getLiveMetrics } from '../../analytics/metrics-service.js'
 import { closeAllPositions } from '../../agent/close-all.js'
 import { getJournalEntries, logOperatorAuditEntry } from '../../agent/journal.js'
 import { getOrderManager } from '../../agent/order-manager.js'
-import { getStrategyRegistry } from '../../strategy/registry.js'
 import {
   getDecisionTraceByPositionId,
   getDecisionTraceBySetupId,
@@ -508,11 +507,10 @@ async function findLatestOperatorAuditForTrace(trace: DecisionTrace): Promise<Tr
     const status = entry.details.status
     if (action == null || target == null || (status !== 'submitted' && status !== 'failed')) return false
 
-    const entryStrategyId = typeof entry.details.strategyId === 'string' ? entry.details.strategyId : null
     const entryPositionId = typeof entry.details.positionId === 'string' ? entry.details.positionId : null
 
     if (trace.outcome.positionId != null && entryPositionId === trace.outcome.positionId) return true
-    return entryStrategyId === trace.strategyId
+    return false
   })
 
   const latest = filtered[0]
@@ -624,7 +622,6 @@ async function formatTraceReply(trace: DecisionTrace): Promise<string> {
     `*Decision Trace*`,
     ``,
     `Market: ${esc(trace.coin)} ${esc(trace.interval)}`,
-    `Strategy: ${esc(trace.strategyId)}`,
     `Verdict: ${esc(verdict)} \\| Action: ${esc(trace.outcome.action.toUpperCase())}`,
     `Confidence: ${esc(String(Math.round(trace.outcome.confidence * 100)))}%`,
     `Summary: ${esc(trace.outcome.summary)}`,
@@ -755,7 +752,6 @@ function operatorUsage(): string {
     `\\/operator`,
     `\\/operator BTC`,
     `\\/operator position <positionId>`,
-    `\\/operator strategy <strategyId>`,
     `\\/operator close <positionId>`,
     `\\/operator reduce <positionId> 25`,
   ].join('\n')
@@ -773,7 +769,6 @@ interface PendingPositionOperatorAction {
   closePct: number | null
   target: string
   coin: string
-  strategyId: string
   briefingSource?: {
     messageId: number
     kind: 'morning' | 'evening' | 'live'
@@ -898,7 +893,6 @@ export function requestRemoteOperatorActionWithContext(
   if (pos == null) {
     return `Tracked position not found: \`${esc(positionId)}\`\\.`
   }
-  const strategyId = pos.strategyId ?? 'smc-sd'
 
   let closePct: number | null = null
   if (kind === 'reduce') {
@@ -918,7 +912,6 @@ export function requestRemoteOperatorActionWithContext(
     closePct,
     target: `${pos.coin} ${pos.side.toUpperCase()}`,
     coin: pos.coin,
-    strategyId,
     ...(briefingSource != null ? { briefingSource } : {}),
   }
   pendingPositionActions.set(chatId, pendingAction)
@@ -930,7 +923,6 @@ export function requestRemoteOperatorActionWithContext(
     ``,
     `Action: ${esc(actionLabel)}`,
     `Position: \`${esc(positionId)}\``,
-    `Strategy: ${esc(strategyId)}`,
     ``,
     `Send /confirm within ${esc(String(timeoutSec))}s to proceed\\.`,
   ].join('\n')
@@ -948,7 +940,6 @@ async function operatorHandler(args: string, chatId: number): Promise<string> {
 
   let coin: string | undefined
   let positionId: string | undefined
-  let strategyId: string | undefined
   let focusTarget: { coin?: string; positionId?: string } | null = null
 
   if (head === 'close' || head === 'reduce') {
@@ -967,9 +958,6 @@ async function operatorHandler(args: string, chatId: number): Promise<string> {
       if (tail.length === 0) return operatorUsage()
       positionId = tail
       focusTarget = { positionId: tail }
-    } else if (head === 'strategy' || head === 'strat') {
-      if (tail.length === 0) return operatorUsage()
-      strategyId = tail
     } else {
       return operatorUsage()
     }
@@ -979,14 +967,11 @@ async function operatorHandler(args: string, chatId: number): Promise<string> {
     const baseEntries = await getJournalEntries({
       eventType: 'operator',
       ...(coin != null ? { coin } : {}),
-      limit: positionId != null || strategyId != null ? 100 : 5,
+      limit: positionId != null ? 100 : 5,
     })
     const entries = baseEntries.filter(entry => {
       if (positionId != null) {
         return entry.details.positionId === positionId
-      }
-      if (strategyId != null) {
-        return entry.details.strategyId === strategyId || entry.details.strategy === strategyId
       }
       return true
     }).slice(0, 5)
@@ -996,9 +981,7 @@ async function operatorHandler(args: string, chatId: number): Promise<string> {
         ? `No operator audit entries found for ${esc(coin)}\\.`
         : positionId
           ? `No operator audit entries found for position ${esc(positionId)}\\.`
-          : strategyId
-            ? `No operator audit entries found for strategy ${esc(strategyId)}\\.`
-            : `No operator audit entries found\\.`
+          : `No operator audit entries found\\.`
       return focusTarget == null ? noEntries : prependBriefingFocusIntro('operator', noEntries, focusTarget)
     }
 
@@ -1008,9 +991,7 @@ async function operatorHandler(args: string, chatId: number): Promise<string> {
         ? `Filter: ${esc(coin)}`
         : positionId
           ? `Position: ${esc(positionId)}`
-          : strategyId
-            ? `Strategy: ${esc(strategyId)}`
-            : `Scope: latest manual interventions`,
+          : `Scope: latest manual interventions`,
       ``,
     ]
 
@@ -1134,7 +1115,6 @@ async function confirmHandler(_args: string, chatId: number): Promise<string> {
         'failed',
         {
           coin: actionState.coin,
-          strategyId: actionState.strategyId,
           source: 'telegram',
           details: {
             reason: 'manual via Telegram',
@@ -1155,7 +1135,6 @@ async function confirmHandler(_args: string, chatId: number): Promise<string> {
         await om.handleAction(action)
         await logOperatorAuditEntry('close', actionState.target, 'submitted', {
           coin: pos.coin,
-          strategyId: pos.strategyId,
           source: 'telegram',
           details: {
             reason: 'manual via Telegram',
@@ -1169,7 +1148,6 @@ async function confirmHandler(_args: string, chatId: number): Promise<string> {
         await om.handleAction(action)
         await logOperatorAuditEntry(`reduce ${Math.round(closePct * 100)}%`, actionState.target, 'submitted', {
           coin: pos.coin,
-          strategyId: pos.strategyId,
           source: 'telegram',
           details: {
             reason: 'manual via Telegram',
@@ -1191,7 +1169,6 @@ async function confirmHandler(_args: string, chatId: number): Promise<string> {
         'failed',
         {
           coin: pos.coin,
-          strategyId: pos.strategyId,
           source: 'telegram',
           details: {
             reason: 'manual via Telegram',
@@ -1242,8 +1219,7 @@ async function reportHandler(): Promise<string> {
       limit: 5,
     })
     const decisionTraces = [...getDecisionTraces()]
-      .filter(trace => trace.strategyId !== 'system' || trace.outcome.positionId != null)
-    const liveTraces = [...decisionTraces]
+      const liveTraces = [...decisionTraces]
       .sort((a, b) => b.ts - a.ts)
       .slice(0, 3)
 
@@ -1356,66 +1332,6 @@ async function reportHandler(): Promise<string> {
     return lines.join('\n')
   } catch {
     return `Failed to load report\\.`
-  }
-}
-
-// ─── /strategy ───────────────────────────────────────────────────────────
-
-/**
- * /strategy — list all strategies with enabled/disabled status.
- * /strategy pause <id> — disable a strategy (E30: blocks if open positions).
- * /strategy resume <id> — re-enable a strategy.
- */
-function strategyHandler(args: string): string {
-  const esc = escapeMarkdownV2
-  try {
-    const registry = getStrategyRegistry()
-    const all = registry.getAll()
-    const parts = args.trim().split(/\s+/)
-    const subCommand = parts[0]?.toLowerCase()
-    const strategyId = parts[1]
-
-    // /strategy pause <id>
-    if (subCommand === 'pause' && strategyId) {
-      const strategy = all.find(s => s.id === strategyId)
-      if (!strategy) return `Unknown strategy: ${esc(strategyId)}`
-      if (!registry.isEnabled(strategyId)) return `${esc(strategy.name)} is already disabled\\.`
-
-      // E30: block disable if open positions exist for this strategy
-      const pm = getPositionMonitor()
-      const openForStrategy = Array.from(pm.getPositions().values())
-        .filter(p => p.strategyId === strategyId)
-      if (openForStrategy.length > 0) {
-        return `Cannot disable ${esc(strategy.name)} — ${esc(String(openForStrategy.length))} open position\\(s\\)\\. Close them first\\.`
-      }
-
-      registry.disable(strategyId)
-      return `Strategy ${esc(strategy.name)} disabled\\.`
-    }
-
-    // /strategy resume <id>
-    if (subCommand === 'resume' && strategyId) {
-      const strategy = all.find(s => s.id === strategyId)
-      if (!strategy) return `Unknown strategy: ${esc(strategyId)}`
-      if (registry.isEnabled(strategyId)) return `${esc(strategy.name)} is already enabled\\.`
-      registry.enable(strategyId)
-      return `Strategy ${esc(strategy.name)} enabled\\.`
-    }
-
-    // /strategy — list all
-    if (all.length === 0) return `No strategies registered\\.`
-
-    const lines: string[] = [`*Strategies \\(${esc(String(all.length))}\\)*`, ``]
-    for (const s of all) {
-      const status = registry.isEnabled(s.id) ? '🟢' : '🔴'
-      const types = s.patternTypes.slice(0, 3).join(', ')
-      lines.push(`${status} *${esc(s.name)}* \\(${esc(s.id)}\\)`)
-      lines.push(`  Patterns: ${esc(types)}`)
-    }
-    lines.push(``, `Use /strategy pause <id> or /strategy resume <id>`)
-    return lines.join('\n')
-  } catch {
-    return `Strategy registry not initialized\\.`
   }
 }
 
@@ -1629,6 +1545,5 @@ export function registerBuiltinCommands(): void {
   registerCommand({ name: 'closeall', description: 'Emergency close all (requires /confirm)', handler: closeallHandler })
   registerCommand({ name: 'confirm', description: 'Confirm pending close-all or operator action', handler: confirmHandler })
   registerCommand({ name: 'report', description: 'Daily report (PnL, patterns, coins)', handler: reportHandler })
-  registerCommand({ name: 'strategy', description: 'List/pause/resume strategies', handler: strategyHandler })
   registerCommand({ name: 'paper', description: 'Paper trade on/off/reset', handler: paperHandler })
 }

@@ -72,12 +72,11 @@ export function computeExpiresAtBar(type: ActiveSetup['type'], detectedAtBar: nu
   return detectedAtBar + (PATTERN_TTL_BARS[type] ?? 0)
 }
 
-/** Build a unique setup ID. At most one active setup per strategy/coin/tf/type. */
+/** Build a unique setup ID. At most one active setup per coin/tf/type. */
 export function setupId(
   coin: string,
   interval: CandleInterval,
   type: ActiveSetup['type'],
-  strategyId: string = 'smc-sd',
 ): string {
-  return `${strategyId}:${coin}|${interval}|${type}`
+  return `${coin}|${interval}|${type}`
 }

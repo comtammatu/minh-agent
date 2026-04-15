@@ -3,7 +3,7 @@ import postgres from 'postgres'
 import { runMigrations } from '../../src/db/migrate.js'
 
 /**
- * Integration tests for migration 005 — strategies table + schema debt (E29).
+ * Integration tests for migration 005 — single-strategy cleanup.
  * Requires a running PostgreSQL+TimescaleDB instance.
  * Skips gracefully if DB is unavailable.
  *
@@ -40,62 +40,21 @@ afterAll(async () => {
   }
 })
 
-describe('migration 005 — strategies + schema debt', () => {
-  it('strategies table exists with correct columns', async () => {
+describe('migration 005 — single-strategy cleanup', () => {
+  it('fresh schema does not include the legacy strategies table', async () => {
     if (!dbAvailable) return
 
-    const cols = await sql<{ column_name: string }[]>`
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_name = 'strategies' AND table_schema = 'public'
-      ORDER BY ordinal_position
+    const rows = await sql<{ exists: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_name = 'strategies' AND table_schema = 'public'
+      ) AS exists
     `
-    const names = cols.map(c => c.column_name)
-    expect(names).toContain('id')
-    expect(names).toContain('name')
-    expect(names).toContain('enabled')
-    expect(names).toContain('config')
-    expect(names).toContain('wallet_address')
-    expect(names).toContain('capital_allocation')
-    expect(names).toContain('created_at')
+    expect(rows[0]?.exists).toBe(false)
   })
 
-  it('default layered strategy is seeded', async () => {
-    if (!dbAvailable) return
-
-    const rows = await sql<{
-      id: string
-      name: string
-      enabled: boolean
-      capital_allocation: number
-    }[]>`
-      SELECT id, name, enabled, capital_allocation
-      FROM strategies
-      WHERE id = 'layered'
-    `
-    expect(rows.length).toBe(1)
-    expect(rows[0].name).toBe('Layered (5-layer Wyckoff)')
-    expect(rows[0].enabled).toBe(true)
-    expect(rows[0].capital_allocation).toBe(1.0)
-  })
-
-  it('orders table has strategy_id with default layered', async () => {
-    if (!dbAvailable) return
-
-    // Insert without specifying strategy_id
-    await sql`
-      INSERT INTO orders (coin, side, type, price, size)
-      VALUES ('TEST_M005', 'long', 'market', 100, 0.1)
-    `
-
-    const rows = await sql<{ strategy_id: string }[]>`
-      SELECT strategy_id FROM orders WHERE coin = 'TEST_M005'
-    `
-    expect(rows.length).toBeGreaterThanOrEqual(1)
-    expect(rows[0].strategy_id).toBe('layered')
-  })
-
-  it('orders table has cloid and fill_size columns (E29)', async () => {
+  it('orders table keeps cloid and fill_size columns', async () => {
     if (!dbAvailable) return
 
     const cols = await sql<{ column_name: string }[]>`
@@ -108,60 +67,74 @@ describe('migration 005 — strategies + schema debt', () => {
     expect(names).toContain('fill_size')
   })
 
-  it('positions table has strategy_id with default layered', async () => {
+  it('fresh schema does not expose strategy_id columns', async () => {
     if (!dbAvailable) return
 
-    // Insert without specifying strategy_id
-    await sql`
-      INSERT INTO positions (coin, side, entry_price, size)
-      VALUES ('TEST_M005', 'long', 100, 0.1)
+    const orderCols = await sql<{ column_name: string }[]>`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = 'orders' AND table_schema = 'public'
     `
-
-    const rows = await sql<{ strategy_id: string }[]>`
-      SELECT strategy_id FROM positions WHERE coin = 'TEST_M005'
+    const positionCols = await sql<{ column_name: string }[]>`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = 'positions' AND table_schema = 'public'
     `
-    expect(rows.length).toBeGreaterThanOrEqual(1)
-    expect(rows[0].strategy_id).toBe('layered')
-  })
-
-  it('trade_journal has strategy_id column with no default', async () => {
-    if (!dbAvailable) return
-
-    const cols = await sql<{ column_name: string }[]>`
+    const journalCols = await sql<{ column_name: string }[]>`
       SELECT column_name
       FROM information_schema.columns
       WHERE table_name = 'trade_journal' AND table_schema = 'public'
     `
-    const names = cols.map(c => c.column_name)
-    expect(names).toContain('strategy_id')
-
-    // Verify no default — legacy entries should have NULL strategy_id
-    await sql`
-      INSERT INTO trade_journal (event_type, details)
-      VALUES ('test_m005', '{}')
-    `
-    const rows = await sql<{ strategy_id: string | null }[]>`
-      SELECT strategy_id FROM trade_journal
-      WHERE event_type = 'test_m005'
-      ORDER BY ts DESC LIMIT 1
-    `
-    expect(rows[0].strategy_id).toBeNull()
+    expect(orderCols.map(c => c.column_name)).not.toContain('strategy_id')
+    expect(positionCols.map(c => c.column_name)).not.toContain('strategy_id')
+    expect(journalCols.map(c => c.column_name)).not.toContain('strategy_id')
   })
 
-  it('strategy indexes exist', async () => {
+  it('removes legacy strategy artifacts when they are reintroduced', async () => {
     if (!dbAvailable) return
 
-    const result = await sql`
-      SELECT indexname FROM pg_indexes
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS strategies (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL
+      );
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS strategy_id TEXT DEFAULT 'legacy';
+      ALTER TABLE positions ADD COLUMN IF NOT EXISTS strategy_id TEXT DEFAULT 'legacy';
+      ALTER TABLE trade_journal ADD COLUMN IF NOT EXISTS strategy_id TEXT;
+      CREATE INDEX IF NOT EXISTS idx_orders_strategy ON orders (strategy_id);
+      CREATE INDEX IF NOT EXISTS idx_positions_strategy ON positions (strategy_id);
+    `)
+
+    await sql`DELETE FROM schema_migrations WHERE version = '005_strategies'`
+    await runMigrations(sql)
+
+    const strategyTable = await sql<{ exists: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_name = 'strategies' AND table_schema = 'public'
+      ) AS exists
+    `
+    const strategyColumns = await sql<{ table_name: string; count: number }[]>`
+      SELECT table_name, COUNT(*)::INT AS count
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND column_name = 'strategy_id'
+        AND table_name IN ('orders', 'positions', 'trade_journal')
+      GROUP BY table_name
+    `
+    const strategyIndexes = await sql<{ indexname: string }[]>`
+      SELECT indexname
+      FROM pg_indexes
       WHERE indexname IN ('idx_orders_strategy', 'idx_positions_strategy')
     `
-    expect(result.length).toBe(2)
+    expect(strategyTable[0]?.exists).toBe(false)
+    expect(strategyColumns).toHaveLength(0)
+    expect(strategyIndexes).toHaveLength(0)
   })
 
   it('migration is idempotent', async () => {
     if (!dbAvailable) return
 
-    // Remove 005 from tracking so it re-applies
     await sql`DELETE FROM schema_migrations WHERE version LIKE '005%'`
 
     const count = await runMigrations(sql)

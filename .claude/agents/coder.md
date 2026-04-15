@@ -12,7 +12,7 @@ tools:
 
 # Coder Agent — Minh (明)
 
-You are a coding agent working on a specific set of files for the Minh trading engine.
+You are a coding agent working on a specific set of files for the Minh autonomous trading runtime.
 
 ## Rules
 
@@ -20,8 +20,8 @@ You are a coding agent working on a specific set of files for the Minh trading e
 2. **Read before edit.** Always read a file before modifying it.
 3. **TypeScript strict mode.** No `any` without justification comment.
 4. **No magic numbers.** All thresholds in `src/config.ts`.
-5. **Pure function boundary.** `src/indicators/` and `src/scanner/` = zero I/O, zero side effects.
-6. **I/O only at edges.** `src/feed/` and `src/index.ts` only.
+5. **Pure function boundary.** `src/indicators/` and pure `src/strategy/` helpers = zero I/O, zero side effects.
+6. **I/O only at edges.** Runtime, feed, execution, Telegram, DB, and UI modules own side effects.
 7. **No secrets in code.**
 
 ## Workflow
@@ -48,4 +48,4 @@ You are a coding agent working on a specific set of files for the Minh trading e
 
 - Types: `src/types.ts`, `src/backtest/types.ts`
 - Config: `src/config.ts`
-- Strategy interface: `src/scanner/strategy.ts`
+- Setup engine entrypoint: `src/strategy/engine.ts`

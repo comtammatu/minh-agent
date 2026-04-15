@@ -1,5 +1,7 @@
 # Minh (明) — Domain Knowledge Reference
 
+> Archive note (2026-04-15): research reference only. Keep for concept/background reading, not as the source of truth for the live runtime architecture.
+
 > Domain Knowledge — philosophy, meaning, pros/cons of each trading school.
 > For detect/validate/invalidate rules (pseudocode), see [`knowledge-spec.md`](../spec/knowledge-spec.md).
 

@@ -14,8 +14,8 @@
  */
 
 import type { Candle, CandleInterval, Signal, PatternType, SignalSide, StrategyContext, KeyZone } from '../../../types.js'
-import type { IStrategy } from '../../registry.js'
 import type { StrategyParams } from '../../../backtest/types.js'
+import type { SetupGenerator } from '../../engine.js'
 import {
   premiumDiscount,
   isDisplacementCandle,
@@ -277,7 +277,7 @@ function barClockFor(timestampMs: number, interval: CandleInterval): number {
 
 // ── Strategy ────────────────────────────────────────────────────────────────
 
-export class SmcSdStrategy implements IStrategy {
+export class SmcSdStrategy implements SetupGenerator {
   readonly id = 'smc-sd'
   readonly name = 'SMC + S&D Zone Bounce (ICT)'
   readonly patternTypes: ReadonlyArray<PatternType> = ['smc-sd']

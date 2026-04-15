@@ -2,7 +2,7 @@
 
 All architectural and engineering decisions made during plan reviews.
 
-> Status note (2026-04-15): this log contains both active decisions and historical plan decisions from branches or roadmap directions that are not fully present on the current branch. Use `README.md`, `TODOS.md`, and `docs/CODEBASE_MAP.md` to confirm what is actually implemented before treating any decision below as current runtime behavior.
+> Archive note (2026-04-15): this log contains historical decisions from older plans and intermediate branches. The current branch now runs a single-strategy, single-context runtime with one shared wallet/account per process and no active strategy registry or `strategy_id` runtime dimension. Use `README.md`, `TODOS.md`, and `docs/CODEBASE_MAP.md` to confirm what is actually implemented before treating any decision below as current runtime behavior.
 
 ---
 
@@ -74,7 +74,7 @@ Decisions from domain knowledge analysis session — refactoring from flat to la
 | D4 | detectRegime | **Indicator-Based, regime context** — not Layer 1 bias | Indicator-Based lags at inflection points. Wyckoff+SMC are true bias |
 | D5 | detectStructuralBias | **Price Action, Layer 2** — not SMC | HH/HL/LH/LL is pure PA, predates SMC by decades |
 | D6 | Docs structure | **3 directories**: plan/ spec/ ref/ | plan = sprint plans, spec = architecture + knowledge-spec, ref = domain knowledge |
-| D7 | Domain knowledge file | **Copy source into project** (docs/ref/) + cross-reference | knowledge-spec (HOW) + domain-knowledge (WHY) — 2 files, 2 roles |
+| D7 | Domain knowledge file | **Copy source into project** (docs/archive/ref/) + cross-reference | knowledge-spec (HOW) + domain-knowledge (WHY) — 2 files, 2 roles |
 
 ---
 

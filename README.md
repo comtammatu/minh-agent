@@ -8,8 +8,8 @@ As of `2026-04-15`, this branch implements:
 
 - PostgreSQL/TimescaleDB migrations and candle persistence
 - Hyperliquid and Bybit feed adapters
-- In-memory hot store plus strategy orchestrator and registry
-- `smc-sd` multi-timeframe strategy logic
+- In-memory hot store plus a single `smc-sd` setup engine
+- Thin `src/index.ts` entrypoint with runtime orchestration in `src/runtime/`
 - Trading agent, order manager, position monitor, circuit breakers, and thesis monitoring
 - Full-screen Ink TUI and Telegram operator commands
 - Backtest, optimization, walk-forward, and pipeline benchmark tooling
@@ -44,7 +44,7 @@ Recommended first run:
 ```text
 Exchange REST/WS
   -> PostgreSQL + in-memory candle store
-  -> strategy orchestrator / registry
+  -> setup generation pipeline (`smc-sd`)
   -> TradingAgent + OrderManager + PositionMonitor
   -> TUI + Telegram
 
@@ -61,12 +61,8 @@ Historical replay tools reuse the same strategy path through backtest/optimize f
 - [docs/agent-and-execution.md](docs/agent-and-execution.md): money-handling path
 - [docs/data-and-backtesting.md](docs/data-and-backtesting.md): DB, analytics, replay tooling
 
-## Planning Docs
+## Historical Docs
 
-`docs/plan/` is a mix of:
+Archived sprint plans, legacy architecture notes, generated analysis artifacts, and external reference material now live under [`docs/archive/`](docs/archive/README.md).
 
-- historical sprint plans
-- superseded design decisions
-- forward-looking roadmap drafts
-
-Those files are still useful for rationale, but they are **not** a reliable inventory of modules that exist on the current branch. If a plan mentions `dashboard/`, `src/server/`, `src/advisor/`, or `src/memory/`, verify against the filesystem before treating it as implemented.
+Those files are still useful for rationale, but they are **not** a reliable inventory of modules that exist on the current branch. If an archived doc mentions `dashboard/`, `src/server/`, `src/advisor/`, or `src/memory/`, verify against the filesystem before treating it as implemented.

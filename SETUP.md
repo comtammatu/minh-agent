@@ -159,7 +159,7 @@ You should see log output indicating each step completing. The system is ready w
 The current branch starts an Ink terminal dashboard, not a web dashboard. You should see:
 
 - backfill progress while candles are loading
-- account, strategy, system, positions, and watchlist panels after warmup
+- account, scanner, system, positions, and watchlist panels after warmup
 - positions and setup state refreshing roughly once per second
 
 ### Logs
@@ -268,6 +268,6 @@ Hyperliquid or Bybit REST/WS
            └──► Ink TUI
 ```
 
-For full architecture details, see `docs/spec/architecture.md`.
+For historical architecture details and older roadmap context, see `docs/archive/spec/architecture.md`.
 
 Contributor workflow and CI expectations are documented in `CONTRIBUTING.md`.

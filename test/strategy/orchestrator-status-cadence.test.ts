@@ -8,8 +8,10 @@ import {
   onCandleTick,
 } from '../../src/strategy/orchestrator.js'
 import { clearOnPersist, clearStore } from '../../src/feed/store.js'
-import { getStrategyRegistry, resetStrategyRegistry } from '../../src/strategy/registry.js'
-import type { IStrategy } from '../../src/strategy/registry.js'
+import {
+  setSetupGeneratorForTests,
+  type SetupGenerator,
+} from '../../src/strategy/engine.js'
 
 const STEP_5M_MS = 300_000
 const START_TS = Date.UTC(2024, 0, 1)
@@ -31,16 +33,13 @@ describe('orchestrator status cadence', () => {
     clearPipelineState()
     clearStore()
     clearOnPersist()
-    resetStrategyRegistry()
+    setSetupGeneratorForTests(null)
   })
 
   test('status refresh runs slower than setup scan on 5m cadence', () => {
     let scanCalls = 0
 
-    const strategy: IStrategy = {
-      id: 'cadence-mock',
-      name: 'Cadence Mock',
-      patternTypes: ['smc-sd' as PatternType],
+    const strategy: SetupGenerator = {
       scan: () => {
         scanCalls++
         return null
@@ -48,10 +47,7 @@ describe('orchestrator status cadence', () => {
       minCandles: () => 2,
       clearState: () => {},
     }
-
-    const registry = getStrategyRegistry()
-    registry.register(strategy)
-    registry.activateOnly('cadence-mock')
+    setSetupGeneratorForTests(strategy)
 
     const stride = STATUS_UPDATE_EVERY_BARS['5m']
     const scannedBars = stride * 3 + 1

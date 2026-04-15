@@ -33,7 +33,6 @@ function makePosition(overrides: Partial<PositionState> = {}): PositionState {
     tpPrice: 103_000,
     entryOrderId: 'ord-1',
     leverage: 5,
-    strategyId: 'smc-sd',
     trailingState: null,
     partialClosesFired: [],
     lastSyncAt: Date.now(),

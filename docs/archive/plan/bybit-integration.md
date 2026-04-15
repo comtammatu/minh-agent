@@ -4,6 +4,8 @@
 > **Ngày lập:** 2026-04-08
 >
 > **Ghi chú:** Kế hoạch ban đầu mô tả refactor cấu trúc `exchanges/` directory — **không thực hiện**. Thay vào đó, S12 triển khai Bybit theo cấu trúc hiện có (`src/feed/bybit/`, `src/execution/bybit-exchange-service.ts`) để giữ blast radius nhỏ nhất. Xem phần **Thực tế triển khai** cuối tài liệu.
+>
+> **Archive note (2026-04-15):** current branch supports Bybit behind the shared exchange-service boundary, but still runs **one active exchange per process** (`ACTIVE_EXCHANGE=HL|BB`), not both exchanges in one process.
 
 ## Mục tiêu
 

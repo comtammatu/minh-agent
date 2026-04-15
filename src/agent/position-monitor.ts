@@ -31,7 +31,6 @@ import type { TrailingStopState } from './exits.js'
 import type { SignalSide } from '../types.js'
 import {
   EXCHANGE_SYNC_INTERVAL_MS,
-  PAPER_WALLET_STRATEGY_IDS,
   THESIS_MONITOR,
   TIMEFRAME_MS,
   TRAIL_UPDATE_THRESHOLD,
@@ -74,20 +73,11 @@ export async function queryExchangePositions(): Promise<ExchangePositionSnapshot
       return await getExchangeService().getPositions()
     }
 
-    // Single shared HL account: one clearinghouse query (snapshots have no strategyId).
+    // Single shared account: one position query.
     if (!pool.isMultiWallet()) {
       return await pool.getShared().getPositions()
     }
-
-    // One main account per strategy: query each wallet and tag rows for reconciliation.
-    const out: ExchangePositionSnapshot[] = []
-    for (const sid of PAPER_WALLET_STRATEGY_IDS) {
-      const snaps = await pool.get(sid).getPositions()
-      for (const s of snaps) {
-        out.push({ ...s, strategyId: sid })
-      }
-    }
-    return out
+    return await pool.getShared().getPositions()
   } catch (err) {
     log.error('position-monitor', `queryExchangePositions failed: ${err instanceof Error ? err.message : err}`)
     return null  // null = API error; caller skips reconciliation to avoid false position closes
@@ -198,12 +188,7 @@ export function reconcilePositions(
   const exchangeCoins = new Set(exchangeSnapshots.map(s => s.coin))
 
   for (const [, pos] of tracked) {
-    // Match by coin; when rows are tagged with strategyId, require it as well.
-    const snap = exchangeSnapshots.find(s => {
-      if (s.coin !== pos.coin) return false
-      if (s.strategyId !== undefined && s.strategyId !== pos.strategyId) return false
-      return true
-    })
+    const snap = exchangeSnapshots.find(s => s.coin === pos.coin)
 
     if (!snap || snap.size === 0) {
       // Position gone on exchange — liquidation or external close
@@ -231,9 +216,6 @@ export function reconcilePositions(
 
 // ─── PositionMonitor Class ──────────────────────────────────────────────────
 
-/** Default strategy ID for backward compatibility. */
-const DEFAULT_STRATEGY = 'smc-sd'
-
 export class PositionMonitor {
   /** Tracked open positions — keyed by positionId. */
   private positions: Map<string, PositionState> = new Map()
@@ -241,8 +223,8 @@ export class PositionMonitor {
   private syncInterval: ReturnType<typeof setInterval> | null = null
   /** Guard against concurrent syncWithExchange calls (setInterval fires even if previous async call hasn't resolved). */
   private syncInProgress = false
-  /** Callback to dispatch events to TradingAgent (with strategyId). */
-  private dispatchToAgent: ((coin: string, event: AgentEvent, strategyId?: string) => void) | null = null
+  /** Callback to dispatch events to TradingAgent. */
+  private dispatchToAgent: ((coin: string, event: AgentEvent) => void) | null = null
   /** Callback to update SL on exchange via OrderManager (parentOrderId, newSlPrice). */
   private onUpdateStop: ((parentOrderId: string, newSlPrice: number) => void) | null = null
   /** Callback to update account equity on TradingAgent. */
@@ -255,7 +237,7 @@ export class PositionMonitor {
   private lastAccountState: AccountState | null = null
 
   /** Set the callback for dispatching events to the agent state machine. */
-  setAgentDispatch(fn: (coin: string, event: AgentEvent, strategyId?: string) => void): void {
+  setAgentDispatch(fn: (coin: string, event: AgentEvent) => void): void {
     this.dispatchToAgent = fn
   }
 
@@ -264,7 +246,7 @@ export class PositionMonitor {
     this.onUpdateStop = fn
   }
 
-  /** Set the callback for updating account equity (Sprint 4.5: portfolio risk). */
+  /** Set the callback for updating account equity used by portfolio risk checks. */
   setEquityCallback(fn: (equity: number) => void): void {
     this.onEquityUpdate = fn
   }
@@ -272,7 +254,7 @@ export class PositionMonitor {
   /**
    * Set the callback to get current mark price for a coin.
    * Required for paper mode SL/TP simulation.
-   * Wired in index.ts via getLatestAssetCtx().
+   * Wired in runtime/app.ts via getLatestAssetCtx().
    */
   setPriceGetter(fn: (coin: string) => number | null): void {
     this.priceGetter = fn
@@ -291,7 +273,6 @@ export class PositionMonitor {
     tpPrice: number
     entryOrderId: string
     leverage: number
-    strategyId?: string
     entryInterval?: import('../types.js').CandleInterval
   }): PositionState {
     const state: PositionState = {
@@ -305,7 +286,6 @@ export class PositionMonitor {
       tpPrice: params.tpPrice,
       entryOrderId: params.entryOrderId,
       leverage: params.leverage,
-      strategyId: params.strategyId ?? DEFAULT_STRATEGY,
       trailingState: null,
       partialClosesFired: [],
       lastSyncAt: Date.now(),
@@ -421,7 +401,7 @@ export class PositionMonitor {
             : pos.slPrice  // fallback to SL as close estimate
           const slippageDir = (pos.side === 'long' ? -1 : 1)  // close side gets adverse slippage
           closePrice = estimatedClose * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
-          const trade = getPaperTracker(pos.strategyId).recordExit(pos.entryOrderId, closePrice)
+          const trade = getPaperTracker().recordExit(pos.entryOrderId, closePrice)
           if (trade) pnl = trade.pnl
         }
 
@@ -432,7 +412,7 @@ export class PositionMonitor {
             positionId: pos.positionId,
             closePrice,
             pnl,
-          }, pos.strategyId)
+          })
         } else {
           this.dispatchToAgent?.(pos.coin, {
             type: 'position_closed',
@@ -440,7 +420,7 @@ export class PositionMonitor {
             closePrice,
             pnl,
             reason: action.reason,
-          }, pos.strategyId)
+          })
         }
         break
       }
@@ -499,22 +479,9 @@ export class PositionMonitor {
         } else {
           const pool = getExchangePool()
           if (pool.isInitialized()) {
-            if (pool.isMultiWallet()) {
-              let sum = 0
-              const seen = new Set<PoolExchangeService>()
-              for (const sid of PAPER_WALLET_STRATEGY_IDS) {
-                const svc = pool.get(sid)
-                if (seen.has(svc)) continue
-                seen.add(svc)
-                const st = await svc.getAccountState()
-                sum += st.effectiveBalance
-              }
-              this.onEquityUpdate?.(sum)
-            } else {
-              const st = await pool.getShared().getAccountState()
-              this.lastAccountState = st
-              this.onEquityUpdate?.(st.effectiveBalance)
-            }
+            const st = await pool.getShared().getAccountState()
+            this.lastAccountState = st
+            this.onEquityUpdate?.(st.effectiveBalance)
           } else {
             if (isBybitLiveMode()) {
               throw new Error('PositionMonitor: ExchangePool must be initialized in BB live mode (HL fallback blocked)')
@@ -557,7 +524,7 @@ export class PositionMonitor {
                 closePrice: pos.entryPrice,  // approximate — actual close may differ
                 pnl: 0,
                 reason: action.reason,
-              } as AgentEvent, pos.strategyId)
+              } as AgentEvent)
               this.positions.delete(pos.positionId)
               break
             }
@@ -647,7 +614,7 @@ export class PositionMonitor {
 
     for (const [, pos] of this.positions) {
       // Skip positions managed by enhanced PaperTracker (multi-TP exits via orchestrator candle ticks)
-      if (getPaperTracker(pos.strategyId).hasEnhancedPosition(pos.coin)) continue
+      if (getPaperTracker().hasEnhancedPosition(pos.coin)) continue
 
       const markPrice = this.priceGetter?.(pos.coin)
       if (!markPrice || markPrice <= 0) continue
@@ -677,7 +644,7 @@ export class PositionMonitor {
     }
 
     for (const { pos, reason, closePrice } of toClose) {
-      const trade = getPaperTracker(pos.strategyId).recordExit(pos.entryOrderId, closePrice)
+      const trade = getPaperTracker().recordExit(pos.entryOrderId, closePrice)
       const pnl = trade?.pnl ?? 0
       const pnlStr = pnl >= 0 ? `+${pnl.toFixed(2)}` : pnl.toFixed(2)
       log.info('position-monitor', `[PAPER] ${reason.toUpperCase()} | ${pos.coin} ${pos.side.toUpperCase()} | entry=${pos.entryPrice.toFixed(2)} close=${closePrice.toFixed(2)} | pnl=${pnlStr}`)
@@ -687,7 +654,7 @@ export class PositionMonitor {
         positionId: pos.positionId,
         closePrice,
         pnl,
-      }, pos.strategyId)
+      })
 
       this.positions.delete(pos.positionId)
     }

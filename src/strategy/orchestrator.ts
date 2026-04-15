@@ -1,7 +1,7 @@
 /**
  * Pipeline orchestrator — module-level state + WS tick dispatch.
  *
- * onCandleTick: closed-candle gate → fan-out to StrategyRegistry.
+ * onCandleTick: closed-candle gate → concrete setup generator.
  * Owns: activeSetups, lastCandleTs, statusState, pipelineEmitter.
  */
 
@@ -15,9 +15,12 @@ import type {
   DecisionTrace,
 } from '../types.js'
 import { appendCandle, getCandles, getCandlesInto } from '../feed/store.js'
-import { getStrategyRegistry, type StrategyRegistry } from './registry.js'
+import {
+  getSetupGeneratorMinCandles,
+  runSetupGenerator,
+} from './engine.js'
 import { computeExpiresAtBar, setupId } from './shared/invalidation.js'
-import { getOrCreateStats, resetPipelineStats } from './diagnostics.js'
+import { getPipelineStatsMutable, resetPipelineStats } from './diagnostics.js'
 import { determineBias } from './shared/bias.js'
 import {
   clearIndicatorCache,
@@ -37,7 +40,6 @@ import {
   STATUS_UPDATE_EVERY_BARS,
   getActiveExchange,
   getEffectivePaperTrade,
-  PAPER_WALLET_STRATEGY_IDS,
 } from '../config.js'
 import type { StrategyParams } from '../backtest/types.js'
 import { getPaperTracker } from '../agent/paper-tracker.js'
@@ -125,8 +127,8 @@ function removeSetupById(id: string): void {
   decrementActiveSetupCount(setupCountKey(existing))
 }
 
-function requiredScanWindow(registry: StrategyRegistry): number {
-  return Math.max(INDICATOR_WINDOW, registry.getMaxRunnableMinCandles())
+function requiredScanWindow(): number {
+  return Math.max(INDICATOR_WINDOW, getSetupGeneratorMinCandles())
 }
 
 function getOrCreateScanBuffer(coin: string, interval: CandleInterval): Candle[] {
@@ -205,11 +207,11 @@ function refreshStatusSnapshot(
 }
 
 /**
- * Run all strategies on the last fully closed bar (idx = length - 2), same as WS path.
+ * Run the canonical setup engine on the last fully closed bar (idx = length - 2), same as WS path.
  * Used after REST/PG backfill so bias/status/setups appear without waiting for the next TF close.
  */
-function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry: StrategyRegistry): void {
-  const maxMin = requiredScanWindow(registry)
+function dispatchClosedBarScan(coin: string, interval: CandleInterval): void {
+  const maxMin = requiredScanWindow()
   const activeExchange = getActiveExchange()
   const candles = getCandlesInto(
     coin,
@@ -238,18 +240,16 @@ function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry:
 
   refreshStatusSnapshot(coin, interval, candles, idx, htfCandles)
 
-  const signalResults = registry.runAll(coin, interval, candles, idx, context, activeStrategyParams ?? undefined)
-
-  for (const { strategyId, signal } of signalResults) {
+  const signal = runSetupGenerator(coin, interval, candles, idx, context, activeStrategyParams ?? undefined)
+  if (signal !== null) {
     const sk = statusKey(coin, interval)
-    const id = setupId(coin, interval, signal.type, strategyId)
+    const id = setupId(coin, interval, signal.type)
     const existingSetup = activeSetups.get(id)
     const setup: ActiveSetup = {
       ...signal,
       id,
       coin,
       interval,
-      strategyId,
       detectedAt: Date.now(),
       detectedAtBar: idx,
       expiresAtBar: computeExpiresAtBar(signal.type, idx),
@@ -259,7 +259,7 @@ function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry:
     if (!existingSetup) {
       incrementActiveSetupCount(sk)
     }
-    const stats = getOrCreateStats(strategyId)
+    const stats = getPipelineStatsMutable()
     stats.setupsTracked++
     pipelineEmitter.emit('setup', setup)
 
@@ -283,7 +283,7 @@ function dispatchClosedBarScan(coin: string, interval: CandleInterval, registry:
       `⚡ SETUP | ${coin} ${interval.toUpperCase()} [${activeExchange}] | ${signal.side.toUpperCase()} ${signal.type}${zoneOrigin ? ` at ${zoneOrigin}` : ''} | ` +
       `${grade} (${count}/7) | conf:${signal.confidence.toFixed(2)}${regime ? ` | ${regime}` : ''} | ` +
       `entry:${fmtP(signal.entryPrice)} sl:${fmtP(signal.slPrice)} tp:${fmtP(signal.tpPrice)} | R:R 1:${rr.toFixed(2)} | ` +
-      `ttl:${setup.expiresAtBar - setup.detectedAtBar}bars | [${strategyId}]`,
+      `ttl:${setup.expiresAtBar - setup.detectedAtBar}bars`,
     )
   }
 }
@@ -304,19 +304,14 @@ function seedLastCandleTsFromStore(coin: string, interval: CandleInterval): void
 
 /**
  * After backfill: run one scan per coin/TF (except 1m) and seed lastCandleTs from store.
- * Call only after StrategyRegistry is populated (and after agent subscribes if setups must be handled).
+ * Call only after the runtime wires the pipeline emitter (and after agent subscribes if setups must be handled).
  */
 export function bootstrapPipelineFromStore(coins: readonly string[]): void {
-  const registry = getStrategyRegistry()
-  if (registry.size === 0) {
-    log.warn('pipeline', 'bootstrapPipelineFromStore: no strategies registered — skipping')
-    return
-  }
   for (const coin of coins) {
     for (const tf of TIMEFRAMES) {
       const interval = tf as CandleInterval
       if ((SIGNAL_TIMEFRAMES as readonly string[]).includes(interval)) {
-        dispatchClosedBarScan(coin, interval, registry)
+        dispatchClosedBarScan(coin, interval)
       }
       seedLastCandleTsFromStore(coin, interval)
     }
@@ -338,16 +333,14 @@ export function onCandleTick(
   // ── Paper mode: evaluate multi-TP exits on every candle tick ───────────
   // Mirrors backtest bar-by-bar evaluation — check SL/TP/trailing on each candle.
   if (getEffectivePaperTrade()) {
-    for (const stratId of PAPER_WALLET_STRATEGY_IDS) {
-      const result = getPaperTracker(stratId).checkCandle(coin, interval, candle)
-      if (result && result.action === 'full_close') {
-        pipelineEmitter.emit('paper_exit', {
-          coin, strategyId: stratId,
-          exitReason: result.exitReason,
-          closePrice: result.closePrice,
-          pnl: result.pnl,
-        })
-      }
+    const result = getPaperTracker().checkCandle(coin, interval, candle)
+    if (result && result.action === 'full_close') {
+      pipelineEmitter.emit('paper_exit', {
+        coin,
+        exitReason: result.exitReason,
+        closePrice: result.closePrice,
+        pnl: result.pnl,
+      })
     }
   }
 
@@ -364,7 +357,7 @@ export function onCandleTick(
   // Non-signal TFs: store candles only (e.g. 1m for entry refinement / price proxy)
   if (!(SIGNAL_TIMEFRAMES as readonly string[]).includes(interval)) return
 
-  dispatchClosedBarScan(coin, interval, getStrategyRegistry())
+  dispatchClosedBarScan(coin, interval)
 }
 
 /** Get current status snapshots for all coin/tf combinations. */
@@ -389,10 +382,8 @@ export function getActiveSetupCoins(): string[] {
 /** Clear state for a specific coin (all timeframes). */
 export function clearCoinState(coin: string): void {
   const prefix = `${coin}|`
-  // Setup keys are "strategyId:coin|interval|type" — match ":coin|" anywhere in key
-  const setupNeedle = `:${coin}|`
   for (const k of activeSetups.keys()) {
-    if (k.includes(setupNeedle)) removeSetupById(k)
+    if (k.startsWith(prefix)) removeSetupById(k)
   }
   for (const k of statusState.keys()) { if (k.startsWith(prefix)) statusState.delete(k) }
   for (const k of lastCandleTs.keys()) { if (k.startsWith(prefix)) lastCandleTs.delete(k) }
@@ -404,33 +395,19 @@ export function clearCoinState(coin: string): void {
   clearIndicatorCacheForCoin(coin)
 }
 
-/**
- * Clear pipeline state. If strategyId given, clear only that strategy's stats.
- * Without strategyId, clears everything (all setups, status, timestamps, stats).
- */
-export function clearPipelineState(strategyId?: string): void {
-  if (strategyId) {
-    // Granular: clear only setups belonging to this strategy + its stats
-    for (const [id] of activeSetups) {
-      if (id.startsWith(`${strategyId}:`)) removeSetupById(id)
-    }
-    resetPipelineStats(strategyId)
-  } else {
-    // Full clear
-    activeSetups.clear()
-    activeSetupCounts.clear()
-    statusState.clear()
-    lastCandleTs.clear()
-    lastStatusUpdateBarClock.clear()
-    statusRefreshCounts.clear()
-    scanCandlesBuffers.clear()
-    htfCandlesBuffers.clear()
-    clearIndicatorCache()
-    resetPipelineStats()
-  }
+/** Clear pipeline state. */
+export function clearPipelineState(): void {
+  activeSetups.clear()
+  activeSetupCounts.clear()
+  statusState.clear()
+  lastCandleTs.clear()
+  lastStatusUpdateBarClock.clear()
+  statusRefreshCounts.clear()
+  scanCandlesBuffers.clear()
+  htfCandlesBuffers.clear()
+  clearIndicatorCache()
+  resetPipelineStats()
 }
-
-// ── Aliases for StrategyRegistry adapter (Sprint 4.5) ────────────────────────
 
 // ── Internals used by pipeline.ts ────────────────────────────────────────────
 
@@ -454,7 +431,7 @@ export function getActiveSetupsMap(): Map<string, ActiveSetup> {
 const decisionTraces = new Map<string, DecisionTrace>()
 
 function traceKey(trace: DecisionTrace): string {
-  return `${trace.strategyId}:${trace.coin}:${trace.interval}`
+  return `${trace.coin}:${trace.interval}`
 }
 
 /** Record or update a decision trace (called during pipeline evaluation). */

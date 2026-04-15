@@ -1,5 +1,7 @@
 # Minh (明) — Sprint 1.5: Scale to 30 Coins + Feed Optimization
 
+> Archive note (2026-04-15): historical scale-up plan only. Use active runtime docs for the current feed/bootstrap architecture.
+
 ## Goal
 
 Scale Minh from 5 hardcoded coins to **30 dynamic coins** fetched live from Hyperliquid by OI (volume >= $500K filter). Optimize the scanner and feed layer to handle 6× the load without violating sub-10ms SLA. Add market-wide signals (`allDexsAssetCtxs` WS) to enrich Layer 4 confluence.

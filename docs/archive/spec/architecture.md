@@ -1,10 +1,10 @@
 # Minh (明) — Architecture
 
-> **Status note (2026-04-15)**: this document mixes implemented runtime architecture with historical sprint planning. For the current branch, use `README.md`, `docs/CODEBASE_MAP.md`, `docs/runtime-and-feed.md`, `docs/strategy-engine.md`, `docs/agent-and-execution.md`, and `docs/data-and-backtesting.md` as the implementation source of truth.
+> **Archive note (2026-04-15)**: this document is preserved as historical architecture and roadmap context. For the live branch, use `README.md`, `docs/CODEBASE_MAP.md`, `docs/runtime-and-feed.md`, `docs/strategy-engine.md`, `docs/agent-and-execution.md`, and `docs/data-and-backtesting.md` as the implementation source of truth.
 >
-> Current branch implements: Bun runtime, PostgreSQL/TimescaleDB, Hyperliquid + Bybit feeds, strategy registry/orchestrator, SMC-SD strategy, trading agent, Telegram bot, TUI, backtest and analytics tooling.
+> Current branch implements: Bun runtime, PostgreSQL/TimescaleDB, Hyperliquid + Bybit feeds, one concrete `smc-sd` setup engine, thin `src/index.ts` boot with orchestration in `src/runtime/`, trading agent, Telegram bot, TUI, backtest and analytics tooling.
 >
-> Current branch does **not** contain the planned `src/server/`, `dashboard/`, `src/advisor/`, or `src/memory/` modules referenced in historical sprint plans.
+> Current branch does **not** contain the planned `src/server/`, `dashboard/`, `src/advisor/`, or `src/memory/` modules referenced below. The rest of this file intentionally preserves older layered, multi-strategy, and roadmap planning material.
 
 > **v4.5.2 (post-S12 cleanup, 2026-04-13)** — Historical architecture snapshot for the broader roadmap; some later planned layers were not carried onto the current branch.
 >

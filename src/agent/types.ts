@@ -26,8 +26,6 @@ export type AgentState =
 export interface CoinContext {
   state: AgentState
   coin: string
-  /** Strategy that owns this context (Sprint 4.5). Default 'smc-sd'. */
-  strategyId: string
   /** The setup being watched/entered (null when IDLE/PAUSED). */
   activeSetup: ActiveSetup | null
   /** Pending order ID (set in ENTERING, cleared on fill/reject). */
@@ -133,7 +131,6 @@ export interface Order {
   filledAt: number | null
   fillPrice: number | null
   fillSize: number       // filled so far (for partials)
-  strategyId: string     // strategy that placed this order (Sprint 4.5)
   positionId: string | null  // set at fill time — links order to position
   exchange: string       // 'HL' | 'BB' — exchange this order was placed on
 }
@@ -176,8 +173,6 @@ export interface PositionState {
   entryOrderId: string        // links to Order.id
   /** Cross leverage set at entry (same rule as live `setLeverage`). */
   leverage: number
-  /** Strategy that owns this position (Sprint 4.5). */
-  strategyId: string
   /** Trailing stop state — null until first monitor() call. */
   trailingState: import('./exits.js').TrailingStopState | null
   /** Which partial close levels have been triggered (by index). */
@@ -242,8 +237,6 @@ export interface ExchangePositionSnapshot {
   liquidationPrice: number | null
   /** Cross/isolated leverage from HL `position.leverage.value` when present. */
   leverage?: number
-  /** When set, reconciliation matches this row to {@link PositionState.strategyId}. */
-  strategyId?: string
   /** Stop-loss price set on the exchange (Bybit: stopLoss field). */
   slPrice?: number
   /** Take-profit price set on the exchange (Bybit: takeProfit field). */
@@ -338,7 +331,6 @@ export interface CoinSnapshotEntry {
   positionId: string | null
   consecutiveLosses: number
   stateAge: number  // ms since state entered
-  strategyId: string
 }
 
 export interface GlobalSnapshotEntry {
@@ -350,10 +342,7 @@ export interface GlobalSnapshotEntry {
 }
 
 export interface AgentSnapshot {
-  /** Keyed by `coin:strategyId` (or just `coin` for backward-compat single-strategy). */
+  /** Keyed by coin. */
   coins: Record<string, CoinSnapshotEntry>
-  /** Default strategy global (backward compat). */
   global: GlobalSnapshotEntry
-  /** Per-strategy globals (Sprint 4.5). */
-  strategyGlobals?: Record<string, GlobalSnapshotEntry>
 }

@@ -7,7 +7,7 @@
  *   - Confidence modifiers (CHoCH > BOS, throughZone, zone strength)
  *   - SL/TP mechanics
  *   - Dedup + clearState
- *   - IStrategy contract (id, name, patternTypes, minCandles)
+ *   - Concrete strategy surface (id, name, patternTypes, minCandles)
  */
 
 import { describe, test, expect, beforeEach } from 'bun:test'
@@ -84,7 +84,7 @@ describe('SmcSdStrategy', () => {
     strategy.clearState()
   })
 
-  // ── IStrategy contract ───────────────────────────────────────────────
+  // ── Strategy surface ────────────────────────────────────────────────
 
   test('id is smc-sd', () => {
     expect(strategy.id).toBe('smc-sd')
