@@ -145,3 +145,29 @@ export function clearCoinData(coin: string, exchange: ExchangeId = 'HL'): void {
 export function clearStore(): void {
   store.clear()
 }
+
+/**
+ * Snapshot candle series from the current store for replay.
+ * Returns a Map keyed by "coin|interval" → Candle[] (copied, not referenced).
+ * Extracts last N bars per TF based on replayBars config.
+ */
+export function snapshotStoreForReplay(
+  coins: readonly string[],
+  intervals: CandleInterval[],
+  barsPerTf: Partial<Record<CandleInterval, number>>,
+  exchange: ExchangeId = 'HL',
+): Map<string, Candle[]> {
+  const snapshot = new Map<string, Candle[]>()
+  for (const coin of coins) {
+    for (const tf of intervals) {
+      const bars = barsPerTf[tf] ?? 0
+      if (bars <= 0) continue
+      const candles = getCandles(coin, tf, bars, exchange)
+      if (candles.length > 0) {
+        // getCandles returns a slice (copy), safe to store directly
+        snapshot.set(`${coin}|${tf}`, candles)
+      }
+    }
+  }
+  return snapshot
+}

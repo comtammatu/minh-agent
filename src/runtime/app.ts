@@ -32,7 +32,6 @@ import {
   BACKFILL_CANDLE_COUNTS,
   BACKFILL_CANDLE_COUNT,
   BACKFILL_REPLACEMENT_ROUNDS,
-  getEffectivePaperTrade,
   MIN_CANDLES_FOR_SCAN,
   validateWindowPolicies,
   BOOTSTRAP_LOAD_BARS,
@@ -67,7 +66,10 @@ import {
   getActiveSetupCoins,
   clearCoinState,
   bootstrapPipelineFromStore,
+  bootstrapReplayFromStore,
+  materializeCurrentSetupsFromStore,
 } from '../strategy/orchestrator.js'
+import type { Candle } from '../types.js'
 import { sql, closeDb } from '../db/connection.js'
 import { runMigrations } from '../db/migrate.js'
 import { getClosedTradeStatsForWallet } from '../analytics/metrics-repo.js'
@@ -87,8 +89,7 @@ import {
 import { createWriteStream, type WriteStream } from 'fs'
 import { log, setTuiSink, clearTuiSink } from '../lib/logger.js'
 import { getHealthMonitor } from '../agent/self-healing.js'
-import { startTui, stopTui, setBackfillDone, type TuiDataSources, type PaperStats } from '../ui/tui.jsx'
-import { getPaperWalletSummaries, getTotalPaperBalance } from '../agent/paper-tracker.js'
+import { startTui, stopTui, setBackfillDone, type TuiDataSources } from '../ui/tui.jsx'
 import { getLatestAssetCtx } from '../feed/asset-ctx.js'
 import { getPipelineEmitter } from '../strategy/orchestrator.js'
 import { getAgent } from '../agent/trading-agent.js'
@@ -118,11 +119,26 @@ type ShutdownSafeExchange = {
 let tuiLogStream: WriteStream | null = null
 let dashboardBootstrapPhase: DashboardBootstrapPhase = 'warming_up'
 
+// ── Bootstrap WS buffer ────────────────────────────────────────────────────
+// During bootstrap replay, WS candles are buffered instead of going through
+// the full pipeline. Flushed after replay completes.
+interface BufferedCandle { coin: string; interval: CandleInterval; candle: Candle }
+let wsBuffer: BufferedCandle[] | null = null
+
+/** WS callback: buffer candles during replay, else pass to onCandleTick directly. */
+function onCandleTickBuffered(coin: string, interval: CandleInterval, candle: Candle): void {
+  if (wsBuffer !== null) {
+    wsBuffer.push({ coin, interval, candle })
+    return
+  }
+  onCandleTick(coin, interval, candle)
+}
+
 // ── Coin Lifecycle Helpers ──────────────────────────────────────────────────
 
 /** Subscribe all WS feeds for a coin (candles × TFs + trades + orderbook). */
 async function subscribeCoin(coin: string): Promise<void> {
-  await feed.subscribe([coin], onCandleTick)
+  await feed.subscribe([coin], onCandleTickBuffered)
   if (getActiveExchange() === 'HL') {
     await subscribeTrades(coin)
     await subscribeOrderBook(coin)
@@ -202,10 +218,6 @@ let liveTuiExchangePositionsCache: ExchangePositionSnapshot[] | null = null
 class StartupFatalError extends Error {}
 
 async function refreshLiveWalletStatsCache(): Promise<void> {
-  if (getEffectivePaperTrade()) {
-    liveWalletStatsCache = null
-    return
-  }
   try {
     const rows = await getClosedTradeStatsForWallet()
     liveWalletStatsCache = buildLiveWalletStats(rows)
@@ -243,10 +255,6 @@ function aggregateAccountStatesForTui(m: Map<string, AccountState>): AccountStat
 }
 
 async function refreshLiveAccountStatesForTui(): Promise<void> {
-  if (getEffectivePaperTrade()) {
-    liveAccountStatesCache = null
-    return
-  }
   try {
     const pool = getExchangePool()
     if (!pool.isInitialized()) return
@@ -259,21 +267,11 @@ async function refreshLiveAccountStatesForTui(): Promise<void> {
 }
 
 function refreshLiveTuiPositionsCache(): void {
-  if (getEffectivePaperTrade()) {
-    liveTuiExchangePositionsCache = null
-    return
-  }
   // Reuse cached snapshots from position-monitor's syncWithExchange — avoids duplicate API calls.
   liveTuiExchangePositionsCache = getPositionMonitor().getLastExchangeSnapshots()
 }
 
 async function refreshLiveTuiCaches(): Promise<void> {
-  if (getEffectivePaperTrade()) {
-    liveWalletStatsCache = null
-    liveAccountStatesCache = null
-    liveTuiExchangePositionsCache = null
-    return
-  }
   await refreshLiveWalletStatsCache()
   await refreshLiveAccountStatesForTui()
   await refreshLiveTuiPositionsCache()
@@ -292,8 +290,7 @@ async function main(): Promise<void> {
   selector = createCoinSelector(getActiveSetupCoins, onCoinsRefreshed, fetchRankedFn, topLimit)
 
   // Banner — logged before TUI starts, so these safely go to console
-  const modeTag = getEffectivePaperTrade() ? 'PAPER' : 'LIVE'
-  log.info('startup', `Minh (明) v2.0.0 — Autonomous Trading Agent [${modeTag}]`)
+  log.info('startup', `Minh (明) v2.0.0 — Autonomous Trading Agent [LIVE]`)
   log.info('startup',
     `Config: dynamic top coins × ${TIMEFRAMES.join(',')} | ` +
     `min:${MIN_CONFIDENCE} | confluence:${CONFLUENCE_MIN}+ | ` +
@@ -349,6 +346,8 @@ async function main(): Promise<void> {
   }
 
   // 2. WS subscribe FIRST — capture real-time candles immediately
+  //    Enable bootstrap ingress mode: WS candles go to buffer, not full pipeline.
+  wsBuffer = []
   for (const coin of coins) {
     await subscribeCoin(coin)
   }
@@ -372,22 +371,6 @@ async function main(): Promise<void> {
     getAccountState: () => null,
     getSubscriptionCount,
     getTrackedCoins: () => selector.getTrackedCoins(),
-    getPaperStats: () => {
-      if (!getEffectivePaperTrade()) return null
-      const wallets = getPaperWalletSummaries()
-      const totalBalance = getTotalPaperBalance()
-      const wins = wallets.reduce((s, w) => s + w.wins, 0)
-      const losses = wallets.reduce((s, w) => s + w.losses, 0)
-      const tradeCount = wallets.reduce((s, w) => s + w.tradeCount, 0)
-      return {
-        totalBalance,
-        wallets,
-        tradeCount,
-        wins,
-        losses,
-        winRate: tradeCount > 0 ? wins / tradeCount : 0,
-      }
-    },
     getAssetPrice: (coin: string) => {
       if (activeExchange === 'BB') {
         // BB has no separate mark-price feed — use last 1m candle close as price proxy.
@@ -517,7 +500,25 @@ async function main(): Promise<void> {
     log.info('lifecycle', `COIN-REPLACE | done — replaced ${allFailed.size} failed coins | now tracking ${coins.length}`)
   }
 
-  // 4c. Signal TUI: backfill complete → transition to dashboard
+  // 4c. Bootstrap replay: rebuild multi-stage strategy state from historical candles
+  //     snapshot → clear → preseed → global chronological replay → flush WS buffer → materialize
+  const replayCount = bootstrapReplayFromStore(coins)
+  if (replayCount > 0) {
+    log.info('startup', `Replay hydrate: ${replayCount} candles replayed`)
+  }
+
+  // 4d. Flush WS buffer: feed buffered live candles through the full pipeline
+  const buffered = wsBuffer ?? []
+  wsBuffer = null  // disable buffer — WS candles now go direct to onCandleTick
+  if (buffered.length > 0) {
+    for (const ev of buffered) {
+      onCandleTick(ev.coin, ev.interval, ev.candle)
+    }
+    log.info('startup', `WS buffer flushed: ${buffered.length} candles`)
+  }
+
+  // 4e. Signal TUI: backfill complete → transition to dashboard
+  //     NOTE: materialize current setups happens later (step 9b) after agent subscribes to pipeline.
   setBackfillDone()
   dashboardBootstrapPhase = 'ready'
 
@@ -575,11 +576,7 @@ async function main(): Promise<void> {
     const addrShort = `${acctAddr.slice(0, 6)}…${acctAddr.slice(-4)}`
 
     const exchangeName = activeExchange === 'BB' ? 'Bybit' : 'Hyperliquid'
-    if (getEffectivePaperTrade()) {
-      log.info('startup', 'MODE  | PAPER TRADE — orders are SIMULATED, no real exchange calls')
-    } else {
-      log.info('startup', `MODE  | LIVE TRADING — real orders on ${exchangeName}`)
-    }
+    log.info('startup', `MODE  | LIVE TRADING — real orders on ${exchangeName}`)
     log.info('startup', `ACCT  | ${addrShort} | balance: $${account.effectiveBalance.toFixed(2)} (perp: $${account.accountValue.toFixed(2)} + spot: $${account.spotUsdcBalance.toFixed(2)}) | margin: $${account.totalMarginUsed.toFixed(2)} | free: $${account.withdrawable.toFixed(2)}`)
 
     if (positions.length > 0) {
@@ -600,9 +597,6 @@ async function main(): Promise<void> {
       throw new StartupFatalError(`BB startup exchange bootstrap failed: ${msg}`)
     }
     log.warn('startup', `ACCT  | Could not fetch account info: ${msg}`)
-    if (getEffectivePaperTrade()) {
-      log.info('startup', 'MODE  | PAPER TRADE — continuing without wallet')
-    }
   }
 
   // 8. Start health monitor periodic check (S13: Self-Healing)
@@ -614,7 +608,6 @@ async function main(): Promise<void> {
   const pm = getPositionMonitor()
   const bridge = getInvalidationBridge()
 
-  // Wire ExchangePool to OrderManager only if init succeeded (paper can continue without wallet)
   if (pool.isInitialized()) {
     om.setExchangePool(pool)
   }
@@ -633,13 +626,11 @@ async function main(): Promise<void> {
 
   // Crash recovery: re-register positions from DB-filled orders for coins still open on exchange.
   // PositionMonitor state is in-memory — lost on restart → positions show as 'ext' without this.
-  if (!getEffectivePaperTrade()) {
-    try {
-      const openSnaps = await queryExchangePositions()
-      if (openSnaps) om.restoreOpenPositions(openSnaps)
-    } catch (err) {
-      log.warn('agent', `restoreOpenPositions failed (non-fatal): ${err instanceof Error ? err.message : err}`)
-    }
+  try {
+    const openSnaps = await queryExchangePositions()
+    if (openSnaps) om.restoreOpenPositions(openSnaps)
+  } catch (err) {
+    log.warn('agent', `restoreOpenPositions failed (non-fatal): ${err instanceof Error ? err.message : err}`)
   }
 
   // Agent → PositionMonitor (dispatch back with optional legacy strategy context)
@@ -647,17 +638,6 @@ async function main(): Promise<void> {
 
   // PositionMonitor → OrderManager: trail stop SL updates go directly to exchange
   pm.setUpdateStopCallback((parentOrderId, newSlPrice) => om.modifySLPrice(parentOrderId, newSlPrice))
-
-  // PositionMonitor price getter: used in paper mode to simulate SL/TP hits every 10s
-  pm.setPriceGetter((coin) => {
-    if (activeExchange === 'BB') {
-      const candles = getCandles(coin, '1m', 1)
-      const last = candles[candles.length - 1]
-      return last?.c ?? null
-    }
-    const ctx = getLatestAssetCtx(coin)
-    return ctx?.markPrice ?? null
-  })
 
   // Wire equity updates from PositionMonitor back into the agent for portfolio risk checks.
   pm.setEquityCallback(equity => agent.setAccountEquity(equity))
@@ -689,8 +669,14 @@ async function main(): Promise<void> {
   // InvalidationBridge ← Pipeline (invalidation events) → Agent
   bridge.connect(getPipelineEmitter(), agent)
 
-  // One scan per coin/TF from backfilled store so bias/TUI/strategies are live immediately
-  bootstrapPipelineFromStore(coins)
+  // 9b. Materialize current-bar setups + seed WS dedup (AFTER agent subscribes to pipeline)
+  //     If replay ran, state is already rebuilt — materialize emits current setups to agent.
+  //     If no replay (STATE_REPLAY_BARS all 0), falls back to legacy bootstrapPipelineFromStore.
+  if (replayCount > 0) {
+    materializeCurrentSetupsFromStore(coins)
+  } else {
+    bootstrapPipelineFromStore(coins)
+  }
 
   log.info('agent', 'Agent wired: smc-sd + exchange pool + order manager + position monitor + invalidation bridge + Telegram bot')
 
@@ -700,7 +686,6 @@ async function main(): Promise<void> {
   // 11. Upgrade TUI data sources — agent + health now initialized
   tuiSources.getAgentSnapshot = () => agent.getSnapshot()
   tuiSources.getPositions = () => {
-    if (getEffectivePaperTrade()) return pm.getPositions()
     const exchangeSnap = liveTuiExchangePositionsCache
     if (exchangeSnap === null) return pm.getPositions()
     return mergeExchangeAndTrackedForTui(pm.getPositions(), exchangeSnap)
@@ -754,7 +739,7 @@ async function cleanup(reason: 'reconnect' | 'shutdown' = 'reconnect'): Promise<
   await stopOiFeed()
   await feed.closeAll()
   if (getActiveExchange() === 'BB') {
-    if (reason === 'shutdown' && !getEffectivePaperTrade()) {
+    if (reason === 'shutdown') {
       try {
         const pool = getExchangePool()
         if (pool.isInitialized()) {

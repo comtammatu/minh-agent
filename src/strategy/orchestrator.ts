@@ -14,11 +14,12 @@ import type {
   StrategyContext,
   DecisionTrace,
 } from '../types.js'
-import { appendCandle, getCandles, getCandlesInto } from '../feed/store.js'
+import { appendCandle, getCandles, getCandlesInto, snapshotStoreForReplay, clearStore, setCandles } from '../feed/store.js'
 import {
   getSetupGeneratorMinCandles,
   getSetupGeneratorWindowRequirements,
   runSetupGenerator,
+  clearSetupGeneratorState,
 } from './engine.js'
 import { computeExpiresAtBar, setupId } from './shared/invalidation.js'
 import { getPipelineStatsMutable, resetPipelineStats } from './diagnostics.js'
@@ -47,6 +48,12 @@ import { log } from '../lib/logger.js'
 import { EventEmitter } from 'events'
 
 // ── Module-level state ──────────────────────────────────────────────────────
+
+/** Bootstrap replay mode: suppress external side effects, keep internal state building. */
+let replayMode = false
+
+export function setReplayMode(value: boolean): void { replayMode = value }
+export function isInReplayMode(): boolean { return replayMode }
 
 /** Per-trial strategy params set by backtest engine. null = live trading (use config.ts defaults). */
 let activeStrategyParams: StrategyParams | null = null
@@ -257,10 +264,16 @@ function dispatchClosedBarScan(coin: string, interval: CandleInterval): void {
     context = { htfCandles, htfInterval }
   }
 
-  refreshStatusSnapshot(coin, interval, candles, idx, htfCandles)
+  // Status snapshot: skip during replay (it's transient TUI state, not worth computing for history)
+  if (!replayMode) {
+    refreshStatusSnapshot(coin, interval, candles, idx, htfCandles)
+  }
 
+  // Strategy scan: ALWAYS runs — builds internal state (htfPOIs, confirmedPOIs, lastSignalState)
   const signal = runSetupGenerator(coin, interval, candles, idx, context, activeStrategyParams ?? undefined)
-  if (signal !== null) {
+
+  // Post-signal tracking: suppress during replay (no setup tracking, stats, emit, log)
+  if (signal !== null && !replayMode) {
     const sk = statusKey(coin, interval)
     const id = setupId(coin, interval, signal.type)
     const existingSetup = activeSetups.get(id)
@@ -336,6 +349,125 @@ export function bootstrapPipelineFromStore(coins: readonly string[]): void {
     }
   }
   log.info('pipeline', `Bootstrap scan + WS seed | ${coins.length} coin(s) × ${TIMEFRAMES.length} TF`)
+}
+
+// ── Replay Event ────────────────────────────────────────────────────────────
+
+interface ReplayEvent {
+  coin: string
+  interval: CandleInterval
+  candle: Candle
+}
+
+/**
+ * Build a chronologically sorted replay sequence from candle data.
+ * Interleaves all coin×TF candles by timestamp for correct multi-asset replay.
+ * Same logic as backtest/engine.ts:buildReplaySequence — shared here for live bootstrap.
+ */
+function buildReplaySequence(
+  snapshot: Map<string, Candle[]>,
+  coins: readonly string[],
+  intervals: CandleInterval[],
+): ReplayEvent[] {
+  const events: ReplayEvent[] = []
+  for (const coin of coins) {
+    for (const tf of intervals) {
+      const key = `${coin}|${tf}`
+      const data = snapshot.get(key)
+      if (!data || data.length === 0) continue
+      for (const candle of data) {
+        events.push({ coin, interval: tf, candle })
+      }
+    }
+  }
+  events.sort((a, b) => a.candle.t - b.candle.t)
+  return events
+}
+
+/**
+ * Bootstrap replay: rebuild multi-stage strategy state by replaying historical
+ * candles through onCandleTick in global chronological order.
+ *
+ * Flow: snapshot → clear store/state → preseed 1d → replay → (caller flushes WS + materializes)
+ *
+ * Returns number of replayed candles (0 if all STATE_REPLAY_BARS are 0).
+ */
+export function bootstrapReplayFromStore(coins: readonly string[]): number {
+  const reqs = getSetupGeneratorWindowRequirements()
+
+  // Determine which TFs need replay
+  const replayTFs: CandleInterval[] = []
+  for (const [tf, bars] of Object.entries(reqs.replayBars)) {
+    if (bars > 0) replayTFs.push(tf as CandleInterval)
+  }
+  if (replayTFs.length === 0) return 0  // No replay needed (S1 config: all 0)
+
+  const t0 = performance.now()
+
+  // 1. Snapshot replay series from current store
+  const snapshot = snapshotStoreForReplay(coins, replayTFs, reqs.replayBars)
+
+  // Also snapshot preseed TFs (not replayed but needed as HTF context)
+  const preseedSnapshot = new Map<string, Candle[]>()
+  for (const tf of reqs.preseedTFs) {
+    for (const coin of coins) {
+      const key = `${coin}|${tf}`
+      const candles = getCandles(coin, tf, Infinity)
+      if (candles.length > 0) preseedSnapshot.set(key, candles)
+    }
+  }
+
+  // 2. Clear store + pipeline state + strategy state
+  clearStore()
+  clearPipelineState()
+  clearSetupGeneratorState()
+
+  // 3. Pre-seed preseedTFs into store (e.g., 1d for 4h HTF context)
+  for (const [key, candles] of preseedSnapshot) {
+    const [coin, tf] = key.split('|') as [string, CandleInterval]
+    setCandles(coin, tf, candles)
+  }
+
+  // 4. Build global chronological replay sequence
+  const events = buildReplaySequence(snapshot, coins, replayTFs)
+  if (events.length === 0) {
+    log.info('pipeline', 'Bootstrap replay: no candles to replay')
+    return 0
+  }
+
+  // 5. Replay with side-effects suppressed
+  replayMode = true
+  try {
+    for (const ev of events) {
+      onCandleTick(ev.coin, ev.interval, ev.candle)
+    }
+  } finally {
+    replayMode = false
+  }
+
+  log.info('pipeline',
+    `Bootstrap REPLAY | ${coins.length} coins × ${replayTFs.join(',')} | ` +
+    `${events.length} candles | ${(performance.now() - t0).toFixed(0)}ms`)
+
+  return events.length
+}
+
+/**
+ * Materialize current-bar setups: scan the latest closed bar per signal TF and emit to agent.
+ * Separate from bootstrapPipelineFromStore to avoid double-scan after replay.
+ * Also seeds WS dedup timestamps.
+ */
+export function materializeCurrentSetupsFromStore(coins: readonly string[]): void {
+  for (const coin of coins) {
+    for (const tf of TIMEFRAMES) {
+      const interval = tf as CandleInterval
+      if ((SIGNAL_TIMEFRAMES as readonly string[]).includes(interval)) {
+        dispatchClosedBarScan(coin, interval)
+      }
+      seedLastCandleTsFromStore(coin, interval)
+    }
+  }
+  log.info('pipeline', `Materialize current setups + WS seed | ${coins.length} coin(s) × ${TIMEFRAMES.length} TF`)
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
