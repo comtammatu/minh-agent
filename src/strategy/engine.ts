@@ -2,6 +2,23 @@ import type { Candle, CandleInterval, Signal, StrategyContext } from '../types.j
 import type { StrategyParams } from '../backtest/types.js'
 import { SmcSdStrategy } from './strategies/smc-sd/index.js'
 
+// ── Window Requirements ────────────────────────────────────────────────────
+
+/** Strategy-declared data depth + replay needs.
+ *  Orchestrator + runtime use these to size scan windows and bootstrap replay. */
+export interface WindowRequirements {
+  /** Bars needed per TF for live scan (planning depth). */
+  planningBars: Partial<Record<CandleInterval, number>>
+  /** Bars per TF when serving as HTF context for another TF (separate from planningBars). */
+  htfContextBars: Partial<Record<CandleInterval, number>>
+  /** Bars per TF to replay at bootstrap for state rebuild. */
+  replayBars: Partial<Record<CandleInterval, number>>
+  /** TFs that must exist in store before replay starts (e.g., 1d for 4h HTF context). */
+  preseedTFs: CandleInterval[]
+}
+
+// ── SetupGenerator interface ───────────────────────────────────────────────
+
 export interface SetupGenerator {
   scan(
     coin: string,
@@ -11,7 +28,13 @@ export interface SetupGenerator {
     context?: StrategyContext,
     strategyParams?: StrategyParams,
   ): Signal | null
+
+  /** @deprecated Use windowRequirements().planningBars instead. Kept for backward compat. */
   minCandles(): number
+
+  /** Declare data depth + replay needs. Orchestrator uses this to size windows. */
+  windowRequirements(): WindowRequirements
+
   clearState(): void
 }
 
@@ -23,6 +46,10 @@ export function getSetupGenerator(): SetupGenerator {
 
 export function getSetupGeneratorMinCandles(): number {
   return setupGenerator.minCandles()
+}
+
+export function getSetupGeneratorWindowRequirements(): WindowRequirements {
+  return setupGenerator.windowRequirements()
 }
 
 export function runSetupGenerator(

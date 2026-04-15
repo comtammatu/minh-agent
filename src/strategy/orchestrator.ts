@@ -17,6 +17,7 @@ import type {
 import { appendCandle, getCandles, getCandlesInto } from '../feed/store.js'
 import {
   getSetupGeneratorMinCandles,
+  getSetupGeneratorWindowRequirements,
   runSetupGenerator,
 } from './engine.js'
 import { computeExpiresAtBar, setupId } from './shared/invalidation.js'
@@ -32,17 +33,16 @@ import {
 } from './shared/indicator-cache.js'
 import {
   MIN_CANDLES_FOR_SCAN,
-  INDICATOR_WINDOW,
+  PLANNING_WINDOW_BARS,
+  READY_BARS,
   TIMEFRAMES,
   SIGNAL_TIMEFRAMES,
   HTF_MAP,
   TIMEFRAME_MS,
   STATUS_UPDATE_EVERY_BARS,
   getActiveExchange,
-  getEffectivePaperTrade,
 } from '../config.js'
 import type { StrategyParams } from '../backtest/types.js'
-import { getPaperTracker } from '../agent/paper-tracker.js'
 import { log } from '../lib/logger.js'
 import { EventEmitter } from 'events'
 
@@ -127,8 +127,25 @@ function removeSetupById(id: string): void {
   decrementActiveSetupCount(setupCountKey(existing))
 }
 
-function requiredScanWindow(): number {
-  return Math.max(INDICATOR_WINDOW, getSetupGeneratorMinCandles())
+/** Per-TF planning window: engine declaration > config policy > legacy fallback. */
+function planningWindowFor(interval: CandleInterval): number {
+  const reqs = getSetupGeneratorWindowRequirements()
+  const engineVal = reqs.planningBars[interval]
+  if (engineVal !== undefined) return engineVal
+  return PLANNING_WINDOW_BARS[interval]
+}
+
+/** Per-TF HTF context window: engine declaration > config policy > legacy fallback. */
+function htfContextWindowFor(htfInterval: CandleInterval): number {
+  const reqs = getSetupGeneratorWindowRequirements()
+  const engineVal = reqs.htfContextBars[htfInterval]
+  if (engineVal !== undefined) return engineVal
+  return PLANNING_WINDOW_BARS[htfInterval]
+}
+
+/** Min ready bars for a TF. Uses READY_BARS, falls back to MIN_CANDLES_FOR_SCAN. */
+function readyBarsFor(interval: CandleInterval): number {
+  return READY_BARS[interval] ?? MIN_CANDLES_FOR_SCAN
 }
 
 function getOrCreateScanBuffer(coin: string, interval: CandleInterval): Candle[] {
@@ -179,10 +196,11 @@ function refreshStatusSnapshot(
   const breaks = getCachedStructureBreaks(coin, interval, candles, idx)
   const htfInterval = HTF_MAP[interval]
   const htfIdx = htfCandles.length - 1
-  const htfBreaks = htfCandles.length >= MIN_CANDLES_FOR_SCAN && htfInterval !== interval
+  const htfReady = htfCandles.length >= readyBarsFor(htfInterval) && htfInterval !== interval
+  const htfBreaks = htfReady
     ? getCachedStructureBreaks(coin, htfInterval, htfCandles, htfIdx)
     : undefined
-  const htfWyckoff = htfCandles.length >= MIN_CANDLES_FOR_SCAN && htfInterval !== interval
+  const htfWyckoff = htfReady
     ? getCachedWyckoff(coin, htfInterval, htfCandles, htfIdx)
     : undefined
   const bias = determineBias(candles, idx, htfCandles, pivots, {
@@ -211,30 +229,31 @@ function refreshStatusSnapshot(
  * Used after REST/PG backfill so bias/status/setups appear without waiting for the next TF close.
  */
 function dispatchClosedBarScan(coin: string, interval: CandleInterval): void {
-  const maxMin = requiredScanWindow()
+  const planWindow = planningWindowFor(interval)
   const activeExchange = getActiveExchange()
   const candles = getCandlesInto(
     coin,
     interval,
-    maxMin + 2,
+    planWindow + 2,
     getOrCreateScanBuffer(coin, interval),
   )
-  if (candles.length < MIN_CANDLES_FOR_SCAN + 1) return
+  if (candles.length < readyBarsFor(interval) + 1) return
 
   const idx = candles.length - 2
 
   // Build HTF context for ICT top-down analysis (SMC-SD uses this)
   const htfInterval = HTF_MAP[interval]
-  const htfCandles = htfInterval !== interval
+  const htfContextWindow = htfInterval !== interval ? htfContextWindowFor(htfInterval) : 0
+  const htfCandles = htfContextWindow > 0
     ? getCandlesInto(
       coin,
       htfInterval,
-      Math.max(maxMin + 2, INDICATOR_WINDOW),
+      htfContextWindow + 2,
       getOrCreateHtfBuffer(coin, htfInterval),
     )
     : []
   let context: StrategyContext | undefined
-  if (htfInterval !== interval && htfCandles.length >= MIN_CANDLES_FOR_SCAN) {
+  if (htfInterval !== interval && htfCandles.length >= readyBarsFor(htfInterval)) {
     context = { htfCandles, htfInterval }
   }
 
@@ -329,20 +348,6 @@ export function onCandleTick(
 ): void {
   // Always store latest candle data
   appendCandle(coin, interval, candle)
-
-  // ── Paper mode: evaluate multi-TP exits on every candle tick ───────────
-  // Mirrors backtest bar-by-bar evaluation — check SL/TP/trailing on each candle.
-  if (getEffectivePaperTrade()) {
-    const result = getPaperTracker().checkCandle(coin, interval, candle)
-    if (result && result.action === 'full_close') {
-      pipelineEmitter.emit('paper_exit', {
-        coin,
-        exitReason: result.exitReason,
-        closePrice: result.closePrice,
-        pnl: result.pnl,
-      })
-    }
-  }
 
   // ── Closed-candle gate ──────────────────────────────────────────────────
   const sk = statusKey(coin, interval)

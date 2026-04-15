@@ -15,7 +15,7 @@
 
 import type { Candle, CandleInterval, Signal, PatternType, SignalSide, StrategyContext, KeyZone } from '../../../types.js'
 import type { StrategyParams } from '../../../backtest/types.js'
-import type { SetupGenerator } from '../../engine.js'
+import type { SetupGenerator, WindowRequirements } from '../../engine.js'
 import {
   premiumDiscount,
   isDisplacementCandle,
@@ -1285,7 +1285,38 @@ export class SmcSdStrategy implements SetupGenerator {
     }
   }
 
+  /** @deprecated Use windowRequirements() instead. */
   minCandles(): number { return MIN_CANDLES_FOR_SCAN }
+
+  windowRequirements(): WindowRequirements {
+    // S2: planningBars set to target depths per TF for the 4-mode ICT model.
+    // Live behavior unchanged until orchestrator wiring reads these (already done in S2).
+    // Values sized for each mode's structural needs:
+    //   4h: 2000 bars ≈ 333 days — HTF POI detection needs deep structure history
+    //   1h: 1000 bars ≈ 41 days — same-TF analysis + regime context
+    //   15m: 1000 bars ≈ 10 days — confirmation break detection
+    //   5m: 500 bars ≈ 1.7 days — micro entry via FVG/displacement
+    return {
+      planningBars: {
+        '5m': 500,
+        '15m': 1_000,
+        '1h': 1_000,
+        '4h': 2_000,
+      },
+      htfContextBars: {
+        '1h': 400,   // 5m scan reads 1h as HTF context
+        '4h': 500,   // 15m/1h scan reads 4h as HTF context
+        '1d': 200,   // 4h scan reads 1d as HTF context
+      },
+      replayBars: {
+        '5m': 500,    // rebuild lastSignalState (dedup)
+        '15m': 1_000, // rebuild confirmedPOIs
+        '1h': 1_000,  // rebuild 1h same-TF state
+        '4h': 2_000,  // rebuild htfPOIs
+      },
+      preseedTFs: ['1d'],
+    }
+  }
 
   clearState(): void {
     lastSignalState.clear()

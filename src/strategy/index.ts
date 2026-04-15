@@ -26,11 +26,13 @@ export {
 export {
   getSetupGenerator,
   getSetupGeneratorMinCandles,
+  getSetupGeneratorWindowRequirements,
   runSetupGenerator,
   clearSetupGeneratorState,
   resetSetupGenerator,
   setSetupGeneratorForTests,
   type SetupGenerator,
+  type WindowRequirements,
 } from './engine.js'
 
 // ── Diagnostics (pipeline stats) ────────────────────────────────────────────
