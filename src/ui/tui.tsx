@@ -15,7 +15,7 @@ import React, { useState, useEffect, useMemo, memo, useRef } from 'react'
 import { render, Box, Text, useApp, useInput, useStdout } from 'ink'
 import type { AgentSnapshot } from '../agent/types.js'
 import type { StatusSnapshot } from '../strategy/orchestrator.js'
-import { CANONICAL_STRATEGY_ID, WS_MAX_SUBSCRIPTIONS, TIMEFRAMES, MIN_CANDLES_FOR_SCAN } from '../config.js'
+import { CANONICAL_STRATEGY_ID, WS_MAX_SUBSCRIPTIONS, TIMEFRAMES, READY_BARS } from '../config.js'
 import type { LiveWalletStats } from './live-account-stats.js'
 import { candleCount } from '../feed/store.js'
 import type { CandleInterval, ActiveSetup } from '../types.js'
@@ -1183,7 +1183,7 @@ const BuddyPanel = memo(function BuddyPanel({ mood, tick }: { mood: BuddyMood; t
 function countReadyTFs(coin: string): number {
   let count = 0
   for (const tf of TIMEFRAMES) {
-    if (candleCount(coin, tf as CandleInterval) >= MIN_CANDLES_FOR_SCAN) count++
+    if (candleCount(coin, tf as CandleInterval) >= READY_BARS[tf as CandleInterval]) count++
   }
   return count
 }

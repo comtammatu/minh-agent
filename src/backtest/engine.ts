@@ -32,7 +32,10 @@ import { getPipelineStats } from '../strategy/diagnostics.js'
 import { clearSetupGeneratorState } from '../strategy/engine.js'
 import { clearStore, clearOnPersist, getCandles } from '../feed/store.js'
 import { atr } from '../indicators/core.js'
-import { BACKTEST_SLIPPAGE_PCT, BACKTEST_COMMISSION_PCT, ATR_TRAIL_MULTIPLIER, INDICATOR_WINDOW, BACKTEST_CHUNK_SIZE } from '../config.js'
+import { BACKTEST_SLIPPAGE_PCT, BACKTEST_COMMISSION_PCT, ATR_TRAIL_MULTIPLIER, BACKTEST_CHUNK_SIZE } from '../config.js'
+
+/** Bars to fetch for ATR computation at fill time. ATR(14) needs ~20 bars; 50 provides safe margin. */
+const ATR_LOOKBACK = 50
 import { inferScanMode } from './optimize.js'
 
 /**
@@ -69,7 +72,7 @@ export function runBacktest(
     if (config.disabledScanModes?.includes(inferScanMode(setup.interval))) return
 
     // Compute ATR at fill time from store (candles already appended)
-    const storeCandles = getCandles(setup.coin, setup.interval, INDICATOR_WINDOW)
+    const storeCandles = getCandles(setup.coin, setup.interval, ATR_LOOKBACK)
     const idx = storeCandles.length - 2  // closed candle (same as pipeline)
     const atrVal = idx >= 14 ? atr(storeCandles, idx, 14) : 0
     const trailMult = ATR_TRAIL_MULTIPLIER[setup.interval] ?? 2.0
@@ -212,7 +215,7 @@ export async function runBacktestAsync(
     // Skip disabled scan modes (for isolated testing)
     if (config.disabledScanModes?.includes(inferScanMode(setup.interval))) return
 
-    const storeCandles = getCandles(setup.coin, setup.interval, INDICATOR_WINDOW)
+    const storeCandles = getCandles(setup.coin, setup.interval, ATR_LOOKBACK)
     const idx = storeCandles.length - 2
     const atrVal = idx >= 14 ? atr(storeCandles, idx, 14) : 0
     const trailMult = ATR_TRAIL_MULTIPLIER[setup.interval] ?? 2.0

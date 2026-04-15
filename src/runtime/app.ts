@@ -451,7 +451,7 @@ async function main(): Promise<void> {
         log.error('persist', `bulk upsert failed ${coin}|${interval}: ${err instanceof Error ? err.message : String(err)}`)
       })
     },
-    (coin, interval) => candleCount(coin, interval) >= MIN_CANDLES_FOR_SCAN,
+    (coin, interval) => candleCount(coin, interval) >= (READY_BARS[interval as CandleInterval] ?? MIN_CANDLES_FOR_SCAN),
   )
   const tfReady = new Map<string, number>()
   for (const r of backfillResults) tfReady.set(r.coin, r.readyTFs)

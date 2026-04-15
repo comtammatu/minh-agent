@@ -30,7 +30,7 @@ import {
   clearStore,
   candleCount,
 } from './feed/store.js'
-import { getSetupGeneratorMinCandles, resetSetupGenerator, runSetupGenerator } from './strategy/engine.js'
+import { getSetupGeneratorWindowRequirements, resetSetupGenerator, runSetupGenerator } from './strategy/engine.js'
 import { getPipelineEmitter, clearPipelineState } from './strategy/orchestrator.js'
 import type {
   Candle,
@@ -43,8 +43,8 @@ import {
   COMMON_COINS,
   SIGNAL_TIMEFRAMES,
   TIMEFRAMES,
-  INDICATOR_WINDOW,
-  MIN_CANDLES_FOR_SCAN,
+  PLANNING_WINDOW_BARS,
+  READY_BARS,
 } from './config.js'
 import { log } from './lib/logger.js'
 
@@ -248,12 +248,13 @@ function runStrategiesForExchange(exchangeId: ExchangeId): CollectedSignal[] {
   emitter.on('setup', onSetup)
 
   // 4. Run closed-bar scan for each coin/TF
-  const maxMin = Math.max(INDICATOR_WINDOW, getSetupGeneratorMinCandles())
+  const reqs = getSetupGeneratorWindowRequirements()
 
   for (const coin of coins) {
     for (const tf of signalTfs) {
-      const candles = getCandles(coin, tf, maxMin + 2, 'HL') // reads from default prefix
-      if (candles.length < MIN_CANDLES_FOR_SCAN + 1) continue
+      const planWindow = reqs.planningBars[tf] ?? PLANNING_WINDOW_BARS[tf]
+      const candles = getCandles(coin, tf, planWindow + 2, 'HL') // reads from default prefix
+      if (candles.length < (READY_BARS[tf] ?? 50) + 1) continue
 
       const idx = candles.length - 2
       const signal = runSetupGenerator(coin, tf, candles, idx)
@@ -373,8 +374,9 @@ async function startLiveComparison(
     appendCandle(coin, interval, candle, 'HL')
 
     // Run smc-sd directly (pure, no store dependency beyond passed candles)
-    const candles = getCandles(coin, interval, INDICATOR_WINDOW + 2, exchangeId)
-    if (candles.length < MIN_CANDLES_FOR_SCAN + 1) return
+    const planWindow = getSetupGeneratorWindowRequirements().planningBars[interval] ?? PLANNING_WINDOW_BARS[interval]
+    const candles = getCandles(coin, interval, planWindow + 2, exchangeId)
+    if (candles.length < (READY_BARS[interval] ?? 50) + 1) return
 
     const idx = candles.length - 2
     const signal = runSetupGenerator(coin, interval, candles, idx)

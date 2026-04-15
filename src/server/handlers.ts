@@ -3,7 +3,7 @@ import type { JournalEntry, JournalEventType, PositionState } from '../agent/typ
 import { getJournalEntries } from '../agent/journal.js'
 import { type LiveMetrics, } from '../analytics/types.js'
 import { getLiveMetrics } from '../analytics/metrics-service.js'
-import { MAX_IN_MEMORY_CANDLES_BY_INTERVAL } from '../config.js'
+import { HOT_CACHE_CAP_BARS } from '../config.js'
 import { loadCandlesBefore, loadLatestCandle } from '../db/candle-repo.js'
 import { getCandles } from '../feed/store.js'
 import { log } from '../lib/logger.js'
@@ -363,7 +363,7 @@ export function createDashboardFetchHandler(options: DashboardFetchHandlerOption
         const hotCandles = getCandles(
           coin,
           interval,
-          MAX_IN_MEMORY_CANDLES_BY_INTERVAL[interval],
+          HOT_CACHE_CAP_BARS[interval],
           options.state.activeExchange,
         )
         const persisted = await readCandlesBefore(
