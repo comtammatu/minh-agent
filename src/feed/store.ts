@@ -8,7 +8,7 @@
  */
 
 import type { Candle, CandleInterval, ExchangeId } from '../types.js'
-import { INDICATOR_WINDOW, MAX_IN_MEMORY_CANDLES_BY_INTERVAL, MIN_CANDLES_FOR_SCAN } from '../config.js'
+import { HOT_CACHE_CAP_BARS } from '../config.js'
 
 const store = new Map<string, Candle[]>()
 
@@ -30,10 +30,9 @@ function key(coin: string, interval: CandleInterval, exchange: ExchangeId = 'HL'
 }
 
 function maxInMemoryCandles(interval: CandleInterval): number {
-  const configured = MAX_IN_MEMORY_CANDLES_BY_INTERVAL[interval]
-  // Orchestrator may request maxMin + 2 (closed-candle index).
-  const minSafe = Math.max(MIN_CANDLES_FOR_SCAN, INDICATOR_WINDOW) + 2
-  return Math.max(configured, minSafe)
+  // HOT_CACHE_CAP_BARS is validated at startup to be >= PLANNING_WINDOW_BARS + 2,
+  // so no minSafe guard needed here. See validateWindowPolicies() in config.ts.
+  return HOT_CACHE_CAP_BARS[interval]
 }
 
 function trim(arr: Candle[], cap: number): Candle[] {

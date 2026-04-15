@@ -34,6 +34,12 @@ import {
   BACKFILL_REPLACEMENT_ROUNDS,
   getEffectivePaperTrade,
   MIN_CANDLES_FOR_SCAN,
+  validateWindowPolicies,
+  BOOTSTRAP_LOAD_BARS,
+  HOT_CACHE_CAP_BARS,
+  PLANNING_WINDOW_BARS,
+  STATE_REPLAY_BARS,
+  READY_BARS,
   getActiveExchange,
   BYBIT_TOP_COINS_LIMIT,
   BYBIT_FUNDING_REFRESH_MS,
@@ -93,6 +99,8 @@ import { startBot, stopBot, formatAlert, sendTelegramAlert } from '../alert/tele
 import { connectToAgent as connectMetrics } from '../analytics/metrics-service.js'
 import { resetSetupGenerator } from '../strategy/engine.js'
 import type { CandleInterval } from '../types.js'
+import { startDashboardServer, stopDashboardServer } from '../server/index.js'
+import type { DashboardBootstrapPhase } from '../server/contracts.js'
 
 // ── Banner (logged inside main() before TUI starts) ────────────────────────
 
@@ -108,6 +116,7 @@ type ShutdownSafeExchange = {
 
 // ── TUI log file sink — captures all log output while TUI runs ───────────────
 let tuiLogStream: WriteStream | null = null
+let dashboardBootstrapPhase: DashboardBootstrapPhase = 'warming_up'
 
 // ── Coin Lifecycle Helpers ──────────────────────────────────────────────────
 
@@ -273,6 +282,7 @@ async function refreshLiveTuiCaches(): Promise<void> {
 async function main(): Promise<void> {
   const activeExchange = getActiveExchange()
   feed = activeExchange === 'HL' ? new HLFeed() : new BybitFeed()
+  dashboardBootstrapPhase = 'warming_up'
 
   // Initialize selector with exchange-aware fetch function and top-coin limit.
   // BB: dynamic fetch from Bybit tickers API (top 50 by OI), no HIP-3.
@@ -290,7 +300,19 @@ async function main(): Promise<void> {
     `regime:${REGIME_MULTIPLIERS.aligned}/${REGIME_MULTIPLIERS.neutral}/${REGIME_MULTIPLIERS.counter}`,
   )
 
-  // 0. Run DB migrations
+  // 0a. Validate window policies before anything loads data
+  validateWindowPolicies()
+
+  // 0b. Log window policy summary
+  const fmtPolicy = (p: Record<string, number>) =>
+    TIMEFRAMES.map(tf => `${tf}:${p[tf]}`).join(' ')
+  log.info('startup', `Window policy | bootstrap: ${fmtPolicy(BOOTSTRAP_LOAD_BARS)}`)
+  log.info('startup', `Window policy | hot_cache:  ${fmtPolicy(HOT_CACHE_CAP_BARS)}`)
+  log.info('startup', `Window policy | planning:   ${fmtPolicy(PLANNING_WINDOW_BARS)}`)
+  log.info('startup', `Window policy | replay:     ${fmtPolicy(STATE_REPLAY_BARS)}`)
+  log.info('startup', `Window policy | ready:      ${fmtPolicy(READY_BARS)}`)
+
+  // 0c. Run DB migrations
   await runMigrations(sql)
 
   // 1. Fetch top coins from HL — fatal if empty at startup (spec requirement)
@@ -401,6 +423,15 @@ async function main(): Promise<void> {
   tuiLogStream = createWriteStream('./minh.log', { flags: 'a' })
   setTuiSink(msg => { tuiLogStream!.write(msg + '\n') })
   startTui(tuiSources)
+  try {
+    startDashboardServer({
+      activeExchange,
+      getBootstrapPhase: () => dashboardBootstrapPhase,
+      sources: tuiSources,
+    })
+  } catch (err) {
+    log.warn('dashboard', `Dashboard startup failed (non-fatal): ${err instanceof Error ? err.message : err}`)
+  }
 
   // 3. Load candles from PG → memory
   const pgTimestamps = await getAllLastTimestamps()
@@ -488,6 +519,7 @@ async function main(): Promise<void> {
 
   // 4c. Signal TUI: backfill complete → transition to dashboard
   setBackfillDone()
+  dashboardBootstrapPhase = 'ready'
 
   // 5. Wire PG write-through for live WS candles (R14: sync write-through)
   //    Wired AFTER backfill so startup uses efficient bulk operations, not per-candle upserts
@@ -707,6 +739,8 @@ async function main(): Promise<void> {
 
 /** Clean up intervals, WS connections, refresh loop, polling, agent sync, and TUI before reconnect/shutdown. */
 async function cleanup(reason: 'reconnect' | 'shutdown' = 'reconnect'): Promise<void> {
+  dashboardBootstrapPhase = 'warming_up'
+  stopDashboardServer()
   clearTuiSink()
   tuiLogStream?.end()
   tuiLogStream = null

@@ -46,7 +46,68 @@ export const REGIME_MULTIPLIERS = {
   counter: 0.25,
 } as const
 
-// Minimum candles required before scanning
+// ── Window Policies (per-TF) ──────────────────────────────────────────────
+// Five distinct policies governing how many candles each subsystem uses.
+// S1: values are behavior-preserving (match legacy constants). S2+ will diverge.
+//
+// See: memory/project_window_policy_spec.md for full design rationale.
+
+/** Bars to load from PG/REST at startup (total target per coin|TF). */
+export const BOOTSTRAP_LOAD_BARS: Record<CandleInterval, number> = {
+  '1m': 1_000,
+  '5m': 2_000,
+  '15m': 5_000,
+  '1h': 5_000,
+  '4h': 5_000,
+  '1d': 5_000,
+}
+
+/** Max bars retained in RAM (bounded hot cache). Replaces MAX_IN_MEMORY_CANDLES_BY_INTERVAL. */
+export const HOT_CACHE_CAP_BARS: Record<CandleInterval, number> = {
+  '1m': 1_000,
+  '5m': 2_000,
+  '15m': 5_000,
+  '1h': 5_000,
+  '4h': 5_000,
+  '1d': 5_000,
+}
+
+/** Bars strategy is allowed to see per live scan tick (planning depth).
+ *  S1: 200 for all TFs (= legacy INDICATOR_WINDOW). S2 will set per-TF values. */
+export const PLANNING_WINDOW_BARS: Record<CandleInterval, number> = {
+  '1m': 200,
+  '5m': 200,
+  '15m': 200,
+  '1h': 200,
+  '4h': 200,
+  '1d': 200,
+}
+
+/** Bars to replay through onCandleTick at bootstrap to rebuild multi-stage state.
+ *  S1: 0 (no replay yet). S3 will set per-TF values. */
+export const STATE_REPLAY_BARS: Record<CandleInterval, number> = {
+  '1m': 0,
+  '5m': 0,
+  '15m': 0,
+  '1h': 0,
+  '4h': 0,
+  '1d': 0,
+}
+
+/** Min bars before coin|TF is considered strategy-ready. Replaces MIN_CANDLES_FOR_SCAN.
+ *  S1: 50 for all TFs (= legacy). S4 will raise per-TF. */
+export const READY_BARS: Record<CandleInterval, number> = {
+  '1m': 50,
+  '5m': 50,
+  '15m': 50,
+  '1h': 50,
+  '4h': 50,
+  '1d': 50,
+}
+
+// ── Deprecated aliases (keep exports for backward compat, remove in S4) ───
+
+/** @deprecated Use READY_BARS[interval] instead. */
 export const MIN_CANDLES_FOR_SCAN = 50
 
 // Total candles to fetch per TF during backfill
@@ -79,25 +140,11 @@ export const BACKFILL_REPLACEMENT_ROUNDS = 2
 export const REST_BURST_TOKENS = 12
 export const REST_REFILL_MS = 3_000
 
-// Candles to use for indicator calculation
+/** @deprecated Use PLANNING_WINDOW_BARS[interval] instead. */
 export const INDICATOR_WINDOW = 200
 
-// ── In-memory candle retention ─────────────────────────────────────────────
-// Keep a bounded "hot window" per coin|TF in RAM.
-// Historical candles are persisted to PG (write-through), so retaining unbounded
-// arrays in memory provides little value and will eventually overwhelm the host.
-//
-// Notes:
-// - 1m is used for entry refinement only (no signal scan), so a smaller window is fine.
-// - Larger TFs use wider windows for regime/structure context.
-export const MAX_IN_MEMORY_CANDLES_BY_INTERVAL: Record<CandleInterval, number> = {
-  '1m': 1_000,
-  '5m': 2_000,
-  '15m': 5_000,
-  '1h': 5_000,
-  '4h': 5_000,
-  '1d': 5_000,
-} as const
+/** @deprecated Use HOT_CACHE_CAP_BARS instead. */
+export const MAX_IN_MEMORY_CANDLES_BY_INTERVAL: Record<CandleInterval, number> = HOT_CACHE_CAP_BARS
 
 // Staleness: warn if no candle received in this many ms
 export const STALENESS_THRESHOLD_MS = 60_000
@@ -1023,6 +1070,22 @@ export const HEALTH = {
   dbStaleMs: 60_000,
 } as const
 
+function parsePortEnv(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim()
+  if (!raw) return fallback
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 65_535) {
+    throw new Error(`${name} must be a valid TCP port (received "${raw}")`)
+  }
+  return parsed
+}
+
+/** Local browser dashboard configuration (localhost-only). */
+export const DASHBOARD = {
+  host: '127.0.0.1',
+  port: parsePortEnv('DASHBOARD_PORT', 3030),
+} as const
+
 // ── Multi-exchange ─────────────────────────────────────────────────────────
 
 /**
@@ -1160,3 +1223,46 @@ export const OPTIMIZER_HOLDOUT_MIN_PF = 1.1
 export const OPTIMIZER_HOLDOUT_MIN_TRADES = 40
 /** Optimizer final objective: target holdout trades before trade-factor saturates. */
 export const OPTIMIZER_HOLDOUT_TRADE_TARGET = 40
+
+// ── Window Policy Validation ──────────────────────────────────────────────
+
+/**
+ * Validate window policy invariants at startup. Throws on violation.
+ * Called early in runtime boot before any data loading.
+ *
+ * Invariants:
+ *  1. HOT_CACHE_CAP_BARS[tf] >= PLANNING_WINDOW_BARS[tf] + 2
+ *  2. BOOTSTRAP_LOAD_BARS[tf] >= max(HOT_CACHE_CAP_BARS[tf], READY_BARS[tf], STATE_REPLAY_BARS[tf])
+ *  3. For every TF: READY_BARS[tf] > 0
+ *  4. HOT_CACHE_CAP_BARS[tf] > 0
+ *
+ * Invariant for preseedTFs and htfContextBars deferred to S2 (engine contract).
+ */
+export function validateWindowPolicies(): void {
+  const errors: string[] = []
+  for (const tf of TIMEFRAMES) {
+    const hot = HOT_CACHE_CAP_BARS[tf]
+    const plan = PLANNING_WINDOW_BARS[tf]
+    const boot = BOOTSTRAP_LOAD_BARS[tf]
+    const ready = READY_BARS[tf]
+    const replay = STATE_REPLAY_BARS[tf]
+
+    if (hot < plan + 2) {
+      errors.push(`HOT_CACHE_CAP_BARS['${tf}']=${hot} < PLANNING_WINDOW_BARS['${tf}']=${plan} + 2`)
+    }
+    if (boot < Math.max(hot, ready, replay)) {
+      errors.push(
+        `BOOTSTRAP_LOAD_BARS['${tf}']=${boot} < max(hot=${hot}, ready=${ready}, replay=${replay})`,
+      )
+    }
+    if (ready <= 0) {
+      errors.push(`READY_BARS['${tf}']=${ready} must be > 0`)
+    }
+    if (hot <= 0) {
+      errors.push(`HOT_CACHE_CAP_BARS['${tf}']=${hot} must be > 0`)
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(`Window policy invariant violation:\n  ${errors.join('\n  ')}`)
+  }
+}
