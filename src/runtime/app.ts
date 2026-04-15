@@ -290,7 +290,8 @@ async function main(): Promise<void> {
   selector = createCoinSelector(getActiveSetupCoins, onCoinsRefreshed, fetchRankedFn, topLimit)
 
   // Banner — logged before TUI starts, so these safely go to console
-  log.info('startup', `Minh (明) v2.0.0 — Autonomous Trading Agent [LIVE]`)
+  const modeTag = process.env['BYBIT_DEMO'] === 'true' ? 'DEMO' : 'LIVE'
+  log.info('startup', `Minh (明) v2.0.0 — Autonomous Trading Agent [${modeTag}]`)
   log.info('startup',
     `Config: dynamic top coins × ${TIMEFRAMES.join(',')} | ` +
     `min:${MIN_CONFIDENCE} | confluence:${CONFLUENCE_MIN}+ | ` +
