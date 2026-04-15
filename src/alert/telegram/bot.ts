@@ -10,7 +10,7 @@
  * The polling loop is non-blocking: uses fetch with timeout, yields between iterations.
  */
 
-import { TELEGRAM, TELEGRAM_BOT, setPaperTradeRuntimeOverride } from '../../config.js'
+import { TELEGRAM, TELEGRAM_BOT } from '../../config.js'
 import { log } from '../../lib/logger.js'
 import { sendTelegramAlert, formatScheduledBriefingHtml, escapeMarkdownV2 } from './alerts.js'
 import {
@@ -1101,18 +1101,9 @@ async function routeCallback(
   if (!data.startsWith('c:')) return
 
   const rest = data.slice(2)
-  if (rest === 'paper_on') {
-    setPaperTradeRuntimeOverride(true)
-    await sendTelegramAlert('Paper trade: *ON* \\(runtime\\)\\.', fetchFn, { parseMode: 'MarkdownV2' })
-    return
-  }
-  if (rest === 'paper_off') {
-    setPaperTradeRuntimeOverride(false)
-    await sendTelegramAlert(
-      'Paper trade: *OFF* \\(live\\)\\. \\/paper reset để khôi phục override\\.',
-      fetchFn,
-      { parseMode: 'MarkdownV2' },
-    )
+  if (rest === 'mode') {
+    const reply = await executeCommandByName('mode', '', chatId)
+    await sendTelegramAlert(reply, fetchFn, { parseMode: 'MarkdownV2' })
     return
   }
   if (rest === 'operator_confirm') {

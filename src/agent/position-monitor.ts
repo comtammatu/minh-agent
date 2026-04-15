@@ -45,14 +45,11 @@ import { getHLExchangeService as getExchangeService } from '../execution/hl-exch
 import type { IExchangeService as ExchangeService, AccountState } from '../execution/exchange-service.js'
 import { getExchangePool, type IExchangeService as PoolExchangeService } from '../execution/exchange-pool.js'
 import { log } from '../lib/logger.js'
-import { getEffectivePaperTrade, PAPER_SLIPPAGE_PCT } from '../config.js'
-import { getPaperTracker, getTotalPaperBalance } from './paper-tracker.js'
 import { getOrderManager } from './order-manager.js'
 
 // ─── Exchange Query (S10: real HL clearinghouseState) ──────────────────────
 
 function isBybitLiveMode(): boolean {
-  if (getEffectivePaperTrade()) return false
   return tryGetActiveExchange() === 'BB'
 }
 
@@ -63,8 +60,6 @@ function isBybitLiveMode(): boolean {
  */
 export async function queryExchangePositions(): Promise<ExchangePositionSnapshot[] | null> {
   try {
-    if (getEffectivePaperTrade()) return []
-
     const pool = getExchangePool()
     if (!pool.isInitialized()) {
       if (isBybitLiveMode()) {
@@ -229,8 +224,6 @@ export class PositionMonitor {
   private onUpdateStop: ((parentOrderId: string, newSlPrice: number) => void) | null = null
   /** Callback to update account equity on TradingAgent. */
   private onEquityUpdate: ((equity: number) => void) | null = null
-  /** Callback to get current mark price for a coin (paper mode SL/TP checks). */
-  private priceGetter: ((coin: string) => number | null) | null = null
   /** Cached exchange position snapshots from last syncWithExchange (TUI reuse — avoids duplicate API calls). */
   private lastExchangeSnapshots: ExchangePositionSnapshot[] | null = null
   /** Cached account state from last syncWithExchange (TUI reuse — avoids duplicate API calls). */
@@ -249,15 +242,6 @@ export class PositionMonitor {
   /** Set the callback for updating account equity used by portfolio risk checks. */
   setEquityCallback(fn: (equity: number) => void): void {
     this.onEquityUpdate = fn
-  }
-
-  /**
-   * Set the callback to get current mark price for a coin.
-   * Required for paper mode SL/TP simulation.
-   * Wired in runtime/app.ts via getLatestAssetCtx().
-   */
-  setPriceGetter(fn: (coin: string) => number | null): void {
-    this.priceGetter = fn
   }
 
   // ── Position Lifecycle ────────────────────────────────────────────────
@@ -390,35 +374,19 @@ export class PositionMonitor {
       case 'close': {
         log.info('position-monitor', `Position close: ${pos.coin} reason=${action.reason}`)
 
-        // Paper mode: compute P&L from tracker (entry recorded by OrderManager)
-        let closePrice = 0
-        let pnl = 0
-        if (getEffectivePaperTrade()) {
-          // Use trailing stop price as close price for trail hits, SL/TP for those triggers
-          const trailPrice = pos.trailingState?.currentStopPrice ?? 0
-          const estimatedClose = trailPrice > 0
-            ? trailPrice
-            : pos.slPrice  // fallback to SL as close estimate
-          const slippageDir = (pos.side === 'long' ? -1 : 1)  // close side gets adverse slippage
-          closePrice = estimatedClose * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
-          const trade = getPaperTracker().recordExit(pos.entryOrderId, closePrice)
-          if (trade) pnl = trade.pnl
-        }
-
-        // Determine PnL direction from reason for event type
         if (action.reason.startsWith('trail_stop_hit')) {
           this.dispatchToAgent?.(pos.coin, {
             type: 'trail_stop_hit',
             positionId: pos.positionId,
-            closePrice,
-            pnl,
+            closePrice: 0,
+            pnl: 0,
           })
         } else {
           this.dispatchToAgent?.(pos.coin, {
             type: 'position_closed',
             positionId: pos.positionId,
-            closePrice,
-            pnl,
+            closePrice: 0,
+            pnl: 0,
             reason: action.reason,
           })
         }
@@ -473,37 +441,29 @@ export class PositionMonitor {
     try {
       // Update account equity for portfolio risk checks (even with 0 positions)
       try {
-        if (getEffectivePaperTrade()) {
-          // Paper: use simulated wallets — live HL balance would block portfolio logic incorrectly
-          this.onEquityUpdate?.(getTotalPaperBalance())
+        const pool = getExchangePool()
+        if (pool.isInitialized()) {
+          const st = await pool.getShared().getAccountState()
+          this.lastAccountState = st
+          this.onEquityUpdate?.(st.effectiveBalance)
         } else {
-          const pool = getExchangePool()
-          if (pool.isInitialized()) {
-            const st = await pool.getShared().getAccountState()
-            this.lastAccountState = st
-            this.onEquityUpdate?.(st.effectiveBalance)
-          } else {
-            if (isBybitLiveMode()) {
-              throw new Error('PositionMonitor: ExchangePool must be initialized in BB live mode (HL fallback blocked)')
-            }
-            const accountState = await getExchangeService().getAccountState()
-            this.lastAccountState = accountState
-            this.onEquityUpdate?.(accountState.effectiveBalance)
+          if (isBybitLiveMode()) {
+            throw new Error('PositionMonitor: ExchangePool must be initialized in BB live mode (HL fallback blocked)')
           }
+          const accountState = await getExchangeService().getAccountState()
+          this.lastAccountState = accountState
+          this.onEquityUpdate?.(accountState.effectiveBalance)
         }
       } catch {
         // Non-fatal — equity update is best-effort
       }
 
-      // Live: detect entry fills that were not inline in placeOrder (e.g. limit) → onOrderFilled → SL/TP (R9)
-      if (!getEffectivePaperTrade()) {
-        await getOrderManager().syncSubmittedEntryFills()
-      }
+      // Detect entry fills that were not inline in placeOrder (e.g. limit) → onOrderFilled → SL/TP (R9)
+      await getOrderManager().syncSubmittedEntryFills()
 
       if (this.positions.size === 0) return []
 
       // Thesis evaluation: re-check multi-TF regime/bias for open positions.
-      // Runs in BOTH paper and live modes (before the paper/live split below).
       if (THESIS_MONITOR.enabled) {
         for (const [, pos] of this.positions) {
           if (!pos.thesis) continue
@@ -530,12 +490,6 @@ export class PositionMonitor {
             }
           }
         }
-      }
-
-      // Paper mode: simulate SL/TP hits using current mark prices instead of exchange query
-      if (getEffectivePaperTrade()) {
-        await this.checkPaperExits()
-        return []
       }
 
       const snapshots = await queryExchangePositions()
@@ -571,8 +525,6 @@ export class PositionMonitor {
     }
   }
 
-  // ── Paper SL/TP Simulation ────────────────────────────────────────────
-
   /**
    * Gather current regime + bias snapshots for thesis evaluation.
    * Uses orchestrator's cached StatusSnapshot (updated on each candle close).
@@ -596,68 +548,6 @@ export class PositionMonitor {
     }
 
     return result.length > 0 ? result : null
-  }
-
-  /**
-   * Paper mode: check each tracked position against current mark price.
-   * Fires sl_hit or tp_hit events when price crosses the respective level.
-   * Called by syncWithExchange() every EXCHANGE_SYNC_INTERVAL_MS (10s).
-   *
-   * In live mode this is handled by HL trigger orders on exchange.
-   * In paper mode those triggers are only simulated — this method replaces them.
-   */
-  private async checkPaperExits(): Promise<void> {
-    if (this.positions.size === 0) return
-
-    // Collect positions to close (avoid mutating map during iteration)
-    const toClose: Array<{ pos: PositionState; reason: 'sl_hit' | 'tp_hit'; closePrice: number }> = []
-
-    for (const [, pos] of this.positions) {
-      // Skip positions managed by enhanced PaperTracker (multi-TP exits via orchestrator candle ticks)
-      if (getPaperTracker().hasEnhancedPosition(pos.coin)) continue
-
-      const markPrice = this.priceGetter?.(pos.coin)
-      if (!markPrice || markPrice <= 0) continue
-
-      const side = pos.side
-      let closeReason: 'sl_hit' | 'tp_hit' | null = null
-      let closePrice = 0
-
-      // SL hit: adverse slippage (fills slightly worse than SL level)
-      if ((side === 'long' && markPrice <= pos.slPrice) ||
-          (side === 'short' && markPrice >= pos.slPrice)) {
-        closeReason = 'sl_hit'
-        const slippageDir = side === 'long' ? -1 : 1
-        closePrice = pos.slPrice * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
-      }
-      // TP hit: fills at TP level (slight adverse for realism)
-      else if ((side === 'long' && markPrice >= pos.tpPrice) ||
-               (side === 'short' && markPrice <= pos.tpPrice)) {
-        closeReason = 'tp_hit'
-        const slippageDir = side === 'long' ? -1 : 1
-        closePrice = pos.tpPrice * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
-      }
-
-      if (closeReason) {
-        toClose.push({ pos, reason: closeReason, closePrice })
-      }
-    }
-
-    for (const { pos, reason, closePrice } of toClose) {
-      const trade = getPaperTracker().recordExit(pos.entryOrderId, closePrice)
-      const pnl = trade?.pnl ?? 0
-      const pnlStr = pnl >= 0 ? `+${pnl.toFixed(2)}` : pnl.toFixed(2)
-      log.info('position-monitor', `[PAPER] ${reason.toUpperCase()} | ${pos.coin} ${pos.side.toUpperCase()} | entry=${pos.entryPrice.toFixed(2)} close=${closePrice.toFixed(2)} | pnl=${pnlStr}`)
-
-      this.dispatchToAgent?.(pos.coin, {
-        type: reason,
-        positionId: pos.positionId,
-        closePrice,
-        pnl,
-      })
-
-      this.positions.delete(pos.positionId)
-    }
   }
 
   // ── Query ─────────────────────────────────────────────────────────────

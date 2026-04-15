@@ -38,11 +38,12 @@ import {
 } from '../../strategy/index.js'
 import {
   TELEGRAM_BOT,
-  PAPER_TRADE,
-  getEffectivePaperTrade,
-  getPaperTradeRuntimeOverride,
-  setPaperTradeRuntimeOverride,
 } from '../../config.js'
+
+/** Returns 'DEMO' when BYBIT_TESTNET=true, 'LIVE' otherwise. Read-only — requires restart to change. */
+function getTradingMode(): 'DEMO' | 'LIVE' {
+  return process.env['BYBIT_TESTNET'] === 'true' ? 'DEMO' : 'LIVE'
+}
 import type { CommandDef } from './types.js'
 import type { DecisionTrace } from '../../types.js'
 
@@ -223,10 +224,7 @@ function statusHandler(): string {
     const watching = coinStates.filter(([, c]) => c.state === 'WATCHING').length
     const inPos = coinStates.filter(([, c]) => c.state === 'IN_POSITION').length
 
-    const ov = getPaperTradeRuntimeOverride()
-    const modeLine = ov === null
-      ? `Mode: ${esc(getEffectivePaperTrade() ? 'PAPER' : 'LIVE')} \\(env ${esc(PAPER_TRADE ? 'PAPER' : 'LIVE')}\\)`
-      : `Mode: ${esc(getEffectivePaperTrade() ? 'PAPER' : 'LIVE')} \\(override ${esc(ov ? 'PAPER' : 'LIVE')}, env ${esc(PAPER_TRADE ? 'PAPER' : 'LIVE')}\\)`
+    const modeLine = `Mode: ${esc(getTradingMode())}`
 
     return [
       `*Status*`,
@@ -1339,44 +1337,27 @@ async function reportHandler(): Promise<string> {
 
 function menuHandler(): string {
   const h = escapeHtml
-  const eff = getEffectivePaperTrade() ? 'PAPER' : 'LIVE'
   return [
     `<b>Minh (明) — Menu</b>`,
     `Chọn nút bên dưới hoặc gõ <code>/help</code>.`,
     ``,
-    `Paper: <b>${h(eff)}</b> · env: <code>${h(PAPER_TRADE ? 'PAPER' : 'LIVE')}</code>`,
+    `Mode: <b>${h(getTradingMode())}</b>`,
   ].join('\n')
 }
 
-// ─── /paper ────────────────────────────────────────────────────────────────
+// ─── /mode ─────────────────────────────────────────────────────────────────
 
-function paperHandler(args: string): string {
+function modeHandler(): string {
   const esc = escapeMarkdownV2
-  const a = args.trim().toLowerCase()
-  if (a === 'on' || a === 'true' || a === '1') {
-    setPaperTradeRuntimeOverride(true)
-    return `Paper trade: *ON* \\(runtime\\)\\.`
-  }
-  if (a === 'off' || a === 'false' || a === '0') {
-    setPaperTradeRuntimeOverride(false)
-    return [
-      `Paper trade: *OFF* \\(live execution\\)\\.`,
-      `⚠️ Đảm bảo bạn hiểu rủi ro trước khi giao dịch thực\\.`,
-      `Dùng \\/paper reset để khôi phục cài đặt theo env\\.`,
-    ].join('\n')
-  }
-  if (a === 'reset' || a === 'env') {
-    setPaperTradeRuntimeOverride(null)
-    return `Đã hủy override\\. Env: *${esc(PAPER_TRADE ? 'PAPER' : 'LIVE')}*\\.`
-  }
-  const ov = getPaperTradeRuntimeOverride()
+  const mode = getTradingMode()
   return [
-    `*Paper trade*`,
-    `Hiện tại: *${esc(getEffectivePaperTrade() ? 'PAPER' : 'LIVE')}*`,
-    `Env PAPER_TRADE: ${esc(PAPER_TRADE ? 'true' : 'false')}`,
-    `Override: ${ov === null ? 'none' : esc(ov ? 'ON' : 'OFF')}`,
+    `*Trading Mode*`,
+    `Hiện tại: *${esc(mode)}*`,
+    mode === 'DEMO'
+      ? `Đang chạy Bybit Demo Trading \\(testnet\\)\\.`
+      : `Đang chạy Bybit Mainnet \\(live\\)\\.`,
     ``,
-    `\\/paper on \\| off \\| reset`,
+    `Để thay đổi mode, cập nhật \`BYBIT_TESTNET\` trong \\.env và restart\\.`,
   ].join('\n')
 }
 
@@ -1398,10 +1379,7 @@ export function getMainMenuKeyboard(): {
         { text: '🧾 Operator', callback_data: 'c:operator' },
         { text: '🧠 Trace', callback_data: 'c:trace' },
       ],
-      [
-        { text: '🟢 Paper ON', callback_data: 'c:paper_on' },
-        { text: '🔴 Paper OFF', callback_data: 'c:paper_off' },
-      ],
+      [{ text: '🔄 Mode', callback_data: 'c:mode' }],
       [{ text: '❓ Help', callback_data: 'c:help' }],
     ],
   }
@@ -1545,5 +1523,5 @@ export function registerBuiltinCommands(): void {
   registerCommand({ name: 'closeall', description: 'Emergency close all (requires /confirm)', handler: closeallHandler })
   registerCommand({ name: 'confirm', description: 'Confirm pending close-all or operator action', handler: confirmHandler })
   registerCommand({ name: 'report', description: 'Daily report (PnL, patterns, coins)', handler: reportHandler })
-  registerCommand({ name: 'paper', description: 'Paper trade on/off/reset', handler: paperHandler })
+  registerCommand({ name: 'mode', description: 'Show current trading mode (DEMO / LIVE)', handler: modeHandler })
 }

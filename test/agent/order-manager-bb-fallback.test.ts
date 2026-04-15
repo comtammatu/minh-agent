@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { setPaperTradeRuntimeOverride, resetPaperTradeRuntimeOverrideForTests } from '../../src/config.js'
 
 let hlSingletonFallbackCalls = 0
 const hlSingletonService = {
@@ -28,17 +27,14 @@ describe('OrderManager BB fallback guard', () => {
   beforeEach(() => {
     hlSingletonFallbackCalls = 0
     process.env.ACTIVE_EXCHANGE = 'HL'
-    setPaperTradeRuntimeOverride(false)
   })
 
   afterEach(() => {
     delete process.env.ACTIVE_EXCHANGE
-    resetPaperTradeRuntimeOverrideForTests()
   })
 
   it('blocks HL singleton fallback in BB live mode when pool is missing', () => {
     process.env.ACTIVE_EXCHANGE = 'BB'
-    setPaperTradeRuntimeOverride(false)
 
     const om = new OrderManager()
     expect(() => callGetExchange(om)).toThrow('ExchangePool must be initialized in BB live mode')
@@ -47,18 +43,6 @@ describe('OrderManager BB fallback guard', () => {
 
   it('keeps HL fallback in HL live mode', () => {
     process.env.ACTIVE_EXCHANGE = 'HL'
-    setPaperTradeRuntimeOverride(false)
-
-    const om = new OrderManager()
-    const svc = callGetExchange(om)
-
-    expect(svc).toBe(hlSingletonService)
-    expect(hlSingletonFallbackCalls).toBe(1)
-  })
-
-  it('keeps fallback in paper mode even when ACTIVE_EXCHANGE=BB', () => {
-    process.env.ACTIVE_EXCHANGE = 'BB'
-    setPaperTradeRuntimeOverride(true)
 
     const om = new OrderManager()
     const svc = callGetExchange(om)

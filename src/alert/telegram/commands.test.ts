@@ -387,7 +387,7 @@ describe('registerBuiltinCommands', () => {
     expect(reply).toContain('/confirm')
     expect(reply).toContain('/report')
     expect(reply).toContain('/menu')
-    expect(reply).toContain('/paper')
+    expect(reply).toContain('/mode')
   })
 
   it('registers 14 built-in commands', () => {

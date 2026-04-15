@@ -36,8 +36,6 @@ import {
   SL_IS_MARKET,
   TP_IS_MARKET,
   RETRY,
-  getEffectivePaperTrade,
-  PAPER_SLIPPAGE_PCT,
   HL_MIN_ORDER_NOTIONAL_USD,
   MARKET_ORDER_SLIPPAGE_PCT,
 } from '../config.js'
@@ -51,12 +49,11 @@ import type { ExchangePool, IExchangeService } from '../execution/exchange-pool.
 import { getLatestBook } from '../feed/orderbook.js'
 import { log } from '../lib/logger.js'
 import { withRetry, isRetryableExchangeError } from '../lib/retry.js'
-import { getPaperTracker } from './paper-tracker.js'
 import {
   computeEntryLeverageForTargetMargin,
   computePositionSize,
 } from './exits.js'
-import { DEFAULT_RISK_PERCENT, SIMULATED_ACCOUNT, TARGET_MARGIN_PCT, getActiveExchange, tryGetActiveExchange, ATR_TRAIL_MULTIPLIER } from '../config.js'
+import { DEFAULT_RISK_PERCENT, SIMULATED_ACCOUNT, TARGET_MARGIN_PCT, getActiveExchange, tryGetActiveExchange } from '../config.js'
 
 /** `orders.id` is UUID — reject malformed strings before querying to avoid PostgreSQL ERROR logs. */
 function isValidOrderUuid(id: string): boolean {
@@ -68,7 +65,6 @@ function clampPositiveFinite(n: number, fallback: number): number {
 }
 
 function isBybitLiveMode(): boolean {
-  if (getEffectivePaperTrade()) return false
   return tryGetActiveExchange() === 'BB'
 }
 
@@ -220,38 +216,6 @@ export async function placeTriggerOnExchange(
     const msg = err instanceof Error ? err.message : String(err)
     return { success: false, exchangeOrderId: null, error: msg }
   }
-}
-
-// ─── Paper Trade Simulation ─────────────────────────────────────────────────
-
-/**
- * Simulate a fill for paper trade mode.
- * Applies slippage: longs fill slightly higher, shorts fill slightly lower.
- * @internal Exported for testing.
- */
-export function paperSimulateFill(
-  coin: string,
-  side: 'long' | 'short',
-  price: number,
-  size: number,
-  cloid: string,
-): ExchangeOrderResult {
-  const slippageDir = side === 'long' ? 1 : -1
-  const fillPrice = price * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
-  log.info('order-manager', `[PAPER] Simulated fill: ${coin} ${side} ${size} @ ${fillPrice.toFixed(2)} (slippage ${(PAPER_SLIPPAGE_PCT * 100).toFixed(3)}%)`)
-  return { success: true, exchangeOrderId: `paper_${cloid.slice(0, 16)}`, error: null }
-}
-
-/** Simulate cancel for paper trade mode. Always succeeds. @internal */
-export function paperSimulateCancel(exchangeOrderId: string, coin?: string): ExchangeOrderResult {
-  log.info('order-manager', `[PAPER] Simulated cancel: ${coin ?? 'unknown'} orderId=${exchangeOrderId}`)
-  return { success: true, exchangeOrderId: null, error: null }
-}
-
-/** Simulate trigger placement for paper trade mode. Always succeeds. @internal */
-export function paperSimulateTrigger(trigger: TriggerOrder): ExchangeOrderResult {
-  log.info('order-manager', `[PAPER] Simulated ${trigger.type.toUpperCase()} trigger: ${trigger.coin} @ ${trigger.triggerPrice}`)
-  return { success: true, exchangeOrderId: `paper_trigger_${generateCloid().slice(0, 12)}`, error: null }
 }
 
 // ─── DB Operations ──────────────────────────────────────────────────────────
@@ -418,9 +382,7 @@ export class OrderManager {
     // Build order - compute position size if the setup did not specify one.
     let size = setup.patternData.positionSizeCoins as number ?? 0
     if (size <= 0 && entryPrice > 0 && slPrice > 0) {
-      const accountValue = getEffectivePaperTrade()
-        ? getPaperTracker().getBalance()
-        : (svc.getCachedAccountValue?.() || SIMULATED_ACCOUNT)
+      const accountValue = svc.getCachedAccountValue?.() || SIMULATED_ACCOUNT
       size = computePositionSize(accountValue, DEFAULT_RISK_PERCENT, entryPrice, slPrice)
     }
 
@@ -481,7 +443,7 @@ export class OrderManager {
     // BB (Cross Margin): always use max leverage — entire account acts as collateral,
     //   setLeverage internally caps to the risk-tier max for the position size.
     // HL (Isolated Margin): compute from TARGET_MARGIN_PCT to bound per-position margin.
-    if (!getEffectivePaperTrade() && svc && entryPrice > 0) {
+    if (svc && entryPrice > 0) {
       const sizeUsd = order.size * entryPrice
       if (svc.exchangeId === 'BB') {
         // Max leverage for cross margin — service caps at tier limit automatically
@@ -503,14 +465,12 @@ export class OrderManager {
     // BB: attach SL/TP inline at order submission — position is protected from first fill tick,
     // eliminating the race window between fill detection and setTradingStop.
     // HL: SL/TP are separate trigger orders placed after fill (see placeSLTP).
-    const inlineSlTp = !getEffectivePaperTrade() && svc?.exchangeId === 'BB'
-    const result = getEffectivePaperTrade()
-      ? paperSimulateFill(coin, side, entryPrice, order.size, cloid)
-      : await submitToExchange(
-          coin, side, order.type, submitPrice, order.size, cloid, svc,
-          inlineSlTp ? order.slPrice ?? undefined : undefined,
-          inlineSlTp ? order.tpPrice ?? undefined : undefined,
-        )
+    const inlineSlTp = svc?.exchangeId === 'BB'
+    const result = await submitToExchange(
+      coin, side, order.type, submitPrice, order.size, cloid, svc,
+      inlineSlTp ? order.slPrice ?? undefined : undefined,
+      inlineSlTp ? order.tpPrice ?? undefined : undefined,
+    )
 
     if (result.success) {
       order.status = 'submitted'
@@ -520,45 +480,12 @@ export class OrderManager {
       this.orders.set(order.id, order)
       log.info('order-manager', `Order submitted: ${order.id} exchangeId=${result.exchangeOrderId}`)
 
-      // Paper mode: auto-fill immediately (no exchange WS to notify us)
-      if (getEffectivePaperTrade()) {
-        const slippageDir = side === 'long' ? 1 : -1
-        const paperFillPrice = entryPrice * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
-        const paperTracker = getPaperTracker()
-
-        // Correlation guard for paper mode (mirrors live TradingAgent check)
-        const corrCheck = paperTracker.canEnter(coin)
-        if (corrCheck.blocked) {
-          log.info('order-manager', `[PAPER] Blocked by correlation guard: ${corrCheck.reason}`)
-          order.status = 'rejected'
-          order.updatedAt = Date.now()
-          await updateOrderInDb(order)
-          return order
-        }
-
-        // Enhanced entry with multi-TP tracking (matches backtest simulator)
-        const tp2Price = (setup.patternData['tp2Price'] as number | undefined) ?? tpPrice
-        const atrVal = (setup.patternData['atrAtEntry'] as number | undefined) ?? 0
-        const trailMult = ATR_TRAIL_MULTIPLIER[setup.interval] ?? 2.0
-
-        paperTracker.recordEntryEnhanced({
-          orderId: order.id, coin, side,
-          entryPrice: paperFillPrice,
-          size: order.size,
-          interval: setup.interval,
-          slPrice: slPrice ?? paperFillPrice,
-          tp1Price: tpPrice ?? paperFillPrice,
-          tp2Price: tp2Price ?? tpPrice ?? paperFillPrice,
-          atrValue: atrVal,
-          trailMultiplier: trailMult,
-        })
-        await this.onOrderFilled(order.id, paperFillPrice, order.size)
-      } else if (
+      if (
         result.fillPrice !== undefined &&
         result.fillSize !== undefined &&
         result.fillSize > 0
       ) {
-        // Live: HL often returns immediate fill for market entry — same tick must place SL/TP (R9).
+        // HL often returns immediate fill for market entry — same tick must place SL/TP (R9).
         await this.onOrderFilled(order.id, result.fillPrice, result.fillSize)
       }
     } else {
@@ -612,9 +539,7 @@ export class OrderManager {
     await this.placeSLTP(order)
 
     const svcForLev = this.getExchange()
-    const accountValueForLev = getEffectivePaperTrade()
-      ? getPaperTracker().getBalance()
-      : (svcForLev?.getCachedAccountValue() || SIMULATED_ACCOUNT)
+    const accountValueForLev = svcForLev?.getCachedAccountValue() || SIMULATED_ACCOUNT
     const sizeUsd = fillPrice * fillSize
     const maxLev = svcForLev?.getMaxLeverage?.(order.coin)
     const leverage = computeEntryLeverageForTargetMargin(
@@ -699,7 +624,7 @@ export class OrderManager {
     }
 
     const svc = this.getExchange()
-    if (!getEffectivePaperTrade() && svc?.exchangeId === 'BB') {
+    if (svc?.exchangeId === 'BB') {
       log.info('order-manager', `SL/TP already set inline (BB): ${entryOrder.coin} sl=${entryOrder.slPrice} tp=${entryOrder.tpPrice}`)
       return
     }
@@ -719,9 +644,7 @@ export class OrderManager {
       exchangeOrderId: null,
       parentOrderId: entryOrder.id,
     }
-    const slResult = getEffectivePaperTrade()
-      ? paperSimulateTrigger(slTrigger)
-      : await this.placeTriggerWithRetry(slTrigger, 'SL', entryOrder.coin, svc)
+    const slResult = await this.placeTriggerWithRetry(slTrigger, 'SL', entryOrder.coin, svc)
     if (slResult.success) {
       slTrigger.exchangeOrderId = slResult.exchangeOrderId
       log.info('order-manager', `SL trigger placed: ${entryOrder.coin} @ ${entryOrder.slPrice} [${slResult.exchangeOrderId}]`)
@@ -742,9 +665,7 @@ export class OrderManager {
       exchangeOrderId: null,
       parentOrderId: entryOrder.id,
     }
-    const tpResult = getEffectivePaperTrade()
-      ? paperSimulateTrigger(tpTrigger)
-      : await this.placeTriggerWithRetry(tpTrigger, 'TP', entryOrder.coin, svc)
+    const tpResult = await this.placeTriggerWithRetry(tpTrigger, 'TP', entryOrder.coin, svc)
     if (tpResult.success) {
       tpTrigger.exchangeOrderId = tpResult.exchangeOrderId
       log.info('order-manager', `TP trigger placed: ${entryOrder.coin} @ ${entryOrder.tpPrice} [${tpResult.exchangeOrderId}]`)
@@ -818,14 +739,12 @@ export class OrderManager {
       return
     }
 
-    // Cancel on exchange if submitted (or simulate in paper mode) — route to the shared runtime wallet
+    // Cancel on exchange — route to the shared runtime wallet
     if (order.exchangeOrderId) {
       const svc = this.getExchange()
-      let cancelResult = getEffectivePaperTrade()
-        ? paperSimulateCancel(order.exchangeOrderId, order.coin)
-        : await cancelOnExchange(order.exchangeOrderId, order.coin, svc)
+      let cancelResult = await cancelOnExchange(order.exchangeOrderId, order.coin, svc)
       // Fallback: cancel by cloid when exchangeOrderId is invalid (e.g. Bybit stored "submitted")
-      if (!cancelResult.success && order.cloid && !getEffectivePaperTrade()) {
+      if (!cancelResult.success && order.cloid) {
         log.info('order-manager', `Retrying cancel by cloid for ${orderId}`)
         const retryResult = await svc.cancelByCloid(order.coin, order.cloid)
         cancelResult = {
@@ -859,7 +778,7 @@ export class OrderManager {
     const parentOrder = this.orders.get(parentOrderId)
     const svc = this.getExchange()
 
-    if (!getEffectivePaperTrade() && svc.exchangeId === 'BB') {
+    if (svc.exchangeId === 'BB') {
       if (!parentOrder) {
         log.warn('order-manager', `No parent order for BB stop update ${parentOrderId}`)
         return
@@ -905,12 +824,6 @@ export class OrderManager {
 
     const oldPrice = slTrigger.triggerPrice
     slTrigger.triggerPrice = newSlPrice
-
-    // Paper mode: just update in-memory, no exchange calls
-    if (getEffectivePaperTrade()) {
-      log.info('order-manager', `[PAPER] SL updated: ${slTrigger.coin} ${oldPrice} → ${newSlPrice}`)
-      return
-    }
 
     // Try to modify on exchange if we have an oid
     if (slTrigger.exchangeOrderId) {
@@ -961,7 +874,6 @@ export class OrderManager {
    * Called from PositionMonitor exchange sync (~10s). Immediate market fills are handled in {@link placeOrder}.
    */
   async syncSubmittedEntryFills(): Promise<void> {
-    if (getEffectivePaperTrade()) return
     for (const [, order] of this.orders) {
       if (order.status !== 'submitted' && order.status !== 'partial') continue
       const svc = this.getExchange()
@@ -1067,11 +979,7 @@ export class OrderManager {
     if (triggers) {
       for (const trigger of triggers) {
         if (trigger.exchangeOrderId) {
-          if (getEffectivePaperTrade()) {
-            paperSimulateCancel(trigger.exchangeOrderId, trigger.coin)
-          } else {
-            await cancelOnExchange(trigger.exchangeOrderId, trigger.coin, svc)
-          }
+          await cancelOnExchange(trigger.exchangeOrderId, trigger.coin, svc)
         }
       }
       this.triggerOrders.delete(entryOrder.id)
@@ -1082,25 +990,8 @@ export class OrderManager {
     const closeSize = entryOrder.fillSize > 0 ? entryOrder.fillSize : entryOrder.size
     const refPrice = entryOrder.fillPrice ?? entryOrder.price
     const cloid = generateCloid()
-    if (getEffectivePaperTrade()) {
-      const slippageDir = closeSide === 'long' ? 1 : -1
-      const closePrice = refPrice * (1 + slippageDir * PAPER_SLIPPAGE_PCT)
-      paperSimulateFill(entryOrder.coin, closeSide, closePrice, closeSize, cloid)
-      const trade = getPaperTracker().recordExit(entryOrder.id, closePrice)
-      // Dispatch with real P&L so agent state machine + circuit breakers work
-      if (trade && entryOrder.positionId) {
-        this.dispatchToAgent?.(entryOrder.coin, {
-          type: 'position_closed',
-          positionId: entryOrder.positionId,
-          closePrice,
-          pnl: trade.pnl,
-          reason,
-        })
-      }
-    } else {
-      const closeRef = computeMarketRefPrice(entryOrder.coin, closeSide, refPrice)
-      await submitToExchange(entryOrder.coin, closeSide, 'market', closeRef, closeSize, cloid, svc)
-    }
+    const closeRef = computeMarketRefPrice(entryOrder.coin, closeSide, refPrice)
+    await submitToExchange(entryOrder.coin, closeSide, 'market', closeRef, closeSize, cloid, svc)
 
     log.info('order-manager', `Position close submitted: ${entryOrder.coin} reason=${reason}`)
   }

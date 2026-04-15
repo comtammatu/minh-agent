@@ -11,9 +11,8 @@
  */
 
 import { log } from '../lib/logger.js'
-import { SIMULATED_ACCOUNT, getEffectivePaperTrade } from '../config.js'
+import { SIMULATED_ACCOUNT } from '../config.js'
 import { getHLExchangeService as getExchangeService } from '../execution/hl-exchange-service.js'
-import { getTotalPaperBalance } from '../agent/paper-tracker.js'
 import { buildLiveMetrics } from './metrics.js'
 import {
   getClosedTrades,
@@ -51,10 +50,7 @@ export async function getLiveMetrics(): Promise<LiveMetrics> {
     getOpenPositionCount(),
   ])
 
-  // Paper mode: use the shared paper wallet balance exposed by the runtime.
-  const capital = getEffectivePaperTrade()
-    ? getTotalPaperBalance()
-    : (getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT)
+  const capital = getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT
 
   return buildLiveMetrics({
     allTrades,

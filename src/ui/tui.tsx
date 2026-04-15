@@ -15,7 +15,7 @@ import React, { useState, useEffect, useMemo, memo, useRef } from 'react'
 import { render, Box, Text, useApp, useInput, useStdout } from 'ink'
 import type { AgentSnapshot } from '../agent/types.js'
 import type { StatusSnapshot } from '../strategy/orchestrator.js'
-import { CANONICAL_STRATEGY_ID, getEffectivePaperTrade, WS_MAX_SUBSCRIPTIONS, TIMEFRAMES, MIN_CANDLES_FOR_SCAN } from '../config.js'
+import { CANONICAL_STRATEGY_ID, WS_MAX_SUBSCRIPTIONS, TIMEFRAMES, MIN_CANDLES_FOR_SCAN } from '../config.js'
 import type { LiveWalletStats } from './live-account-stats.js'
 import { candleCount } from '../feed/store.js'
 import type { CandleInterval, ActiveSetup } from '../types.js'
@@ -23,26 +23,6 @@ import type { InvalidationBridgeStats } from '../agent/invalidation-bridge.js'
 import type { AccountState } from '../execution/exchange-service.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-
-/** One simulated wallet in paper mode (matches the shared live runtime wallet). */
-export interface PaperWalletRow {
-  label: string
-  balance: number
-  tradeCount: number
-  wins: number
-  losses: number
-  winRate: number
-}
-
-export interface PaperStats {
-  /** Sum of paper balances (cash, excludes open uPnL in this field). */
-  totalBalance: number
-  wallets: PaperWalletRow[]
-  tradeCount: number
-  wins: number
-  losses: number
-  winRate: number
-}
 
 export interface AssetPrice {
   markPrice: number
@@ -71,8 +51,7 @@ export interface TuiDataSources {
   getAccountState: () => Promise<{ effectiveBalance: number; accountValue: number; spotUsdcBalance: number; totalMarginUsed: number; withdrawable: number } | null> | null
   getSubscriptionCount: () => number
   getTrackedCoins: () => string[]
-  getPaperStats: () => PaperStats | null
-  /** Live: closed-trade stats for the shared runtime wallet (DB); null in paper or before first fetch. */
+  /** Live: closed-trade stats for the shared runtime wallet (DB); null before first fetch. */
   getLiveWalletStats: () => LiveWalletStats | null
   /** Live: cached account state for the shared runtime wallet. */
   getLiveAccountStates: () => ReadonlyMap<string, AccountState> | null
@@ -399,8 +378,8 @@ function Panel({ title, children, width, height, minHeight, flexGrow, flexShrink
 // ─── Header ─────────────────────────────────────────────────────────────────
 
 const HeaderBar = memo(function HeaderBar({ snapshot, coinCount }: { snapshot: AgentSnapshot; coinCount: number }) {
-  const mode = getEffectivePaperTrade() ? 'PAPER' : 'LIVE'
-  const modeColor = getEffectivePaperTrade() ? 'yellow' : 'red'
+  const mode = process.env['BYBIT_TESTNET'] === 'true' ? 'DEMO' : 'LIVE'
+  const modeColor = 'red'
   const paused = snapshot.global.globalPaused
   const uptime = uptimeStr(snapshot.global.uptime)
   const time = timeNow()
@@ -433,16 +412,16 @@ const HeaderBar = memo(function HeaderBar({ snapshot, coinCount }: { snapshot: A
 
 /**
  * Account panel (ALL + tabs 1–3):
- * - **Equity**: Total account value — HL `effectiveBalance` (perp `accountValue` + spot USDC), or paper cash+uPnL.
+ * - **Equity**: Total account value — HL `effectiveBalance` (perp `accountValue` + spot USDC).
  *   This is *not* “wallet cash + margin” as two addends: margin is already part of equity; the Margin row breaks out locked collateral.
- * - **Margin**: Collateral locked in open positions (`totalMarginUsed`, or notional/leverage estimate).
+ * - **Margin**: Collateral locked in open positions (`totalMarginUsed`).
  * - **Available**: Free collateral ≈ Equity − Margin (see `liveFreeMarginUsd`). Not HL `withdrawable` (often $0 while in perps).
  */
 
 /**
  * Hyperliquid `withdrawable` is USDC that can be sent off-platform; it is often $0 while balance
  * sits in perp/cross margin. The Account panel uses **Available = balance − margin used**, not
- * `withdrawable`, so it matches perp trading expectations (same idea as Paper mode).
+ * `withdrawable`, so it matches perp trading expectations.
  */
 function liveFreeMarginUsd(st: Pick<AccountState, 'effectiveBalance' | 'totalMarginUsed'>): number {
   return Math.max(0, st.effectiveBalance - st.totalMarginUsed)
@@ -452,40 +431,26 @@ const AccountPanel = memo(function AccountPanel({
   account,
   dailyPnlGlobal,
   unrealizedPnl,
-  paperStats,
-  paperDerived,
   liveWalletStats,
 }: {
   account: { effectiveBalance: number; accountValue: number; spotUsdcBalance: number; totalMarginUsed: number; withdrawable: number } | null
   dailyPnlGlobal: number
   unrealizedPnl: number
-  paperStats: PaperStats | null
-  paperDerived: { marginUsed: number; available: number } | null
   liveWalletStats: LiveWalletStats | null
 }) {
-  const isPaper = paperStats != null
-
-  const totalEquityPaper = paperStats != null ? paperStats.totalBalance + unrealizedPnl : null
-
-  const portfolioMargin = isPaper && paperDerived != null
-    ? paperDerived.marginUsed
-    : (account?.totalMarginUsed ?? null)
-  const portfolioAvail = isPaper && paperDerived != null
-    ? paperDerived.available
-    : (!isPaper && account
-      ? liveFreeMarginUsd(account)
-      : (account?.withdrawable ?? null))
+  const portfolioMargin = account?.totalMarginUsed ?? null
+  const portfolioAvail = account ? liveFreeMarginUsd(account) : null
 
   const dailyShown = dailyPnlGlobal
   const unrealShown = unrealizedPnl
 
-  const balanceShown = isPaper ? totalEquityPaper : (account?.effectiveBalance ?? null)
+  const balanceShown = account?.effectiveBalance ?? null
 
   const pnlColor = (pnl: number): 'green' | 'red' => (pnl >= 0 ? 'green' : 'red')
   const dSign = dailyShown >= 0 ? '+' : ''
   const uSign = unrealShown >= 0 ? '+' : ''
 
-  const aggTrades = isPaper ? paperStats! : liveWalletStats
+  const aggTrades = liveWalletStats
 
   return (
     <Panel title="Account" flexGrow={1}>
@@ -1340,8 +1305,6 @@ function App({ sources }: { sources: TuiDataSources }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const subCount = useMemo(() => sources.getSubscriptionCount(), [tick])
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const paperStats = useMemo(() => sources.getPaperStats(), [tick])
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const activeSetups = useMemo(() => sources.getActiveSetups(), [tick])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const invStats = useMemo(() => sources.getInvalidationStats(), [tick])
@@ -1363,21 +1326,6 @@ function App({ sources }: { sources: TuiDataSources }) {
     return total
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [positions, tick])
-
-  const paperDerived = useMemo(() => {
-    if (!paperStats) return null
-    let marginUsed = 0
-    for (const p of positions) {
-      const asset = sources.getAssetPrice(p.coin)
-      const mark = asset?.markPrice ?? p.entryPrice
-      const notional = Math.abs(p.currentSize) * mark
-      const lev = p.leverage > 0 ? p.leverage : 1
-      marginUsed += notional / lev
-    }
-    const equity = paperStats.totalBalance + unrealizedPnl
-    return { marginUsed, available: Math.max(0, equity - marginUsed) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paperStats, positions, unrealizedPnl, tick])
 
   const liveWalletStats = useMemo(() => sources.getLiveWalletStats(), [tick])
 
@@ -1404,8 +1352,6 @@ function App({ sources }: { sources: TuiDataSources }) {
           account={account}
           dailyPnlGlobal={snapshot.global.dailyPnl}
           unrealizedPnl={unrealizedPnl}
-          paperStats={paperStats}
-          paperDerived={paperDerived}
           liveWalletStats={liveWalletStats}
         />
         <StrategyPanel snapshot={snapshot} activeSetups={activeSetups} invStats={invStats} />

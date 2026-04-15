@@ -934,53 +934,6 @@ export const PORTFOLIO_RISK = {
   maxTotalConcurrent: 6,
 } as const
 
-// ─── Paper Trade Mode ─────────────────────────────────────────────────────────
-
-/** Paper trade mode: simulate fills instead of calling HL exchange. */
-export const PAPER_TRADE = process.env.PAPER_TRADE === 'true'
-
-/** Runtime override from Telegram (null = use env {@link PAPER_TRADE}). */
-let paperTradeRuntimeOverride: boolean | null = null
-
-/** Effective paper mode: runtime override when set, otherwise env default. */
-export function getEffectivePaperTrade(): boolean {
-  return paperTradeRuntimeOverride !== null ? paperTradeRuntimeOverride : PAPER_TRADE
-}
-
-/**
- * Set paper mode at runtime (Telegram). Pass `null` to clear override and follow env again.
- * Switching live↔paper mid-session can desync open positions — use with care.
- */
-export function setPaperTradeRuntimeOverride(value: boolean | null): void {
-  paperTradeRuntimeOverride = value
-}
-
-/** Current runtime override (null = follow env). Exposed for Telegram /status. */
-export function getPaperTradeRuntimeOverride(): boolean | null {
-  return paperTradeRuntimeOverride
-}
-
-/** Test helper: reset runtime paper override. */
-export function resetPaperTradeRuntimeOverrideForTests(): void {
-  paperTradeRuntimeOverride = null
-}
-
-/** Slippage applied to paper fills (0.05% = 5 bps). */
-export const PAPER_SLIPPAGE_PCT = 0.0005
-
-/** Default starting balance (USD) for the single paper wallet. */
-export const PAPER_DEFAULT_BALANCE = 100
-
-/** Initial USD balance for the canonical paper wallet. */
-export function getPaperInitialBalance(): number {
-  const raw = process.env['PAPER_BALANCE_SMC_SD']
-  if (raw !== undefined && raw.trim() !== '') {
-    const n = Number(raw)
-    if (Number.isFinite(n) && n > 0) return n
-  }
-  return PAPER_DEFAULT_BALANCE
-}
-
 // ─── Order Lifecycle (S6) ────────────────────────────────────────────────────
 
 /** Order fill timeout (ms) — cancel entry if not filled. */

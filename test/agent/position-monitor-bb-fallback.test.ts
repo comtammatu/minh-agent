@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { setPaperTradeRuntimeOverride, resetPaperTradeRuntimeOverrideForTests } from '../../src/config.js'
 
 let hlFallbackFactoryCalls = 0
 let hlGetPositionsCalls = 0
@@ -63,19 +62,16 @@ describe('PositionMonitor BB fallback guard', () => {
     hlGetPositionsCalls = 0
     hlGetAccountStateCalls = 0
     process.env.ACTIVE_EXCHANGE = 'HL'
-    setPaperTradeRuntimeOverride(false)
     resetPositionMonitor()
   })
 
   afterEach(() => {
     delete process.env.ACTIVE_EXCHANGE
-    resetPaperTradeRuntimeOverrideForTests()
     resetPositionMonitor()
   })
 
   it('keeps HL singleton fallback for queryExchangePositions in HL live mode', async () => {
     process.env.ACTIVE_EXCHANGE = 'HL'
-    setPaperTradeRuntimeOverride(false)
 
     const snapshots = await queryExchangePositions()
 
@@ -87,7 +83,6 @@ describe('PositionMonitor BB fallback guard', () => {
 
   it('blocks HL singleton fallback for queryExchangePositions in BB live mode', async () => {
     process.env.ACTIVE_EXCHANGE = 'BB'
-    setPaperTradeRuntimeOverride(false)
 
     const snapshots = await queryExchangePositions()
 
@@ -98,7 +93,6 @@ describe('PositionMonitor BB fallback guard', () => {
 
   it('keeps HL singleton fallback for account sync in HL live mode', async () => {
     process.env.ACTIVE_EXCHANGE = 'HL'
-    setPaperTradeRuntimeOverride(false)
 
     const pm = getPositionMonitor()
     pm.setEquityCallback(() => {})
@@ -110,7 +104,6 @@ describe('PositionMonitor BB fallback guard', () => {
 
   it('blocks HL singleton fallback for account sync in BB live mode', async () => {
     process.env.ACTIVE_EXCHANGE = 'BB'
-    setPaperTradeRuntimeOverride(false)
 
     const pm = getPositionMonitor()
     pm.setEquityCallback(() => {})

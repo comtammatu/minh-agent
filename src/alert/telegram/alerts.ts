@@ -16,11 +16,10 @@
  *   })
  */
 
-import { TELEGRAM, getEffectivePaperTrade } from '../../config.js'
+import { TELEGRAM } from '../../config.js'
 import { log } from '../../lib/logger.js'
 import type { AgentAction } from '../../agent/types.js'
 import { getPositionMonitor } from '../../agent/position-monitor.js'
-import { getTotalPaperBalance } from '../../agent/paper-tracker.js'
 import { getHLExchangeService as getExchangeService } from '../../execution/hl-exchange-service.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -66,9 +65,6 @@ export function escapeHtml(text: string): string {
 
 function formatAccountBalanceUsdc(): string {
   try {
-    if (getEffectivePaperTrade()) {
-      return getTotalPaperBalance().toFixed(2)
-    }
     const v = getExchangeService().getCachedAccountValue()
     return v != null && Number.isFinite(v) ? v.toFixed(2) : '—'
   } catch {

@@ -16,8 +16,6 @@ import type { PositionState, ExchangePositionSnapshot, MonitorAction } from './t
 import {
   TRAILING_STOP,
   PARTIAL_CLOSE,
-  resetPaperTradeRuntimeOverrideForTests,
-  setPaperTradeRuntimeOverride,
 } from '../config.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -488,32 +486,9 @@ describe('PositionMonitor', () => {
   })
 
   describe('syncWithExchange', () => {
-    afterEach(() => {
-      resetPaperTradeRuntimeOverrideForTests()
-    })
-
     it('returns empty when no positions tracked', async () => {
       const actions = await pm.syncWithExchange()
       expect(actions).toHaveLength(0)
-    })
-
-    it('skips reconciliation in paper mode (no false closes)', async () => {
-      setPaperTradeRuntimeOverride(true)
-      // In paper mode, syncWithExchange must NOT close paper positions via exchange reconciliation.
-      // Real positions only exist in PositionMonitor, not on HL — reconciliation would falsely close them.
-      let dispatched: { coin: string; event: unknown } | null = null
-      pm.setAgentDispatch((coin, event) => { dispatched = { coin, event } })
-
-      pm.openPosition({
-        positionId: 'pos-1', coin: 'BTC', side: 'long',
-        entryPrice: 100, size: 1.0, slPrice: 95, tpPrice: 110, entryOrderId: 'ord-1', leverage: 10,
-      })
-
-      const actions = await pm.syncWithExchange()
-      // Paper mode: reconciliation skipped → no actions, position still tracked
-      expect(actions).toHaveLength(0)
-      expect(pm.getPosition('pos-1')).not.toBeNull()
-      expect(dispatched).toBeNull()
     })
   })
 
