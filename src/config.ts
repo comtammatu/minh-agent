@@ -73,36 +73,39 @@ export const HOT_CACHE_CAP_BARS: Record<CandleInterval, number> = {
 }
 
 /** Bars strategy is allowed to see per live scan tick (planning depth).
- *  S1: 200 for all TFs (= legacy INDICATOR_WINDOW). S2 will set per-TF values. */
+ *  Fallback if engine's windowRequirements().planningBars doesn't declare a TF.
+ *  smc-sd declares: 5m=500, 15m=1000, 1h=1000, 4h=2000 (overrides these). */
 export const PLANNING_WINDOW_BARS: Record<CandleInterval, number> = {
   '1m': 200,
-  '5m': 200,
-  '15m': 200,
-  '1h': 200,
-  '4h': 200,
+  '5m': 500,
+  '15m': 1_000,
+  '1h': 1_000,
+  '4h': 2_000,
   '1d': 200,
 }
 
 /** Bars to replay through onCandleTick at bootstrap to rebuild multi-stage state.
- *  S1: 0 (no replay yet). S3 will set per-TF values. */
+ *  Matches smc-sd windowRequirements().replayBars for full state rebuild.
+ *  1m/1d = 0: 1m has no signal path, 1d is preseed-only (no replay needed). */
 export const STATE_REPLAY_BARS: Record<CandleInterval, number> = {
   '1m': 0,
-  '5m': 0,
-  '15m': 0,
-  '1h': 0,
-  '4h': 0,
+  '5m': 500,
+  '15m': 1_000,
+  '1h': 1_000,
+  '4h': 2_000,
   '1d': 0,
 }
 
-/** Min bars before coin|TF is considered strategy-ready. Replaces MIN_CANDLES_FOR_SCAN.
- *  S1: 50 for all TFs (= legacy). S4 will raise per-TF. */
+/** Min bars before coin|TF is considered strategy-ready.
+ *  ~50% of PLANNING_WINDOW_BARS per TF — allows degraded-but-functional analysis
+ *  while accumulating full depth. */
 export const READY_BARS: Record<CandleInterval, number> = {
-  '1m': 50,
-  '5m': 50,
-  '15m': 50,
-  '1h': 50,
-  '4h': 50,
-  '1d': 50,
+  '1m': 100,
+  '5m': 250,
+  '15m': 500,
+  '1h': 500,
+  '4h': 1_000,
+  '1d': 100,
 }
 
 // ── Deprecated aliases (keep exports for backward compat, remove in S4) ───
