@@ -10,3 +10,4 @@ bun.lockb.bak
 results/ci/
 results/optimize-*.json
 results/pipeline-benchmark-*.json
+.omc*
