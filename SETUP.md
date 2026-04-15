@@ -1,22 +1,22 @@
-# Setup Guide — Minh (明) Trading Runtime
+# Setup Guide — Minh (明)
 
-Step-by-step guide to get the current branch running from scratch.
+Current runtime is a single Bun process with:
+- one active exchange per process (`HL` or `BB`)
+- a PostgreSQL/TimescaleDB backing store
+- an Ink TUI for local operations
+- optional Telegram alerts/commands
 
-> Status note: the current repo boots a Bun runtime with PostgreSQL, exchange feeds, a TUI, Telegram commands, and backtest tooling. It does **not** currently ship the historical `src/server/` or `dashboard/` layers mentioned in older sprint docs.
+There is no browser dashboard or local HTTP server in the current codepath.
 
 ## Prerequisites
 
-| Tool | Version | Install |
-|------|---------|---------|
-| **Bun** | >= 1.0 | `curl -fsSL https://bun.sh/install \| bash` |
-| **Docker** + Docker Compose | Latest | [docker.com](https://docs.docker.com/get-docker/) |
-| **Git** | >= 2.x | Pre-installed on most systems |
+| Tool | Version | Notes |
+|---|---|---|
+| Bun | >= 1.x | Required runtime and test runner |
+| Docker Compose | recent | Used for local PostgreSQL/TimescaleDB |
+| Git | any recent | Clone + workflow |
 
-> **Note**: This project uses **Bun** as runtime, NOT Node.js.
-
----
-
-## Step 1 — Clone & Install Dependencies
+## 1. Install dependencies
 
 ```bash
 git clone <repo-url> minh-agent
@@ -24,250 +24,191 @@ cd minh-agent
 bun install
 ```
 
----
-
-## Step 2 — Start PostgreSQL + TimescaleDB
-
-The project uses TimescaleDB (PostgreSQL extension) for time-series candle storage.
+## 2. Start PostgreSQL/TimescaleDB
 
 ```bash
 docker-compose up -d
-```
-
-This starts a PostgreSQL + TimescaleDB container with:
-- **User**: `minh`
-- **Password**: `minh_dev`
-- **Database**: `minh`
-- **Port**: `5432`
-
-Verify it's running:
-
-```bash
 docker-compose ps
-# Should show minh-timescaledb as "Up (healthy)"
 ```
 
-> Database migrations run automatically on startup.
+Expected container:
+- `minh-timescaledb`
 
----
+Default local DB settings from `docker-compose.yml`:
+- user: `minh`
+- password: `minh_dev`
+- database: `minh`
+- port: `5432`
 
-## Step 3 — Configure Environment Variables
+Migrations run automatically on process start via `runMigrations()`.
+
+## 3. Configure environment
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your values:
+Minimum `.env` for safe local startup:
 
 ```env
-# === REQUIRED ===
-
-# Database
 DATABASE_URL=postgres://minh:minh_dev@localhost:5432/minh
-
-# Exchange selection (one exchange per process)
-ACTIVE_EXCHANGE=HL
-
-# Hyperliquid live trading
-PRIVATE_KEY=0x...your_agent_wallet_private_key...
-ACCOUNT_ADDRESS=0x...your_main_account_address...
-
-# Bybit live trading (only when ACTIVE_EXCHANGE=BB)
-BYBIT_API_KEY=
-BYBIT_API_SECRET=
-
-# Logging
 LOG_LEVEL=INFO
-
-# === OPTIONAL ===
-
-# Telegram alerts
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_CHAT_ID=
-
-# Paper trading (simulated fills, no real orders)
+ACTIVE_EXCHANGE=HL
 PAPER_TRADE=true
-PAPER_SLIPPAGE_PCT=0.0005
 ```
 
-### Getting Hyperliquid Keys
+### Exchange credentials
 
-1. Go to [app.hyperliquid.xyz](https://app.hyperliquid.xyz)
-2. Connect your wallet
-3. Go to **Settings > API / Agent Wallets**
-4. Create an **Agent Wallet** (can trade but CANNOT withdraw)
-5. Copy the agent wallet private key → `PRIVATE_KEY`
-6. Copy your main account address → `ACCOUNT_ADDRESS`
+Hyperliquid live mode:
 
-> **IMPORTANT**: Start with `PAPER_TRADE=true` to test without risking real funds.
-> The current runtime is single-exchange per process and uses one shared live wallet per process.
+```env
+PRIVATE_KEY=0x...
+ACCOUNT_ADDRESS=0x...
+```
 
----
+Bybit live mode:
 
-## Step 4 — Run Tests
+```env
+ACTIVE_EXCHANGE=BB
+BYBIT_API_KEY=...
+BYBIT_API_SECRET=...
+```
 
-Verify everything compiles and passes:
+Optional operator surface:
+
+```env
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
+```
+
+Notes:
+- `.env.example` defaults to `PAPER_TRADE=true`. Keep it that way until you explicitly want live trading.
+- `ACTIVE_EXCHANGE` is process-wide. One process runs one exchange.
+- `ENABLED_STRATEGIES` can narrow which registered strategies are active.
+
+## 4. Verify the repo before first run
 
 ```bash
-bun test --run
+bun run typecheck
+bun run test:run
 ```
 
-All tests should pass. If database tests fail, ensure TimescaleDB is running (Step 2).
+If DB-related tests fail, check that Docker is up and the DB is healthy.
 
-## Step 4.5 — Verify Performance Gate
-
-This repo now treats pipeline latency as a maintained quality gate.
+## 5. Optional performance gate
 
 ```bash
 ACTIVE_EXCHANGE=HL bun run bench:pipeline:ci
 ```
 
-This should pass on a healthy local setup. CI compares against a GitHub-hosted-runner baseline, so local numbers will usually be faster.
+Use this before changing hot-path strategy or pipeline code.
 
----
+## 6. Start the runtime
 
-## Step 5 — Start the Engine
+```bash
+bun run start
+```
+
+Equivalent:
 
 ```bash
 bun run src/index.ts
 ```
 
-### Startup Sequence
+## Startup sequence
 
-The runtime performs these steps automatically:
+`src/index.ts` currently boots in this order:
 
-1. Run DB migrations
-2. Select the active exchange and tracked coins
-3. Subscribe WebSocket feeds first
-4. Load candles from PostgreSQL into memory
-5. Gap-fill and REST backfill missing history
-6. Enable write-through candle persistence
-7. Start funding or asset-context polling as needed
-8. Start the TUI and health/status loops
-9. Wire strategy pipeline, agent, order manager, and position monitor
-10. Start Telegram bot if configured
-11. Begin live scanning and management
+1. run DB migrations
+2. choose active exchange and build coin selector
+3. fetch ranked coins
+4. subscribe websocket feeds first
+5. start the TUI immediately
+6. load persisted candles from PostgreSQL into memory
+7. gap-fill/backfill with REST
+8. enable PG write-through for live candles
+9. start funding/OI polling
+10. initialize exchange pool
+11. wire agent, order manager, position monitor, invalidation bridge
+12. start Telegram bot if configured
+13. bootstrap pipeline from store and enter steady-state loops
 
-You should see log output indicating each step completing. The system is ready when the TUI transitions out of backfill mode and the `STATUS` line begins printing every 60 seconds.
+This order matters. Do not “clean up” the boot sequence casually.
 
----
+## What you should see
 
-## Step 6 — Verify Running State
+Healthy startup usually includes:
+- `COINS | ...`
+- `ARMED | ...`
+- exchange/account mode summary
+- strategy enablement summary
+- TUI visible in the terminal
 
-### TUI
+The TUI starts before backfill completes, then switches into the full dashboard view after bootstrap.
 
-The current branch starts an Ink terminal dashboard, not a web dashboard. You should see:
-
-- backfill progress while candles are loading
-- account, strategy, system, positions, and watchlist panels after warmup
-- positions and setup state refreshing roughly once per second
-
-### Logs
-
-Watch for:
-- `ARMED` status = required timeframes loaded and pipeline active
-- `STATUS` line every 60s = system alive
-- `SETUP` logs = trade setups detected
-- `WARNING` with staleness = data feed issues
-
-### Telegram Bot
-
-If `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are configured, the bot should respond to commands like:
-
-- `/help`
-- `/status`
-- `/positions`
-- `/risk`
-
-> There is no built-in HTTP `/health` or `/api/status` surface on the current branch.
-
----
-
-## Quick Reference
+## Quick reference
 
 | Command | Purpose |
-|---------|---------|
-| `bun install` | Install dependencies |
-| `bun run src/index.ts` | Start the engine |
-| `bun test` | Run tests (watch mode) |
-| `bun test --run` | Run tests (single run) |
-| `bun run typecheck` | Type-check runtime code |
-| `ACTIVE_EXCHANGE=HL bun run bench:pipeline:ci` | Run pipeline latency budget gate |
-| `docker-compose up -d` | Start TimescaleDB |
-| `docker-compose down` | Stop TimescaleDB |
-| `docker-compose logs -f` | View DB logs |
+|---|---|
+| `bun run start` | Start live runtime |
+| `bun run test:run` | Run full test suite once |
+| `bun run typecheck` | Strict TS validation |
+| `bun test` | Watch-mode tests |
+| `docker-compose up -d` | Start DB |
+| `docker-compose down` | Stop DB |
+| `docker-compose logs -f` | Tail DB logs |
 
----
+## Exchange notes
 
-## Configuration
+### Hyperliquid
 
-All trading thresholds and parameters live in `src/config.ts`. Key settings:
+- REST is weight-limited, so bootstrap/backfill goes through the repo rate limiter.
+- WS provides real-time updates, not full historical recovery.
+- Agent wallet signs orders; main account address is used for account info queries.
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `TOP_COINS_LIMIT` | 20 | Number of native HL coins to track (by OI) |
-| `TIMEFRAMES` | 1m,5m,15m,1h,4h,1d | Candle timeframes |
-| `MIN_CONFIDENCE` | 0.58 | Minimum setup confidence to alert |
-| `RISK_PER_POSITION` | 2% | Max equity at risk per trade |
-| `ACTIVE_EXCHANGE` | HL | Exchange for this process (`HL` or `BB`) |
-| `PAPER_TRADE` | true in example | Simulate fills (no real orders) |
+### Bybit
 
----
+- Current runtime uses one shared Bybit exchange service per process.
+- TUI price display uses the latest 1m candle close as the mark-price proxy in BB mode.
+- On shutdown in live BB mode, the runtime attempts cancel-all for open orders.
 
 ## Troubleshooting
 
-### TimescaleDB won't start
+### DB won’t come up
+
 ```bash
-# Check if port 5432 is already in use
 lsof -i :5432
-# Kill conflicting process or change port in docker-compose.yml
-```
-
-### Rate limit errors from Hyperliquid
-- The engine has a built-in weight-based rate limiter (`src/feed/rate-limiter.ts`)
-- If you see 429 errors, the backfill is too aggressive — it should self-recover with backoff
-- HL limit: 1200 weight/min per IP
-
-### WebSocket disconnects
-- Auto-reconnects with exponential backoff (1s → 30s max)
-- Check internet connection and HL status at [status.hyperliquid.xyz](https://status.hyperliquid.xyz)
-
-### Tests fail on fresh clone
-```bash
-# Ensure TimescaleDB is running
-docker-compose up -d
-# Wait for healthy status
 docker-compose ps
-# Re-run tests
-bun test --run
+docker-compose logs -f
 ```
 
-### Agent wallet expired
-- Agent wallets have an expiry — check Hyperliquid UI
-- Create a new agent wallet and update `PRIVATE_KEY` in `.env`
-- Never reuse deregistered agent addresses
+### Startup stops with no tracked coins
 
----
+- Coin selection returned an empty ranked list.
+- Check network access, exchange availability, and exchange-specific credentials where relevant.
 
-## Architecture Overview
+### TUI opens but data looks stale
 
-```text
-Hyperliquid or Bybit REST/WS
-           │
-           ▼
- PostgreSQL/TimescaleDB + In-memory Store
-           │
-           ▼
- Strategy Orchestrator / Registry
-           │
-           ▼
- Trading Agent + Order Manager + Position Monitor
-           │
-           ├──► Exchange execution service
-           ├──► Telegram operator surface
-           └──► Ink TUI
-```
+- Backfill may still be running.
+- Later in runtime, stale-feed warnings point to feed/orderbook connectivity rather than the UI itself.
 
-For full architecture details, see `docs/spec/architecture.md`.
+### Live mode account bootstrap fails
 
-Contributor workflow and CI expectations are documented in `CONTRIBUTING.md`.
+- For `HL`, paper mode can continue without wallet bootstrap.
+- For `BB`, exchange bootstrap failure is treated as fatal at startup.
+
+### Telegram commands do nothing
+
+- Confirm both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set.
+- The bot is optional; the runtime still works without it.
+
+## Repo map
+
+- `src/index.ts` — runtime bootstrap and lifecycle
+- `src/feed/` — HL/BB feeds, coin selection, in-memory store
+- `src/strategy/` — pure scan/orchestration layer
+- `src/agent/` — stateful trading logic and reconciliation
+- `src/execution/` — exchange adapters and shared wallet pool
+- `src/db/` — persistence and migrations
+- `src/ui/` — terminal dashboard
+- `src/backtest/` — replay, simulator, optimization, reports
