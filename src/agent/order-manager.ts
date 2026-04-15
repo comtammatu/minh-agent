@@ -637,6 +637,7 @@ export class OrderManager {
 
     // Register position with PositionMonitor for tracking (trail stop, partial close, TUI display)
     if (order.slPrice !== null && order.tpPrice !== null) {
+      const entryInterval = this.orderIntervals.get(order.id)
       this.onPositionOpen?.({
         positionId,
         coin: order.coin,
@@ -648,7 +649,7 @@ export class OrderManager {
         entryOrderId: order.id,
         leverage,
         strategyId: order.strategyId,
-        entryInterval: this.orderIntervals.get(order.id),
+        ...(entryInterval != null && { entryInterval }),
       })
       // Clean up interval tracking
       this.orderIntervals.delete(order.id)
