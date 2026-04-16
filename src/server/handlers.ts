@@ -3,7 +3,7 @@ import type { JournalEntry, JournalEventType, PositionState } from '../agent/typ
 import { getJournalEntries } from '../agent/journal.js'
 import { type LiveMetrics, } from '../analytics/types.js'
 import { getLiveMetrics } from '../analytics/metrics-service.js'
-import { HOT_CACHE_CAP_BARS } from '../config.js'
+import { DASHBOARD_CHART_HISTORY_BATCH_SIZE, HOT_CACHE_CAP_BARS } from '../config.js'
 import { loadCandlesBefore, loadLatestCandle } from '../db/candle-repo.js'
 import { getCandles } from '../feed/store.js'
 import { log } from '../lib/logger.js'
@@ -357,7 +357,8 @@ export function createDashboardFetchHandler(options: DashboardFetchHandlerOption
 
         const { coin } = parseTicker(ticker, options.state.activeExchange)
         const interval = resolutionToInterval(resolution)
-        const countBack = clampLimit(url.searchParams.get('countBack'), 300, 5000)
+        // Keep history responses bounded so TradingView back-scroll loads in stable 300-bar chunks.
+        const countBack = DASHBOARD_CHART_HISTORY_BATCH_SIZE
         const toMs = parseTimestampMs(url.searchParams.get('to'), Date.now())
         const fromMs = parseTimestampMs(url.searchParams.get('from'), Math.max(0, toMs - 7 * 24 * 60 * 60 * 1000))
         const hotCandles = getCandles(
