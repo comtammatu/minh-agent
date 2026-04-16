@@ -15,7 +15,7 @@ Current implementation source of truth:
 Planning note:
 
 - `docs/archive/plan/` contains historical sprint plans and roadmap drafts.
-- Do not treat sprint `[DONE]` markers as proof that `src/server/`, `dashboard/`, `src/advisor/`, or `src/memory/` exist on the current branch.
+- Do not treat sprint `[DONE]` markers as proof that `src/advisor/` or `src/memory/` exist on the current branch. (`src/server/` and `dashboard/` are now implemented.)
 
 ---
 
@@ -41,17 +41,23 @@ Planning note:
 
 **Diagnostic tool:** `src/backtest/run-drilldown-diag.ts`
 
-### [P1] Fix Drilldown 5m Entry Bottleneck — Unblock 4H→15m→5m cascade
+### [DONE] Fix Drilldown 5m Entry Bottleneck — F1-F4 applied 2026-04-12
 
-**What:** Implement 4 fixes to the 5m micro-entry stage: (F1) allow displacement bounce as FVG fallback, (F2) relax CHoCH-only requirement, (F3) extend confirmed POI TTL to 4h, (F4) extend FVG lookback to 10 bars. Then run optimizer to validate.
+**Status:** F1-F4 applied. 5m signals 27→49 (+81%). See `docs/archive/plan/decisions.md` "Drilldown 5m Entry Fixes Applied".
 
-**Why:** Diagnostic showed 649K POIs → 11,667 confirmations → 27 signals → 0 trades. 5m entry is the sole bottleneck. Drilldown R:R (10:1-40:1) is the highest-value path in the strategy.
+### [P1] Fix Simulator Slot Contention — Enable drilldown trades in optimizer
 
-**How to start:** Apply F1-F4 in order (see decisions.md for details), run optimizer after each to measure impact.
+**What:** The optimizer simulator rejects 5m micro-entry when the same coin already has an open `1h_same_tf` position. `simulator.tryFill()` enforces one-position-per-coin. Either (A) run optimizer with `1h_same_tf` disabled to validate 5m signal quality in isolation, or (B) add priority routing so drilldown mode can coexist with or override the 1h position for the same coin.
+
+**Why:** F1-F4 raised 5m signals to 49 but drilldown trades remain 0 in all optimizer runs. Root cause confirmed: `1h_same_tf` fills coin slot first → 5m micro-entry rejected by simulator. Drilldown R:R (10:1-40:1) is the highest-value path.
+
+**How to start:**
+- Option A (fastest): add `--mode 5m-only` flag to optimizer run script that disables `scan1hSameTF`. Run 10-coin optimizer. If holdout PF ≥ 1.1 with ≥ 40 trades → 5m standalone has alpha.
+- Option B: modify `TradeSimulator.tryFill()` to allow drilldown entries to coexist or supersede same-coin 1h positions.
 
 **Effort:** S (1-2 sessions)
-**Depends on:** Drilldown diagnostic (DONE)
-**Added by:** Drilldown diagnostic session 2026-04-12
+**Depends on:** F1-F4 done (CONFIRMED), Drilldown diagnostic (DONE)
+**Added by:** Slot contention analysis 2026-04-12
 
 ### [P3] Investigate Multiplicative Confidence Scoring Model
 

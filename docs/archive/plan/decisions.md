@@ -1426,3 +1426,68 @@ Decisions made while stabilizing the new pipeline benchmark gate after PR merge/
   - robust `p99 = 0.0340ms`
 
 **Operational note:** the remaining GitHub Actions warning is a non-blocking deprecation notice for `actions/checkout@v4` on Node 20. Treat it as repo hygiene follow-up, not a release blocker.
+
+---
+
+## Thesis Monitor Implementation (2026-04-15)
+
+Added live multi-TF thesis re-evaluation for open positions. Previously positions held blindly until SL/TP; now the agent re-scores the original entry thesis on each closed bar.
+
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| TM1 | Thesis re-eval trigger | **Per closed bar, cooldown = entry TF duration** | Prevents over-firing on lower TFs while keeping eval timely for the signal TF |
+| TM2 | Deterioration scoring | **Weighted sum across TFs (4h=0.4, 1h=0.3, 15m=0.2, 5m=0.1)** | HTF regime/bias matters more than micro-TF noise |
+| TM3 | Action thresholds | **0.3 hold / 0.3–0.5 alert / 0.5–0.8 SL→breakeven / ≥0.8 close** | Conservative lower end prevents premature exits; aggressive upper end protects against thesis breakdown |
+| TM4 | Thesis capture | **At entry from `getStatus()` orchestrator cache** | Avoids async race; orchestrator already maintains current regime/bias snapshot |
+| TM5 | Pure function boundary | **`evaluateThesis()` is pure** — agent side drives all state mutations | Keeps `src/indicators/` / `src/strategy/` pure per CLAUDE.md constraint |
+
+**Files:** `src/agent/thesis-monitor.ts` (pure evaluator), wired in agent orchestrator. 25 tests added.
+
+---
+
+## Bybit Demo Mode Cleanup (2026-04-16)
+
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| BB1 | Env var rename | **`BYBIT_TESTNET` → `BYBIT_DEMO`** | "Demo Trading" is Bybit's official name for the sandbox; `testnet` was misleading |
+| BB2 | SDK flag | **`demoTrading: true`** instead of testnet endpoint | Bybit SDK uses `demoTrading` flag, not a separate base URL; the previous `testnet` flag was no-op |
+| BB3 | Paper mode removal | **Replace `PAPER_TRADE` env + `/paper` command with `/mode`** | Paper mode was layered on top of demo; `/mode` shows live/demo/paper state more clearly |
+
+---
+
+## Window Policy Refactor (2026-04-16)
+
+Five-session architectural refactor separating window semantics that were previously conflated in a handful of constants. [CONFIRMED] S1-S5 complete.
+
+**Problem:** Runtime mixed 5 concepts into a few constants — `MAX_IN_MEMORY_CANDLES_BY_INTERVAL`, `MIN_CANDLES_FOR_SCAN`, `INDICATOR_WINDOW` served as bootstrap load size, RAM cap, strategy scan depth, state replay depth, and readiness threshold simultaneously. Strategy was capped at 202 bars; live bootstrap did not rebuild multi-stage state; backtest/live semantics diverged.
+
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| WP1 | Policy split | **5 per-TF constants**: `BOOTSTRAP_LOAD_BARS`, `HOT_CACHE_CAP_BARS`, `PLANNING_WINDOW_BARS`, `STATE_REPLAY_BARS`, `READY_BARS` | One constant per concern; invariant checker at startup validates their ordering |
+| WP2 | Engine contract | **`windowRequirements()` method on `SetupGenerator`** — returns `planningBars`, `htfContextBars`, `replayBars`, `preseedTFs` | Strategy declares its own window needs; runtime allocates exactly what is required |
+| WP3 | `windowRequirements()` backward compat | **Optional method + `legacyWindowRequirements()` fallback** reads `STATE_REPLAY_BARS` from config | Allows incremental adoption; existing strategies still work without implementing the method |
+| WP4 | Bootstrap replay flow | **Global chronological replay** — interleave ALL TF×coin candles by timestamp, same as `buildReplaySequence` in backtest | Backtest and live bootstrap now use identical replay logic; multi-stage state (e.g., Wyckoff phase, CHoCH tracker) correctly rebuilt at startup |
+| WP5 | WS buffer during bootstrap | **Enable ingress-only mode during PG load + replay** — WS candles buffered, not dispatched | Prevents live candles from racing with bootstrap state; flushed after replay completes |
+| WP6 | `INDICATOR_WINDOW` | **Deprecated, kept as alias** | Removed as a behavior-controlling constant; replaced by `PLANNING_WINDOW_BARS`. Alias prevents hard break in any references. |
+| WP7 | Readiness threshold raise | **Raised `READY_BARS` values** after profiling bootstrap quality | Tighter readiness gate reduces false-ready TFs that had insufficient history to generate valid setups |
+
+**Files affected (S1-S5):** `src/config.ts`, `src/feed/store.ts`, `src/strategy/engine.ts`, `src/runtime/orchestrator.ts`, `src/strategy/strategies/smc-sd/index.ts`, `src/ui/tui.tsx`, `src/backtest/compare-exchanges.ts`, `src/runtime/app.ts`.
+
+**Invariants enforced at startup:**
+- `HOT_CACHE_CAP_BARS[tf] >= PLANNING_WINDOW_BARS[tf] + 2`
+- `HOT_CACHE_CAP_BARS[tf] >= htfContextBars[tf] + 2` (if TF used as HTF context)
+- `BOOTSTRAP_LOAD_BARS[tf] >= max(HOT_CACHE_CAP_BARS[tf], READY_BARS[tf], replayBars[tf])`
+
+---
+
+## Browser Dashboard Addition (2026-04-16)
+
+Added `dashboard/` browser UI as a complement to the Ink TUI. The TUI remains the primary operator surface; the browser dashboard provides richer charting and read-only inspection.
+
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| BD1 | Stack | **Vite + React + shadcn/ui** on `localhost:3030` | Consistent with existing `dashboard/` Sprint 3 foundation; shadcn/ui provides consistent component library |
+| BD2 | Chart | **TradingView Lightweight Charts** for candle history | Same library as Sprint 3; candle data served from PG via Elysia UDF endpoint |
+| BD3 | Pages | **Overview, Market, Journal** with live SSE updates | Matches operator use cases: system health, active market state, closed trade review |
+| BD4 | Server | **Elysia handlers** for candles, status, journal, chart UDF | Reuses existing `src/server/` Elysia layer; no separate backend process |
+| BD5 | TUI relationship | **TUI unchanged** — browser dashboard is additive only | No regression risk to existing operator workflow |

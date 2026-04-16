@@ -74,6 +74,18 @@ Backtests reuse the production pipeline instead of a separate simulation-specifi
 | [agent-and-execution.md](agent-and-execution.md) | state machine, order manager, position sync, exchange pool | money-handling safety and reconciliation |
 | [data-and-backtesting.md](data-and-backtesting.md) | persistence, analytics, backtest reuse, health and operator loop | rollback safety, observability, and offline evaluation |
 
+## Operator surfaces
+
+Three operator surfaces run alongside the trading loop:
+
+| Surface | Where | Purpose |
+|---|---|---|
+| Ink TUI | terminal (stdout) | Primary real-time view: candles, positions, agent state, health |
+| Browser dashboard | `localhost:3030` | Richer read-only inspection: TradingView chart (candle history from PG), Overview / Market / Journal pages, live SSE updates |
+| Telegram bot | remote | Remote operator commands: `/status`, `/pnl`, `/pause`, `/resume`, `/closeall`, `/mode` |
+
+The browser dashboard (`dashboard/`) is a separate Vite + React + shadcn/ui package. Its built output is served by the Elysia layer in the main process; no separate Node process is needed. Source: `dashboard/src/`, server handlers in `src/server/`.
+
 ## Infrastructure and runtime context
 
 The runtime is Bun with PostgreSQL persistence via the `postgres` client, and the default local DB points to `postgres://minh:minh_dev@localhost:5432/minh` (`package.json:1`, `src/db/connection.ts:7`). Startup always runs numbered SQL migrations before touching feeds or exchange state, which keeps schema drift localized to boot (`src/runtime/app.ts`, `src/db/migrate.ts`).
@@ -106,7 +118,7 @@ The hub ranking comes from the generated import graph, not from name heuristics 
 - Unknown: whether all migrations are rollback-safe on production-sized datasets. The code runs them transactionally, but this pass did not benchmark or stage mixed-version rollouts (`src/db/migrate.ts:42`).
 
 <!-- ORACLE-META
-Written by codebase-oracle | 2026-04-14
+Written by codebase-oracle | 2026-04-14 (operator surfaces section added 2026-04-16)
 Data: tree-sitter analysis + generated import graph + direct source reading
 Audience: new engineer, oncall, refactor owner | Confidence: 82%
 Unknowns: 3 items pending verification
