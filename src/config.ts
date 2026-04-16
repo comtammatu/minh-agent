@@ -710,6 +710,21 @@ export const DB_IDLE_TIMEOUT_S = 30
 /** Connection attempt timeout (seconds). */
 export const DB_CONNECT_TIMEOUT_S = 10
 
+// ─── Memory (Sprint 6) ───────────────────────────────────────────────────────
+
+/** Recency decay half-life in days. After this many days, recency weight halves. */
+export const MEMORY_DECAY_HALF_LIFE_DAYS = 7
+
+/** Scoring weights for memory retrieval: recency + importance + FTS relevance. */
+export const MEMORY_WEIGHTS = {
+  recency: 0.4,
+  importance: 0.35,
+  relevance: 0.25,
+} as const
+
+/** Auto-prune memories older than this with low access + low importance. */
+export const MEMORY_RETENTION_DAYS = 90
+
 // ─── WebSocket Reconnection ────────────────────────────────────────────────
 
 /** Initial delay before reconnection attempt (ms). */
