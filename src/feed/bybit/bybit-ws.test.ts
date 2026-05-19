@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'bun:test'
-import { bybitWsSpies } from '../../../test/preload/bybit-api.mock.js'
+import { bybitWsSpies } from '../../../test/preload/bybit-spies.js'
 
 // The bybit-api mock lives in test/preload/bybit-api.mock.ts (wired via
 // bunfig.toml). It loads BEFORE any test file, so bybit-ws.ts's static

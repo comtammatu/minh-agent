@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { mock } from 'bun:test'
+import { bybitWsSpies } from './bybit-spies.js'
 
 type AnyRecord = Record<string, unknown>
 
@@ -64,16 +65,6 @@ class MockRestClientV5 {
   async setTradingStop(_params?: AnyRecord): Promise<AnyRecord> {
     return { ...OK, result: {} }
   }
-}
-
-// Shared spy instances. Exported so tests (e.g. bybit-ws.test.ts) can
-// `import { bybitWsSpies } from 'test/preload/bybit-api.mock.js'` and assert
-// against the SAME spies the runtime is bound to. Per-file mock.module()
-// calls don't work here because the preload loads first, so bybit-ws.ts's
-// static `import { WebsocketClient }` is bound at first transitive import.
-export const bybitWsSpies = {
-  subscribeV5: mock((_topic: string | string[], _category?: string) => undefined),
-  unsubscribeV5: mock((_topic: string | string[], _category?: string) => undefined),
 }
 
 class MockWebsocketClient extends EventEmitter {
