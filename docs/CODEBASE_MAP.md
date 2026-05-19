@@ -11,6 +11,8 @@
 
 `minh-agent` is a single-process Bun trading engine that boots the database, selects coins, hydrates candle state, backfills missing history, wires one concrete `smc-sd` setup pipeline, then routes emitted setups into an execution agent and operator surfaces. `src/index.ts` is now a thin process entrypoint; long-lived orchestration lives in `src/runtime/app.ts`.
 
+The browser dashboard ships in this branch (`dashboard/` + `src/server/`) and is wired into the runtime alongside the TUI and Telegram surfaces. `src/memory/` is a new trade-memory foundation (storage + scored retrieval, commit ef441e6) that is not yet wired into the live runtime — treat it as a feature flag turned off, not as live code.
+
 The codebase is dense rather than wide. The generated import graph covers 118 TS/TSX files and 472 internal edges, with `types.ts`, `config.ts`, and `lib/logger.ts` acting as the dominant hubs (`docs/archive/oracle-data/analysis-summary.md:5`, `docs/archive/oracle-data/analysis-summary.md:23`). That makes contract files and shared operational helpers the highest-blast-radius edit points even though most business logic lives deeper in `strategy/`, `agent/`, `feed/`, and `backtest/`.
 
 ## Architecture map

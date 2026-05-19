@@ -1,6 +1,6 @@
 # Minh (明) — Autonomous Trading Runtime
 
-Exchange-aware Bun trading runtime for Hyperliquid and Bybit. Live process = market data ingest → PostgreSQL + in-memory store → single `smc-sd` setup engine → trading agent → shared exchange execution → TUI + Telegram + PostgreSQL-backed analytics/backtesting. Current branch does not ship the historical `src/server/`, `dashboard/`, `src/advisor/`, or `src/memory/` modules described in older sprint plans.
+Exchange-aware Bun trading runtime for Hyperliquid and Bybit. Live process = market data ingest → PostgreSQL + in-memory store → single `smc-sd` setup engine → trading agent → shared exchange execution → TUI + Telegram + browser dashboard + PostgreSQL-backed analytics/backtesting. `src/advisor/` is not part of the current branch; `src/memory/` exists as a foundation (storage + scored retrieval) but is not yet wired into the live runtime.
 
 ## Commands
 
@@ -51,9 +51,14 @@ Runtime: Bun | DB: PostgreSQL/TimescaleDB | UI: Ink TUI | Exchanges: Hyperliquid
 - `src/analytics/` — Closed-trade metrics + live wallet stats
 - `src/alert/telegram/` — Bot, commands, alert formatting
 - `src/ui/` — Ink TUI dashboard, live account/position views, sound
+- `src/server/` — Bun HTTP server for the browser dashboard (contracts + handlers + chart endpoints)
+- `src/memory/` — Trade memory foundation (storage + scored retrieval); not yet wired into the live runtime
+- `src/lib/` — Cross-cutting helpers (`retry.ts`, `logger.ts`)
 - `src/backtest/` — Replay engine, simulator, optimization, reporting, benchmarks
+- `dashboard/` — React + Vite browser dashboard served via `src/server/`
 - `src/config.ts` — All thresholds, regime multipliers, coin/TF lists
 - `src/types.ts` — Core type definitions
+- `scripts/`, `test/` — One-shot scripts and out-of-module integration tests
 
 ## Things That Will Bite You
 
