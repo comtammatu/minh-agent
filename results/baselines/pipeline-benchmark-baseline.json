@@ -1,14 +1,15 @@
 {
-  "generatedAt": "2026-04-15T08:37:58.710Z",
-  "sourceResult": "https://github.com/comtammatu/minh-agent/actions/runs/24444794485/job/71418263025",
+  "generatedAt": "2026-05-19T07:58:52.000Z",
+  "sourceResult": "https://github.com/comtammatu/minh-agent/actions/runs/26084206667",
+  "notes": "Recalibrated 2026-05-19 after the Sprint 1-5 window-policy refactor (commits f28ec5d..a86c4d2, landed 2026-04-15) expanded per-TF scan windows by design. Previous baseline (raw p95 0.0713ms / p99 0.1076ms; robust p95 0.0667ms / p99 0.0975ms) was set on commit d20923036 before that refactor and never updated, causing the budget gate to red-line for ~1 month even though the new latency is stable and intentional. Numbers below are the aggregate latencies from the most recent main run; across 4 separate CI runs spanning a month, robust p95 varied 0.1022-0.1154ms and robust p99 varied 0.3148-0.3379ms, so the 25% regression budget in src/config.ts gives ample headroom over normal hosted-runner variance.",
   "metrics": {
     "raw": {
-      "p95Ms": 0.0713,
-      "p99Ms": 0.1076
+      "p95Ms": 0.1109,
+      "p99Ms": 0.3525
     },
     "robust": {
-      "p95Ms": 0.0667,
-      "p99Ms": 0.0975
+      "p95Ms": 0.1035,
+      "p99Ms": 0.3148
     }
   }
 }
