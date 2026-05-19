@@ -526,14 +526,15 @@ describe('BybitExchangeService', () => {
     })
   })
 
-  // ── scheduleCancel (no-op) ────────────────────────────────────────────────
+  // ── scheduleCancel (unsupported on Bybit) ─────────────────────────────────
 
-  it('scheduleCancel is a no-op (logs warning only)', async () => {
+  it('scheduleCancel returns failure with explanatory error', async () => {
     const { BybitExchangeService } = await import('./bybit-exchange-service.js')
     const svc = new BybitExchangeService()
     await svc.init()
-    // Should not throw
-    expect(() => svc.scheduleCancel(Date.now() + 60_000)).not.toThrow()
+    const result = await svc.scheduleCancel(Date.now() + 60_000)
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('not supported on Bybit')
   })
 
   describe('cancelAllOpenOrders', () => {

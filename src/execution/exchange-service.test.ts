@@ -49,9 +49,12 @@ let lastOrderCall: unknown = null
 let lastCancelCall: unknown = null
 let lastCancelByCloidCall: unknown = null
 let lastModifyCall: unknown = null
+let lastScheduleCancelCall: unknown = null
 let orderResponse: unknown = null
 let cancelResponse: unknown = null
+let scheduleCancelResponse: unknown = null
 let modifyError: Error | null = null
+let scheduleCancelError: Error | null = null
 
 // Mock HL SDK
 mock.module('@nktkas/hyperliquid', () => ({
@@ -86,6 +89,11 @@ mock.module('@nktkas/hyperliquid', () => ({
       lastModifyCall = params
       if (modifyError) throw modifyError
       return { status: 'ok' }
+    }
+    async scheduleCancel(params: unknown) {
+      lastScheduleCancelCall = params
+      if (scheduleCancelError) throw scheduleCancelError
+      return scheduleCancelResponse ?? { status: 'ok', response: { type: 'default' } }
     }
   },
   InfoClient: class MockInfoClient {
@@ -487,6 +495,40 @@ describe('ExchangeService', () => {
       const result = await svc.cancelByOid('UNKNOWN', 12345)
       expect(result.success).toBe(false)
       expect(result.error).toContain('Unknown asset')
+    })
+  })
+
+  // ── scheduleCancel (HL dead-man-switch) ────────────────────────────────
+
+  describe('scheduleCancel', () => {
+    it('schedules cancel-all at a future timestamp', async () => {
+      const future = Date.now() + 10_000
+      const result = await svc.scheduleCancel(future)
+      expect(result.success).toBe(true)
+      expect(result.status).toBe('scheduled')
+      const call = lastScheduleCancelCall as { time: number }
+      expect(call.time).toBe(future)
+    })
+
+    it('clears scheduled cancel when called without timestamp', async () => {
+      const result = await svc.scheduleCancel()
+      expect(result.success).toBe(true)
+      // SDK called with empty object → clear schedule
+      expect(lastScheduleCancelCall).toEqual({})
+    })
+
+    it('rejects timestamps less than 5s in the future', async () => {
+      const result = await svc.scheduleCancel(Date.now() + 1_000)
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('≥5s in future')
+    })
+
+    it('surfaces SDK errors after retries exhausted', async () => {
+      scheduleCancelError = new Error('Schedule limit exceeded')
+      const result = await svc.scheduleCancel(Date.now() + 30_000)
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('Schedule limit exceeded')
+      scheduleCancelError = null
     })
   })
 

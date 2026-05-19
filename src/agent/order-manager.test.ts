@@ -350,6 +350,30 @@ describe('OrderManager', () => {
       // Should not throw
       await om.cancelOrder('nonexistent-id', 'test')
     })
+
+    it('preserves status when exchange cancel + cloid retry both fail', async () => {
+      // Regression test for cancel-failure-hidden bug (autoplan eng review 2026-05-19):
+      // Previously, a failed exchange cancel still mutated DB status to 'cancelled',
+      // creating a phantom state where reconciliation believed the order was gone
+      // while the exchange still held it live. The order must stay 'submitted' so
+      // checkTimeouts() retries on the next sweep.
+      mockCancelSuccess = false
+      const order = makeOrder({
+        status: 'submitted',
+        exchangeOrderId: 'oid-12345',
+        cloid: '0xabc',
+      })
+      injectOrder(om, order)
+
+      await om.cancelOrder(order.id, 'invalidation')
+
+      // Status MUST remain 'submitted' — exchange still holds the order.
+      expect(getOrdersMap(om).get(order.id)?.status).toBe('submitted')
+      // Order is still eligible for retry on next timeout sweep.
+      expect(getOrdersMap(om).get(order.id)?.exchangeOrderId).toBe('oid-12345')
+
+      mockCancelSuccess = true // reset for subsequent tests
+    })
   })
 
   // ── Fill ─────────────────────────────────────────────────────────────

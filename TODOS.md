@@ -1,7 +1,70 @@
 # TODOS
 
 Active backlog only. Historical review notes and superseded plans live in [docs/archive/plan/decisions.md](docs/archive/plan/decisions.md).
-Priority: P1 (do next), P2 (soon), P3 (someday).
+Priority: **P0 (urgent safety), P1 (do next), P2 (soon), P3 (someday)**.
+
+## Execution safety (from /autoplan 2026-05-19 — Phase 3 Eng Review)
+
+See [docs/plan/stack-decision-draft.md](docs/plan/stack-decision-draft.md) for full context.
+
+### [DONE 2026-05-19] Fix cancel-failure-hidden bug — order-manager.ts
+- Fixed: if exchange cancel + cloid retry both fail, status now stays `submitted` (was: silently marked `cancelled`).
+- Test added: `cancelOrder > preserves status when exchange cancel + cloid retry both fail`.
+
+### [DONE 2026-05-19] Add HL scheduleCancel (dead-man-switch) — exchange method
+- Implemented `scheduleCancel(timestampMs?)` on `HLExchangeService` via `@nktkas/hyperliquid` SDK.
+- Added optional `scheduleCancel?(timestampMs?)` to `IExchangeService` interface.
+- BB returns explicit failure (not no-op); caller relies on `cancelAllOpenOrders()` at shutdown.
+
+### [P0] Wire HL scheduleCancel into runtime — periodic refresh
+**What:** Add a periodic timer in `src/runtime/app.ts` that calls `exchangeService.scheduleCancel(Date.now() + DMS_DEADLINE_MS)` every `DMS_REFRESH_MS`. On clean shutdown, call `scheduleCancel(undefined)` to clear.
+
+**Why:** HL natively supports dead-man-switch but it's only useful if armed. CLAUDE.md / `.claude/rules/exchange-gotchas.md` flag it as "Critical for bot safety on crash/disconnect — keep it armed."
+
+**How to start:**
+- Add to `src/config.ts`: `DMS_DEADLINE_MS = 6 * 60 * 60 * 1000` (6h) + `DMS_REFRESH_MS = 4 * 60 * 60 * 1000` (4h) → ~6 ops/day, within HL's 10/day cap.
+- In `runApp()` after exchange init, start `setInterval` calling scheduleCancel.
+- In shutdown handler, clear the schedule.
+- Test: assert refresh tick fires; assert clear on shutdown.
+
+**Effort:** S (1 session, security-sensitive)
+**Depends on:** Done methods above.
+
+### [P0] BB heartbeat watchdog — process-freeze coverage
+**What:** Bybit has no native dead-man-switch. Build an external heartbeat: a child process or systemd watchdog that calls Bybit `cancelAllOpenOrders` if main process stops emitting a heartbeat for >N minutes.
+
+**Why:** BB-only operators currently have ZERO crash protection — `bybit-exchange-service.ts:609` returns failure; shutdown path only runs on clean exit.
+
+**How to start:** Sketch options: (a) sidecar Node process polling main process PID, (b) external uptime monitor calling a /flatten endpoint, (c) systemd watchdog config.
+
+**Effort:** M (1-2 sessions)
+**Depends on:** Operator-control contract (next item).
+
+### [P0] Reconciliation pass — surface cancel-failed orders + sync exchange state
+**What:** Today the cancel-failure-hidden bug fix prevents corruption but leaves the order ACTIVE on the exchange while marked as something other than `cancelled` in DB. Need a reconciliation loop that: (1) periodically queries exchange for open orders, (2) diffs against DB, (3) re-attempts failed cancels, (4) alerts on persistent drift.
+
+**Why:** Without reconciliation, a single 503 during cancel can leave a ghost order open indefinitely until `checkTimeouts` happens to retry.
+
+**How to start:** Extend `src/agent/position-monitor.ts` or new `src/agent/reconciler.ts`. Compare `getOrders()` (DB) vs `exchange.getOpenOrders()` every N seconds.
+
+**Effort:** M (1-2 sessions)
+**Added by:** /autoplan 2026-05-19 (Eng review medium finding)
+
+### [P1] Execution boundary contract test suite
+**What:** Comprehensive tests covering HL signing, cloid round-trip, balance reconciliation (perp+spot), SL/TP placement after fill, modify-trigger race.
+
+**Why:** /autoplan 2026-05-19 Eng review flagged execution code as "too sensitive for rebuild churn" — needs contract tests before any DB/UI/strategy work that could regress.
+
+**Effort:** L (1-2 weeks)
+
+### [P1] Operator-control surface contract (`src/server/`)
+**What:** `POST /api/operator/flatten` with hold-to-confirm + `POST /api/operator/pause`. Audit log of operator actions. Distinct from `circuit-breakers.ts` which only pauses new entries.
+
+**Why:** /autoplan 2026-05-19 Design review DIM 3 (2/10) — kill-switch journey unspecified. `dashboard-shell.tsx:99` is labelled "Read-only ops console"; emergency path only exists in Telegram.
+
+**Effort:** M (1 session for contract + 1 for dashboard wire-up)
+
+---
 
 Current implementation source of truth:
 

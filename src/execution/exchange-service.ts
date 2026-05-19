@@ -100,6 +100,16 @@ export interface IExchangeService {
    */
   cancelAllOpenOrders?(): Promise<OrderResult>
 
+  /**
+   * Schedule an exchange-native dead-man-switch cancel-all at `timestampMs`.
+   * If the bot freezes/crashes, the exchange auto-cancels all open orders at that time.
+   * Caller refreshes periodically before the deadline. Pass `undefined` to clear schedule.
+   *
+   * - HL: native scheduleCancel. Time must be ≥5s in future; max 10 ops/day per address.
+   * - BB: not supported natively → returns failure; rely on cancelAllOpenOrders() at shutdown.
+   */
+  scheduleCancel?(timestampMs?: number): Promise<OrderResult>
+
   /** Query account summary. Updates cached accountValue. */
   getAccountState(): Promise<AccountState>
 

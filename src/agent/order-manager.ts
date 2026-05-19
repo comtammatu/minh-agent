@@ -754,8 +754,11 @@ export class OrderManager {
         }
       }
       if (!cancelResult.success) {
-        log.error('order-manager', `Exchange cancel failed for ${orderId}: ${cancelResult.error}`)
-        // Still mark cancelled in DB — reconciliation will catch discrepancies
+        // Exchange still holds the order — must NOT mark it cancelled locally,
+        // otherwise reconciliation trusts a phantom state and the order ghosts.
+        // checkTimeouts() will re-attempt on the next sweep for stale orders.
+        log.error('order-manager', `Exchange cancel failed for ${orderId} (will retry on next timeout sweep): ${cancelResult.error}`)
+        return
       }
     }
 

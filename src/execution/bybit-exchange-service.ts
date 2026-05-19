@@ -603,11 +603,21 @@ export class BybitExchangeService {
   // ── HL-specific no-ops ─────────────────────────────────────────────────────
 
   /**
-   * Dead man's switch is not supported on Bybit.
-   * Callers should implement their own heartbeat cancellation (e.g. cancelAll on shutdown).
+   * Dead man's switch is not supported natively on Bybit.
+   * Returns a failure result so callers can distinguish "exchange refused" from "not available".
+   * Use `cancelAllOpenOrders()` at clean shutdown; an external heartbeat watchdog must
+   * cover the crash/freeze case (see TODOS.md — BB heartbeat dead-man-switch).
    */
-  scheduleCancel(_timestampMs: number): void {
-    log.warn('bybit-svc', 'scheduleCancel not supported on Bybit — use heartbeat cancellation instead')
+  async scheduleCancel(_timestampMs?: number): Promise<OrderResult> {
+    log.warn('bybit-svc', 'scheduleCancel not supported on Bybit — use cancelAllOpenOrders() at shutdown + heartbeat watchdog')
+    return {
+      success: false,
+      oid: null,
+      avgPx: null,
+      totalSz: null,
+      status: null,
+      error: 'scheduleCancel not supported on Bybit',
+    }
   }
 
   /**

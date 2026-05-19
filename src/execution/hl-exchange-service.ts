@@ -492,6 +492,65 @@ export class HLExchangeService {
     return { success: false, oid, avgPx: null, totalSz: null, status: null, error: msg }
   }
 
+  /**
+   * Schedule a dead-man-switch cancel-all at `timestampMs` (HL-native).
+   * If the bot process freezes/crashes, the exchange auto-cancels all open orders
+   * at that time. Caller must refresh periodically before the deadline expires.
+   *
+   * HL constraints (per https://hyperliquid.gitbook.io/.../schedule-cancel-dead-mans-switch):
+   *   - `timestampMs` must be ≥5s in the future
+   *   - Max 10 schedule operations per day; expired stale schedules cost 5x weight
+   *   - Pass `undefined` to clear any existing schedule (recommended on clean shutdown)
+   */
+  async scheduleCancel(timestampMs?: number): Promise<OrderResult> {
+    this.ensureInit()
+
+    if (timestampMs !== undefined && timestampMs - Date.now() < 5_000) {
+      const ms = timestampMs - Date.now()
+      return {
+        success: false,
+        oid: null,
+        avgPx: null,
+        totalSz: null,
+        status: null,
+        error: `scheduleCancel time must be ≥5s in future (got ${ms}ms)`,
+      }
+    }
+
+    const label = timestampMs !== undefined
+      ? `scheduleCancel @ ${new Date(timestampMs).toISOString()}`
+      : 'scheduleCancel CLEAR'
+    log.info('exchange-service', label)
+
+    const retryResult = await withRetry(
+      async () => {
+        await acquire()
+        const response = timestampMs !== undefined
+          ? await this.exchange!.scheduleCancel({ time: timestampMs })
+          : await this.exchange!.scheduleCancel({})
+        if (response.status === 'ok') {
+          return { success: true as const, oid: null, avgPx: null, totalSz: null, status: 'scheduled' as const, error: null }
+        }
+        throw new Error(`scheduleCancel rejected: ${JSON.stringify(response)}`)
+      },
+      {
+        maxAttempts: RETRY.exchangeMaxAttempts,
+        initialDelayMs: RETRY.initialDelayMs,
+        jitterFraction: RETRY.jitterFraction,
+        shouldRetry: (err) => isRetryableExchangeError(err),
+        onRetry: (err, attempt, delayMs) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          log.warn('exchange-service', `scheduleCancel retry ${attempt}: ${msg} (backoff ${delayMs}ms)`)
+        },
+      },
+    )
+
+    if (retryResult.success && retryResult.value) return retryResult.value
+    const msg = retryResult.lastError instanceof Error ? retryResult.lastError.message : String(retryResult.lastError)
+    log.error('exchange-service', `scheduleCancel failed after ${retryResult.attempts} attempts: ${msg}`)
+    return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: msg }
+  }
+
   /** Cancel order by cloid (with retry for transient errors). */
   async cancelByCloid(coin: string, cloid: string): Promise<OrderResult> {
     this.ensureInit()
