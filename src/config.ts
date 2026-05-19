@@ -157,6 +157,77 @@ export const STALENESS_CHECK_INTERVAL_MS = 30_000
 // Status line printed every N ms
 export const STATUS_INTERVAL_MS = 60_000
 
+// ── Dead-man-switch (HL native scheduleCancel) ────────────────────────────
+// HL caps schedule operations at 10/day per address. 6h deadline / 4h refresh
+// → ~6 ops/day, comfortably under the cap. Crash window: orders are auto-cancelled
+// on the exchange within 6h if the bot freezes between refreshes.
+export const DMS_DEADLINE_MS = 6 * 60 * 60 * 1000
+export const DMS_REFRESH_MS = 4 * 60 * 60 * 1000
+
+/**
+ * Paper-trade mode flag. Defaults to true (safe) — set PAPER_TRADE=false in env
+ * to enable real-money execution paths (e.g. arming the HL dead-man-switch).
+ */
+export function isPaperMode(): boolean {
+  return process.env['PAPER_TRADE'] !== 'false'
+}
+
+/**
+ * Whether the HL dead-man-switch should be armed for this process.
+ * Active only when ACTIVE_EXCHANGE=HL AND PAPER_TRADE=false.
+ */
+export function isDmsEnabled(): boolean {
+  return tryGetActiveExchange() === 'HL' && !isPaperMode()
+}
+
+// ── Bybit external dead-man-switch (heartbeat watchdog) ───────────────────
+// Bybit has no native scheduleCancel. A separate Bun process (`scripts/bb-watchdog.ts`)
+// polls a heartbeat file written by the main process. If the file ages past
+// BB_HEARTBEAT_THRESHOLD_MS and the writing PID is no longer alive (or is alive
+// but stale), the watchdog calls cancelAllOpenOrders() on Bybit.
+//
+// Cadence: write every 30s, threshold 5min → 10× safety margin so normal long
+// pauses (GC, DB stalls, backfill) never trigger a false-positive cancel.
+//
+// See: docs/operations/dead-man-switch.md
+
+/** Where the main process writes its heartbeat. Watchdog must read the same path. */
+export const BB_HEARTBEAT_PATH: string =
+  process.env['BB_HEARTBEAT_PATH']?.trim() || '/tmp/minh-heartbeat.json'
+
+/** How often the main process refreshes the heartbeat file (ms). */
+export const BB_HEARTBEAT_WRITE_MS: number = parseHeartbeatEnv(
+  'BB_HEARTBEAT_WRITE_MS',
+  30_000,
+)
+
+/** How stale the heartbeat may be before the watchdog cancels (ms). */
+export const BB_HEARTBEAT_THRESHOLD_MS: number = parseHeartbeatEnv(
+  'BB_HEARTBEAT_THRESHOLD_MS',
+  300_000,
+)
+
+function parseHeartbeatEnv(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim()
+  if (!raw) return fallback
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`${name} must be a positive number of milliseconds (received "${raw}")`)
+  }
+  return n
+}
+
+/**
+ * Whether the BB heartbeat watchdog should be active for this process.
+ * Active only when ACTIVE_EXCHANGE=BB AND PAPER_TRADE=false.
+ *
+ * Symmetric with {@link isDmsEnabled} for HL — gates the writer in the main
+ * process and the loop in the watchdog script identically.
+ */
+export function isBbWatchdogEnabled(): boolean {
+  return tryGetActiveExchange() === 'BB' && !isPaperMode()
+}
+
 // ATR multiplier for zone proximity buffer (confirm layer)
 export const ZONE_BUFFER_ATR_MULT = 0.3
 

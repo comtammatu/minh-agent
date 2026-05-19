@@ -16,29 +16,20 @@ See [docs/plan/stack-decision-draft.md](docs/plan/stack-decision-draft.md) for f
 - Added optional `scheduleCancel?(timestampMs?)` to `IExchangeService` interface.
 - BB returns explicit failure (not no-op); caller relies on `cancelAllOpenOrders()` at shutdown.
 
-### [P0] Wire HL scheduleCancel into runtime — periodic refresh
-**What:** Add a periodic timer in `src/runtime/app.ts` that calls `exchangeService.scheduleCancel(Date.now() + DMS_DEADLINE_MS)` every `DMS_REFRESH_MS`. On clean shutdown, call `scheduleCancel(undefined)` to clear.
+### [DONE 2026-05-19] Wire HL scheduleCancel into runtime — periodic refresh
+- Added `DMS_DEADLINE_MS` (6h), `DMS_REFRESH_MS` (4h), `isPaperMode()`, `isDmsEnabled()` in `src/config.ts`.
+- `PAPER_TRADE` env wired (default `true`). DMS arms only when `ACTIVE_EXCHANGE=HL && PAPER_TRADE=false`.
+- `runApp()` arms via `setInterval` after pool init; refresh tick logs on error. Graceful shutdown calls `scheduleCancel(undefined)`.
+- Policy tests in `test/runtime/dms-arming.test.ts` lock in cadence ≤10 ops/day and ≥5s HL minimum.
 
-**Why:** HL natively supports dead-man-switch but it's only useful if armed. CLAUDE.md / `.claude/rules/exchange-gotchas.md` flag it as "Critical for bot safety on crash/disconnect — keep it armed."
-
-**How to start:**
-- Add to `src/config.ts`: `DMS_DEADLINE_MS = 6 * 60 * 60 * 1000` (6h) + `DMS_REFRESH_MS = 4 * 60 * 60 * 1000` (4h) → ~6 ops/day, within HL's 10/day cap.
-- In `runApp()` after exchange init, start `setInterval` calling scheduleCancel.
-- In shutdown handler, clear the schedule.
-- Test: assert refresh tick fires; assert clear on shutdown.
-
-**Effort:** S (1 session, security-sensitive)
-**Depends on:** Done methods above.
-
-### [P0] BB heartbeat watchdog — process-freeze coverage
-**What:** Bybit has no native dead-man-switch. Build an external heartbeat: a child process or systemd watchdog that calls Bybit `cancelAllOpenOrders` if main process stops emitting a heartbeat for >N minutes.
-
-**Why:** BB-only operators currently have ZERO crash protection — `bybit-exchange-service.ts:609` returns failure; shutdown path only runs on clean exit.
-
-**How to start:** Sketch options: (a) sidecar Node process polling main process PID, (b) external uptime monitor calling a /flatten endpoint, (c) systemd watchdog config.
-
-**Effort:** M (1-2 sessions)
-**Depends on:** Operator-control contract (next item).
+### [DONE 2026-05-19] BB heartbeat watchdog — process-freeze coverage
+- Implemented Option A from the design comparison: standalone Bun script (`scripts/bb-watchdog.ts`) polling a heartbeat file (`{pid, ts}`) written every 30s by the main runtime when `ACTIVE_EXCHANGE=BB && PAPER_TRADE=false`.
+- Detection logic is pure (`evaluateHeartbeat`) and unit-tested; the loop, file IO, and `cancelAllOpenOrders()` call sit at the edge.
+- Stale + dead PID → crash; stale + alive PID → freeze. Both fire the cancel and exit non-zero for supervisor restart. Missing file → intentional shutdown (no-op).
+- Graceful shutdown deletes the heartbeat file so the watchdog doesn't fire on operator-driven stops.
+- Configurable via `BB_HEARTBEAT_PATH` / `BB_HEARTBEAT_WRITE_MS` / `BB_HEARTBEAT_THRESHOLD_MS` (defaults: `/tmp/minh-heartbeat.json`, 30s, 5min).
+- Deploy guide (systemd + pm2 + container) and design rationale in [docs/operations/dead-man-switch.md](docs/operations/dead-man-switch.md).
+- Tests: `test/runtime/heartbeat.test.ts` (writer/reader + isPidAlive) and `test/runtime/bb-watchdog.test.ts` (decision matrix + gating + cadence invariants).
 
 ### [P0] Reconciliation pass — surface cancel-failed orders + sync exchange state
 **What:** Today the cancel-failure-hidden bug fix prevents corruption but leaves the order ACTIVE on the exchange while marked as something other than `cancelled` in DB. Need a reconciliation loop that: (1) periodically queries exchange for open orders, (2) diffs against DB, (3) re-attempts failed cancels, (4) alerts on persistent drift.

@@ -42,7 +42,14 @@ import {
   getActiveExchange,
   BYBIT_TOP_COINS_LIMIT,
   BYBIT_FUNDING_REFRESH_MS,
+  DMS_DEADLINE_MS,
+  DMS_REFRESH_MS,
+  isDmsEnabled,
+  isBbWatchdogEnabled,
+  BB_HEARTBEAT_PATH,
+  BB_HEARTBEAT_WRITE_MS,
 } from '../config.js'
+import { startHeartbeatWriter } from './heartbeat.js'
 import { probeCoins } from '../feed/rest.js'
 import { setCandles, clearCoinData, setOnPersist, candleCount, dayChangePctFromUtcDayOpen, getCandles } from '../feed/store.js'
 import { unsubscribeCandles, getSubscriptionCount } from '../feed/ws.js'
@@ -201,6 +208,17 @@ let selector: CoinSelector
 
 // Track intervals so we can clear them before reconnect
 const activeIntervals: ReturnType<typeof setInterval>[] = []
+
+/** Stop fn returned by startHeartbeatWriter — set in main() when BB live, cleared in cleanup(). */
+let stopHeartbeatWriter: (() => void) | null = null
+
+/**
+ * In-flight HL dead-man-switch arm promise. Tracked at module scope so the
+ * graceful-shutdown path can await any pending arm before calling
+ * scheduleCancel(undefined) — otherwise a late arm could re-schedule
+ * the cancel after the clear and silently kill orders after restart.
+ */
+let dmsArmInFlight: Promise<void> | null = null
 
 /** TUI live Account: closed-trade stats for the shared runtime wallet (refreshed from DB). */
 let liveWalletStatsCache: LiveWalletStats | null = null
@@ -602,6 +620,51 @@ async function main(): Promise<void> {
     log.warn('startup', `ACCT  | Could not fetch account info (non-fatal): ${msg}`)
   }
 
+  // 7d. Start BB heartbeat writer (live Bybit only). An external watchdog
+  //     process (`scripts/bb-watchdog.ts`) reads this file and calls Bybit
+  //     cancelAllOpenOrders() if the bot freezes/crashes. Bybit has no native
+  //     scheduleCancel, so this is the only crash protection for BB live.
+  if (isBbWatchdogEnabled()) {
+    stopHeartbeatWriter = startHeartbeatWriter({
+      path: BB_HEARTBEAT_PATH,
+      writeMs: BB_HEARTBEAT_WRITE_MS,
+    })
+    log.info('startup', `HEARTBEAT | armed | path ${BB_HEARTBEAT_PATH} | write ${BB_HEARTBEAT_WRITE_MS / 1000}s`)
+  }
+
+  // 7e. Arm HL dead-man-switch (live HL only). If the bot freezes/crashes,
+  //     the exchange auto-cancels all open orders DMS_DEADLINE_MS after the
+  //     last refresh. Refresh cadence chosen to stay under HL's 10/day cap.
+  if (isDmsEnabled() && pool.isInitialized()) {
+    const svc = pool.getShared()
+    if (typeof svc.scheduleCancel === 'function') {
+      let lastArmOk = false
+      const armDms = async (): Promise<void> => {
+        try {
+          const result = await svc.scheduleCancel!(Date.now() + DMS_DEADLINE_MS)
+          lastArmOk = result.success
+          if (!result.success) {
+            log.error('dms', `DMS arm failed: ${result.error}`)
+          }
+        } catch (err) {
+          lastArmOk = false
+          log.error('dms', `DMS arm exception: ${err instanceof Error ? err.message : err}`)
+        }
+      }
+      const startArm = (): void => { dmsArmInFlight = armDms() }
+      startArm()
+      await dmsArmInFlight
+      if (lastArmOk) {
+        log.info('startup', `DMS   | armed | deadline ${DMS_DEADLINE_MS / 1000}s | refresh ${DMS_REFRESH_MS / 1000}s`)
+      } else {
+        log.warn('startup', `DMS   | initial arm failed — will retry on next refresh tick (${DMS_REFRESH_MS / 1000}s)`)
+      }
+      activeIntervals.push(setInterval(startArm, DMS_REFRESH_MS))
+    } else {
+      log.warn('startup', 'DMS   | HL service missing scheduleCancel — not armed')
+    }
+  }
+
   // 8. Start health monitor periodic check (S13: Self-Healing)
   health.startPeriodicCheck()
 
@@ -741,7 +804,41 @@ async function cleanup(reason: 'reconnect' | 'shutdown' = 'reconnect'): Promise<
   stopFundingPolling()
   await stopOiFeed()
   await feed.closeAll()
+  if (getActiveExchange() === 'HL' && reason === 'shutdown' && isDmsEnabled()) {
+    // Wait for any in-flight arm to settle before clearing; otherwise a late
+    // refresh response could re-schedule the cancel after our clear lands.
+    if (dmsArmInFlight) {
+      try { await dmsArmInFlight } catch { /* errors logged inside armDms */ }
+      dmsArmInFlight = null
+    }
+    try {
+      const pool = getExchangePool()
+      if (pool.isInitialized()) {
+        const svc = pool.getShared()
+        if (typeof svc.scheduleCancel === 'function') {
+          const result = await svc.scheduleCancel(undefined)
+          if (!result.success) {
+            log.error('shutdown', `DMS clear failed: ${result.error}`)
+          }
+        }
+      }
+    } catch (err) {
+      log.error('shutdown', `DMS clear exception: ${err instanceof Error ? err.message : err}`)
+    }
+  }
   if (getActiveExchange() === 'BB') {
+    // Stop heartbeat writer + delete file. On 'shutdown' this signals the
+    // watchdog that we stopped intentionally (no cancel needed). On 'reconnect'
+    // it's also correct to drop the file — the writer restarts in main() when
+    // the BB live gate is still satisfied.
+    if (stopHeartbeatWriter) {
+      try {
+        stopHeartbeatWriter()
+      } catch (err) {
+        log.error('shutdown', `heartbeat stop exception: ${err instanceof Error ? err.message : err}`)
+      }
+      stopHeartbeatWriter = null
+    }
     if (reason === 'shutdown') {
       try {
         const pool = getExchangePool()
