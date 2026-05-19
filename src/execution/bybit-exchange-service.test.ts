@@ -101,6 +101,9 @@ let mockGetHistoricOrders = mock(() =>
   Promise.resolve({ retCode: 0, retMsg: 'OK', result: { list: [] } }),
 )
 
+// Stub every bybit-api named export the runtime imports so that other test
+// files using the cached module (e.g. bybit-ws.test.ts) don't fail with
+// `Export named 'WebsocketClient' not found` when this mock loads first.
 mock.module('bybit-api', () => ({
   RestClientV5: class MockRestClientV5 {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mock constructor params
@@ -115,6 +118,9 @@ mock.module('bybit-api', () => ({
     cancelAllOrders = mockCancelAllOrders
     getHistoricOrders = mockGetHistoricOrders
   },
+  WebsocketClient: class {},
+  WebsocketAPIClient: class {},
+  SpotClientV3: class {},
 }))
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

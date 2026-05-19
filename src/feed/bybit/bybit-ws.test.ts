@@ -6,12 +6,19 @@ const mockOn = mock(() => {})
 const mockSubscribeV5 = mock(() => {})
 const mockUnsubscribeV5 = mock(() => {})
 
+// Provide stubs for every bybit-api named export the runtime imports
+// (RestClientV5, WebsocketClient, WebsocketAPIClient). Without this, when
+// another test file's mock loads first the `import { RestClientV5 } from
+// 'bybit-api'` calls elsewhere fail with `Export named '...' not found`.
 mock.module('bybit-api', () => ({
   WebsocketClient: class {
     on = mockOn
     subscribeV5 = mockSubscribeV5
     unsubscribeV5 = mockUnsubscribeV5
   },
+  WebsocketAPIClient: class {},
+  RestClientV5: class {},
+  SpotClientV3: class {},
 }))
 
 describe('bybit-ws', () => {
