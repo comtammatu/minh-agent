@@ -1,6 +1,5 @@
 import { EventEmitter } from 'node:events'
 import { mock } from 'bun:test'
-import { bybitWsSpies } from './bybit-spies.js'
 
 type AnyRecord = Record<string, unknown>
 
@@ -68,14 +67,13 @@ class MockRestClientV5 {
 }
 
 class MockWebsocketClient extends EventEmitter {
-  subscribeV5 = bybitWsSpies.subscribeV5
-  unsubscribeV5 = bybitWsSpies.unsubscribeV5
-
   constructor(_opts?: AnyRecord) {
     super()
     queueMicrotask(() => this.emit('open'))
   }
 
+  subscribeV5(_topic: string | string[], _category?: string): void {}
+  unsubscribeV5(_topic: string | string[], _category?: string): void {}
   closeAll(): void {
     this.removeAllListeners()
   }

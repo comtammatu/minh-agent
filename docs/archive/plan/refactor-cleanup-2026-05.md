@@ -209,7 +209,7 @@ Six sessions ordered by dependency. Each follows the Task Contract pattern in `.
 - **S6b — `src/runtime/app.ts`:** Test boot ordering (migrations → coin select → WS → PG load → gap-fill). Mock feeds + DB. Don't test live reconnect (covered by integration).
 - **S6c — `src/memory/`:** Test `repository.ts` storage + scored retrieval against a fake corpus. The whole module is foundation; lock in behavior before wiring to runtime.
 - **S6d — `src/ui/tui.tsx`:** Test render snapshots for bootstrap, dashboard, position view. Skip interactive paths.
-- **S6e — `src/db/`:** Move existing `test/db/*` test references into expected location OR document that DB tests live in `test/db/` by convention.
+- **S6e — `src/db/` + bybit-ws spy rewrite:** (1) Move existing `test/db/*` test references into expected location OR document that DB tests live in `test/db/` by convention. (2) Rewrite the 5 currently-skipped tests in `src/feed/bybit/bybit-ws.test.ts` to assert on observable side effects (topicCallbacks/coinTopics map state) instead of `mock.module()` spies. The spy approach is order-dependent because the bunfig preload (`test/preload/bybit-api.mock.ts`) loads first and locks `bybit-ws.ts`'s static `import { WebsocketClient }` binding. CI evidence: 5 bybit-ws tests fail on Linux runners; same tests pass on macOS local.
 
 **Completion criteria (per sub-session):**
 - [ ] Each module has at least 1 test file co-located OR explicitly documented in `test/`.
