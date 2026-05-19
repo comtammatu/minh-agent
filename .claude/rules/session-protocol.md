@@ -59,6 +59,11 @@ Run before the first session of a new Sprint.
    - Stay in scope — out-of-scope discovery → note in sprint plan, don't do
    - Error recovery: 2-3 attempts max per issue
    - Fail to fix? → `revert to checkpoint → end session → new session`
+   - **When implementing from a spec** — keep a running `implementation-notes.md` (or `.html`) alongside the work:
+     > *"Implement &lt;SPEC&gt; and while you do keep a running implementation-notes.html file (or markdown) with decisions you had to make weren't in the spec, things you had to change, tradeoffs you had to make or anything else I should know."*
+     - Log: decisions not covered by the spec, deviations from the spec, tradeoffs, anything the owner should review
+     - Update it as you go (not at the end) — it's a live log, not a post-hoc writeup
+     - Commit it alongside the code change so the rationale stays with the diff
 
 ### VERIFY
 

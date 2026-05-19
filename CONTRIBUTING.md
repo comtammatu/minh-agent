@@ -4,7 +4,7 @@ This project optimizes for deterministic behavior, low-latency scans, and safe e
 
 ## Before You Change Code
 
-1. Read [AGENTS.md](AGENTS.md)
+1. Read [CLAUDE.md](CLAUDE.md) — agent instructions, constraints, and pointers to per-topic rule files in `.claude/rules/`
 2. Read [README.md](README.md) and [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md) for the current architecture; use [docs/archive/plan/decisions.md](docs/archive/plan/decisions.md) only for historical rationale
 3. Keep pure logic inside `src/indicators/` and `src/strategy/`
 4. Keep I/O at the edges: `src/feed/`, execution services, and `src/index.ts`

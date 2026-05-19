@@ -6,6 +6,7 @@ node_modules/
 *.local
 bun.lockb.bak
 .DS_Store
+*.log
 .gstack/
 results/ci/
 results/optimize-*.json

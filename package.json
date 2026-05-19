@@ -1,7 +1,7 @@
 {
   "name": "minh-agent",
-  "version": "1.0.0",
-  "description": "Minh (明) — lightweight real-time trading analysis engine",
+  "version": "2.0.0",
+  "description": "Minh (明) — Autonomous Trading Runtime",
   "module": "src/index.ts",
   "type": "module",
   "scripts": {

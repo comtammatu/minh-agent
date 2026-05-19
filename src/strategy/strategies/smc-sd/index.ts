@@ -996,7 +996,7 @@ export class SmcSdStrategy implements SetupGenerator {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // 1h MODE: SAME-TF ANALYSIS (existing ICT v3, unchanged)
+  // 1h MODE: SAME-TF ANALYSIS
   // ═══════════════════════════════════════════════════════════════════════════
 
   private scan1hSameTF(coin: string, interval: CandleInterval, candles: Candle[], idx: number, context?: StrategyContext, strategyParams?: StrategyParams): Signal | null {
@@ -1284,9 +1284,6 @@ export class SmcSdStrategy implements SetupGenerator {
       },
     }
   }
-
-  /** @deprecated Use windowRequirements() instead. */
-  minCandles(): number { return MIN_CANDLES_FOR_SCAN }
 
   windowRequirements(): WindowRequirements {
     // S2: planningBars set to target depths per TF for the 4-mode ICT model.

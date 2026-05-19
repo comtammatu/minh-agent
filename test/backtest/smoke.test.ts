@@ -140,7 +140,7 @@ describe('backtest E2E smoke', () => {
     expect(result.equityCurve[0]!.equity).toBe(INITIAL_CAPITAL)
   })
 
-  test('handles insufficient candles (< INDICATOR_WINDOW)', () => {
+  test('handles insufficient candles (below MIN_CANDLES_FOR_SCAN)', () => {
     const map = new Map<string, Candle[]>()
     map.set('BTC|1h', generateCandles(10, 40_000, START_TIME))
     const result = runBacktest(map, config)

@@ -4,9 +4,8 @@ Current runtime is a single Bun process with:
 - one active exchange per process (`HL` or `BB`)
 - a PostgreSQL/TimescaleDB backing store
 - an Ink TUI for local operations
+- a Bun HTTP server (`src/server/`) that serves the browser dashboard (`dashboard/`) on `localhost:3030`
 - optional Telegram alerts/commands
-
-There is no browser dashboard or local HTTP server in the current codepath.
 
 ## Prerequisites
 
@@ -142,10 +141,12 @@ Healthy startup usually includes:
 - exchange/account mode summary
 - TUI visible in the terminal
 
-The current branch starts an Ink terminal dashboard, not a web dashboard. You should see:
+The current branch starts both an Ink terminal dashboard AND a browser dashboard at `http://localhost:3030`. In the TUI you should see:
 - backfill progress while candles are loading
 - account, scanner, system, positions, and watchlist panels after warmup
 - positions and setup state refreshing roughly once per second
+
+The browser dashboard provides a richer read-only view (TradingView chart, Overview / Market / Journal pages) with live SSE updates.
 
 ### Logs
 
@@ -229,6 +230,9 @@ docker-compose logs -f
 - `src/execution/` — exchange adapters and shared wallet pool
 - `src/db/` — persistence and migrations
 - `src/ui/` — terminal dashboard
+- `src/server/` — Bun HTTP server for the browser dashboard
+- `src/memory/` — trade memory foundation (not yet wired into live runtime)
+- `dashboard/` — Vite + React browser dashboard served via `src/server/`
 - `src/backtest/` — replay, simulator, optimization, reports
 
-For historical architecture details and older roadmap context, see `docs/archive/spec/architecture.md`.
+For the full layout and architecture map, see [CLAUDE.md](CLAUDE.md) and [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md). For historical architecture details and older roadmap context, see `docs/archive/spec/architecture.md`.

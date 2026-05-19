@@ -98,10 +98,6 @@ describe('SmcSdStrategy', () => {
     expect(strategy.patternTypes).toEqual(['smc-sd'])
   })
 
-  test('minCandles returns MIN_CANDLES_FOR_SCAN', () => {
-    expect(strategy.minCandles()).toBe(MIN_CANDLES_FOR_SCAN)
-  })
-
   // ── Null returns (filter gates) ──────────────────────────────────────
 
   test('returns null when idx < MIN_CANDLES_FOR_SCAN', () => {

@@ -108,9 +108,11 @@ export const READY_BARS: Record<CandleInterval, number> = {
   '1d': 100,
 }
 
-// ── Deprecated aliases (keep exports for backward compat, remove in S4) ───
-
-/** @deprecated Use READY_BARS[interval] instead. */
+/**
+ * Floor for "have enough candles to compute anything at all" (regime detection,
+ * structural indicators with 50-bar warm-up). Used as the fallback when a TF is
+ * not in `READY_BARS`, so it is canonical, not deprecated.
+ */
 export const MIN_CANDLES_FOR_SCAN = 50
 
 // Total candles to fetch per TF during backfill
@@ -143,10 +145,7 @@ export const BACKFILL_REPLACEMENT_ROUNDS = 2
 export const REST_BURST_TOKENS = 12
 export const REST_REFILL_MS = 3_000
 
-/** @deprecated Use PLANNING_WINDOW_BARS[interval] instead. */
-export const INDICATOR_WINDOW = 200
-
-/** @deprecated Use HOT_CACHE_CAP_BARS instead. */
+/** Alias of `HOT_CACHE_CAP_BARS` kept for the store-test contract. Prefer the source const. */
 export const MAX_IN_MEMORY_CANDLES_BY_INTERVAL: Record<CandleInterval, number> = HOT_CACHE_CAP_BARS
 
 // Staleness: warn if no candle received in this many ms
@@ -493,8 +492,9 @@ export const CONFLUENCE_MIN = 3
 export const ZONE_MAX_AGE = 50
 
 /**
- * @deprecated Use real account balance from ExchangeService (R17).
- * Kept as fallback if ExchangeService is not initialized (tests, offline mode).
+ * Account-balance fallback used when ExchangeService is unavailable or returns 0
+ * (tests, offline mode, before bootstrap completes). Live trading always prefers
+ * `svc.getCachedAccountValue()` and falls back to this value.
  */
 export const SIMULATED_ACCOUNT = 10_000
 

@@ -175,9 +175,3 @@ export function removeAssetCtx(coin: string): void {
   oiStore.delete(coin)
 }
 
-// ── Backward-compat aliases (used by index.ts) ──────────────────────────────
-
-/** @deprecated Use startOiFeed */
-export const startOiPolling = startOiFeed
-/** @deprecated Use stopOiFeed */
-export const stopOiPolling = stopOiFeed

@@ -29,7 +29,6 @@ export {
 // ── Concrete setup generator ────────────────────────────────────────────────
 export {
   getSetupGenerator,
-  getSetupGeneratorMinCandles,
   getSetupGeneratorWindowRequirements,
   runSetupGenerator,
   clearSetupGeneratorState,

@@ -16,7 +16,6 @@ import type {
 } from '../types.js'
 import { appendCandle, getCandles, getCandlesInto, snapshotStoreForReplay, clearStore, setCandles } from '../feed/store.js'
 import {
-  getSetupGeneratorMinCandles,
   getSetupGeneratorWindowRequirements,
   runSetupGenerator,
   clearSetupGeneratorState,

@@ -618,7 +618,7 @@ async function main(): Promise<void> {
   // Load active orders from DB (crash recovery R1)
   await om.loadActiveOrders()
 
-  // Agent → OrderManager (bidirectional) with optional legacy strategy context.
+  // Agent → OrderManager (bidirectional).
   // MUST be wired BEFORE subscribeToPipeline + bootstrapPipelineFromStore so that
   // place_order actions emitted during bootstrap are handled (not lost).
   agent.onAction(action => om.handleAction(action))
@@ -636,7 +636,7 @@ async function main(): Promise<void> {
     log.warn('agent', `restoreOpenPositions failed (non-fatal): ${err instanceof Error ? err.message : err}`)
   }
 
-  // Agent → PositionMonitor (dispatch back with optional legacy strategy context)
+  // Agent → PositionMonitor (dispatch back, keyed by coin only)
   pm.setAgentDispatch((coin, event) => agent.dispatch(coin, event))
 
   // PositionMonitor → OrderManager: trail stop SL updates go directly to exchange
@@ -674,7 +674,7 @@ async function main(): Promise<void> {
 
   // 9b. Materialize current-bar setups + seed WS dedup (AFTER agent subscribes to pipeline)
   //     If replay ran, state is already rebuilt — materialize emits current setups to agent.
-  //     If no replay (STATE_REPLAY_BARS all 0), falls back to legacy bootstrapPipelineFromStore.
+  //     If no replay (STATE_REPLAY_BARS all 0), falls back to bootstrapPipelineFromStore.
   if (replayCount > 0) {
     materializeCurrentSetupsFromStore(coins)
   } else {

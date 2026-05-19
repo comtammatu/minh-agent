@@ -189,7 +189,6 @@ describe('OrderManager', () => {
         filled_at: new Date().toISOString(),
         fill_price: 50010,
         fill_size: 0.1,
-        strategy_id: 'smc-sd',
         position_id: 'pos-1',
         exchange: 'BB',
       }])
@@ -223,7 +222,6 @@ describe('OrderManager', () => {
         filled_at: null,
         fill_price: null,
         fill_size: 0,
-        strategy_id: 'smc-sd',
         position_id: null,
         exchange: 'BB',
       }])
