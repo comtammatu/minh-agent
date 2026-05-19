@@ -66,14 +66,25 @@ class MockRestClientV5 {
   }
 }
 
+// Shared spy instances. Exported so tests (e.g. bybit-ws.test.ts) can
+// `import { bybitWsSpies } from 'test/preload/bybit-api.mock.js'` and assert
+// against the SAME spies the runtime is bound to. Per-file mock.module()
+// calls don't work here because the preload loads first, so bybit-ws.ts's
+// static `import { WebsocketClient }` is bound at first transitive import.
+export const bybitWsSpies = {
+  subscribeV5: mock((_topic: string | string[], _category?: string) => undefined),
+  unsubscribeV5: mock((_topic: string | string[], _category?: string) => undefined),
+}
+
 class MockWebsocketClient extends EventEmitter {
+  subscribeV5 = bybitWsSpies.subscribeV5
+  unsubscribeV5 = bybitWsSpies.unsubscribeV5
+
   constructor(_opts?: AnyRecord) {
     super()
     queueMicrotask(() => this.emit('open'))
   }
 
-  subscribeV5(_topic: string | string[], _category?: string): void {}
-  unsubscribeV5(_topic: string | string[], _category?: string): void {}
   closeAll(): void {
     this.removeAllListeners()
   }
