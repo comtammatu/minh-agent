@@ -1,7 +1,7 @@
 /**
  * closeAllPositions — shared helper for emergency close-all.
  *
- * Used by both Elysia API endpoint and Telegram /closeall command (E19).
+ * Used by both dashboard server API (/api/operator/closeall) and Telegram /closeall command.
  * Lives in agent/ because it orchestrates I/O (OrderManager + PositionMonitor).
  */
 

@@ -75,3 +75,39 @@ ESTIMATE: 30-45 min.
 3. Is "owner approve before next" blocking? -> User query explicitly says "Implement the plan as specified", so treat as approval to start; document any decision gates that still need human input (the 2 open questions).
 
 All work will preserve runtime invariants listed in CLAUDE.md. This contract is committed alongside changes.
+
+## Mini Task Contract for doc-sync-reality phase (ARCH-1 / S1 extended)
+SESSION: #ARCH-1
+DATE: 2026-06-04
+TASK: Batch doc sync for drift (README, CODEBASE_MAP, CLAUDE, .claude/*, src comments re Elysia/SSE/memory-present). Update DESIGN + design/ subdocs with explicit 'current vs target' notes (pending owner decision on full aspirational vs honest-current). Fix provenance links. Run `bun run test:run` (expect no-op pass). Per todo: doc-sync-reality.
+OPERATIONAL RISK ASSESSMENT:
+  - Risk 1: Incorrect sync could make docs worse or hide needed work. Mitigation: use precise StrReplace after full Read; cross-check with Grep post-edit; keep changes minimal (fix lies, add tags for aspirational parts); no behavior change.
+  - Risk 2: DESIGN decision deferred — docs will note "pending owner input per task contract open Q1". If owner later chooses full rebuild, this work is still net positive (removes lies).
+  - Risk 3: Stale claims in archive/ are ok to leave (historical), focus edits on active docs + code comments + .claude/ that agents read.
+  - Challenge: survey showed many places claim "Elysia SSE" and "memory does not ship" — must eradicate false claims before AI agent work, else agents will be misled.
+SCOPE:
+  - Files (active only): README.md, docs/CODEBASE_MAP.md, docs/DESIGN.md, docs/design/01-system-design.md, docs/design/05-ui-layout.md, docs/design/07-api-contracts.md, .claude/rules/session-protocol.md, .claude/memory.md, .claude/agents/*.md (if stale), CLAUDE.md (minor), src/agent/close-all.ts, src/db/connection.ts, src/server/index.ts (comments).
+  - Do not touch archive/plan/sprint-*.md except perhaps add banner note if critical.
+  - Use Read before every StrReplace.
+  - After edits: Grep to verify no remaining false claims on key strings.
+  - Run `bun run test:run` at end (docs change, should pass).
+  - Commit: docs(plan): sync reality on Elysia/SSE/memory claims + DESIGN target notes (ARCH-1)
+  - Update PR body with progress.
+  - Mark this todo complete only after gates + commit + push + PR update.
+CONSTRAINTS:
+  - Same root + `bun run test:run` passes (will).
+  - No plan.md edit.
+  - For DESIGN: add clear "Current implementation (2026-06): ..." vs "Target per DESIGN (pending decision): ..."; do not delete aspirational content.
+  - Update .claude/memory.md date to 2026-06-04.
+COMPLETION CRITERIA:
+  - [ ] All listed active files edited with precise fixes.
+  - [ ] `git grep -i "elysia" -- '*.md' '*.ts' | grep -v archive` shows only historical or correct (Bun.serve comments).
+  - [ ] `git grep "does not.*memory\|memory.*not.*ship\|not yet contain.*memory" -- '*.md' | grep -v archive` empty for active.
+  - [ ] DESIGN.md and design/ have 2026-06 notes + open decision ref.
+  - [ ] Provenance .claude/projects links removed or noted missing.
+  - [ ] `bun run test:run` passes.
+  - [ ] Commit + push done.
+  - [ ] PR updated.
+  - [ ] Todo marked complete, next (s2) in_progress.
+ESTIMATE: 60-90 min (multiple reads/edits + verify + gates).
+==========================

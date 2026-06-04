@@ -1,6 +1,6 @@
 # Minh (明) — Session Memory
 
-## Current state (2026-05-19)
+## Current state (2026-06-04; updated during arch+ai refactor)
 
 **Stack:** Bun / TypeScript. **Exchanges:** Hyperliquid + Bybit behind one exchange-service boundary. **Live runtime:** one active exchange per process, one shared wallet/account per process, one concrete `smc-sd` setup engine.
 
