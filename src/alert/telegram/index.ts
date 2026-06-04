@@ -1,5 +1,4 @@
-// @ts-nocheck -- temporary for CI (re-exports split commands surface that is currently inconsistent post S5)
- /**
+/**
  * Telegram module — re-exports for alerts and bot.
  */
 

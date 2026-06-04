@@ -7,7 +7,7 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "test": "bun test",
-    "test:run": "(bun test --run || echo 'TEST-BASELINE-NONZERO (2 fails in telegram bot/command tests from split/monolith drift post S5 recovery; see CI fix commit + arch plan)') && bun run dashboard:test",
+    "test:run": "bun test --run && bun run dashboard:test",
     "typecheck": "bunx tsc --noEmit -p tsconfig.typecheck.json",
     "lint": "biome check . || echo 'LINT-BASELINE-NONZERO (S3/S4 recorded; justified in research/backtest + recovery paths; see task-contract + PR)'",
     "lint:fix": "biome check . --write || true",
