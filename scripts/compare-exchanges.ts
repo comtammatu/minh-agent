@@ -5,10 +5,10 @@
  * then reports candle deltas + signal differences side-by-side.
  *
  * Usage:
- *   bun run src/compare-exchanges.ts                  # backfill only, compare candles + signals
- *   bun run src/compare-exchanges.ts --live           # backfill + WS, live comparison stream
- *   bun run src/compare-exchanges.ts --coins BTC,ETH  # override coin list
- *   bun run src/compare-exchanges.ts --tf 1h,4h       # override timeframes (default: SIGNAL_TIMEFRAMES)
+ *   bun run scripts/compare-exchanges.ts                  # backfill only, compare candles + signals
+ *   bun run scripts/compare-exchanges.ts --live           # backfill + WS, live comparison stream
+ *   bun run scripts/compare-exchanges.ts --coins BTC,ETH  # override coin list
+ *   bun run scripts/compare-exchanges.ts --tf 1h,4h       # override timeframes (default: SIGNAL_TIMEFRAMES)
  *
  * Design:
  *   Phase 1: Backfill both exchanges → store (HL: and BB: prefixed keys)
@@ -20,33 +20,33 @@
  *       We work around this by populating the default prefix before each exchange's scan.
  */
 
-import { HLFeed } from './feed/hl-feed.js'
-import { BybitFeed } from './feed/bybit/bybit-feed.js'
-import type { IExchangeFeed } from './feed/exchange-feed.js'
+import { HLFeed } from '../src/feed/hl-feed.js'
+import { BybitFeed } from '../src/feed/bybit/bybit-feed.js'
+import type { IExchangeFeed } from '../src/feed/exchange-feed.js'
 import {
   setCandles,
   getCandles,
   appendCandle,
   clearStore,
   candleCount,
-} from './feed/store.js'
-import { getSetupGeneratorWindowRequirements, resetSetupGenerator, runSetupGenerator } from './strategy/engine.js'
-import { getPipelineEmitter, clearPipelineState } from './strategy/orchestrator.js'
+} from '../src/feed/store.js'
+import { getSetupGeneratorWindowRequirements, resetSetupGenerator, runSetupGenerator } from '../src/strategy/engine.js'
+import { getPipelineEmitter, clearPipelineState } from '../src/strategy/orchestrator.js'
 import type {
   Candle,
   CandleInterval,
   ExchangeId,
   Signal,
   ActiveSetup,
-} from './types.js'
+} from '../src/types.js'
 import {
   COMMON_COINS,
   SIGNAL_TIMEFRAMES,
   TIMEFRAMES,
   PLANNING_WINDOW_BARS,
   READY_BARS,
-} from './config.js'
-import { log } from './lib/logger.js'
+} from '../src/config.js'
+import { log } from '../src/lib/logger.js'
 
 // ── CLI args ────────────────────────────────────────────────────────────────
 
