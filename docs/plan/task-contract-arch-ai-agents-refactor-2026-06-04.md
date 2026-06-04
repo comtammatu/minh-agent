@@ -126,6 +126,24 @@ COMPLETION: scripts work, baselines recorded in commit or PR note, tests pass, t
 ESTIMATE: 25-40 min.
 ==========================
 
+## Mini Task Contract for s5-split-telegram (S5)
+SESSION: #ARCH-5 / S5
+DATE: 2026-06-04
+TASK: Split src/alert/telegram/commands.ts (1352 LOC) per May S5 into commands/{positions.ts, strategy.ts, analytics.ts, admin.ts, ...} + index.ts barrel. No logic changes. Target each <400 LOC, no file in alert/telegram/ >600. Keep bot.ts import/registration surface identical. Update internal tests if needed. Smoke: paper + bot /status. Full telegram tests + test:run. Commit: refactor(alert): split monolithic commands.ts (S5)
+OPERATIONAL RISK: Medium (plan notes command registration order sensitive; Telegram live critical for alerts). Mitigation: read full, keep single barrel, run tests after each extract, smoke in paper, no deploy till verified.
+SCOPE:
+  - Read commands.ts + bot.ts + commands.test.ts first.
+  - Group: e.g. position cmds, strategy/pause, analytics/pnl, admin/closeall, help/status, memory if any.
+  - Create dir src/alert/telegram/commands/ , files, index.ts that does export * or explicit, and perhaps the registerBuiltinCommands stays or moves to index.
+  - bot.ts should import same as before (e.g. from './commands.js' or adjust if barrel).
+  - StrReplace to carve functions, keep comments/docs.
+  - Verify no >600, test:run, manual smoke if possible (paper runtime + send command? but since no TG, at least import/ load test).
+  - Update todo/PR.
+CONSTRAINTS: no behavior change, test:run, barrel stable.
+COMPLETION: files <600, tests pass, smoke load, S5 complete.
+ESTIMATE: 35-50 min.
+==========================
+
 ## Mini Task Contract for doc-sync-reality phase (ARCH-1 / S1 extended)
 SESSION: #ARCH-1
 DATE: 2026-06-04

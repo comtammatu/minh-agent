@@ -19,6 +19,7 @@ import type {
   JournalEntry,
   JournalFilter,
 } from "./types.js";
+import { insertMemory } from "../memory/index.js";
 
 // ─── Write ──────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,18 @@ export async function logJournalEntry(
       INSERT INTO trade_journal (event_type, coin, details, agent_state, exchange)
       VALUES (${eventType}, ${coin}, ${sql.json(details as JSONValue)}, ${agentState ?? null}, ${exchange})
     `;
+
+    // minimal memory wire (advisor-foundation optional; fire-forget, never throw)
+    if (eventType.includes('close') && typeof details.realizedPnlR === 'number') {
+      insertMemory({
+        category: 'trade_outcome',
+        coin: coin ?? null,
+        pnlR: details.realizedPnlR as number,
+        content: `Closed ${coin} ${details.side ?? ''} ${details.realizedPnlR}R`,
+        metadata: { eventType, ...details },
+        importance: Math.min(0.9, Math.abs(details.realizedPnlR as number) / 5),
+      }).catch(() => {});
+    }
   } catch (err) {
     log.error(
       "journal",
