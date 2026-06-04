@@ -10,18 +10,18 @@
  *   - Subscribes to TradingAgent 'trade_closed' event via connectToAgent()
  */
 
-import { log } from '../lib/logger.js'
-import { SIMULATED_ACCOUNT } from '../config.js'
-import { getHLExchangeService as getExchangeService } from '../execution/hl-exchange-service.js'
-import { buildLiveMetrics } from './metrics.js'
+import type { TradingAgent } from "../agent/trading-agent.js";
+import { SIMULATED_ACCOUNT } from "../config.js";
+import { getHLExchangeService as getExchangeService } from "../execution/hl-exchange-service.js";
+import { log } from "../lib/logger.js";
+import { buildLiveMetrics } from "./metrics.js";
 import {
   getClosedTrades,
   getOpenPositionCount,
   getPatternPerformance,
   refreshViews,
-} from './metrics-repo.js'
-import type { LiveMetrics } from './types.js'
-import type { TradingAgent } from '../agent/trading-agent.js'
+} from "./metrics-repo.js";
+import type { LiveMetrics } from "./types.js";
 
 // ─── Trade Close Hook ──────────────────────────────────────────────────────
 
@@ -31,10 +31,16 @@ import type { TradingAgent } from '../agent/trading-agent.js'
  */
 export async function onTradeClose(coin: string, pnl: number): Promise<void> {
   try {
-    await refreshViews()
-    log.debug('metrics-service', `Matviews refreshed after ${coin} close (pnl=${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)})`)
+    await refreshViews();
+    log.debug(
+      "metrics-service",
+      `Matviews refreshed after ${coin} close (pnl=${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)})`,
+    );
   } catch (err) {
-    log.error('metrics-service', `Matview refresh failed after ${coin} close: ${(err as Error).message}`)
+    log.error(
+      "metrics-service",
+      `Matview refresh failed after ${coin} close: ${(err as Error).message}`,
+    );
   }
 }
 
@@ -48,16 +54,17 @@ export async function getLiveMetrics(): Promise<LiveMetrics> {
     getClosedTrades(),
     getPatternPerformance(),
     getOpenPositionCount(),
-  ])
+  ]);
 
-  const capital = getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT
+  const capital =
+    getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT;
 
   return buildLiveMetrics({
     allTrades,
     patternRows,
     initialCapital: capital,
     openPositionCount,
-  })
+  });
 }
 
 // ─── Agent Integration ─────────────────────────────────────────────────────
@@ -71,7 +78,7 @@ export function connectToAgent(agent: TradingAgent): void {
     // Fire-and-forget — don't await, don't block agent loop
     onTradeClose(coin, pnl).catch(() => {
       // Already logged inside onTradeClose
-    })
-  })
-  log.info('metrics-service', 'Connected to agent trade_closed events')
+    });
+  });
+  log.info("metrics-service", "Connected to agent trade_closed events");
 }

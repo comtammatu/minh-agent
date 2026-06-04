@@ -12,11 +12,7 @@
     "dashboard/src/**/*.ts",
     "dashboard/src/**/*.tsx"
   ],
-  "ignore": [
-    "scripts/**",
-    "docs/**",
-    ".claude/**"
-  ],
+  "ignore": ["scripts/**", "docs/**", ".claude/**"],
   "ignoreDependencies": [
     "vite",
     "@vitejs/plugin-react",

@@ -18,25 +18,31 @@
  *   - Instant fill assumption (no queue/latency simulation).
  */
 
-import type { Candle, CandleInterval, ActiveSetup } from '../types.js'
-import type { BacktestConfig, BacktestResult } from './types.js'
-import { TradeSimulator } from './simulator.js'
-import { computeMetrics, buildEquityCurve } from './metrics.js'
 import {
-  onCandleTick,
-  getPipelineEmitter,
+  ATR_TRAIL_MULTIPLIER,
+  BACKTEST_CHUNK_SIZE,
+  BACKTEST_COMMISSION_PCT,
+  BACKTEST_SLIPPAGE_PCT,
+} from "../config.js";
+import { clearOnPersist, clearStore, getCandles } from "../feed/store.js";
+import { atr } from "../indicators/core.js";
+import { getPipelineStats } from "../strategy/diagnostics.js";
+import { clearSetupGeneratorState } from "../strategy/engine.js";
+import {
   clearPipelineState,
+  getPipelineEmitter,
+  onCandleTick,
   setActiveStrategyParams,
-} from '../strategy/orchestrator.js'
-import { getPipelineStats } from '../strategy/diagnostics.js'
-import { clearSetupGeneratorState } from '../strategy/engine.js'
-import { clearStore, clearOnPersist, getCandles } from '../feed/store.js'
-import { atr } from '../indicators/core.js'
-import { BACKTEST_SLIPPAGE_PCT, BACKTEST_COMMISSION_PCT, ATR_TRAIL_MULTIPLIER, BACKTEST_CHUNK_SIZE } from '../config.js'
+} from "../strategy/orchestrator.js";
+import type { ActiveSetup, Candle, CandleInterval } from "../types.js";
+import { buildEquityCurve, computeMetrics } from "./metrics.js";
+import { TradeSimulator } from "./simulator.js";
+import type { BacktestConfig, BacktestResult } from "./types.js";
 
 /** Bars to fetch for ATR computation at fill time. ATR(14) needs ~20 bars; 50 provides safe margin. */
-const ATR_LOOKBACK = 50
-import { inferScanMode } from './optimize.js'
+const ATR_LOOKBACK = 50;
+
+import { inferScanMode } from "./optimize.js";
 
 /**
  * Run a backtest on historical candle data.
@@ -50,92 +56,108 @@ export function runBacktest(
   config: BacktestConfig,
 ): BacktestResult {
   // ── Reset shared state ──────────────────────────────────────────────────
-  clearPipelineState()
-  clearStore()
-  clearOnPersist()  // prevent DB writes during backtest
-  clearSetupGeneratorState()
-  setActiveStrategyParams(config.strategyParams ?? null)
+  clearPipelineState();
+  clearStore();
+  clearOnPersist(); // prevent DB writes during backtest
+  clearSetupGeneratorState();
+  setActiveStrategyParams(config.strategyParams ?? null);
 
-  const slippage = config.slippagePct ?? BACKTEST_SLIPPAGE_PCT
-  const commission = config.commissionPct ?? BACKTEST_COMMISSION_PCT
-  const exitMode = config.exitMode ?? 'multi'
-  const simulator = new TradeSimulator(config.initialCapital, slippage, commission, exitMode)
+  const slippage = config.slippagePct ?? BACKTEST_SLIPPAGE_PCT;
+  const commission = config.commissionPct ?? BACKTEST_COMMISSION_PCT;
+  const exitMode = config.exitMode ?? "multi";
+  const simulator = new TradeSimulator(
+    config.initialCapital,
+    slippage,
+    commission,
+    exitMode,
+  );
 
   // ── Wire pipeline → simulator ───────────────────────────────────────────
-  const emitter = getPipelineEmitter()
-  let currentBarIndex = 0
-  let currentInterval: CandleInterval = '1h'
-  let currentCoin: string = ''
+  const emitter = getPipelineEmitter();
+  let currentBarIndex = 0;
+  const _currentInterval: CandleInterval = "1h";
+  const _currentCoin: string = "";
 
   const onSetup = (setup: ActiveSetup) => {
     // Skip disabled scan modes (for isolated testing)
-    if (config.disabledScanModes?.includes(inferScanMode(setup.interval))) return
+    if (config.disabledScanModes?.includes(inferScanMode(setup.interval)))
+      return;
 
     // Compute ATR at fill time from store (candles already appended)
-    const storeCandles = getCandles(setup.coin, setup.interval, ATR_LOOKBACK)
-    const idx = storeCandles.length - 2  // closed candle (same as pipeline)
-    const atrVal = idx >= 14 ? atr(storeCandles, idx, 14) : 0
-    const trailMult = ATR_TRAIL_MULTIPLIER[setup.interval] ?? 2.0
+    const storeCandles = getCandles(setup.coin, setup.interval, ATR_LOOKBACK);
+    const idx = storeCandles.length - 2; // closed candle (same as pipeline)
+    const atrVal = idx >= 14 ? atr(storeCandles, idx, 14) : 0;
+    const trailMult = ATR_TRAIL_MULTIPLIER[setup.interval] ?? 2.0;
 
-    simulator.tryFill(setup, currentBarIndex, atrVal, trailMult)
-  }
-  emitter.on('setup', onSetup)
+    simulator.tryFill(setup, currentBarIndex, atrVal, trailMult);
+  };
+  emitter.on("setup", onSetup);
 
   try {
     // ── Build chronological replay sequence ─────────────────────────────
-    const replayEvents = buildReplaySequence(candles, config.coins, config.timeframes)
+    const replayEvents = buildReplaySequence(
+      candles,
+      config.coins,
+      config.timeframes,
+    );
 
     // Validate: need enough candles
     if (replayEvents.length === 0) {
-      return emptyResult(config)
+      return emptyResult(config);
     }
 
     // ── Replay candles ──────────────────────────────────────────────────
     for (let i = 0; i < replayEvents.length; i++) {
-      const event = replayEvents[i]!
-      currentBarIndex = i
+      const event = replayEvents[i]!;
+      currentBarIndex = i;
 
       // Feed candle through production pipeline
-      onCandleTick(event.coin, event.interval, event.candle)
+      onCandleTick(event.coin, event.interval, event.candle);
 
       // Check all open positions for SL/TP hits on this bar
-      simulator.checkBar(event.coin, event.candle, i)
+      simulator.checkBar(event.coin, event.candle, i);
     }
 
     // ── Close remaining positions at last price ──────────────────────────
-    const lastEvent = replayEvents[replayEvents.length - 1]!
+    const lastEvent = replayEvents[replayEvents.length - 1]!;
     if (simulator.openPositionCount() > 0) {
       simulator.closeAll(
         lastEvent.candle.c,
         replayEvents.length - 1,
         lastEvent.candle.t,
-      )
+      );
     }
 
     // ── Compute results ─────────────────────────────────────────────────
-    const trades = simulator.getTrades()
-    const metrics = computeMetrics(trades, config.initialCapital)
-    const equityCurve = buildEquityCurve(trades, config.initialCapital)
+    const trades = simulator.getTrades();
+    const metrics = computeMetrics(trades, config.initialCapital);
+    const equityCurve = buildEquityCurve(trades, config.initialCapital);
 
     // Capture pipeline diagnostic stats before cleanup
-    const pipelineStatsSnapshot = getPipelineStats()
+    const pipelineStatsSnapshot = getPipelineStats();
 
-    return { config, metrics, trades, equityCurve, pipelineStats: pipelineStatsSnapshot }
+    return {
+      config,
+      metrics,
+      trades,
+      equityCurve,
+      pipelineStats: pipelineStatsSnapshot,
+    };
   } finally {
     // ── Cleanup: remove listener + reset state ──────────────────────────
-    emitter.off('setup', onSetup)
-    setActiveStrategyParams(null)
-    clearPipelineState()
-    clearStore()
+    emitter.off("setup", onSetup);
+    setActiveStrategyParams(null);
+    clearPipelineState();
+    clearStore();
   }
 }
 
 // ─── Internal ───────────────────────────────────────────────────────────────
 
 interface ReplayEvent {
-  coin: string
-  interval: CandleInterval
-  candle: Candle
+  coin: string;
+  interval: CandleInterval;
+  candle: Candle;
 }
 
 /**
@@ -147,24 +169,24 @@ function buildReplaySequence(
   coins: string[],
   timeframes: CandleInterval[],
 ): ReplayEvent[] {
-  const events: ReplayEvent[] = []
+  const events: ReplayEvent[] = [];
 
   for (const coin of coins) {
     for (const tf of timeframes) {
-      const key = `${coin}|${tf}`
-      const data = candles.get(key)
-      if (!data || data.length === 0) continue
+      const key = `${coin}|${tf}`;
+      const data = candles.get(key);
+      if (!data || data.length === 0) continue;
 
       for (const candle of data) {
-        events.push({ coin, interval: tf, candle })
+        events.push({ coin, interval: tf, candle });
       }
     }
   }
 
   // Sort by timestamp (ascending). Stable sort preserves coin×TF order for same ts.
-  events.sort((a, b) => a.candle.t - b.candle.t)
+  events.sort((a, b) => a.candle.t - b.candle.t);
 
-  return events
+  return events;
 }
 
 function emptyResult(config: BacktestConfig): BacktestResult {
@@ -173,17 +195,17 @@ function emptyResult(config: BacktestConfig): BacktestResult {
     metrics: computeMetrics([], config.initialCapital),
     trades: [],
     equityCurve: [{ ts: 0, equity: config.initialCapital }],
-  }
+  };
 }
 
 // ─── Async Variant (Browser-triggered) ─────────────────────────────────────
 
 /** Progress callback fired every BACKTEST_CHUNK_SIZE bars. */
 export interface BacktestProgress {
-  bar: number
-  total: number
-  pct: number   // 0–100
-  phase: 'replaying' | 'computing' | 'done' | 'error'
+  bar: number;
+  total: number;
+  pct: number; // 0–100
+  phase: "replaying" | "computing" | "done" | "error";
 }
 
 /**
@@ -197,78 +219,99 @@ export async function runBacktestAsync(
   config: BacktestConfig,
   onProgress?: (p: BacktestProgress) => void,
 ): Promise<BacktestResult> {
-  clearPipelineState()
-  clearStore()
-  clearOnPersist()
-  clearSetupGeneratorState()
-  setActiveStrategyParams(config.strategyParams ?? null)
+  clearPipelineState();
+  clearStore();
+  clearOnPersist();
+  clearSetupGeneratorState();
+  setActiveStrategyParams(config.strategyParams ?? null);
 
-  const slippage = config.slippagePct ?? BACKTEST_SLIPPAGE_PCT
-  const commission = config.commissionPct ?? BACKTEST_COMMISSION_PCT
-  const asyncExitMode = config.exitMode ?? 'multi'
-  const simulator = new TradeSimulator(config.initialCapital, slippage, commission, asyncExitMode)
+  const slippage = config.slippagePct ?? BACKTEST_SLIPPAGE_PCT;
+  const commission = config.commissionPct ?? BACKTEST_COMMISSION_PCT;
+  const asyncExitMode = config.exitMode ?? "multi";
+  const simulator = new TradeSimulator(
+    config.initialCapital,
+    slippage,
+    commission,
+    asyncExitMode,
+  );
 
-  const emitter = getPipelineEmitter()
-  let currentBarIndex = 0
+  const emitter = getPipelineEmitter();
+  let currentBarIndex = 0;
 
   const onSetup = (setup: ActiveSetup) => {
     // Skip disabled scan modes (for isolated testing)
-    if (config.disabledScanModes?.includes(inferScanMode(setup.interval))) return
+    if (config.disabledScanModes?.includes(inferScanMode(setup.interval)))
+      return;
 
-    const storeCandles = getCandles(setup.coin, setup.interval, ATR_LOOKBACK)
-    const idx = storeCandles.length - 2
-    const atrVal = idx >= 14 ? atr(storeCandles, idx, 14) : 0
-    const trailMult = ATR_TRAIL_MULTIPLIER[setup.interval] ?? 2.0
-    simulator.tryFill(setup, currentBarIndex, atrVal, trailMult)
-  }
-  emitter.on('setup', onSetup)
+    const storeCandles = getCandles(setup.coin, setup.interval, ATR_LOOKBACK);
+    const idx = storeCandles.length - 2;
+    const atrVal = idx >= 14 ? atr(storeCandles, idx, 14) : 0;
+    const trailMult = ATR_TRAIL_MULTIPLIER[setup.interval] ?? 2.0;
+    simulator.tryFill(setup, currentBarIndex, atrVal, trailMult);
+  };
+  emitter.on("setup", onSetup);
 
   try {
-    const replayEvents = buildReplaySequence(candles, config.coins, config.timeframes)
+    const replayEvents = buildReplaySequence(
+      candles,
+      config.coins,
+      config.timeframes,
+    );
 
     if (replayEvents.length === 0) {
-      onProgress?.({ bar: 0, total: 0, pct: 100, phase: 'done' })
-      return emptyResult(config)
+      onProgress?.({ bar: 0, total: 0, pct: 100, phase: "done" });
+      return emptyResult(config);
     }
 
-    const total = replayEvents.length
-    const chunkSize = BACKTEST_CHUNK_SIZE
+    const total = replayEvents.length;
+    const chunkSize = BACKTEST_CHUNK_SIZE;
 
     // Replay with async yields
     for (let i = 0; i < total; i++) {
-      const event = replayEvents[i]!
-      currentBarIndex = i
+      const event = replayEvents[i]!;
+      currentBarIndex = i;
 
-      onCandleTick(event.coin, event.interval, event.candle)
-      simulator.checkBar(event.coin, event.candle, i)
+      onCandleTick(event.coin, event.interval, event.candle);
+      simulator.checkBar(event.coin, event.candle, i);
 
       // Yield every chunkSize bars
       if (i > 0 && i % chunkSize === 0) {
-        onProgress?.({ bar: i, total, pct: Math.round((i / total) * 100), phase: 'replaying' })
-        await new Promise<void>((r) => setTimeout(r, 0))
+        onProgress?.({
+          bar: i,
+          total,
+          pct: Math.round((i / total) * 100),
+          phase: "replaying",
+        });
+        await new Promise<void>((r) => setTimeout(r, 0));
       }
     }
 
-    onProgress?.({ bar: total, total, pct: 99, phase: 'computing' })
+    onProgress?.({ bar: total, total, pct: 99, phase: "computing" });
 
     // Close remaining
-    const lastEvent = replayEvents[total - 1]!
+    const lastEvent = replayEvents[total - 1]!;
     if (simulator.openPositionCount() > 0) {
-      simulator.closeAll(lastEvent.candle.c, total - 1, lastEvent.candle.t)
+      simulator.closeAll(lastEvent.candle.c, total - 1, lastEvent.candle.t);
     }
 
-    const trades = simulator.getTrades()
-    const metrics = computeMetrics(trades, config.initialCapital)
-    const equityCurve = buildEquityCurve(trades, config.initialCapital)
-    const pipelineStatsSnapshot = getPipelineStats()
+    const trades = simulator.getTrades();
+    const metrics = computeMetrics(trades, config.initialCapital);
+    const equityCurve = buildEquityCurve(trades, config.initialCapital);
+    const pipelineStatsSnapshot = getPipelineStats();
 
-    onProgress?.({ bar: total, total, pct: 100, phase: 'done' })
+    onProgress?.({ bar: total, total, pct: 100, phase: "done" });
 
-    return { config, metrics, trades, equityCurve, pipelineStats: pipelineStatsSnapshot }
+    return {
+      config,
+      metrics,
+      trades,
+      equityCurve,
+      pipelineStats: pipelineStatsSnapshot,
+    };
   } finally {
-    emitter.off('setup', onSetup)
-    setActiveStrategyParams(null)
-    clearPipelineState()
-    clearStore()
+    emitter.off("setup", onSetup);
+    setActiveStrategyParams(null);
+    clearPipelineState();
+    clearStore();
   }
 }

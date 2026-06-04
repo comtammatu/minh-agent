@@ -1,53 +1,55 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 
-let hlSingletonFallbackCalls = 0
+let hlSingletonFallbackCalls = 0;
 const hlSingletonService = {
-  exchangeId: 'HL',
+  exchangeId: "HL",
   getCachedAccountValue: () => 10_000,
-}
+};
 
-mock.module('../../src/execution/exchange-service.js', () => ({
+mock.module("../../src/execution/exchange-service.js", () => ({
   getExchangeService: () => {
-    hlSingletonFallbackCalls++
-    return hlSingletonService
+    hlSingletonFallbackCalls++;
+    return hlSingletonService;
   },
-}))
+}));
 
-import { OrderManager } from '../../src/agent/order-manager.js'
+import { OrderManager } from "../../src/agent/order-manager.js";
 
 type OrderManagerPrivateApi = {
-  getExchange: () => unknown
-}
+  getExchange: () => unknown;
+};
 
 function callGetExchange(orderManager: OrderManager): unknown {
-  return (orderManager as unknown as OrderManagerPrivateApi).getExchange()
+  return (orderManager as unknown as OrderManagerPrivateApi).getExchange();
 }
 
-describe('OrderManager BB fallback guard', () => {
+describe("OrderManager BB fallback guard", () => {
   beforeEach(() => {
-    hlSingletonFallbackCalls = 0
-    process.env.ACTIVE_EXCHANGE = 'HL'
-  })
+    hlSingletonFallbackCalls = 0;
+    process.env.ACTIVE_EXCHANGE = "HL";
+  });
 
   afterEach(() => {
-    delete process.env.ACTIVE_EXCHANGE
-  })
+    delete process.env.ACTIVE_EXCHANGE;
+  });
 
-  it('blocks HL singleton fallback in BB live mode when pool is missing', () => {
-    process.env.ACTIVE_EXCHANGE = 'BB'
+  it("blocks HL singleton fallback in BB live mode when pool is missing", () => {
+    process.env.ACTIVE_EXCHANGE = "BB";
 
-    const om = new OrderManager()
-    expect(() => callGetExchange(om)).toThrow('ExchangePool must be initialized in BB live mode')
-    expect(hlSingletonFallbackCalls).toBe(0)
-  })
+    const om = new OrderManager();
+    expect(() => callGetExchange(om)).toThrow(
+      "ExchangePool must be initialized in BB live mode",
+    );
+    expect(hlSingletonFallbackCalls).toBe(0);
+  });
 
-  it('keeps HL fallback in HL live mode', () => {
-    process.env.ACTIVE_EXCHANGE = 'HL'
+  it("keeps HL fallback in HL live mode", () => {
+    process.env.ACTIVE_EXCHANGE = "HL";
 
-    const om = new OrderManager()
-    const svc = callGetExchange(om)
+    const om = new OrderManager();
+    const svc = callGetExchange(om);
 
-    expect(svc).toBe(hlSingletonService)
-    expect(hlSingletonFallbackCalls).toBe(1)
-  })
-})
+    expect(svc).toBe(hlSingletonService);
+    expect(hlSingletonFallbackCalls).toBe(1);
+  });
+});

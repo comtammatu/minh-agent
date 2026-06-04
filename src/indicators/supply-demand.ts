@@ -14,12 +14,12 @@ export function premiumDiscount(
   swingHigh: number,
   swingLow: number,
   price: number,
-): 'premium' | 'discount' | 'equilibrium' {
-  if (swingHigh <= swingLow) return 'equilibrium'
-  const eq = (swingHigh + swingLow) / 2
-  if (price > eq * 1.005) return 'premium'
-  if (price < eq * 0.995) return 'discount'
-  return 'equilibrium'
+): "premium" | "discount" | "equilibrium" {
+  if (swingHigh <= swingLow) return "equilibrium";
+  const eq = (swingHigh + swingLow) / 2;
+  if (price > eq * 1.005) return "premium";
+  if (price < eq * 0.995) return "discount";
+  return "equilibrium";
 }
 
 // ─── Optimal Trade Entry (OTE) ────────────────────────────────────────────────
@@ -34,13 +34,13 @@ export function oteZone(
   swingA: number,
   swingB: number,
 ): { top: number; bottom: number } | null {
-  const range = Math.abs(swingB - swingA)
-  if (range === 0) return null
+  const range = Math.abs(swingB - swingA);
+  if (range === 0) return null;
   if (swingB > swingA) {
     // Bullish impulse — OTE is a pullback zone below swingB
-    return { top: swingB - range * 0.62, bottom: swingB - range * 0.79 }
+    return { top: swingB - range * 0.62, bottom: swingB - range * 0.79 };
   } else {
     // Bearish impulse — OTE is a pullback zone above swingB
-    return { top: swingB + range * 0.79, bottom: swingB + range * 0.62 }
+    return { top: swingB + range * 0.79, bottom: swingB + range * 0.62 };
   }
 }

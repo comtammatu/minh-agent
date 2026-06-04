@@ -5,32 +5,32 @@
  * The actual delay is injected via the `delay` parameter for testability.
  */
 
-import { RETRY } from '../config.js'
+import { RETRY } from "../config.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface RetryOptions {
   /** Max number of attempts (including initial). Default: RETRY.exchangeMaxAttempts */
-  maxAttempts?: number
+  maxAttempts?: number;
   /** Initial delay in ms before first retry. Default: RETRY.initialDelayMs */
-  initialDelayMs?: number
+  initialDelayMs?: number;
   /** Maximum delay cap in ms. Default: RETRY.maxDelayMs */
-  maxDelayMs?: number
+  maxDelayMs?: number;
   /** Backoff multiplier per attempt. Default: RETRY.backoffMultiplier */
-  backoffMultiplier?: number
+  backoffMultiplier?: number;
   /** Random jitter fraction (0–1). Default: RETRY.jitterFraction */
-  jitterFraction?: number
+  jitterFraction?: number;
   /** Should we retry this error? Default: always retry. */
-  shouldRetry?: (error: unknown, attempt: number) => boolean
+  shouldRetry?: (error: unknown, attempt: number) => boolean;
   /** Called on each retry (for logging). */
-  onRetry?: (error: unknown, attempt: number, delayMs: number) => void
+  onRetry?: (error: unknown, attempt: number, delayMs: number) => void;
 }
 
 export interface RetryResult<T> {
-  success: boolean
-  value: T | null
-  attempts: number
-  lastError: unknown
+  success: boolean;
+  value: T | null;
+  attempts: number;
+  lastError: unknown;
 }
 
 // ─── Backoff Calculation (pure) ─────────────────────────────────────────────
@@ -46,10 +46,10 @@ export function calculateDelay(
   backoffMultiplier: number,
   jitterFraction: number,
 ): number {
-  const baseDelay = initialDelayMs * Math.pow(backoffMultiplier, attempt - 1)
-  const capped = Math.min(baseDelay, maxDelayMs)
-  const jitter = capped * jitterFraction * Math.random()
-  return Math.round(capped + jitter)
+  const baseDelay = initialDelayMs * backoffMultiplier ** (attempt - 1);
+  const capped = Math.min(baseDelay, maxDelayMs);
+  const jitter = capped * jitterFraction * Math.random();
+  return Math.round(capped + jitter);
 }
 
 // ─── Retry Wrapper ──────────────────────────────────────────────────────────
@@ -64,33 +64,39 @@ export async function withRetry<T>(
   fn: () => Promise<T>,
   opts: RetryOptions = {},
 ): Promise<RetryResult<T>> {
-  const maxAttempts = opts.maxAttempts ?? RETRY.exchangeMaxAttempts
-  const initialDelay = opts.initialDelayMs ?? RETRY.initialDelayMs
-  const maxDelay = opts.maxDelayMs ?? RETRY.maxDelayMs
-  const multiplier = opts.backoffMultiplier ?? RETRY.backoffMultiplier
-  const jitter = opts.jitterFraction ?? RETRY.jitterFraction
-  const shouldRetry = opts.shouldRetry ?? (() => true)
+  const maxAttempts = opts.maxAttempts ?? RETRY.exchangeMaxAttempts;
+  const initialDelay = opts.initialDelayMs ?? RETRY.initialDelayMs;
+  const maxDelay = opts.maxDelayMs ?? RETRY.maxDelayMs;
+  const multiplier = opts.backoffMultiplier ?? RETRY.backoffMultiplier;
+  const jitter = opts.jitterFraction ?? RETRY.jitterFraction;
+  const shouldRetry = opts.shouldRetry ?? (() => true);
 
-  let lastError: unknown = null
+  let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const value = await fn()
-      return { success: true, value, attempts: attempt, lastError: null }
+      const value = await fn();
+      return { success: true, value, attempts: attempt, lastError: null };
     } catch (err) {
-      lastError = err
+      lastError = err;
 
       if (attempt >= maxAttempts || !shouldRetry(err, attempt)) {
-        break
+        break;
       }
 
-      const delayMs = calculateDelay(attempt, initialDelay, maxDelay, multiplier, jitter)
-      opts.onRetry?.(err, attempt, delayMs)
-      await new Promise(resolve => setTimeout(resolve, delayMs))
+      const delayMs = calculateDelay(
+        attempt,
+        initialDelay,
+        maxDelay,
+        multiplier,
+        jitter,
+      );
+      opts.onRetry?.(err, attempt, delayMs);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
 
-  return { success: false, value: null, attempts: maxAttempts, lastError }
+  return { success: false, value: null, attempts: maxAttempts, lastError };
 }
 
 // ─── 503 Detection ──────────────────────────────────────────────────────────
@@ -101,14 +107,22 @@ export async function withRetry<T>(
  */
 export function is503(error: unknown): boolean {
   if (error instanceof Error) {
-    const msg = error.message.toLowerCase()
-    return msg.includes('503') || msg.includes('service unavailable') || msg.includes('maintenance')
+    const msg = error.message.toLowerCase();
+    return (
+      msg.includes("503") ||
+      msg.includes("service unavailable") ||
+      msg.includes("maintenance")
+    );
   }
-  if (typeof error === 'string') {
-    const msg = error.toLowerCase()
-    return msg.includes('503') || msg.includes('service unavailable') || msg.includes('maintenance')
+  if (typeof error === "string") {
+    const msg = error.toLowerCase();
+    return (
+      msg.includes("503") ||
+      msg.includes("service unavailable") ||
+      msg.includes("maintenance")
+    );
   }
-  return false
+  return false;
 }
 
 /**
@@ -116,12 +130,15 @@ export function is503(error: unknown): boolean {
  */
 export function is429(error: unknown): boolean {
   if (error instanceof Error) {
-    return error.message.includes('429') || error.message.toLowerCase().includes('rate limit')
+    return (
+      error.message.includes("429") ||
+      error.message.toLowerCase().includes("rate limit")
+    );
   }
-  if (typeof error === 'string') {
-    return error.includes('429') || error.toLowerCase().includes('rate limit')
+  if (typeof error === "string") {
+    return error.includes("429") || error.toLowerCase().includes("rate limit");
   }
-  return false
+  return false;
 }
 
 /**
@@ -129,18 +146,29 @@ export function is429(error: unknown): boolean {
  */
 export function isRetryableExchangeError(error: unknown): boolean {
   // 503 = exchange maintenance → retry
-  if (is503(error)) return true
+  if (is503(error)) return true;
   // 429 = rate limited → retry (rate limiter should handle, but belt-and-suspenders)
-  if (is429(error)) return true
+  if (is429(error)) return true;
 
   if (error instanceof Error) {
-    const msg = error.message.toLowerCase()
+    const msg = error.message.toLowerCase();
     // Network errors → retry
-    if (msg.includes('timeout') || msg.includes('econnreset') || msg.includes('econnrefused') || msg.includes('fetch failed')) return true
+    if (
+      msg.includes("timeout") ||
+      msg.includes("econnreset") ||
+      msg.includes("econnrefused") ||
+      msg.includes("fetch failed")
+    )
+      return true;
     // Validation / business logic → do NOT retry
-    if (msg.includes('unknown asset') || msg.includes('minimum') || msg.includes('not initialized')) return false
+    if (
+      msg.includes("unknown asset") ||
+      msg.includes("minimum") ||
+      msg.includes("not initialized")
+    )
+      return false;
   }
 
   // Default: retry unknown errors
-  return true
+  return true;
 }

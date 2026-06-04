@@ -9,16 +9,16 @@
  *   - Wired to TradingAgent.onAction() — every log_journal action gets persisted.
  */
 
-import { sql } from '../db/connection.js'
-import type { JSONValue } from 'postgres'
-import { log } from '../lib/logger.js'
+import type { JSONValue } from "postgres";
+import { sql } from "../db/connection.js";
+import { log } from "../lib/logger.js";
+import type { ExchangeId } from "../types.js";
 import type {
   AgentAction,
+  DailySummary,
   JournalEntry,
   JournalFilter,
-  DailySummary,
-} from './types.js'
-import type { ExchangeId } from '../types.js'
+} from "./types.js";
 
 // ─── Write ──────────────────────────────────────────────────────────────────
 
@@ -30,15 +30,18 @@ export async function logJournalEntry(
   coin: string | null,
   details: Record<string, unknown>,
   agentState?: string | null,
-  exchange: ExchangeId = 'HL',
+  exchange: ExchangeId = "HL",
 ): Promise<void> {
   try {
     await sql`
       INSERT INTO trade_journal (event_type, coin, details, agent_state, exchange)
       VALUES (${eventType}, ${coin}, ${sql.json(details as JSONValue)}, ${agentState ?? null}, ${exchange})
-    `
+    `;
   } catch (err) {
-    log.error('journal', `Failed to write entry: ${eventType} ${coin ?? ''} — ${(err as Error).message}`)
+    log.error(
+      "journal",
+      `Failed to write entry: ${eventType} ${coin ?? ""} — ${(err as Error).message}`,
+    );
   }
 }
 
@@ -46,10 +49,18 @@ export async function logJournalEntry(
  * Handle a log_journal action from the agent state machine.
  * Extracts fields and delegates to logJournalEntry.
  */
-export function handleJournalAction(action: AgentAction, agentState?: string): void {
-  if (action.type !== 'log_journal') return
+export function handleJournalAction(
+  action: AgentAction,
+  agentState?: string,
+): void {
+  if (action.type !== "log_journal") return;
   // Fire-and-forget — no await needed at call site
-  logJournalEntry(action.eventType, action.coin, action.details, agentState ?? null)
+  logJournalEntry(
+    action.eventType,
+    action.coin,
+    action.details,
+    agentState ?? null,
+  );
 }
 
 /**
@@ -59,15 +70,15 @@ export function handleJournalAction(action: AgentAction, agentState?: string): v
 export async function logOperatorAuditEntry(
   action: string,
   target: string,
-  status: 'submitted' | 'failed',
+  status: "submitted" | "failed",
   context: {
-    coin?: string
-    source?: string
-    details?: Record<string, unknown>
+    coin?: string;
+    source?: string;
+    details?: Record<string, unknown>;
   } = {},
 ): Promise<void> {
   await logJournalEntry(
-    'operator',
+    "operator",
     context.coin ?? null,
     {
       action,
@@ -77,7 +88,7 @@ export async function logOperatorAuditEntry(
       ...(context.details ?? {}),
     },
     null,
-  )
+  );
 }
 
 // ─── Read ───────────────────────────────────────────────────────────────────
@@ -86,17 +97,23 @@ export async function logOperatorAuditEntry(
  * Query journal entries with optional filters.
  * Uses explicit query branches to keep SQL testable with simple mocks.
  */
-export async function getJournalEntries(filter: JournalFilter = {}): Promise<JournalEntry[]> {
-  const limit = Math.min(Math.max(1, filter.limit ?? 50), 500)
-  const { coin, eventType, since, until, exchange } = filter
+export async function getJournalEntries(
+  filter: JournalFilter = {},
+): Promise<JournalEntry[]> {
+  const limit = Math.min(Math.max(1, filter.limit ?? 50), 500);
+  const { coin, eventType, since, until, exchange } = filter;
 
   type Row = {
-    id: number; ts: Date; event_type: string
-    coin: string | null; details: Record<string, unknown>
-    agent_state: string | null; exchange: string
-  }
+    id: number;
+    ts: Date;
+    event_type: string;
+    coin: string | null;
+    details: Record<string, unknown>;
+    agent_state: string | null;
+    exchange: string;
+  };
 
-  let rows: Row[]
+  let rows: Row[];
 
   if (coin && eventType) {
     rows = await sql<Row[]>`
@@ -106,7 +123,7 @@ export async function getJournalEntries(filter: JournalFilter = {}): Promise<Jou
       ${until ? sql`AND ts <= ${until}` : sql``}
       ${exchange ? sql`AND exchange = ${exchange}` : sql``}
       ORDER BY ts DESC LIMIT ${limit}
-    `
+    `;
   } else if (coin) {
     rows = await sql<Row[]>`
       SELECT id, ts, event_type, coin, details, agent_state, exchange FROM trade_journal
@@ -115,7 +132,7 @@ export async function getJournalEntries(filter: JournalFilter = {}): Promise<Jou
       ${until ? sql`AND ts <= ${until}` : sql``}
       ${exchange ? sql`AND exchange = ${exchange}` : sql``}
       ORDER BY ts DESC LIMIT ${limit}
-    `
+    `;
   } else if (eventType) {
     rows = await sql<Row[]>`
       SELECT id, ts, event_type, coin, details, agent_state, exchange FROM trade_journal
@@ -124,50 +141,50 @@ export async function getJournalEntries(filter: JournalFilter = {}): Promise<Jou
       ${until ? sql`AND ts <= ${until}` : sql``}
       ${exchange ? sql`AND exchange = ${exchange}` : sql``}
       ORDER BY ts DESC LIMIT ${limit}
-    `
+    `;
   } else if (since && until) {
     rows = await sql<Row[]>`
       SELECT id, ts, event_type, coin, details, agent_state, exchange FROM trade_journal
       WHERE ts >= ${since} AND ts <= ${until}
       ${exchange ? sql`AND exchange = ${exchange}` : sql``}
       ORDER BY ts DESC LIMIT ${limit}
-    `
+    `;
   } else if (since) {
     rows = await sql<Row[]>`
       SELECT id, ts, event_type, coin, details, agent_state, exchange FROM trade_journal
       WHERE ts >= ${since}
       ${exchange ? sql`AND exchange = ${exchange}` : sql``}
       ORDER BY ts DESC LIMIT ${limit}
-    `
+    `;
   } else if (until) {
     rows = await sql<Row[]>`
       SELECT id, ts, event_type, coin, details, agent_state, exchange FROM trade_journal
       WHERE ts <= ${until}
       ${exchange ? sql`AND exchange = ${exchange}` : sql``}
       ORDER BY ts DESC LIMIT ${limit}
-    `
+    `;
   } else if (exchange) {
     rows = await sql<Row[]>`
       SELECT id, ts, event_type, coin, details, agent_state, exchange FROM trade_journal
       WHERE exchange = ${exchange}
       ORDER BY ts DESC LIMIT ${limit}
-    `
+    `;
   } else {
     rows = await sql<Row[]>`
       SELECT id, ts, event_type, coin, details, agent_state, exchange FROM trade_journal
       ORDER BY ts DESC LIMIT ${limit}
-    `
+    `;
   }
 
-  return rows.map(r => ({
+  return rows.map((r) => ({
     id: r.id,
     ts: r.ts,
-    eventType: r.event_type as JournalEntry['eventType'],
+    eventType: r.event_type as JournalEntry["eventType"],
     coin: r.coin,
     details: r.details,
     agentState: r.agent_state,
-    exchange: (r.exchange ?? 'HL') as ExchangeId,
-  }))
+    exchange: (r.exchange ?? "HL") as ExchangeId,
+  }));
 }
 
 /**
@@ -175,34 +192,36 @@ export async function getJournalEntries(filter: JournalFilter = {}): Promise<Jou
  * Looks at 'exit' events that have a numeric `pnl` in details.
  */
 export async function getDailySummary(date: Date): Promise<DailySummary> {
-  const dayStr = date.toISOString().slice(0, 10)  // YYYY-MM-DD
-  const dayStart = new Date(`${dayStr}T00:00:00Z`)
-  const dayEnd = new Date(`${dayStr}T23:59:59.999Z`)
+  const dayStr = date.toISOString().slice(0, 10); // YYYY-MM-DD
+  const dayStart = new Date(`${dayStr}T00:00:00Z`);
+  const dayEnd = new Date(`${dayStr}T23:59:59.999Z`);
 
   // Exit events with PnL for win/loss stats
-  const exitRows = await sql<{
-    pnl: number
-  }[]>`
+  const exitRows = await sql<
+    {
+      pnl: number;
+    }[]
+  >`
     SELECT (details->>'pnl')::double precision AS pnl
     FROM trade_journal
     WHERE event_type = 'exit'
       AND ts >= ${dayStart}
       AND ts <= ${dayEnd}
       AND details->>'pnl' IS NOT NULL
-  `
+  `;
 
   // Total entry count for the day
   const countRows = await sql<{ cnt: string }[]>`
     SELECT COUNT(*) AS cnt
     FROM trade_journal
     WHERE ts >= ${dayStart} AND ts <= ${dayEnd}
-  `
-  const entryCount = Number(countRows[0]?.cnt ?? 0)
+  `;
+  const entryCount = Number(countRows[0]?.cnt ?? 0);
 
-  const pnls = exitRows.map(r => r.pnl)
-  const wins = pnls.filter(p => p > 0)
-  const losses = pnls.filter(p => p < 0)
-  const totalPnl = pnls.reduce((sum, p) => sum + p, 0)
+  const pnls = exitRows.map((r) => r.pnl);
+  const wins = pnls.filter((p) => p > 0);
+  const losses = pnls.filter((p) => p < 0);
+  const totalPnl = pnls.reduce((sum, p) => sum + p, 0);
 
   return {
     date: dayStr,
@@ -215,35 +234,40 @@ export async function getDailySummary(date: Date): Promise<DailySummary> {
     largestWin: wins.length > 0 ? Math.max(...wins) : 0,
     largestLoss: losses.length > 0 ? Math.min(...losses) : 0,
     entryCount,
-  }
+  };
 }
 
 /**
  * Same as {@link getDailySummary} but for a calendar date in an IANA timezone (e.g. Asia/Ho_Chi_Minh).
  * `dateYmd` must be `YYYY-MM-DD`. Used for Telegram morning/evening reports.
  */
-export async function getDailySummaryForLocalDate(dateYmd: string, timeZone: string): Promise<DailySummary> {
-  const exitRows = await sql<{
-    pnl: number
-  }[]>`
+export async function getDailySummaryForLocalDate(
+  dateYmd: string,
+  timeZone: string,
+): Promise<DailySummary> {
+  const exitRows = await sql<
+    {
+      pnl: number;
+    }[]
+  >`
     SELECT (details->>'pnl')::double precision AS pnl
     FROM trade_journal
     WHERE event_type = 'exit'
       AND (ts AT TIME ZONE ${timeZone})::date = ${dateYmd}::date
       AND details->>'pnl' IS NOT NULL
-  `
+  `;
 
   const countRows = await sql<{ cnt: string }[]>`
     SELECT COUNT(*)::text AS cnt
     FROM trade_journal
     WHERE (ts AT TIME ZONE ${timeZone})::date = ${dateYmd}::date
-  `
-  const entryCount = Number(countRows[0]?.cnt ?? 0)
+  `;
+  const entryCount = Number(countRows[0]?.cnt ?? 0);
 
-  const pnls = exitRows.map(r => r.pnl)
-  const wins = pnls.filter(p => p > 0)
-  const losses = pnls.filter(p => p < 0)
-  const totalPnl = pnls.reduce((sum, p) => sum + p, 0)
+  const pnls = exitRows.map((r) => r.pnl);
+  const wins = pnls.filter((p) => p > 0);
+  const losses = pnls.filter((p) => p < 0);
+  const totalPnl = pnls.reduce((sum, p) => sum + p, 0);
 
   return {
     date: dateYmd,
@@ -256,5 +280,5 @@ export async function getDailySummaryForLocalDate(dateYmd: string, timeZone: str
     largestWin: wins.length > 0 ? Math.max(...wins) : 0,
     largestLoss: losses.length > 0 ? Math.min(...losses) : 0,
     entryCount,
-  }
+  };
 }

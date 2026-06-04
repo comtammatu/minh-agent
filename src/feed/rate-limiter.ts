@@ -14,13 +14,13 @@
  * and queue without races.
  */
 
-import { REST_BURST_TOKENS, REST_REFILL_MS } from '../config.js'
+import { REST_BURST_TOKENS, REST_REFILL_MS } from "../config.js";
 
-let tokens = REST_BURST_TOKENS
-let lastRefillAt = Date.now()
+let tokens = REST_BURST_TOKENS;
+let lastRefillAt = Date.now();
 
 /** Next available queue slot (ms). Used after burst exhaustion. */
-let nextSlotTime = 0
+let nextSlotTime = 0;
 
 /**
  * Acquire a slot before making a REST request.
@@ -29,24 +29,24 @@ let nextSlotTime = 0
  */
 export async function acquire(): Promise<void> {
   // Refill tokens based on elapsed time (1 token per REFILL_MS)
-  const now = Date.now()
-  const elapsed = now - lastRefillAt
-  tokens = Math.min(REST_BURST_TOKENS, tokens + elapsed / REST_REFILL_MS)
-  lastRefillAt = now
+  const now = Date.now();
+  const elapsed = now - lastRefillAt;
+  tokens = Math.min(REST_BURST_TOKENS, tokens + elapsed / REST_REFILL_MS);
+  lastRefillAt = now;
 
   if (tokens >= 1) {
-    tokens -= 1
-    return
+    tokens -= 1;
+    return;
   }
 
   // Burst exhausted — enter even-spacing queue
   if (now >= nextSlotTime) {
-    nextSlotTime = now + REST_REFILL_MS
-    return
+    nextSlotTime = now + REST_REFILL_MS;
+    return;
   }
 
   // Queue behind other waiters
-  const waitUntil = nextSlotTime
-  nextSlotTime = waitUntil + REST_REFILL_MS
-  await new Promise(r => setTimeout(r, waitUntil - now))
+  const waitUntil = nextSlotTime;
+  nextSlotTime = waitUntil + REST_REFILL_MS;
+  await new Promise((r) => setTimeout(r, waitUntil - now));
 }

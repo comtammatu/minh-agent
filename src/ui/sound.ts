@@ -8,12 +8,12 @@
  *   - BEL character (\x07) — works on macOS Terminal, iTerm2, most Linux terms
  */
 
-import type { AgentAction } from '../agent/types.js'
-import type { ConfluenceGrade } from '../types.js'
+import type { AgentAction } from "../agent/types.js";
+import type { ConfluenceGrade } from "../types.js";
 
 // ─── Sound-worthy grades ──────────────────────────────────────────────────
 
-const SOUND_GRADES = new Set<ConfluenceGrade>(['B', 'A', 'A+'])
+const SOUND_GRADES = new Set<ConfluenceGrade>(["B", "A", "A+"]);
 
 // ─── Check ────────────────────────────────────────────────────────────────
 
@@ -24,25 +24,25 @@ const SOUND_GRADES = new Set<ConfluenceGrade>(['B', 'A', 'A+'])
  *   - Circuit breaker events
  */
 export function shouldSound(action: AgentAction): boolean {
-  if (action.type !== 'log_journal') return false
+  if (action.type !== "log_journal") return false;
 
-  if (action.eventType === 'signal') {
-    const grade = action.details.grade as ConfluenceGrade | undefined
-    return grade != null && SOUND_GRADES.has(grade)
+  if (action.eventType === "signal") {
+    const grade = action.details.grade as ConfluenceGrade | undefined;
+    return grade != null && SOUND_GRADES.has(grade);
   }
 
-  if (action.eventType === 'circuit_break') {
-    return true
+  if (action.eventType === "circuit_break") {
+    return true;
   }
 
-  return false
+  return false;
 }
 
 // ─── Play ─────────────────────────────────────────────────────────────────
 
 /** Emit BEL character via stderr to avoid conflicting with ink's stdout control. */
 export function playSound(): void {
-  process.stderr.write('\x07')
+  process.stderr.write("\x07");
 }
 
 /**
@@ -51,6 +51,6 @@ export function playSound(): void {
  */
 export function maybeSoundAlert(action: AgentAction): void {
   if (shouldSound(action)) {
-    playSound()
+    playSound();
   }
 }

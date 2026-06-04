@@ -8,58 +8,58 @@
  * Sprint 3 S3.
  */
 
-import type { JSONValue, Sql } from 'postgres'
-import { sql as defaultSql } from '../db/connection.js'
-import { computeMetricsDelta } from './metrics.js'
-import type { MetricsDelta } from './metrics.js'
+import type { JSONValue, Sql } from "postgres";
+import { sql as defaultSql } from "../db/connection.js";
+import type { MetricsDelta } from "./metrics.js";
+import { computeMetricsDelta } from "./metrics.js";
 import type {
-  BacktestResult,
   BacktestConfig,
   BacktestMetrics,
+  BacktestResult,
   BacktestTrade,
   EquityPoint,
-} from './types.js'
+} from "./types.js";
 
+export type { MetricsDelta };
 // Re-export for convenience
-export { computeMetricsDelta }
-export type { MetricsDelta }
+export { computeMetricsDelta };
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /** Saved run summary (for list view). */
 export interface BacktestRunSummary {
-  id: string
-  name: string | null
-  config: BacktestConfig
-  totalTrades: number
-  netPnl: number
-  winRate: number
-  maxDrawdown: number
-  sharpeRatio: number
-  expectancy: number
-  createdAt: Date
+  id: string;
+  name: string | null;
+  config: BacktestConfig;
+  totalTrades: number;
+  netPnl: number;
+  winRate: number;
+  maxDrawdown: number;
+  sharpeRatio: number;
+  expectancy: number;
+  createdAt: Date;
 }
 
 /** Full saved run (summary + trades + equity + full metrics). */
 export interface SavedBacktestRun extends BacktestRunSummary {
-  metrics: BacktestMetrics
-  trades: BacktestTrade[]
-  equityCurve: EquityPoint[]
+  metrics: BacktestMetrics;
+  trades: BacktestTrade[];
+  equityCurve: EquityPoint[];
 }
 
 /** Comparison result between two runs. */
 export interface ComparisonResult {
-  runA: BacktestRunSummary
-  runB: BacktestRunSummary
-  metricsA: BacktestMetrics
-  metricsB: BacktestMetrics
-  delta: MetricsDelta
+  runA: BacktestRunSummary;
+  runB: BacktestRunSummary;
+  metricsA: BacktestMetrics;
+  metricsB: BacktestMetrics;
+  delta: MetricsDelta;
 }
 
 // ─── Save ───────────────────────────────────────────────────────────────────
 
-const TRADE_CHUNK_SIZE = 500
-const EQUITY_CHUNK_SIZE = 1000
+const TRADE_CHUNK_SIZE = 500;
+const EQUITY_CHUNK_SIZE = 1000;
 
 /**
  * Persist a BacktestResult to PostgreSQL.
@@ -70,7 +70,7 @@ export async function saveRun(
   name?: string,
   db: Sql = defaultSql,
 ): Promise<string> {
-  const { config, metrics, trades, equityCurve } = result
+  const { config, metrics, trades, equityCurve } = result;
 
   // Insert run header
   const [row] = await db<{ id: string }[]>`
@@ -90,14 +90,14 @@ export async function saveRun(
       ${metrics.expectancy}
     )
     RETURNING id
-  `
-  if (!row) throw new Error('Failed to persist backtest run header')
-  const runId = row.id
+  `;
+  if (!row) throw new Error("Failed to persist backtest run header");
+  const runId = row.id;
 
   // Bulk insert trades in chunks
   for (let i = 0; i < trades.length; i += TRADE_CHUNK_SIZE) {
-    const chunk = trades.slice(i, i + TRADE_CHUNK_SIZE)
-    const rows = chunk.map(t => ({
+    const chunk = trades.slice(i, i + TRADE_CHUNK_SIZE);
+    const rows = chunk.map((t) => ({
       run_id: runId,
       coin: t.coin,
       interval: t.interval,
@@ -115,84 +115,91 @@ export async function saveRun(
       pnl: t.pnl,
       pnl_pct: t.pnlPct,
       exit_reason: t.exitReason,
-    }))
+    }));
     await db`
       INSERT INTO backtest_trades ${db(rows)}
-    `
+    `;
   }
 
   // Bulk insert equity curve in chunks
   for (let i = 0; i < equityCurve.length; i += EQUITY_CHUNK_SIZE) {
-    const chunk = equityCurve.slice(i, i + EQUITY_CHUNK_SIZE)
-    const rows = chunk.map(e => ({
+    const chunk = equityCurve.slice(i, i + EQUITY_CHUNK_SIZE);
+    const rows = chunk.map((e) => ({
       run_id: runId,
       ts: new Date(e.ts),
       equity: e.equity,
-    }))
+    }));
     await db`
       INSERT INTO backtest_equity ${db(rows)}
-    `
+    `;
   }
 
-  return runId
+  return runId;
 }
 
 // ─── Load ───────────────────────────────────────────────────────────────────
 
 /** Load a full backtest run by ID. Returns null if not found. */
-export async function loadRun(runId: string, db: Sql = defaultSql): Promise<SavedBacktestRun | null> {
-  const runs = await db<{
-    id: string
-    name: string | null
-    config: BacktestConfig
-    metrics: BacktestMetrics
-    total_trades: number
-    net_pnl: number
-    win_rate: number
-    max_drawdown: number
-    sharpe_ratio: number
-    expectancy: number
-    created_at: Date
-  }[]>`
+export async function loadRun(
+  runId: string,
+  db: Sql = defaultSql,
+): Promise<SavedBacktestRun | null> {
+  const runs = await db<
+    {
+      id: string;
+      name: string | null;
+      config: BacktestConfig;
+      metrics: BacktestMetrics;
+      total_trades: number;
+      net_pnl: number;
+      win_rate: number;
+      max_drawdown: number;
+      sharpe_ratio: number;
+      expectancy: number;
+      created_at: Date;
+    }[]
+  >`
     SELECT * FROM backtest_runs WHERE id = ${runId}
-  `
-  if (runs.length === 0) return null
-  const run = runs[0]
-  if (!run) return null
+  `;
+  if (runs.length === 0) return null;
+  const run = runs[0];
+  if (!run) return null;
 
   // Load trades
-  const tradeRows = await db<{
-    coin: string
-    interval: string
-    side: string
-    pattern_type: string
-    confluence_grade: string | null
-    entry_price: number
-    exit_price: number
-    sl_price: number
-    tp_price: number
-    size_usd: number
-    entry_time: Date
-    exit_time: Date
-    holding_bars: number
-    pnl: number
-    pnl_pct: number
-    exit_reason: string
-  }[]>`
+  const tradeRows = await db<
+    {
+      coin: string;
+      interval: string;
+      side: string;
+      pattern_type: string;
+      confluence_grade: string | null;
+      entry_price: number;
+      exit_price: number;
+      sl_price: number;
+      tp_price: number;
+      size_usd: number;
+      entry_time: Date;
+      exit_time: Date;
+      holding_bars: number;
+      pnl: number;
+      pnl_pct: number;
+      exit_reason: string;
+    }[]
+  >`
     SELECT coin, interval, side, pattern_type, confluence_grade,
            entry_price, exit_price, sl_price, tp_price, size_usd,
            entry_time, exit_time, holding_bars, pnl, pnl_pct, exit_reason
     FROM backtest_trades
     WHERE run_id = ${runId}
     ORDER BY entry_time ASC
-  `
+  `;
 
   // Load equity curve
   const equityRows = await db<{ ts: Date; equity: number }[]>`
     SELECT ts, equity FROM backtest_equity
     WHERE run_id = ${runId}
     ORDER BY ts ASC
-  `
+  `;
 
   return {
     id: run.id,
@@ -206,12 +213,12 @@ export async function loadRun(runId: string, db: Sql = defaultSql): Promise<Save
     sharpeRatio: run.sharpe_ratio,
     expectancy: run.expectancy,
     createdAt: run.created_at,
-    trades: tradeRows.map(r => ({
+    trades: tradeRows.map((r) => ({
       coin: r.coin,
-      interval: r.interval as BacktestTrade['interval'],
-      side: r.side as BacktestTrade['side'],
-      patternType: r.pattern_type as BacktestTrade['patternType'],
-      confluenceGrade: r.confluence_grade as BacktestTrade['confluenceGrade'],
+      interval: r.interval as BacktestTrade["interval"],
+      side: r.side as BacktestTrade["side"],
+      patternType: r.pattern_type as BacktestTrade["patternType"],
+      confluenceGrade: r.confluence_grade as BacktestTrade["confluenceGrade"],
       entryPrice: r.entry_price,
       exitPrice: r.exit_price,
       slPrice: r.sl_price,
@@ -222,39 +229,44 @@ export async function loadRun(runId: string, db: Sql = defaultSql): Promise<Save
       holdingBars: r.holding_bars,
       pnl: r.pnl,
       pnlPct: r.pnl_pct,
-      exitReason: r.exit_reason as BacktestTrade['exitReason'],
+      exitReason: r.exit_reason as BacktestTrade["exitReason"],
     })),
-    equityCurve: equityRows.map(r => ({
+    equityCurve: equityRows.map((r) => ({
       ts: r.ts.getTime(),
       equity: r.equity,
     })),
-  }
+  };
 }
 
 // ─── List ───────────────────────────────────────────────────────────────────
 
 /** List all runs (summary only, no trades/equity). Most recent first. */
-export async function listRuns(limit = 50, db: Sql = defaultSql): Promise<BacktestRunSummary[]> {
-  const rows = await db<{
-    id: string
-    name: string | null
-    config: BacktestConfig
-    total_trades: number
-    net_pnl: number
-    win_rate: number
-    max_drawdown: number
-    sharpe_ratio: number
-    expectancy: number
-    created_at: Date
-  }[]>`
+export async function listRuns(
+  limit = 50,
+  db: Sql = defaultSql,
+): Promise<BacktestRunSummary[]> {
+  const rows = await db<
+    {
+      id: string;
+      name: string | null;
+      config: BacktestConfig;
+      total_trades: number;
+      net_pnl: number;
+      win_rate: number;
+      max_drawdown: number;
+      sharpe_ratio: number;
+      expectancy: number;
+      created_at: Date;
+    }[]
+  >`
     SELECT id, name, config, total_trades, net_pnl, win_rate,
            max_drawdown, sharpe_ratio, expectancy, created_at
     FROM backtest_runs
     ORDER BY created_at DESC
     LIMIT ${limit}
-  `
+  `;
 
-  return rows.map(r => ({
+  return rows.map((r) => ({
     id: r.id,
     name: r.name,
     config: r.config,
@@ -265,17 +277,20 @@ export async function listRuns(limit = 50, db: Sql = defaultSql): Promise<Backte
     sharpeRatio: r.sharpe_ratio,
     expectancy: r.expectancy,
     createdAt: r.created_at,
-  }))
+  }));
 }
 
 // ─── Delete ─────────────────────────────────────────────────────────────────
 
 /** Delete a run and all its trades/equity (CASCADE). */
-export async function deleteRun(runId: string, db: Sql = defaultSql): Promise<boolean> {
+export async function deleteRun(
+  runId: string,
+  db: Sql = defaultSql,
+): Promise<boolean> {
   const result = await db`
     DELETE FROM backtest_runs WHERE id = ${runId}
-  `
-  return result.count > 0
+  `;
+  return result.count > 0;
 }
 
 // ─── Compare ────────────────────────────────────────────────────────────────
@@ -287,29 +302,31 @@ export async function compareRuns(
   db: Sql = defaultSql,
 ): Promise<ComparisonResult | null> {
   // Load both runs' header + metrics (no trades/equity needed for comparison)
-  const rows = await db<{
-    id: string
-    name: string | null
-    config: BacktestConfig
-    metrics: BacktestMetrics
-    total_trades: number
-    net_pnl: number
-    win_rate: number
-    max_drawdown: number
-    sharpe_ratio: number
-    expectancy: number
-    created_at: Date
-  }[]>`
+  const rows = await db<
+    {
+      id: string;
+      name: string | null;
+      config: BacktestConfig;
+      metrics: BacktestMetrics;
+      total_trades: number;
+      net_pnl: number;
+      win_rate: number;
+      max_drawdown: number;
+      sharpe_ratio: number;
+      expectancy: number;
+      created_at: Date;
+    }[]
+  >`
     SELECT id, name, config, metrics, total_trades, net_pnl, win_rate,
            max_drawdown, sharpe_ratio, expectancy, created_at
     FROM backtest_runs
     WHERE id IN (${runIdA}, ${runIdB})
-  `
+  `;
 
-  const mapById = new Map(rows.map(r => [r.id, r]))
-  const rowA = mapById.get(runIdA)
-  const rowB = mapById.get(runIdB)
-  if (!rowA || !rowB) return null
+  const mapById = new Map(rows.map((r) => [r.id, r]));
+  const rowA = mapById.get(runIdA);
+  const rowB = mapById.get(runIdB);
+  if (!rowA || !rowB) return null;
 
   const toSummary = (r: typeof rowA): BacktestRunSummary => ({
     id: r.id,
@@ -322,7 +339,7 @@ export async function compareRuns(
     sharpeRatio: r.sharpe_ratio,
     expectancy: r.expectancy,
     createdAt: r.created_at,
-  })
+  });
 
   return {
     runA: toSummary(rowA),
@@ -330,5 +347,5 @@ export async function compareRuns(
     metricsA: rowA.metrics,
     metricsB: rowB.metrics,
     delta: computeMetricsDelta(rowA.metrics, rowB.metrics),
-  }
+  };
 }

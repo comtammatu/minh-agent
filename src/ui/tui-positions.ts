@@ -4,26 +4,29 @@
  * positions on ACCOUNT_ADDRESS never appeared in the Positions panel.
  */
 
-import type { ExchangePositionSnapshot, PositionState } from '../agent/types.js'
-import { normalizeWalletLabel } from './live-account-stats.js'
+import type {
+  ExchangePositionSnapshot,
+  PositionState,
+} from "../agent/types.js";
+import { normalizeWalletLabel } from "./live-account-stats.js";
 
 /** One row for the Positions table (live). */
 export interface TuiPositionRow {
   /** Stable key for React list items. */
-  rowKey: string
-  coin: string
-  side: 'long' | 'short'
-  leverage: number
-  currentSize: number
-  entryPrice: number
-  slPrice: number
-  tpPrice: number
+  rowKey: string;
+  coin: string;
+  side: "long" | "short";
+  leverage: number;
+  currentSize: number;
+  entryPrice: number;
+  slPrice: number;
+  tpPrice: number;
   /** True when the row is from HL only (no matching {@link PositionMonitor} entry). */
-  exchangeOnly: boolean
+  exchangeOnly: boolean;
 }
 
-function snapSide(s: ExchangePositionSnapshot): 'long' | 'short' {
-  return s.size > 0 ? 'long' : 'short'
+function snapSide(s: ExchangePositionSnapshot): "long" | "short" {
+  return s.size > 0 ? "long" : "short";
 }
 
 function findMatchingTracked(
@@ -31,14 +34,14 @@ function findMatchingTracked(
   tracked: Map<string, PositionState>,
   consumed: Set<string>,
 ): PositionState | null {
-  const candidates: PositionState[] = []
+  const candidates: PositionState[] = [];
   for (const pos of tracked.values()) {
-    if (pos.coin !== snap.coin) continue
-    if (consumed.has(pos.positionId)) continue
-    candidates.push(pos)
+    if (pos.coin !== snap.coin) continue;
+    if (consumed.has(pos.positionId)) continue;
+    candidates.push(pos);
   }
-  if (candidates.length === 0) return null
-  return candidates[0] ?? null
+  if (candidates.length === 0) return null;
+  return candidates[0] ?? null;
 }
 
 /**
@@ -50,21 +53,27 @@ export function mergeExchangeAndTrackedForTui(
   tracked: Map<string, PositionState>,
   exchange: ExchangePositionSnapshot[],
 ): Map<string, TuiPositionRow> {
-  const out = new Map<string, TuiPositionRow>()
-  const consumed = new Set<string>()
+  const out = new Map<string, TuiPositionRow>();
+  const consumed = new Set<string>();
 
   for (const snap of exchange) {
-    if (snap.size === 0) continue
+    if (snap.size === 0) continue;
 
-    const side = snapSide(snap)
-    const absSize = Math.abs(snap.size)
-    const lev = snap.leverage !== undefined && snap.leverage > 0 ? snap.leverage : 1
+    const side = snapSide(snap);
+    const absSize = Math.abs(snap.size);
+    const lev =
+      snap.leverage !== undefined && snap.leverage > 0 ? snap.leverage : 1;
 
-    const match = findMatchingTracked(snap, tracked, consumed)
+    const match = findMatchingTracked(snap, tracked, consumed);
     if (match) {
-      consumed.add(match.positionId)
+      consumed.add(match.positionId);
       // Exchange snapshot is source of truth for leverage; fall back to tracked if exchange omits it
-      const mergedLev = snap.leverage !== undefined && snap.leverage > 0 ? snap.leverage : (match.leverage > 0 ? match.leverage : 1)
+      const mergedLev =
+        snap.leverage !== undefined && snap.leverage > 0
+          ? snap.leverage
+          : match.leverage > 0
+            ? match.leverage
+            : 1;
       out.set(match.positionId, {
         rowKey: match.positionId,
         coin: snap.coin,
@@ -75,11 +84,11 @@ export function mergeExchangeAndTrackedForTui(
         slPrice: match.slPrice,
         tpPrice: match.tpPrice,
         exchangeOnly: false,
-      })
-      continue
+      });
+      continue;
     }
 
-    const rowKey = `hl:${normalizeWalletLabel(undefined)}:${snap.coin}`
+    const rowKey = `hl:${normalizeWalletLabel(undefined)}:${snap.coin}`;
     out.set(rowKey, {
       rowKey,
       coin: snap.coin,
@@ -90,11 +99,11 @@ export function mergeExchangeAndTrackedForTui(
       slPrice: snap.slPrice ?? 0,
       tpPrice: snap.tpPrice ?? 0,
       exchangeOnly: true,
-    })
+    });
   }
 
   for (const [id, pos] of tracked) {
-    if (consumed.has(id)) continue
+    if (consumed.has(id)) continue;
     out.set(id, {
       rowKey: id,
       coin: pos.coin,
@@ -105,8 +114,8 @@ export function mergeExchangeAndTrackedForTui(
       slPrice: pos.slPrice,
       tpPrice: pos.tpPrice,
       exchangeOnly: false,
-    })
+    });
   }
 
-  return out
+  return out;
 }

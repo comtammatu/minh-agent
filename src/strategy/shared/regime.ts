@@ -9,9 +9,9 @@
  * Pure function. Zero I/O.
  */
 
-import type { MarketRegime, SignalSide } from '../../types.js'
-import type { StrategyParams } from '../../backtest/types.js'
-import { REGIME_MULTIPLIERS } from '../../config.js'
+import type { StrategyParams } from "../../backtest/types.js";
+import { REGIME_MULTIPLIERS } from "../../config.js";
+import type { MarketRegime, SignalSide } from "../../types.js";
 
 /**
  * Apply regime modifier to confidence.
@@ -24,24 +24,26 @@ export function applyRegimeModifier(
   regime: MarketRegime,
   strategyParams?: StrategyParams,
 ): number {
-  const raw = isNaN(confidence) ? 0 : confidence
+  const raw = Number.isNaN(confidence) ? 0 : confidence;
 
   const isAligned =
-    (side === 'long' && regime === 'BULL') ||
-    (side === 'short' && regime === 'BEAR')
+    (side === "long" && regime === "BULL") ||
+    (side === "short" && regime === "BEAR");
 
   const isCounter =
-    (side === 'long' && regime === 'BEAR') ||
-    (side === 'short' && regime === 'BULL')
+    (side === "long" && regime === "BEAR") ||
+    (side === "short" && regime === "BULL");
 
-  let multiplier: number
+  let multiplier: number;
   if (isAligned) {
-    multiplier = REGIME_MULTIPLIERS.aligned
+    multiplier = REGIME_MULTIPLIERS.aligned;
   } else if (isCounter) {
-    multiplier = strategyParams?.REGIME_MULT_COUNTER ?? REGIME_MULTIPLIERS.counter
+    multiplier =
+      strategyParams?.REGIME_MULT_COUNTER ?? REGIME_MULTIPLIERS.counter;
   } else {
-    multiplier = strategyParams?.REGIME_MULT_NEUTRAL ?? REGIME_MULTIPLIERS.neutral
+    multiplier =
+      strategyParams?.REGIME_MULT_NEUTRAL ?? REGIME_MULTIPLIERS.neutral;
   }
 
-  return Math.min(Math.max(raw * multiplier, 0), 1)
+  return Math.min(Math.max(raw * multiplier, 0), 1);
 }

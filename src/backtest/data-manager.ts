@@ -11,24 +11,24 @@
  * Rate limit: weight-based 1200/min — all calls go through acquire().
  */
 
-import type { Candle, CandleInterval } from '../types.js'
-import { fetchCandles } from '../feed/rest.js'
-import { bulkUpsertCandles, loadCandles } from '../db/candle-repo.js'
-import { TIMEFRAME_MS, HTF_MAP } from '../config.js'
-import { log } from '../lib/logger.js'
+import { HTF_MAP, TIMEFRAME_MS } from "../config.js";
+import { bulkUpsertCandles, loadCandles } from "../db/candle-repo.js";
+import { fetchCandles } from "../feed/rest.js";
+import { log } from "../lib/logger.js";
+import type { Candle, CandleInterval } from "../types.js";
 
 /** Max candles per HL REST request. */
-const HL_MAX_CANDLES_PER_REQUEST = 5000
+const HL_MAX_CANDLES_PER_REQUEST = 5000;
 
 // ─── Pure Functions (no I/O) ──────────────────────────────────────────────
 
 export interface Gap {
   /** Start timestamp (ms) — first missing candle open time. */
-  start: number
+  start: number;
   /** End timestamp (ms) — last missing candle open time. */
-  end: number
+  end: number;
   /** Number of missing candles in this gap. */
-  count: number
+  count: number;
 }
 
 /**
@@ -41,26 +41,26 @@ export interface Gap {
  * @returns Array of Gap objects describing missing ranges
  */
 export function detectGaps(candles: Candle[], intervalMs: number): Gap[] {
-  if (candles.length < 2) return []
+  if (candles.length < 2) return [];
 
-  const gaps: Gap[] = []
+  const gaps: Gap[] = [];
   for (let i = 1; i < candles.length; i++) {
-    const prev = candles[i - 1]!
-    const curr = candles[i]!
-    const expected = prev.t + intervalMs
+    const prev = candles[i - 1]!;
+    const curr = candles[i]!;
+    const expected = prev.t + intervalMs;
     if (curr.t > expected) {
-      const missingCount = Math.round((curr.t - expected) / intervalMs)
+      const missingCount = Math.round((curr.t - expected) / intervalMs);
       if (missingCount > 0) {
         gaps.push({
           start: expected,
           end: curr.t - intervalMs,
           count: missingCount,
-        })
+        });
       }
     }
   }
 
-  return gaps
+  return gaps;
 }
 
 /**
@@ -79,21 +79,21 @@ export function computeDownloadWindows(
   endMs: number,
   intervalMs: number,
 ): { startTime: number; endTime: number }[] {
-  if (startMs > endMs) return []
+  if (startMs > endMs) return [];
 
-  const windows: { startTime: number; endTime: number }[] = []
-  let cursor = startMs
+  const windows: { startTime: number; endTime: number }[] = [];
+  let cursor = startMs;
 
   while (cursor <= endMs) {
     const windowEnd = Math.min(
       cursor + (HL_MAX_CANDLES_PER_REQUEST - 1) * intervalMs,
       endMs,
-    )
-    windows.push({ startTime: cursor, endTime: windowEnd })
-    cursor = windowEnd + intervalMs
+    );
+    windows.push({ startTime: cursor, endTime: windowEnd });
+    cursor = windowEnd + intervalMs;
   }
 
-  return windows
+  return windows;
 }
 
 /**
@@ -105,18 +105,20 @@ export function computeDownloadWindows(
  * Example: intervals = ['15m', '1h', '4h'] → HTFs = ['4h', '1d']
  *          '4h' already in input, so returns ['1d']
  */
-export function computeHTFIntervals(intervals: CandleInterval[]): CandleInterval[] {
-  const inputSet = new Set(intervals)
-  const htfSet = new Set<CandleInterval>()
+export function computeHTFIntervals(
+  intervals: CandleInterval[],
+): CandleInterval[] {
+  const inputSet = new Set(intervals);
+  const htfSet = new Set<CandleInterval>();
 
   for (const interval of intervals) {
-    const htf = HTF_MAP[interval]
+    const htf = HTF_MAP[interval];
     if (htf !== interval && !inputSet.has(htf)) {
-      htfSet.add(htf)
+      htfSet.add(htf);
     }
   }
 
-  return [...htfSet]
+  return [...htfSet];
 }
 
 /**
@@ -125,10 +127,10 @@ export function computeHTFIntervals(intervals: CandleInterval[]): CandleInterval
  *
  * Pure function — no I/O.
  */
-export const HTF_WARMUP_CANDLES = 50
+export const HTF_WARMUP_CANDLES = 50;
 
 export function computeHTFWarmupMs(htfInterval: CandleInterval): number {
-  return HTF_WARMUP_CANDLES * TIMEFRAME_MS[htfInterval]
+  return HTF_WARMUP_CANDLES * TIMEFRAME_MS[htfInterval];
 }
 
 // ─── BacktestDataManager (I/O boundary) ────────────────────────────────────
@@ -146,56 +148,73 @@ export class BacktestDataManager {
     startDate: Date,
     endDate: Date,
   ): Promise<number> {
-    const intervalMs = TIMEFRAME_MS[interval]
-    const startMs = startDate.getTime()
-    const endMs = endDate.getTime()
+    const intervalMs = TIMEFRAME_MS[interval];
+    const startMs = startDate.getTime();
+    const endMs = endDate.getTime();
 
-    const windows = computeDownloadWindows(startMs, endMs, intervalMs)
-    if (windows.length === 0) return 0
+    const windows = computeDownloadWindows(startMs, endMs, intervalMs);
+    if (windows.length === 0) return 0;
 
-    let totalPersisted = 0
+    let totalPersisted = 0;
 
-    log.info('backtest-data', `Downloading ${coin} ${interval}: ${windows.length} pages, ${startDate.toISOString()} → ${endDate.toISOString()}`)
+    log.info(
+      "backtest-data",
+      `Downloading ${coin} ${interval}: ${windows.length} pages, ${startDate.toISOString()} → ${endDate.toISOString()}`,
+    );
 
     for (let i = 0; i < windows.length; i++) {
-      const w = windows[i]!
-      const candles = await fetchCandles(coin, interval, w.startTime, w.endTime)
+      const w = windows[i]!;
+      const candles = await fetchCandles(
+        coin,
+        interval,
+        w.startTime,
+        w.endTime,
+      );
 
       if (candles === null) {
-        log.warn('backtest-data', `${coin} ${interval} page ${i + 1}/${windows.length}: fetch failed — skipping`)
-        continue
+        log.warn(
+          "backtest-data",
+          `${coin} ${interval} page ${i + 1}/${windows.length}: fetch failed — skipping`,
+        );
+        continue;
       }
 
       if (candles.length === 0) {
-        log.debug('backtest-data', `${coin} ${interval} page ${i + 1}/${windows.length}: empty`)
-        continue
+        log.debug(
+          "backtest-data",
+          `${coin} ${interval} page ${i + 1}/${windows.length}: empty`,
+        );
+        continue;
       }
 
-      const persisted = await bulkUpsertCandles(coin, interval, candles)
-      totalPersisted += persisted
+      const persisted = await bulkUpsertCandles(coin, interval, candles);
+      totalPersisted += persisted;
 
-      log.debug('backtest-data', `${coin} ${interval} page ${i + 1}/${windows.length}: ${persisted} candles`)
+      log.debug(
+        "backtest-data",
+        `${coin} ${interval} page ${i + 1}/${windows.length}: ${persisted} candles`,
+      );
     }
 
-    log.info('backtest-data', `${coin} ${interval}: ${totalPersisted} candles persisted`)
-    return totalPersisted
+    log.info(
+      "backtest-data",
+      `${coin} ${interval}: ${totalPersisted} candles persisted`,
+    );
+    return totalPersisted;
   }
 
   /**
    * Check for gaps in stored candles for a coin/interval.
    * Loads all candles from PG and runs pure gap detection.
    */
-  async checkGaps(
-    coin: string,
-    interval: CandleInterval,
-  ): Promise<Gap[]> {
-    const intervalMs = TIMEFRAME_MS[interval]
+  async checkGaps(coin: string, interval: CandleInterval): Promise<Gap[]> {
+    const intervalMs = TIMEFRAME_MS[interval];
     // Load a large number of candles — 100K covers ~69 days of 1m data
-    const candles = await loadCandles(coin, interval, 100_000)
+    const candles = await loadCandles(coin, interval, 100_000);
 
-    if (candles.length < 2) return []
+    if (candles.length < 2) return [];
 
-    return detectGaps(candles, intervalMs)
+    return detectGaps(candles, intervalMs);
   }
 
   /**
@@ -203,20 +222,20 @@ export class BacktestDataManager {
    *
    * @returns Total candles persisted across all gaps
    */
-  async fillGaps(
-    coin: string,
-    interval: CandleInterval,
-  ): Promise<number> {
-    const gaps = await this.checkGaps(coin, interval)
+  async fillGaps(coin: string, interval: CandleInterval): Promise<number> {
+    const gaps = await this.checkGaps(coin, interval);
 
     if (gaps.length === 0) {
-      log.debug('backtest-data', `${coin} ${interval}: no gaps found`)
-      return 0
+      log.debug("backtest-data", `${coin} ${interval}: no gaps found`);
+      return 0;
     }
 
-    log.info('backtest-data', `${coin} ${interval}: ${gaps.length} gaps found, ${gaps.reduce((s, g) => s + g.count, 0)} missing candles`)
+    log.info(
+      "backtest-data",
+      `${coin} ${interval}: ${gaps.length} gaps found, ${gaps.reduce((s, g) => s + g.count, 0)} missing candles`,
+    );
 
-    let totalPersisted = 0
+    let totalPersisted = 0;
 
     for (const gap of gaps) {
       const persisted = await this.downloadHistory(
@@ -224,12 +243,15 @@ export class BacktestDataManager {
         interval,
         new Date(gap.start),
         new Date(gap.end),
-      )
-      totalPersisted += persisted
+      );
+      totalPersisted += persisted;
     }
 
-    log.info('backtest-data', `${coin} ${interval}: ${totalPersisted} gap candles filled`)
-    return totalPersisted
+    log.info(
+      "backtest-data",
+      `${coin} ${interval}: ${totalPersisted} gap candles filled`,
+    );
+    return totalPersisted;
   }
 
   /**
@@ -248,37 +270,40 @@ export class BacktestDataManager {
     startDate: Date,
     endDate: Date,
   ): Promise<Map<string, Candle[]>> {
-    const result = new Map<string, Candle[]>()
-    const startMs = startDate.getTime()
-    const endMs = endDate.getTime()
+    const result = new Map<string, Candle[]>();
+    const startMs = startDate.getTime();
+    const endMs = endDate.getTime();
 
     // Determine extra HTF intervals needed for Layer 1 bias
-    const extraHTFs = computeHTFIntervals(intervals)
+    const extraHTFs = computeHTFIntervals(intervals);
 
     // Load requested intervals with exact date range
     for (const coin of coins) {
       for (const interval of intervals) {
-        const all = await loadCandles(coin, interval, 100_000)
-        const filtered = all.filter(c => c.t >= startMs && c.t <= endMs)
-        const key = `${coin}|${interval}`
-        result.set(key, filtered)
+        const all = await loadCandles(coin, interval, 100_000);
+        const filtered = all.filter((c) => c.t >= startMs && c.t <= endMs);
+        const key = `${coin}|${interval}`;
+        result.set(key, filtered);
 
-        log.debug('backtest-data', `Loaded ${key}: ${filtered.length} candles`)
+        log.debug("backtest-data", `Loaded ${key}: ${filtered.length} candles`);
       }
 
       // Load extra HTF intervals with warmup buffer
       for (const htf of extraHTFs) {
-        const warmupMs = computeHTFWarmupMs(htf)
-        const htfStartMs = startMs - warmupMs
-        const all = await loadCandles(coin, htf, 100_000)
-        const filtered = all.filter(c => c.t >= htfStartMs && c.t <= endMs)
-        const key = `${coin}|${htf}`
-        result.set(key, filtered)
+        const warmupMs = computeHTFWarmupMs(htf);
+        const htfStartMs = startMs - warmupMs;
+        const all = await loadCandles(coin, htf, 100_000);
+        const filtered = all.filter((c) => c.t >= htfStartMs && c.t <= endMs);
+        const key = `${coin}|${htf}`;
+        result.set(key, filtered);
 
-        log.debug('backtest-data', `Loaded HTF ${key}: ${filtered.length} candles (warmup: ${Math.round(warmupMs / 86_400_000)}d)`)
+        log.debug(
+          "backtest-data",
+          `Loaded HTF ${key}: ${filtered.length} candles (warmup: ${Math.round(warmupMs / 86_400_000)}d)`,
+        );
       }
     }
 
-    return result
+    return result;
   }
 }

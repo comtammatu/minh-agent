@@ -36,104 +36,112 @@
  *   - Minimum order value $10
  */
 
-import { ExchangeClient, HttpTransport } from '@nktkas/hyperliquid'
-import { SymbolConverter, formatPrice, formatSize } from '@nktkas/hyperliquid/utils'
-import { privateKeyToAccount } from 'viem/accounts'
-import type { ExchangePositionSnapshot } from '../agent/types.js'
-import { info } from '../feed/rest.js'
-import { acquire } from '../feed/rate-limiter.js'
-import { log } from '../lib/logger.js'
-import { withRetry, isRetryableExchangeError, is503 } from '../lib/retry.js'
-import { getHealthMonitor } from '../agent/self-healing.js'
-import { MARKET_ORDER_SLIPPAGE_PCT, RETRY, HL_MIN_ORDER_NOTIONAL_USD } from '../config.js'
-import { getLatestBook } from '../feed/orderbook.js'
-import { fetchAllMids } from '../feed/perp-info.js'
+import { ExchangeClient, HttpTransport } from "@nktkas/hyperliquid";
+import {
+  formatPrice,
+  formatSize,
+  SymbolConverter,
+} from "@nktkas/hyperliquid/utils";
+import { privateKeyToAccount } from "viem/accounts";
+import { getHealthMonitor } from "../agent/self-healing.js";
+import type { ExchangePositionSnapshot } from "../agent/types.js";
+import {
+  HL_MIN_ORDER_NOTIONAL_USD,
+  MARKET_ORDER_SLIPPAGE_PCT,
+  RETRY,
+} from "../config.js";
+import { getLatestBook } from "../feed/orderbook.js";
+import { fetchAllMids } from "../feed/perp-info.js";
+import { acquire } from "../feed/rate-limiter.js";
+import { info } from "../feed/rest.js";
+import { log } from "../lib/logger.js";
+import { is503, isRetryableExchangeError, withRetry } from "../lib/retry.js";
 
 function getExchangeStatusError(status: unknown): string | null {
   if (
-    typeof status === 'object'
-    && status !== null
-    && 'error' in status
-    && typeof (status as { error?: unknown }).error === 'string'
+    typeof status === "object" &&
+    status !== null &&
+    "error" in status &&
+    typeof (status as { error?: unknown }).error === "string"
   ) {
-    return (status as { error: string }).error
+    return (status as { error: string }).error;
   }
-  return null
+  return null;
 }
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface PlaceOrderParams {
-  coin: string
-  side: 'long' | 'short'
-  type: 'market' | 'limit'
-  price: number        // reference price (market) or limit price
-  size: number         // in coin units (pre-formatting)
-  reduceOnly: boolean
-  cloid?: string       // 0x + 32 hex chars
+  coin: string;
+  side: "long" | "short";
+  type: "market" | "limit";
+  price: number; // reference price (market) or limit price
+  size: number; // in coin units (pre-formatting)
+  reduceOnly: boolean;
+  cloid?: string; // 0x + 32 hex chars
   /** Inline SL/TP — used by Bybit (set on submitOrder). Ignored by HL (uses separate placeTrigger). */
-  slPrice?: number
-  tpPrice?: number
+  slPrice?: number;
+  tpPrice?: number;
 }
 
 export interface PlaceTriggerParams {
-  coin: string
-  side: 'long' | 'short'  // close side
-  triggerPrice: number
-  size: number
-  isMarket: boolean        // SL = true (trigger-market), TP = false (trigger-limit)
-  tpsl: 'tp' | 'sl'
-  cloid?: string
+  coin: string;
+  side: "long" | "short"; // close side
+  triggerPrice: number;
+  size: number;
+  isMarket: boolean; // SL = true (trigger-market), TP = false (trigger-limit)
+  tpsl: "tp" | "sl";
+  cloid?: string;
 }
 
 export interface OrderResult {
-  success: boolean
+  success: boolean;
   /** HL oid (number) — set on resting or filled */
-  oid: number | null
+  oid: number | null;
   /** Fill info — set on immediate fill */
-  avgPx: number | null
-  totalSz: number | null
+  avgPx: number | null;
+  totalSz: number | null;
   /** Status string for trigger orders */
-  status: string | null
-  error: string | null
+  status: string | null;
+  error: string | null;
   /** String-based exchange order ID (e.g. Bybit UUID). Used when oid is null. */
-  rawOrderId?: string
+  rawOrderId?: string;
 }
 
 export interface AccountState {
-  accountValue: number
-  totalNtlPos: number
-  totalMarginUsed: number
-  withdrawable: number
+  accountValue: number;
+  totalNtlPos: number;
+  totalMarginUsed: number;
+  withdrawable: number;
   /** Spot USDC balance (unified account keeps funds here). */
-  spotUsdcBalance: number
+  spotUsdcBalance: number;
   /** Effective total = perp accountValue + spot USDC (true available capital). */
-  effectiveBalance: number
+  effectiveBalance: number;
 }
 
 // ─── HLExchangeService ──────────────────────────────────────────────────────
 
 export class HLExchangeService {
-  readonly exchangeId = 'HL' as const
+  readonly exchangeId = "HL" as const;
 
-  private exchange: ExchangeClient | null = null
-  private converter: SymbolConverter | null = null
-  private transport: HttpTransport
-  private walletAddress: string = ''
+  private exchange: ExchangeClient | null = null;
+  private converter: SymbolConverter | null = null;
+  private transport: HttpTransport;
+  private walletAddress: string = "";
   /** Main account address for info queries (differs from walletAddress in agent mode). */
-  private accountAddress: string = ''
+  private accountAddress: string = "";
 
   /** Cached account value — refreshed on each getAccountState() call. */
-  private cachedAccountValue: number = 0
+  private cachedAccountValue: number = 0;
 
   /** coin → maxLeverage from meta.universe (loaded once at init). */
-  private maxLeverageMap: Map<string, number> = new Map()
+  private maxLeverageMap: Map<string, number> = new Map();
 
   /** Whether the service has been initialized. */
-  private initialized = false
+  private initialized = false;
 
   constructor() {
-    this.transport = new HttpTransport()
+    this.transport = new HttpTransport();
   }
 
   /**
@@ -144,93 +152,117 @@ export class HLExchangeService {
    * Reads PRIVATE_KEY and ACCOUNT_ADDRESS from env vars.
    */
   async init(): Promise<void> {
-    if (this.initialized) return
+    if (this.initialized) return;
 
-    const privateKey = process.env.PRIVATE_KEY
+    const privateKey = process.env.PRIVATE_KEY;
     if (!privateKey) {
-      throw new Error('PRIVATE_KEY env var is required for exchange operations')
+      throw new Error(
+        "PRIVATE_KEY env var is required for exchange operations",
+      );
     }
 
     // Validate format: must start with 0x
-    if (!privateKey.startsWith('0x')) {
-      throw new Error('PRIVATE_KEY must start with 0x')
+    if (!privateKey.startsWith("0x")) {
+      throw new Error("PRIVATE_KEY must start with 0x");
     }
 
-    const wallet = privateKeyToAccount(privateKey as `0x${string}`)
-    this.walletAddress = wallet.address
+    const wallet = privateKeyToAccount(privateKey as `0x${string}`);
+    this.walletAddress = wallet.address;
 
-    const accountAddr = process.env.ACCOUNT_ADDRESS
+    const accountAddr = process.env.ACCOUNT_ADDRESS;
     if (accountAddr) {
-      if (!accountAddr.startsWith('0x') || accountAddr.length !== 42) {
-        throw new Error('ACCOUNT_ADDRESS must be a valid 0x-prefixed Ethereum address (42 chars)')
+      if (!accountAddr.startsWith("0x") || accountAddr.length !== 42) {
+        throw new Error(
+          "ACCOUNT_ADDRESS must be a valid 0x-prefixed Ethereum address (42 chars)",
+        );
       }
-      this.accountAddress = accountAddr
-      log.info('exchange-service', `Agent wallet mode: signing=${this.walletAddress.slice(0, 6)}...${this.walletAddress.slice(-4)}, account=${this.accountAddress.slice(0, 6)}...${this.accountAddress.slice(-4)}`)
+      this.accountAddress = accountAddr;
+      log.info(
+        "exchange-service",
+        `Agent wallet mode: signing=${this.walletAddress.slice(0, 6)}...${this.walletAddress.slice(-4)}, account=${this.accountAddress.slice(0, 6)}...${this.accountAddress.slice(-4)}`,
+      );
     } else {
-      this.accountAddress = wallet.address
-      log.warn('exchange-service', `Main wallet mode (no ACCOUNT_ADDRESS) — consider using an agent wallet for safety`)
-      log.info('exchange-service', `Wallet: ${this.walletAddress.slice(0, 6)}...${this.walletAddress.slice(-4)}`)
+      this.accountAddress = wallet.address;
+      log.warn(
+        "exchange-service",
+        `Main wallet mode (no ACCOUNT_ADDRESS) — consider using an agent wallet for safety`,
+      );
+      log.info(
+        "exchange-service",
+        `Wallet: ${this.walletAddress.slice(0, 6)}...${this.walletAddress.slice(-4)}`,
+      );
     }
 
-    this.exchange = new ExchangeClient({ transport: this.transport, wallet })
-    this.converter = await SymbolConverter.create({ transport: this.transport })
+    this.exchange = new ExchangeClient({ transport: this.transport, wallet });
+    this.converter = await SymbolConverter.create({
+      transport: this.transport,
+    });
 
     // Load maxLeverage per coin from meta.universe
     try {
-      const meta = await info.meta()
+      const meta = await info.meta();
       for (const asset of meta.universe) {
-        this.maxLeverageMap.set(asset.name, asset.maxLeverage)
+        this.maxLeverageMap.set(asset.name, asset.maxLeverage);
       }
-      log.info('exchange-service', `Loaded maxLeverage for ${this.maxLeverageMap.size} assets`)
+      log.info(
+        "exchange-service",
+        `Loaded maxLeverage for ${this.maxLeverageMap.size} assets`,
+      );
     } catch (err) {
-      log.warn('exchange-service', `Failed to load maxLeverage data: ${err instanceof Error ? err.message : err}`)
+      log.warn(
+        "exchange-service",
+        `Failed to load maxLeverage data: ${err instanceof Error ? err.message : err}`,
+      );
     }
 
-    this.initialized = true
-    log.info('exchange-service', 'HLExchangeService initialized (wallet + SymbolConverter)')
+    this.initialized = true;
+    log.info(
+      "exchange-service",
+      "HLExchangeService initialized (wallet + SymbolConverter)",
+    );
   }
 
   /** Ensure init() has been called. */
   private ensureInit(): void {
     if (!this.initialized || !this.exchange || !this.converter) {
-      throw new Error('HLExchangeService not initialized — call init() first')
+      throw new Error("HLExchangeService not initialized — call init() first");
     }
   }
 
   /** Get signing wallet address (agent wallet in agent mode, main wallet otherwise). */
   getWalletAddress(): string {
-    return this.walletAddress
+    return this.walletAddress;
   }
 
   /** Get main account address (for info queries: balance, positions). */
   getAccountAddress(): string {
-    return this.accountAddress
+    return this.accountAddress;
   }
 
   /** Reload SymbolConverter mappings (call after coin-selector refresh). */
   async reloadSymbols(): Promise<void> {
-    this.ensureInit()
-    await this.converter!.reload()
-    log.info('exchange-service', 'SymbolConverter reloaded')
+    this.ensureInit();
+    await this.converter?.reload();
+    log.info("exchange-service", "SymbolConverter reloaded");
   }
 
   // ── Asset Lookup ──────────────────────────────────────────────────────────
 
   /** Get HL asset ID for a coin name. Returns undefined if unknown. */
   getAssetId(coin: string): number | undefined {
-    this.ensureInit()
-    return this.converter!.getAssetId(coin)
+    this.ensureInit();
+    return this.converter?.getAssetId(coin);
   }
 
   /** Get szDecimals for a coin. Returns undefined if unknown. */
   getSzDecimals(coin: string): number | undefined {
-    this.ensureInit()
-    return this.converter!.getSzDecimals(coin)
+    this.ensureInit();
+    return this.converter?.getSzDecimals(coin);
   }
 
   /** Get max leverage for a coin (from meta.universe). Returns undefined if unknown. */
   getMaxLeverage(coin: string): number | undefined {
-    return this.maxLeverageMap.get(coin)
+    return this.maxLeverageMap.get(coin);
   }
 
   // ── Leverage ──────────────────────────────────────────────────────────────
@@ -240,24 +272,39 @@ export class HLExchangeService {
    * Ensures margin used = sizeUsd / leverage ≤ targetMarginUsd.
    * leverage must be integer ≥ 1.
    */
-  async setLeverage(coin: string, leverage: number, _sizeUsd?: number): Promise<void> {
-    this.ensureInit()
-    const assetId = this.converter!.getAssetId(coin)
+  async setLeverage(
+    coin: string,
+    leverage: number,
+    _sizeUsd?: number,
+  ): Promise<void> {
+    this.ensureInit();
+    const assetId = this.converter?.getAssetId(coin);
     if (assetId === undefined) {
-      log.warn('exchange-service', `setLeverage: unknown asset ${coin}`)
-      return
+      log.warn("exchange-service", `setLeverage: unknown asset ${coin}`);
+      return;
     }
-    const maxLev = this.maxLeverageMap.get(coin)
-    const lev = maxLev !== undefined
-      ? Math.min(Math.max(1, Math.ceil(leverage)), maxLev)
-      : Math.max(1, Math.ceil(leverage))
+    const maxLev = this.maxLeverageMap.get(coin);
+    const lev =
+      maxLev !== undefined
+        ? Math.min(Math.max(1, Math.ceil(leverage)), maxLev)
+        : Math.max(1, Math.ceil(leverage));
     try {
-      await acquire()
-      await this.exchange!.updateLeverage({ asset: assetId, isCross: true, leverage: lev })
-      log.info('exchange-service', `setLeverage: ${coin} → ${lev}x cross${maxLev !== undefined ? ` (max=${maxLev}x)` : ''}`)
+      await acquire();
+      await this.exchange?.updateLeverage({
+        asset: assetId,
+        isCross: true,
+        leverage: lev,
+      });
+      log.info(
+        "exchange-service",
+        `setLeverage: ${coin} → ${lev}x cross${maxLev !== undefined ? ` (max=${maxLev}x)` : ""}`,
+      );
     } catch (err) {
       // Non-fatal: order placement still proceeds, HL uses existing leverage
-      log.warn('exchange-service', `setLeverage failed for ${coin}: ${err instanceof Error ? err.message : err}`)
+      log.warn(
+        "exchange-service",
+        `setLeverage failed for ${coin}: ${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 
@@ -266,101 +313,152 @@ export class HLExchangeService {
   /**
    * Place a single entry order (market or limit).
    *
- * Market orders are simulated via an aggressive limit with tif "Ioc" (Immediate-or-Cancel).
+   * Market orders are simulated via an aggressive limit with tif "Ioc" (Immediate-or-Cancel).
    * Limit orders use tif "Gtc" (rests on book until filled/cancelled).
    */
   async placeOrder(params: PlaceOrderParams): Promise<OrderResult> {
-    this.ensureInit()
+    this.ensureInit();
 
-    const assetId = this.converter!.getAssetId(params.coin)
+    const assetId = this.converter?.getAssetId(params.coin);
     if (assetId === undefined) {
-      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Unknown asset: ${params.coin}` }
+      return {
+        success: false,
+        oid: null,
+        avgPx: null,
+        totalSz: null,
+        status: null,
+        error: `Unknown asset: ${params.coin}`,
+      };
     }
 
-    const szDecimals = this.converter!.getSzDecimals(params.coin) ?? 0
-    const sizeStr = formatSize(params.size, szDecimals)
+    const szDecimals = this.converter?.getSzDecimals(params.coin) ?? 0;
+    const sizeStr = formatSize(params.size, szDecimals);
 
     // Validate minimum order value (HL)
-    const orderNotional = params.price * params.size
+    const orderNotional = params.price * params.size;
     if (orderNotional < HL_MIN_ORDER_NOTIONAL_USD) {
-      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Order notional $${orderNotional.toFixed(2)} < $${HL_MIN_ORDER_NOTIONAL_USD} minimum` }
+      return {
+        success: false,
+        oid: null,
+        avgPx: null,
+        totalSz: null,
+        status: null,
+        error: `Order notional $${orderNotional.toFixed(2)} < $${HL_MIN_ORDER_NOTIONAL_USD} minimum`,
+      };
     }
 
-    const isBuy = params.side === 'long'
-    const tif = params.type === 'market' ? 'Ioc' as const : 'Gtc' as const
+    const isBuy = params.side === "long";
+    const tif = params.type === "market" ? ("Ioc" as const) : ("Gtc" as const);
 
-    const refPrice = params.type === 'market'
-      ? await this.getAggressiveIocPrice(params.coin, params.side, params.price)
-      : params.price
-    const priceStr = formatPrice(refPrice, szDecimals)
+    const refPrice =
+      params.type === "market"
+        ? await this.getAggressiveIocPrice(
+            params.coin,
+            params.side,
+            params.price,
+          )
+        : params.price;
+    const priceStr = formatPrice(refPrice, szDecimals);
 
-    log.info('exchange-service', `Placing ${params.type} ${params.side} ${params.coin}: price=${priceStr} size=${sizeStr} [asset=${assetId}]`)
+    log.info(
+      "exchange-service",
+      `Placing ${params.type} ${params.side} ${params.coin}: price=${priceStr} size=${sizeStr} [asset=${assetId}]`,
+    );
 
-    const health = getHealthMonitor()
-    const retryResult = await withRetry(async () => {
-      await acquire()
-      const response = await this.exchange!.order({
-        orders: [{
-          a: assetId,
-          b: isBuy,
-          p: priceStr,
-          s: sizeStr,
-          r: params.reduceOnly,
-          t: { limit: { tif } },
-          ...(params.cloid ? { c: params.cloid as `0x${string}` } : {}),
-        }],
-        grouping: 'na',
-      })
-      return this.parseOrderStatus(response.response.data.statuses[0])
-    }, {
-      maxAttempts: RETRY.exchangeMaxAttempts,
-      initialDelayMs: RETRY.initialDelayMs,
-      jitterFraction: RETRY.jitterFraction,
-      shouldRetry: (err) => isRetryableExchangeError(err),
-      onRetry: (err, attempt, delayMs) => {
-        const msg = err instanceof Error ? err.message : String(err)
-        log.warn('exchange-service', `Order retry ${attempt}: ${msg} (backoff ${delayMs}ms)${is503(err) ? ' [MAINTENANCE]' : ''}`)
+    const health = getHealthMonitor();
+    const retryResult = await withRetry(
+      async () => {
+        await acquire();
+        const response = await this.exchange?.order({
+          orders: [
+            {
+              a: assetId,
+              b: isBuy,
+              p: priceStr,
+              s: sizeStr,
+              r: params.reduceOnly,
+              t: { limit: { tif } },
+              ...(params.cloid ? { c: params.cloid as `0x${string}` } : {}),
+            },
+          ],
+          grouping: "na",
+        });
+        return this.parseOrderStatus(response.response.data.statuses[0]);
       },
-    })
+      {
+        maxAttempts: RETRY.exchangeMaxAttempts,
+        initialDelayMs: RETRY.initialDelayMs,
+        jitterFraction: RETRY.jitterFraction,
+        shouldRetry: (err) => isRetryableExchangeError(err),
+        onRetry: (err, attempt, delayMs) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          log.warn(
+            "exchange-service",
+            `Order retry ${attempt}: ${msg} (backoff ${delayMs}ms)${is503(err) ? " [MAINTENANCE]" : ""}`,
+          );
+        },
+      },
+    );
 
     if (retryResult.success && retryResult.value) {
-      health.recordSuccess('exchange')
-      return retryResult.value
+      health.recordSuccess("exchange");
+      return retryResult.value;
     }
-    const msg = retryResult.lastError instanceof Error ? retryResult.lastError.message : String(retryResult.lastError)
-    log.error('exchange-service', `Order failed after ${retryResult.attempts} attempts: ${msg}`)
-    health.recordError('exchange', msg)
-    return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: msg }
+    const msg =
+      retryResult.lastError instanceof Error
+        ? retryResult.lastError.message
+        : String(retryResult.lastError);
+    log.error(
+      "exchange-service",
+      `Order failed after ${retryResult.attempts} attempts: ${msg}`,
+    );
+    health.recordError("exchange", msg);
+    return {
+      success: false,
+      oid: null,
+      avgPx: null,
+      totalSz: null,
+      status: null,
+      error: msg,
+    };
   }
 
-  private async getAggressiveIocPrice(coin: string, side: 'long' | 'short', fallbackPrice: number): Promise<number> {
+  private async getAggressiveIocPrice(
+    coin: string,
+    side: "long" | "short",
+    fallbackPrice: number,
+  ): Promise<number> {
     // 1) Prefer REST allMids (fresh mid snapshot)
     try {
-      const mids = await fetchAllMids('')
-      const midStr = mids[coin]
-      const mid = midStr ? parseFloat(midStr) : NaN
+      const mids = await fetchAllMids("");
+      const midStr = mids[coin];
+      const mid = midStr ? parseFloat(midStr) : NaN;
       if (Number.isFinite(mid) && mid > 0) {
-        const slip = MARKET_ORDER_SLIPPAGE_PCT
-        return side === 'long' ? mid * (1 + slip) : mid * (1 - slip)
+        const slip = MARKET_ORDER_SLIPPAGE_PCT;
+        return side === "long" ? mid * (1 + slip) : mid * (1 - slip);
       }
     } catch {
       // Fall through
     }
 
     // 2) Fallback to latest L2 book mid
-    const book = getLatestBook(coin)
-    const bestBid = book?.bids?.[0]?.[0]
-    const bestAsk = book?.asks?.[0]?.[0]
-    const mid = (typeof bestBid === 'number' && typeof bestAsk === 'number' && bestBid > 0 && bestAsk > 0)
-      ? (bestBid + bestAsk) / 2
-      : null
+    const book = getLatestBook(coin);
+    const bestBid = book?.bids?.[0]?.[0];
+    const bestAsk = book?.asks?.[0]?.[0];
+    const mid =
+      typeof bestBid === "number" &&
+      typeof bestAsk === "number" &&
+      bestBid > 0 &&
+      bestAsk > 0
+        ? (bestBid + bestAsk) / 2
+        : null;
     if (mid !== null) {
-      const slip = MARKET_ORDER_SLIPPAGE_PCT
-      return side === 'long' ? mid * (1 + slip) : mid * (1 - slip)
+      const slip = MARKET_ORDER_SLIPPAGE_PCT;
+      return side === "long" ? mid * (1 + slip) : mid * (1 - slip);
     }
 
     // 3) Last resort: use caller-provided reference price
-    return fallbackPrice
+    return fallbackPrice;
   }
 
   /**
@@ -370,67 +468,101 @@ export class HLExchangeService {
    * R9: SL = trigger-market (isMarket=true), TP = trigger-market (isMarket=true).
    */
   async placeTrigger(params: PlaceTriggerParams): Promise<OrderResult> {
-    this.ensureInit()
+    this.ensureInit();
 
-    const assetId = this.converter!.getAssetId(params.coin)
+    const assetId = this.converter?.getAssetId(params.coin);
     if (assetId === undefined) {
-      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Unknown asset: ${params.coin}` }
+      return {
+        success: false,
+        oid: null,
+        avgPx: null,
+        totalSz: null,
+        status: null,
+        error: `Unknown asset: ${params.coin}`,
+      };
     }
 
-    const szDecimals = this.converter!.getSzDecimals(params.coin) ?? 0
-    const triggerPxStr = formatPrice(params.triggerPrice, szDecimals)
+    const szDecimals = this.converter?.getSzDecimals(params.coin) ?? 0;
+    const triggerPxStr = formatPrice(params.triggerPrice, szDecimals);
     const limitPx = params.isMarket
-      ? this.getAggressiveLimitPriceFromTriggerPx(params.side, params.triggerPrice)
-      : params.triggerPrice
-    const limitPxStr = formatPrice(limitPx, szDecimals)
-    const sizeStr = formatSize(params.size, szDecimals)
-    const isBuy = params.side === 'long'
+      ? this.getAggressiveLimitPriceFromTriggerPx(
+          params.side,
+          params.triggerPrice,
+        )
+      : params.triggerPrice;
+    const limitPxStr = formatPrice(limitPx, szDecimals);
+    const sizeStr = formatSize(params.size, szDecimals);
+    const isBuy = params.side === "long";
 
-    log.info('exchange-service', `Placing ${params.tpsl.toUpperCase()} trigger ${params.coin}: triggerPx=${triggerPxStr} size=${sizeStr} isMarket=${params.isMarket}`)
+    log.info(
+      "exchange-service",
+      `Placing ${params.tpsl.toUpperCase()} trigger ${params.coin}: triggerPx=${triggerPxStr} size=${sizeStr} isMarket=${params.isMarket}`,
+    );
 
-    const health = getHealthMonitor()
-    const retryResult = await withRetry(async () => {
-      await acquire()
-      const response = await this.exchange!.order({
-        orders: [{
-          a: assetId,
-          b: isBuy,
-          // HL trigger orders still require `p` (limitPx). For trigger-market, use
-          // an aggressive price derived from triggerPx ± buffer to avoid "IOC not able to match".
-          p: limitPxStr,
-          s: sizeStr,
-          r: true,  // trigger orders are always reduce-only
-          t: {
-            trigger: {
-              isMarket: params.isMarket,
-              triggerPx: triggerPxStr,
-              tpsl: params.tpsl,
+    const health = getHealthMonitor();
+    const retryResult = await withRetry(
+      async () => {
+        await acquire();
+        const response = await this.exchange?.order({
+          orders: [
+            {
+              a: assetId,
+              b: isBuy,
+              // HL trigger orders still require `p` (limitPx). For trigger-market, use
+              // an aggressive price derived from triggerPx ± buffer to avoid "IOC not able to match".
+              p: limitPxStr,
+              s: sizeStr,
+              r: true, // trigger orders are always reduce-only
+              t: {
+                trigger: {
+                  isMarket: params.isMarket,
+                  triggerPx: triggerPxStr,
+                  tpsl: params.tpsl,
+                },
+              },
+              ...(params.cloid ? { c: params.cloid as `0x${string}` } : {}),
             },
-          },
-          ...(params.cloid ? { c: params.cloid as `0x${string}` } : {}),
-        }],
-        grouping: 'normalTpsl',
-      })
-      return this.parseOrderStatus(response.response.data.statuses[0])
-    }, {
-      maxAttempts: RETRY.exchangeMaxAttempts,
-      initialDelayMs: RETRY.initialDelayMs,
-      jitterFraction: RETRY.jitterFraction,
-      shouldRetry: (err) => isRetryableExchangeError(err),
-      onRetry: (err, attempt, delayMs) => {
-        const msg = err instanceof Error ? err.message : String(err)
-        log.warn('exchange-service', `Trigger retry ${attempt}: ${msg} (backoff ${delayMs}ms)${is503(err) ? ' [MAINTENANCE]' : ''}`)
+          ],
+          grouping: "normalTpsl",
+        });
+        return this.parseOrderStatus(response.response.data.statuses[0]);
       },
-    })
+      {
+        maxAttempts: RETRY.exchangeMaxAttempts,
+        initialDelayMs: RETRY.initialDelayMs,
+        jitterFraction: RETRY.jitterFraction,
+        shouldRetry: (err) => isRetryableExchangeError(err),
+        onRetry: (err, attempt, delayMs) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          log.warn(
+            "exchange-service",
+            `Trigger retry ${attempt}: ${msg} (backoff ${delayMs}ms)${is503(err) ? " [MAINTENANCE]" : ""}`,
+          );
+        },
+      },
+    );
 
     if (retryResult.success && retryResult.value) {
-      health.recordSuccess('exchange')
-      return retryResult.value
+      health.recordSuccess("exchange");
+      return retryResult.value;
     }
-    const msg = retryResult.lastError instanceof Error ? retryResult.lastError.message : String(retryResult.lastError)
-    log.error('exchange-service', `Trigger failed after ${retryResult.attempts} attempts: ${msg}`)
-    health.recordError('exchange', msg)
-    return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: msg }
+    const msg =
+      retryResult.lastError instanceof Error
+        ? retryResult.lastError.message
+        : String(retryResult.lastError);
+    log.error(
+      "exchange-service",
+      `Trigger failed after ${retryResult.attempts} attempts: ${msg}`,
+    );
+    health.recordError("exchange", msg);
+    return {
+      success: false,
+      oid: null,
+      avgPx: null,
+      totalSz: null,
+      status: null,
+      error: msg,
+    };
   }
 
   /**
@@ -440,37 +572,55 @@ export class HLExchangeService {
    * - buy: triggerPx × (1 + buffer)
    * - sell: triggerPx × (1 - buffer)
    */
-  private getAggressiveLimitPriceFromTriggerPx(side: 'long' | 'short', triggerPx: number): number {
-    const slip = MARKET_ORDER_SLIPPAGE_PCT
-    if (!Number.isFinite(triggerPx) || triggerPx <= 0) return triggerPx
-    return side === 'long' ? triggerPx * (1 + slip) : triggerPx * (1 - slip)
+  private getAggressiveLimitPriceFromTriggerPx(
+    side: "long" | "short",
+    triggerPx: number,
+  ): number {
+    const slip = MARKET_ORDER_SLIPPAGE_PCT;
+    if (!Number.isFinite(triggerPx) || triggerPx <= 0) return triggerPx;
+    return side === "long" ? triggerPx * (1 + slip) : triggerPx * (1 - slip);
   }
 
   // ── Cancel ────────────────────────────────────────────────────────────────
 
   /** Cancel order by exchange oid (with retry for transient errors). */
   async cancelByOid(coin: string, oid: number): Promise<OrderResult> {
-    this.ensureInit()
+    this.ensureInit();
 
-    const assetId = this.converter!.getAssetId(coin)
+    const assetId = this.converter?.getAssetId(coin);
     if (assetId === undefined) {
-      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Unknown asset: ${coin}` }
+      return {
+        success: false,
+        oid: null,
+        avgPx: null,
+        totalSz: null,
+        status: null,
+        error: `Unknown asset: ${coin}`,
+      };
     }
 
-    log.info('exchange-service', `Cancelling order: ${coin} oid=${oid}`)
+    log.info("exchange-service", `Cancelling order: ${coin} oid=${oid}`);
 
     const retryResult = await withRetry(
       async () => {
-        await acquire()
-        const response = await this.exchange!.cancel({
+        await acquire();
+        const response = await this.exchange?.cancel({
           cancels: [{ a: assetId, o: oid }],
-        })
-        const status: unknown = response.response.data.statuses[0]
-        if (status === 'success') {
-          return { success: true as const, oid, avgPx: null, totalSz: null, status: 'cancelled' as const, error: null }
+        });
+        const status: unknown = response.response.data.statuses[0];
+        if (status === "success") {
+          return {
+            success: true as const,
+            oid,
+            avgPx: null,
+            totalSz: null,
+            status: "cancelled" as const,
+            error: null,
+          };
         }
-        const errorMsg = getExchangeStatusError(status) ?? 'Unknown cancel error'
-        throw new Error(errorMsg)
+        const errorMsg =
+          getExchangeStatusError(status) ?? "Unknown cancel error";
+        throw new Error(errorMsg);
       },
       {
         maxAttempts: RETRY.exchangeMaxAttempts,
@@ -478,18 +628,34 @@ export class HLExchangeService {
         jitterFraction: RETRY.jitterFraction,
         shouldRetry: (err) => isRetryableExchangeError(err),
         onRetry: (err, attempt, delayMs) => {
-          const msg = err instanceof Error ? err.message : String(err)
-          log.warn('exchange-service', `Cancel retry ${attempt} for ${coin} oid=${oid}: ${msg} (backoff ${delayMs}ms)`)
+          const msg = err instanceof Error ? err.message : String(err);
+          log.warn(
+            "exchange-service",
+            `Cancel retry ${attempt} for ${coin} oid=${oid}: ${msg} (backoff ${delayMs}ms)`,
+          );
         },
       },
-    )
+    );
 
     if (retryResult.success && retryResult.value) {
-      return retryResult.value
+      return retryResult.value;
     }
-    const msg = retryResult.lastError instanceof Error ? retryResult.lastError.message : String(retryResult.lastError)
-    log.error('exchange-service', `Cancel failed after ${retryResult.attempts} attempts: ${msg}`)
-    return { success: false, oid, avgPx: null, totalSz: null, status: null, error: msg }
+    const msg =
+      retryResult.lastError instanceof Error
+        ? retryResult.lastError.message
+        : String(retryResult.lastError);
+    log.error(
+      "exchange-service",
+      `Cancel failed after ${retryResult.attempts} attempts: ${msg}`,
+    );
+    return {
+      success: false,
+      oid,
+      avgPx: null,
+      totalSz: null,
+      status: null,
+      error: msg,
+    };
   }
 
   /**
@@ -503,10 +669,10 @@ export class HLExchangeService {
    *   - Pass `undefined` to clear any existing schedule (recommended on clean shutdown)
    */
   async scheduleCancel(timestampMs?: number): Promise<OrderResult> {
-    this.ensureInit()
+    this.ensureInit();
 
     if (timestampMs !== undefined && timestampMs - Date.now() < 5_000) {
-      const ms = timestampMs - Date.now()
+      const ms = timestampMs - Date.now();
       return {
         success: false,
         oid: null,
@@ -514,24 +680,33 @@ export class HLExchangeService {
         totalSz: null,
         status: null,
         error: `scheduleCancel time must be ≥5s in future (got ${ms}ms)`,
-      }
+      };
     }
 
-    const label = timestampMs !== undefined
-      ? `scheduleCancel @ ${new Date(timestampMs).toISOString()}`
-      : 'scheduleCancel CLEAR'
-    log.info('exchange-service', label)
+    const label =
+      timestampMs !== undefined
+        ? `scheduleCancel @ ${new Date(timestampMs).toISOString()}`
+        : "scheduleCancel CLEAR";
+    log.info("exchange-service", label);
 
     const retryResult = await withRetry(
       async () => {
-        await acquire()
-        const response = timestampMs !== undefined
-          ? await this.exchange!.scheduleCancel({ time: timestampMs })
-          : await this.exchange!.scheduleCancel({})
-        if (response.status === 'ok') {
-          return { success: true as const, oid: null, avgPx: null, totalSz: null, status: 'scheduled' as const, error: null }
+        await acquire();
+        const response =
+          timestampMs !== undefined
+            ? await this.exchange?.scheduleCancel({ time: timestampMs })
+            : await this.exchange?.scheduleCancel({});
+        if (response.status === "ok") {
+          return {
+            success: true as const,
+            oid: null,
+            avgPx: null,
+            totalSz: null,
+            status: "scheduled" as const,
+            error: null,
+          };
         }
-        throw new Error(`scheduleCancel rejected: ${JSON.stringify(response)}`)
+        throw new Error(`scheduleCancel rejected: ${JSON.stringify(response)}`);
       },
       {
         maxAttempts: RETRY.exchangeMaxAttempts,
@@ -539,41 +714,75 @@ export class HLExchangeService {
         jitterFraction: RETRY.jitterFraction,
         shouldRetry: (err) => isRetryableExchangeError(err),
         onRetry: (err, attempt, delayMs) => {
-          const msg = err instanceof Error ? err.message : String(err)
-          log.warn('exchange-service', `scheduleCancel retry ${attempt}: ${msg} (backoff ${delayMs}ms)`)
+          const msg = err instanceof Error ? err.message : String(err);
+          log.warn(
+            "exchange-service",
+            `scheduleCancel retry ${attempt}: ${msg} (backoff ${delayMs}ms)`,
+          );
         },
       },
-    )
+    );
 
-    if (retryResult.success && retryResult.value) return retryResult.value
-    const msg = retryResult.lastError instanceof Error ? retryResult.lastError.message : String(retryResult.lastError)
-    log.error('exchange-service', `scheduleCancel failed after ${retryResult.attempts} attempts: ${msg}`)
-    return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: msg }
+    if (retryResult.success && retryResult.value) return retryResult.value;
+    const msg =
+      retryResult.lastError instanceof Error
+        ? retryResult.lastError.message
+        : String(retryResult.lastError);
+    log.error(
+      "exchange-service",
+      `scheduleCancel failed after ${retryResult.attempts} attempts: ${msg}`,
+    );
+    return {
+      success: false,
+      oid: null,
+      avgPx: null,
+      totalSz: null,
+      status: null,
+      error: msg,
+    };
   }
 
   /** Cancel order by cloid (with retry for transient errors). */
   async cancelByCloid(coin: string, cloid: string): Promise<OrderResult> {
-    this.ensureInit()
+    this.ensureInit();
 
-    const assetId = this.converter!.getAssetId(coin)
+    const assetId = this.converter?.getAssetId(coin);
     if (assetId === undefined) {
-      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Unknown asset: ${coin}` }
+      return {
+        success: false,
+        oid: null,
+        avgPx: null,
+        totalSz: null,
+        status: null,
+        error: `Unknown asset: ${coin}`,
+      };
     }
 
-    log.info('exchange-service', `Cancelling by cloid: ${coin} cloid=${cloid.slice(0, 10)}...`)
+    log.info(
+      "exchange-service",
+      `Cancelling by cloid: ${coin} cloid=${cloid.slice(0, 10)}...`,
+    );
 
     const retryResult = await withRetry(
       async () => {
-        await acquire()
-        const response = await this.exchange!.cancelByCloid({
+        await acquire();
+        const response = await this.exchange?.cancelByCloid({
           cancels: [{ asset: assetId, cloid: cloid as `0x${string}` }],
-        })
-        const status: unknown = response.response.data.statuses[0]
-        if (status === 'success') {
-          return { success: true as const, oid: null, avgPx: null, totalSz: null, status: 'cancelled' as const, error: null }
+        });
+        const status: unknown = response.response.data.statuses[0];
+        if (status === "success") {
+          return {
+            success: true as const,
+            oid: null,
+            avgPx: null,
+            totalSz: null,
+            status: "cancelled" as const,
+            error: null,
+          };
         }
-        const errorMsg = getExchangeStatusError(status) ?? 'Unknown cancel error'
-        throw new Error(errorMsg)
+        const errorMsg =
+          getExchangeStatusError(status) ?? "Unknown cancel error";
+        throw new Error(errorMsg);
       },
       {
         maxAttempts: RETRY.exchangeMaxAttempts,
@@ -581,25 +790,48 @@ export class HLExchangeService {
         jitterFraction: RETRY.jitterFraction,
         shouldRetry: (err) => isRetryableExchangeError(err),
         onRetry: (err, attempt, delayMs) => {
-          const msg = err instanceof Error ? err.message : String(err)
-          log.warn('exchange-service', `CancelByCloid retry ${attempt} for ${coin}: ${msg} (backoff ${delayMs}ms)`)
+          const msg = err instanceof Error ? err.message : String(err);
+          log.warn(
+            "exchange-service",
+            `CancelByCloid retry ${attempt} for ${coin}: ${msg} (backoff ${delayMs}ms)`,
+          );
         },
       },
-    )
+    );
 
     if (retryResult.success && retryResult.value) {
-      return retryResult.value
+      return retryResult.value;
     }
-    const msg = retryResult.lastError instanceof Error ? retryResult.lastError.message : String(retryResult.lastError)
-    log.error('exchange-service', `CancelByCloid failed after ${retryResult.attempts} attempts: ${msg}`)
-    return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: msg }
+    const msg =
+      retryResult.lastError instanceof Error
+        ? retryResult.lastError.message
+        : String(retryResult.lastError);
+    log.error(
+      "exchange-service",
+      `CancelByCloid failed after ${retryResult.attempts} attempts: ${msg}`,
+    );
+    return {
+      success: false,
+      oid: null,
+      avgPx: null,
+      totalSz: null,
+      status: null,
+      error: msg,
+    };
   }
 
   /** Cancel order by exchange order ID string — satisfies IExchangeService.cancelByOrderId. */
   async cancelByOrderId(coin: string, orderId: string): Promise<OrderResult> {
-    const oid = parseInt(orderId, 10)
-    if (!isNaN(oid)) return this.cancelByOid(coin, oid)
-    return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Cannot parse HL oid from: ${orderId}` }
+    const oid = parseInt(orderId, 10);
+    if (!Number.isNaN(oid)) return this.cancelByOid(coin, oid);
+    return {
+      success: false,
+      oid: null,
+      avgPx: null,
+      totalSz: null,
+      status: null,
+      error: `Cannot parse HL oid from: ${orderId}`,
+    };
   }
 
   // ── Modify (trail stop SL updates) ────────────────────────────────────────
@@ -611,30 +843,40 @@ export class HLExchangeService {
   async modifyTrigger(
     coin: string,
     oid: number,
-    side: 'long' | 'short',
+    side: "long" | "short",
     newTriggerPrice: number,
     size: number,
     isMarket: boolean,
-    tpsl: 'tp' | 'sl',
+    tpsl: "tp" | "sl",
   ): Promise<OrderResult> {
-    this.ensureInit()
+    this.ensureInit();
 
-    const assetId = this.converter!.getAssetId(coin)
+    const assetId = this.converter?.getAssetId(coin);
     if (assetId === undefined) {
-      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: `Unknown asset: ${coin}` }
+      return {
+        success: false,
+        oid: null,
+        avgPx: null,
+        totalSz: null,
+        status: null,
+        error: `Unknown asset: ${coin}`,
+      };
     }
 
-    const szDecimals = this.converter!.getSzDecimals(coin) ?? 0
-    const triggerPxStr = formatPrice(newTriggerPrice, szDecimals)
-    const sizeStr = formatSize(size, szDecimals)
-    const isBuy = side === 'long'
+    const szDecimals = this.converter?.getSzDecimals(coin) ?? 0;
+    const triggerPxStr = formatPrice(newTriggerPrice, szDecimals);
+    const sizeStr = formatSize(size, szDecimals);
+    const isBuy = side === "long";
 
-    log.info('exchange-service', `Modifying ${tpsl.toUpperCase()} trigger: ${coin} oid=${oid} newPx=${triggerPxStr}`)
+    log.info(
+      "exchange-service",
+      `Modifying ${tpsl.toUpperCase()} trigger: ${coin} oid=${oid} newPx=${triggerPxStr}`,
+    );
 
     const retryResult = await withRetry(
       async () => {
-        await acquire()
-        await this.exchange!.modify({
+        await acquire();
+        await this.exchange?.modify({
           oid,
           order: {
             a: assetId,
@@ -650,8 +892,15 @@ export class HLExchangeService {
               },
             },
           },
-        })
-        return { success: true as const, oid, avgPx: null, totalSz: null, status: 'modified' as const, error: null }
+        });
+        return {
+          success: true as const,
+          oid,
+          avgPx: null,
+          totalSz: null,
+          status: "modified" as const,
+          error: null,
+        };
       },
       {
         maxAttempts: RETRY.slTpMaxAttempts,
@@ -659,18 +908,34 @@ export class HLExchangeService {
         jitterFraction: RETRY.jitterFraction,
         shouldRetry: (err) => isRetryableExchangeError(err),
         onRetry: (err, attempt, delayMs) => {
-          const msg = err instanceof Error ? err.message : String(err)
-          log.warn('exchange-service', `Modify trigger retry ${attempt} for ${coin} oid=${oid}: ${msg} (backoff ${delayMs}ms)`)
+          const msg = err instanceof Error ? err.message : String(err);
+          log.warn(
+            "exchange-service",
+            `Modify trigger retry ${attempt} for ${coin} oid=${oid}: ${msg} (backoff ${delayMs}ms)`,
+          );
         },
       },
-    )
+    );
 
     if (retryResult.success && retryResult.value) {
-      return retryResult.value
+      return retryResult.value;
     }
-    const msg = retryResult.lastError instanceof Error ? retryResult.lastError.message : String(retryResult.lastError)
-    log.error('exchange-service', `Modify trigger failed after ${retryResult.attempts} attempts: ${msg}`)
-    return { success: false, oid, avgPx: null, totalSz: null, status: null, error: msg }
+    const msg =
+      retryResult.lastError instanceof Error
+        ? retryResult.lastError.message
+        : String(retryResult.lastError);
+    log.error(
+      "exchange-service",
+      `Modify trigger failed after ${retryResult.attempts} attempts: ${msg}`,
+    );
+    return {
+      success: false,
+      oid,
+      avgPx: null,
+      totalSz: null,
+      status: null,
+      error: msg,
+    };
   }
 
   // ── Account State ─────────────────────────────────────────────────────────
@@ -680,53 +945,72 @@ export class HLExchangeService {
    * Updates cached accountValue (used by pipeline risk-filter R11).
    */
   async getAccountState(): Promise<AccountState> {
-    this.ensureInit()
+    this.ensureInit();
 
-    const health = getHealthMonitor()
-    const retryResult = await withRetry(async () => {
-      await acquire()
-      // Query both perp and spot state (unified account keeps USDC in spot)
-      const [state, spotState] = await Promise.all([
-        info.clearinghouseState({ user: this.accountAddress as `0x${string}` }),
-        info.spotClearinghouseState({ user: this.accountAddress as `0x${string}` }),
-      ])
-      const accountValue = parseFloat(state.marginSummary.accountValue)
-      const spotUsdc = spotState.balances
-        .filter((b: { coin: string; total: string }) => b.coin === 'USDC')
-        .reduce((sum: number, b: { total: string }) => sum + parseFloat(b.total), 0)
-      return {
-        accountValue,
-        totalNtlPos: parseFloat(state.marginSummary.totalNtlPos),
-        totalMarginUsed: parseFloat(state.marginSummary.totalMarginUsed),
-        withdrawable: parseFloat(state.withdrawable),
-        spotUsdcBalance: spotUsdc,
-        effectiveBalance: accountValue + spotUsdc,
-      } satisfies AccountState
-    }, {
-      maxAttempts: RETRY.exchangeMaxAttempts,
-      initialDelayMs: RETRY.initialDelayMs,
-      jitterFraction: RETRY.jitterFraction,
-      shouldRetry: (err) => isRetryableExchangeError(err),
-      onRetry: (err, attempt, delayMs) => {
-        const msg = err instanceof Error ? err.message : String(err)
-        log.warn('exchange-service', `getAccountState retry ${attempt}: ${msg} (backoff ${delayMs}ms)`)
+    const health = getHealthMonitor();
+    const retryResult = await withRetry(
+      async () => {
+        await acquire();
+        // Query both perp and spot state (unified account keeps USDC in spot)
+        const [state, spotState] = await Promise.all([
+          info.clearinghouseState({
+            user: this.accountAddress as `0x${string}`,
+          }),
+          info.spotClearinghouseState({
+            user: this.accountAddress as `0x${string}`,
+          }),
+        ]);
+        const accountValue = parseFloat(state.marginSummary.accountValue);
+        const spotUsdc = spotState.balances
+          .filter((b: { coin: string; total: string }) => b.coin === "USDC")
+          .reduce(
+            (sum: number, b: { total: string }) => sum + parseFloat(b.total),
+            0,
+          );
+        return {
+          accountValue,
+          totalNtlPos: parseFloat(state.marginSummary.totalNtlPos),
+          totalMarginUsed: parseFloat(state.marginSummary.totalMarginUsed),
+          withdrawable: parseFloat(state.withdrawable),
+          spotUsdcBalance: spotUsdc,
+          effectiveBalance: accountValue + spotUsdc,
+        } satisfies AccountState;
       },
-    })
+      {
+        maxAttempts: RETRY.exchangeMaxAttempts,
+        initialDelayMs: RETRY.initialDelayMs,
+        jitterFraction: RETRY.jitterFraction,
+        shouldRetry: (err) => isRetryableExchangeError(err),
+        onRetry: (err, attempt, delayMs) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          log.warn(
+            "exchange-service",
+            `getAccountState retry ${attempt}: ${msg} (backoff ${delayMs}ms)`,
+          );
+        },
+      },
+    );
 
     if (retryResult.success && retryResult.value) {
-      this.cachedAccountValue = retryResult.value.effectiveBalance
-      health.recordSuccess('exchange')
-      return retryResult.value
+      this.cachedAccountValue = retryResult.value.effectiveBalance;
+      health.recordSuccess("exchange");
+      return retryResult.value;
     }
-    const msg = retryResult.lastError instanceof Error ? retryResult.lastError.message : String(retryResult.lastError)
-    log.error('exchange-service', `getAccountState failed after ${retryResult.attempts} attempts: ${msg}`)
-    health.recordError('exchange', msg)
-    throw retryResult.lastError
+    const msg =
+      retryResult.lastError instanceof Error
+        ? retryResult.lastError.message
+        : String(retryResult.lastError);
+    log.error(
+      "exchange-service",
+      `getAccountState failed after ${retryResult.attempts} attempts: ${msg}`,
+    );
+    health.recordError("exchange", msg);
+    throw retryResult.lastError;
   }
 
   /** Get cached account value (from last getAccountState call). */
   getCachedAccountValue(): number {
-    return this.cachedAccountValue
+    return this.cachedAccountValue;
   }
 
   /**
@@ -734,79 +1018,106 @@ export class HLExchangeService {
    * Returns normalized ExchangePositionSnapshot[] for PositionMonitor reconciliation.
    */
   async getPositions(): Promise<ExchangePositionSnapshot[]> {
-    this.ensureInit()
+    this.ensureInit();
 
-    const health = getHealthMonitor()
-    const retryResult = await withRetry(async () => {
-      await acquire()
-      const state = await info.clearinghouseState({ user: this.accountAddress as `0x${string}` })
-      const snaps: ExchangePositionSnapshot[] = []
-      for (const ap of state.assetPositions) {
-        const pos = ap.position
-        const szi = parseFloat(pos.szi)
-        if (szi === 0) continue
-        const levRaw = pos.leverage as { value?: number } | undefined
-        const leverage = typeof levRaw?.value === 'number' && levRaw.value > 0 ? levRaw.value : undefined
-        const snap: ExchangePositionSnapshot = {
-          coin: pos.coin,
-          size: szi,
-          entryPrice: parseFloat(pos.entryPx),
-          unrealizedPnl: parseFloat(pos.unrealizedPnl),
-          liquidationPrice: pos.liquidationPx ? parseFloat(pos.liquidationPx) : null,
+    const health = getHealthMonitor();
+    const retryResult = await withRetry(
+      async () => {
+        await acquire();
+        const state = await info.clearinghouseState({
+          user: this.accountAddress as `0x${string}`,
+        });
+        const snaps: ExchangePositionSnapshot[] = [];
+        for (const ap of state.assetPositions) {
+          const pos = ap.position;
+          const szi = parseFloat(pos.szi);
+          if (szi === 0) continue;
+          const levRaw = pos.leverage as { value?: number } | undefined;
+          const leverage =
+            typeof levRaw?.value === "number" && levRaw.value > 0
+              ? levRaw.value
+              : undefined;
+          const snap: ExchangePositionSnapshot = {
+            coin: pos.coin,
+            size: szi,
+            entryPrice: parseFloat(pos.entryPx),
+            unrealizedPnl: parseFloat(pos.unrealizedPnl),
+            liquidationPrice: pos.liquidationPx
+              ? parseFloat(pos.liquidationPx)
+              : null,
+          };
+          if (leverage !== undefined) snap.leverage = leverage;
+          snaps.push(snap);
         }
-        if (leverage !== undefined) snap.leverage = leverage
-        snaps.push(snap)
-      }
-      return snaps
-    }, {
-      maxAttempts: RETRY.exchangeMaxAttempts,
-      initialDelayMs: RETRY.initialDelayMs,
-      jitterFraction: RETRY.jitterFraction,
-      shouldRetry: (err) => isRetryableExchangeError(err),
-      onRetry: (err, attempt, delayMs) => {
-        const msg = err instanceof Error ? err.message : String(err)
-        log.warn('exchange-service', `getPositions retry ${attempt}: ${msg} (backoff ${delayMs}ms)`)
+        return snaps;
       },
-    })
+      {
+        maxAttempts: RETRY.exchangeMaxAttempts,
+        initialDelayMs: RETRY.initialDelayMs,
+        jitterFraction: RETRY.jitterFraction,
+        shouldRetry: (err) => isRetryableExchangeError(err),
+        onRetry: (err, attempt, delayMs) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          log.warn(
+            "exchange-service",
+            `getPositions retry ${attempt}: ${msg} (backoff ${delayMs}ms)`,
+          );
+        },
+      },
+    );
 
     if (retryResult.success && retryResult.value) {
-      health.recordSuccess('exchange')
-      return retryResult.value
+      health.recordSuccess("exchange");
+      return retryResult.value;
     }
-    const msg = retryResult.lastError instanceof Error ? retryResult.lastError.message : String(retryResult.lastError)
-    log.error('exchange-service', `getPositions failed after ${retryResult.attempts} attempts: ${msg}`)
-    health.recordError('exchange', msg)
-    return []
+    const msg =
+      retryResult.lastError instanceof Error
+        ? retryResult.lastError.message
+        : String(retryResult.lastError);
+    log.error(
+      "exchange-service",
+      `getPositions failed after ${retryResult.attempts} attempts: ${msg}`,
+    );
+    health.recordError("exchange", msg);
+    return [];
   }
 
   /**
    * Aggregate executed size and VWAP for an entry order by cloid (userFills).
    * Used when the order rested before filling so {@link placeOrder} did not return inline `filled`.
    */
-  async getFillAggregateByCloid(cloid: string, coin: string): Promise<{ avgPx: number; totalSz: number } | null> {
-    this.ensureInit()
+  async getFillAggregateByCloid(
+    cloid: string,
+    coin: string,
+  ): Promise<{ avgPx: number; totalSz: number } | null> {
+    this.ensureInit();
     try {
-      await acquire()
+      await acquire();
       const fills = await info.userFills({
         user: this.accountAddress as `0x${string}`,
         aggregateByTime: false,
-      })
-      const matching = fills.filter(f => f.cloid === cloid && f.coin === coin)
-      if (matching.length === 0) return null
-      let totalSz = 0
-      let notional = 0
+      });
+      const matching = fills.filter(
+        (f) => f.cloid === cloid && f.coin === coin,
+      );
+      if (matching.length === 0) return null;
+      let totalSz = 0;
+      let notional = 0;
       for (const f of matching) {
-        const sz = Math.abs(parseFloat(f.sz))
-        const px = parseFloat(f.px)
-        if (sz <= 0 || !Number.isFinite(px)) continue
-        totalSz += sz
-        notional += sz * px
+        const sz = Math.abs(parseFloat(f.sz));
+        const px = parseFloat(f.px);
+        if (sz <= 0 || !Number.isFinite(px)) continue;
+        totalSz += sz;
+        notional += sz * px;
       }
-      if (totalSz <= 0) return null
-      return { avgPx: notional / totalSz, totalSz }
+      if (totalSz <= 0) return null;
+      return { avgPx: notional / totalSz, totalSz };
     } catch (err) {
-      log.warn('exchange-service', `getFillAggregateByCloid failed: ${err instanceof Error ? err.message : err}`)
-      return null
+      log.warn(
+        "exchange-service",
+        `getFillAggregateByCloid failed: ${err instanceof Error ? err.message : err}`,
+      );
+      return null;
     }
   }
 
@@ -814,53 +1125,101 @@ export class HLExchangeService {
 
   /** Parse a single order status from HL response. */
   private parseOrderStatus(
-    status: { resting: { oid: number; cloid?: string } } | { filled: { totalSz: string; avgPx: string; oid: number; cloid?: string } } | { error: string } | 'waitingForFill' | 'waitingForTrigger' | undefined,
+    status:
+      | { resting: { oid: number; cloid?: string } }
+      | {
+          filled: {
+            totalSz: string;
+            avgPx: string;
+            oid: number;
+            cloid?: string;
+          };
+        }
+      | { error: string }
+      | "waitingForFill"
+      | "waitingForTrigger"
+      | undefined,
   ): OrderResult {
     if (!status) {
-      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: 'No status in response' }
+      return {
+        success: false,
+        oid: null,
+        avgPx: null,
+        totalSz: null,
+        status: null,
+        error: "No status in response",
+      };
     }
 
-    if (typeof status === 'string') {
+    if (typeof status === "string") {
       // "waitingForFill" or "waitingForTrigger"
-      return { success: true, oid: null, avgPx: null, totalSz: null, status, error: null }
+      return {
+        success: true,
+        oid: null,
+        avgPx: null,
+        totalSz: null,
+        status,
+        error: null,
+      };
     }
 
-    if ('resting' in status) {
-      return { success: true, oid: status.resting.oid, avgPx: null, totalSz: null, status: 'resting', error: null }
+    if ("resting" in status) {
+      return {
+        success: true,
+        oid: status.resting.oid,
+        avgPx: null,
+        totalSz: null,
+        status: "resting",
+        error: null,
+      };
     }
 
-    if ('filled' in status) {
+    if ("filled" in status) {
       return {
         success: true,
         oid: status.filled.oid,
         avgPx: parseFloat(status.filled.avgPx),
         totalSz: parseFloat(status.filled.totalSz),
-        status: 'filled',
+        status: "filled",
         error: null,
-      }
+      };
     }
 
-    if ('error' in status) {
-      return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: status.error }
+    if ("error" in status) {
+      return {
+        success: false,
+        oid: null,
+        avgPx: null,
+        totalSz: null,
+        status: null,
+        error: status.error,
+      };
     }
 
-    return { success: false, oid: null, avgPx: null, totalSz: null, status: null, error: 'Unknown status format' }
+    return {
+      success: false,
+      oid: null,
+      avgPx: null,
+      totalSz: null,
+      status: null,
+      error: "Unknown status format",
+    };
   }
 }
 
 // ─── Singleton ──────────────────────────────────────────────────────────────
 
-let instance: HLExchangeService | null = null
+let instance: HLExchangeService | null = null;
 
 /** Get or create the singleton HLExchangeService. */
 export function getHLExchangeService(): HLExchangeService {
   if (!instance) {
-    instance = new HLExchangeService()
+    instance = new HLExchangeService();
   }
-  return instance
+  return instance;
 }
 
 /** Reset HLExchangeService (tests only). */
 export function resetHLExchangeService(): void {
-  instance = null
+  instance = null;
 }

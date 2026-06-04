@@ -3,22 +3,31 @@
  * All feed implementations are exchange-agnostic from the caller's perspective.
  */
 
-import type { Candle, CandleInterval, ExchangeId, BackfillResult } from '../types.js'
+import type {
+  BackfillResult,
+  Candle,
+  CandleInterval,
+  ExchangeId,
+} from "../types.js";
 
 export interface IExchangeFeed {
-  readonly exchangeId: ExchangeId
+  readonly exchangeId: ExchangeId;
 
   backfill(
     coins: string[],
-    onCandles: (coin: string, interval: CandleInterval, candles: Candle[]) => void,
+    onCandles: (
+      coin: string,
+      interval: CandleInterval,
+      candles: Candle[],
+    ) => void,
     isLoaded?: (coin: string, interval: CandleInterval) => boolean,
-  ): Promise<BackfillResult[]>
+  ): Promise<BackfillResult[]>;
 
   subscribe(
     coins: string[],
     onCandle: (coin: string, interval: CandleInterval, candle: Candle) => void,
-  ): Promise<void>
+  ): Promise<void>;
 
-  closeAll(): Promise<void>
-  checkStaleness(): void
+  closeAll(): Promise<void>;
+  checkStaleness(): void;
 }

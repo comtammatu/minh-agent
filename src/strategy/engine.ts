@@ -1,7 +1,12 @@
-import type { Candle, CandleInterval, Signal, StrategyContext } from '../types.js'
-import type { StrategyParams } from '../backtest/types.js'
-import { STATE_REPLAY_BARS } from '../config.js'
-import { SmcSdStrategy } from './strategies/smc-sd/index.js'
+import type { StrategyParams } from "../backtest/types.js";
+import { STATE_REPLAY_BARS } from "../config.js";
+import type {
+  Candle,
+  CandleInterval,
+  Signal,
+  StrategyContext,
+} from "../types.js";
+import { SmcSdStrategy } from "./strategies/smc-sd/index.js";
 
 // ── Window Requirements ────────────────────────────────────────────────────
 
@@ -9,13 +14,13 @@ import { SmcSdStrategy } from './strategies/smc-sd/index.js'
  *  Orchestrator + runtime use these to size scan windows and bootstrap replay. */
 export interface WindowRequirements {
   /** Bars needed per TF for live scan (planning depth). */
-  planningBars: Partial<Record<CandleInterval, number>>
+  planningBars: Partial<Record<CandleInterval, number>>;
   /** Bars per TF when serving as HTF context for another TF (separate from planningBars). */
-  htfContextBars: Partial<Record<CandleInterval, number>>
+  htfContextBars: Partial<Record<CandleInterval, number>>;
   /** Bars per TF to replay at bootstrap for state rebuild. */
-  replayBars: Partial<Record<CandleInterval, number>>
+  replayBars: Partial<Record<CandleInterval, number>>;
   /** TFs that must exist in store before replay starts (e.g., 1d for 4h HTF context). */
-  preseedTFs: CandleInterval[]
+  preseedTFs: CandleInterval[];
 }
 
 // ── SetupGenerator interface ───────────────────────────────────────────────
@@ -28,15 +33,15 @@ export interface SetupGenerator {
     idx: number,
     context?: StrategyContext,
     strategyParams?: StrategyParams,
-  ): Signal | null
+  ): Signal | null;
 
   /** Declare data depth + replay needs. Orchestrator uses this to size windows. */
-  windowRequirements?(): WindowRequirements
+  windowRequirements?(): WindowRequirements;
 
-  clearState(): void
+  clearState(): void;
 }
 
-let setupGenerator: SetupGenerator = new SmcSdStrategy()
+let setupGenerator: SetupGenerator = new SmcSdStrategy();
 
 function legacyWindowRequirements(): WindowRequirements {
   return {
@@ -44,17 +49,17 @@ function legacyWindowRequirements(): WindowRequirements {
     htfContextBars: {},
     replayBars: { ...STATE_REPLAY_BARS },
     preseedTFs: [],
-  }
+  };
 }
 
 export function getSetupGenerator(): SetupGenerator {
-  return setupGenerator
+  return setupGenerator;
 }
 
 export function getSetupGeneratorWindowRequirements(): WindowRequirements {
-  return typeof setupGenerator.windowRequirements === 'function'
+  return typeof setupGenerator.windowRequirements === "function"
     ? setupGenerator.windowRequirements()
-    : legacyWindowRequirements()
+    : legacyWindowRequirements();
 }
 
 export function runSetupGenerator(
@@ -65,17 +70,26 @@ export function runSetupGenerator(
   context?: StrategyContext,
   strategyParams?: StrategyParams,
 ): Signal | null {
-  return setupGenerator.scan(coin, interval, candles, idx, context, strategyParams)
+  return setupGenerator.scan(
+    coin,
+    interval,
+    candles,
+    idx,
+    context,
+    strategyParams,
+  );
 }
 
 export function clearSetupGeneratorState(): void {
-  setupGenerator.clearState()
+  setupGenerator.clearState();
 }
 
 export function resetSetupGenerator(): void {
-  setupGenerator = new SmcSdStrategy()
+  setupGenerator = new SmcSdStrategy();
 }
 
-export function setSetupGeneratorForTests(generator: SetupGenerator | null): void {
-  setupGenerator = generator ?? new SmcSdStrategy()
+export function setSetupGeneratorForTests(
+  generator: SetupGenerator | null,
+): void {
+  setupGenerator = generator ?? new SmcSdStrategy();
 }

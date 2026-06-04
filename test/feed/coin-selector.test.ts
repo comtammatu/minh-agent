@@ -5,341 +5,354 @@
  * sorting by OI, delisted filtering, refresh diff, active-setup retention.
  */
 
-import { describe, it, expect, beforeEach, mock } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 
 // ── Mock HL SDK ─────────────────────────────────────────────────────────────
 
 // We mock the info client used by coin-selector (imported from rest.ts)
 // by replacing the module-level `info` export.
 
-let mockResponse: [unknown, unknown[]] | Error = [{ universe: [] }, []]
+let mockResponse: [unknown, unknown[]] | Error = [{ universe: [] }, []];
 
 // Mock rest.ts to provide a controllable info client
-mock.module('../../src/feed/rest.js', () => ({
+mock.module("../../src/feed/rest.js", () => ({
   info: {
     metaAndAssetCtxs: async () => {
-      if (mockResponse instanceof Error) throw mockResponse
-      return mockResponse
+      if (mockResponse instanceof Error) throw mockResponse;
+      return mockResponse;
     },
     candleSnapshot: async () => [],
   },
   fetchCandles: async () => [],
   backfillStartTime: () => 0,
-}))
+}));
 
 // Mock config to disable HIP-3 in tests (avoids real network calls)
-const realConfig = await import('../../src/config.js')
-mock.module('../../src/config.js', () => ({
+const realConfig = await import("../../src/config.js");
+mock.module("../../src/config.js", () => ({
   ...realConfig,
   HIP3_DEXES: [] as string[],
   HIP3_TOP_COINS_LIMIT: 0,
-}))
+}));
 
 // Import after mock is set up
-const { fetchTopCoins, createCoinSelector } = await import('../../src/feed/coin-selector.js')
+const { fetchTopCoins, createCoinSelector } = await import(
+  "../../src/feed/coin-selector.js"
+);
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function makeMeta(coins: { name: string; delisted?: boolean }[]) {
   return {
-    universe: coins.map(c => ({
+    universe: coins.map((c) => ({
       name: c.name,
       szDecimals: 3,
       maxLeverage: 50,
       marginTableId: 0,
       ...(c.delisted ? { isDelisted: true as const } : {}),
     })),
-  }
+  };
 }
 
 function makeCtxs(ois: number[], volumes?: number[]) {
   return ois.map((oi, i) => ({
-    prevDayPx: '100',
+    prevDayPx: "100",
     dayNtlVlm: String(volumes?.[i] ?? 1_000_000),
-    markPx: '100',
-    midPx: '100',
-    funding: '0.0001',
+    markPx: "100",
+    midPx: "100",
+    funding: "0.0001",
     openInterest: String(oi),
-    premium: '0.001',
-    oraclePx: '100',
+    premium: "0.001",
+    oraclePx: "100",
     impactPxs: null,
-    dayBaseVlm: '10000',
-  }))
+    dayBaseVlm: "10000",
+  }));
 }
 
 // ── fetchTopCoins ───────────────────────────────────────────────────────────
 
-describe('fetchTopCoins', () => {
-  it('returns coins sorted by OI descending', async () => {
+describe("fetchTopCoins", () => {
+  it("returns coins sorted by OI descending", async () => {
     mockResponse = [
-      makeMeta([{ name: 'ETH' }, { name: 'BTC' }, { name: 'SOL' }]),
+      makeMeta([{ name: "ETH" }, { name: "BTC" }, { name: "SOL" }]),
       makeCtxs([500_000, 2_000_000, 100_000]),
-    ]
-    const result = await fetchTopCoins(10)
-    expect(result).toEqual(['BTC', 'ETH', 'SOL'])
-  })
+    ];
+    const result = await fetchTopCoins(10);
+    expect(result).toEqual(["BTC", "ETH", "SOL"]);
+  });
 
-  it('filters delisted coins', async () => {
+  it("filters delisted coins", async () => {
     mockResponse = [
-      makeMeta([{ name: 'BTC' }, { name: 'DEAD', delisted: true }, { name: 'ETH' }]),
+      makeMeta([
+        { name: "BTC" },
+        { name: "DEAD", delisted: true },
+        { name: "ETH" },
+      ]),
       makeCtxs([2_000_000, 500_000, 1_000_000]),
-    ]
-    const result = await fetchTopCoins(10)
-    expect(result).toEqual(['BTC', 'ETH'])
-    expect(result).not.toContain('DEAD')
-  })
+    ];
+    const result = await fetchTopCoins(10);
+    expect(result).toEqual(["BTC", "ETH"]);
+    expect(result).not.toContain("DEAD");
+  });
 
-  it('filters coins with zero OI', async () => {
+  it("filters coins with zero OI", async () => {
     mockResponse = [
-      makeMeta([{ name: 'BTC' }, { name: 'ZERO' }]),
+      makeMeta([{ name: "BTC" }, { name: "ZERO" }]),
       makeCtxs([1_000_000, 0]),
-    ]
-    const result = await fetchTopCoins(10)
-    expect(result).toEqual(['BTC'])
-  })
+    ];
+    const result = await fetchTopCoins(10);
+    expect(result).toEqual(["BTC"]);
+  });
 
-  it('respects limit parameter', async () => {
+  it("respects limit parameter", async () => {
     mockResponse = [
-      makeMeta([{ name: 'A' }, { name: 'B' }, { name: 'C' }, { name: 'D' }]),
+      makeMeta([{ name: "A" }, { name: "B" }, { name: "C" }, { name: "D" }]),
       makeCtxs([400, 300, 200, 100]),
-    ]
-    const result = await fetchTopCoins(2)
-    expect(result).toEqual(['A', 'B'])
-  })
+    ];
+    const result = await fetchTopCoins(2);
+    expect(result).toEqual(["A", "B"]);
+  });
 
-  it('returns empty array on API error', async () => {
-    mockResponse = new Error('Network timeout')
-    const result = await fetchTopCoins(10)
-    expect(result).toEqual([])
-  })
+  it("returns empty array on API error", async () => {
+    mockResponse = new Error("Network timeout");
+    const result = await fetchTopCoins(10);
+    expect(result).toEqual([]);
+  });
 
-  it('returns empty array when universe is empty', async () => {
-    mockResponse = [{ universe: [] }, []]
-    const result = await fetchTopCoins(10)
-    expect(result).toEqual([])
-  })
+  it("returns empty array when universe is empty", async () => {
+    mockResponse = [{ universe: [] }, []];
+    const result = await fetchTopCoins(10);
+    expect(result).toEqual([]);
+  });
 
-  it('filters coins below minimum volume', async () => {
+  it("filters coins below minimum volume", async () => {
     mockResponse = [
-      makeMeta([{ name: 'BTC' }, { name: 'ZOMBIE' }, { name: 'ETH' }]),
-      makeCtxs([2_000_000, 1_500_000, 1_000_000], [5_000_000, 10_000, 2_000_000]),
-    ]
+      makeMeta([{ name: "BTC" }, { name: "ZOMBIE" }, { name: "ETH" }]),
+      makeCtxs(
+        [2_000_000, 1_500_000, 1_000_000],
+        [5_000_000, 10_000, 2_000_000],
+      ),
+    ];
     // ZOMBIE has high OI but only $10K volume → filtered
-    const result = await fetchTopCoins(10)
-    expect(result).toEqual(['BTC', 'ETH'])
-    expect(result).not.toContain('ZOMBIE')
-  })
+    const result = await fetchTopCoins(10);
+    expect(result).toEqual(["BTC", "ETH"]);
+    expect(result).not.toContain("ZOMBIE");
+  });
 
-  it('respects custom minVolume parameter', async () => {
+  it("respects custom minVolume parameter", async () => {
     mockResponse = [
-      makeMeta([{ name: 'A' }, { name: 'B' }, { name: 'C' }]),
+      makeMeta([{ name: "A" }, { name: "B" }, { name: "C" }]),
       makeCtxs([300, 200, 100], [2_000_000, 800_000, 100_000]),
-    ]
+    ];
     // With minVolume=$1M, only A passes
-    const result = await fetchTopCoins(10, 1_000_000)
-    expect(result).toEqual(['A'])
-  })
+    const result = await fetchTopCoins(10, 1_000_000);
+    expect(result).toEqual(["A"]);
+  });
 
-  it('handles NaN openInterest gracefully', async () => {
+  it("handles NaN openInterest gracefully", async () => {
     mockResponse = [
-      makeMeta([{ name: 'BTC' }, { name: 'BAD' }]),
+      makeMeta([{ name: "BTC" }, { name: "BAD" }]),
       [
         { ...makeCtxs([1_000_000])[0] },
-        { ...makeCtxs([0])[0], openInterest: 'not-a-number' },
+        { ...makeCtxs([0])[0], openInterest: "not-a-number" },
       ],
-    ]
-    const result = await fetchTopCoins(10)
-    expect(result).toEqual(['BTC'])
-  })
-})
+    ];
+    const result = await fetchTopCoins(10);
+    expect(result).toEqual(["BTC"]);
+  });
+});
 
 // ── CoinSelector ────────────────────────────────────────────────────────────
 
-describe('CoinSelector', () => {
-  let activeSetupCoins: string[]
+describe("CoinSelector", () => {
+  let activeSetupCoins: string[];
 
   beforeEach(() => {
-    activeSetupCoins = []
-  })
+    activeSetupCoins = [];
+  });
 
   function makeSelector() {
-    return createCoinSelector(() => activeSetupCoins)
+    return createCoinSelector(() => activeSetupCoins);
   }
 
-  it('starts with empty coins', () => {
-    const selector = makeSelector()
-    expect(selector.getTopCoins()).toEqual([])
-    expect(selector.getTrackedCoins()).toEqual([])
-  })
+  it("starts with empty coins", () => {
+    const selector = makeSelector();
+    expect(selector.getTopCoins()).toEqual([]);
+    expect(selector.getTrackedCoins()).toEqual([]);
+  });
 
-  it('refresh populates topCoins', async () => {
+  it("refresh populates topCoins", async () => {
     mockResponse = [
-      makeMeta([{ name: 'BTC' }, { name: 'ETH' }]),
+      makeMeta([{ name: "BTC" }, { name: "ETH" }]),
       makeCtxs([2_000_000, 1_000_000]),
-    ]
-    const selector = makeSelector()
-    await selector.refresh()
-    expect(selector.getTopCoins()).toEqual(['BTC', 'ETH'])
-  })
+    ];
+    const selector = makeSelector();
+    await selector.refresh();
+    expect(selector.getTopCoins()).toEqual(["BTC", "ETH"]);
+  });
 
-  it('refresh detects added coins', async () => {
-    mockResponse = [
-      makeMeta([{ name: 'BTC' }]),
-      makeCtxs([2_000_000]),
-    ]
-    const selector = makeSelector()
-    await selector.refresh()
+  it("refresh detects added coins", async () => {
+    mockResponse = [makeMeta([{ name: "BTC" }]), makeCtxs([2_000_000])];
+    const selector = makeSelector();
+    await selector.refresh();
 
     // Add ETH to response
     mockResponse = [
-      makeMeta([{ name: 'BTC' }, { name: 'ETH' }]),
+      makeMeta([{ name: "BTC" }, { name: "ETH" }]),
       makeCtxs([2_000_000, 1_000_000]),
-    ]
-    const result = await selector.refresh()
-    expect(result.added).toEqual(['ETH'])
-  })
+    ];
+    const result = await selector.refresh();
+    expect(result.added).toEqual(["ETH"]);
+  });
 
-  it('refresh detects dropped coins (no active setup)', async () => {
+  it("refresh detects dropped coins (no active setup)", async () => {
     mockResponse = [
-      makeMeta([{ name: 'BTC' }, { name: 'ETH' }]),
+      makeMeta([{ name: "BTC" }, { name: "ETH" }]),
       makeCtxs([2_000_000, 1_000_000]),
-    ]
-    const selector = makeSelector()
-    await selector.refresh()
+    ];
+    const selector = makeSelector();
+    await selector.refresh();
 
     // ETH drops out
-    mockResponse = [
-      makeMeta([{ name: 'BTC' }]),
-      makeCtxs([2_000_000]),
-    ]
-    const result = await selector.refresh()
-    expect(result.dropped).toEqual(['ETH'])
-  })
+    mockResponse = [makeMeta([{ name: "BTC" }]), makeCtxs([2_000_000])];
+    const result = await selector.refresh();
+    expect(result.dropped).toEqual(["ETH"]);
+  });
 
-  it('keeps dropped coin with active setup in trackedCoins', async () => {
+  it("keeps dropped coin with active setup in trackedCoins", async () => {
     mockResponse = [
-      makeMeta([{ name: 'BTC' }, { name: 'ETH' }]),
+      makeMeta([{ name: "BTC" }, { name: "ETH" }]),
       makeCtxs([2_000_000, 1_000_000]),
-    ]
-    const selector = makeSelector()
-    await selector.refresh()
+    ];
+    const selector = makeSelector();
+    await selector.refresh();
 
     // ETH has an active setup
-    activeSetupCoins = ['ETH']
+    activeSetupCoins = ["ETH"];
 
     // ETH drops from top
-    mockResponse = [
-      makeMeta([{ name: 'BTC' }]),
-      makeCtxs([2_000_000]),
-    ]
-    const result = await selector.refresh()
+    mockResponse = [makeMeta([{ name: "BTC" }]), makeCtxs([2_000_000])];
+    const result = await selector.refresh();
 
     // ETH is NOT in the dropped list (protected by active setup)
-    expect(result.dropped).toEqual([])
+    expect(result.dropped).toEqual([]);
 
     // ETH still in trackedCoins (union of top + active)
-    expect(selector.getTrackedCoins()).toContain('ETH')
-    expect(selector.getTrackedCoins()).toContain('BTC')
+    expect(selector.getTrackedCoins()).toContain("ETH");
+    expect(selector.getTrackedCoins()).toContain("BTC");
 
     // But NOT in topCoins (only fresh top list)
-    expect(selector.getTopCoins()).not.toContain('ETH')
-  })
+    expect(selector.getTopCoins()).not.toContain("ETH");
+  });
 
-  it('refresh failure keeps current list', async () => {
+  it("refresh failure keeps current list", async () => {
     mockResponse = [
-      makeMeta([{ name: 'BTC' }, { name: 'ETH' }]),
+      makeMeta([{ name: "BTC" }, { name: "ETH" }]),
       makeCtxs([2_000_000, 1_000_000]),
-    ]
-    const selector = makeSelector()
-    await selector.refresh()
+    ];
+    const selector = makeSelector();
+    await selector.refresh();
 
     // API fails
-    mockResponse = new Error('Connection refused')
-    const result = await selector.refresh()
-    expect(result.added).toEqual([])
-    expect(result.dropped).toEqual([])
-    expect(selector.getTopCoins()).toEqual(['BTC', 'ETH'])
-  })
+    mockResponse = new Error("Connection refused");
+    const result = await selector.refresh();
+    expect(result.added).toEqual([]);
+    expect(result.dropped).toEqual([]);
+    expect(selector.getTopCoins()).toEqual(["BTC", "ETH"]);
+  });
 
-  it('trackedCoins is union of topCoins and activeSetupCoins', async () => {
-    mockResponse = [
-      makeMeta([{ name: 'BTC' }]),
-      makeCtxs([2_000_000]),
-    ]
-    const selector = makeSelector()
-    await selector.refresh()
+  it("trackedCoins is union of topCoins and activeSetupCoins", async () => {
+    mockResponse = [makeMeta([{ name: "BTC" }]), makeCtxs([2_000_000])];
+    const selector = makeSelector();
+    await selector.refresh();
 
     // SOL has active setup but is NOT in top coins
-    activeSetupCoins = ['SOL']
-    const tracked = selector.getTrackedCoins()
-    expect(tracked).toContain('BTC')
-    expect(tracked).toContain('SOL')
-    expect(tracked.length).toBe(2)
-  })
+    activeSetupCoins = ["SOL"];
+    const tracked = selector.getTrackedCoins();
+    expect(tracked).toContain("BTC");
+    expect(tracked).toContain("SOL");
+    expect(tracked.length).toBe(2);
+  });
 
-  it('stopRefreshLoop is safe to call when not started', () => {
-    const selector = makeSelector()
-    expect(() => selector.stopRefreshLoop()).not.toThrow()
-  })
+  it("stopRefreshLoop is safe to call when not started", () => {
+    const selector = makeSelector();
+    expect(() => selector.stopRefreshLoop()).not.toThrow();
+  });
 
-  it('stopRefreshLoop is safe to call multiple times', () => {
-    const selector = makeSelector()
-    selector.startRefreshLoop()
+  it("stopRefreshLoop is safe to call multiple times", () => {
+    const selector = makeSelector();
+    selector.startRefreshLoop();
     expect(() => {
-      selector.stopRefreshLoop()
-      selector.stopRefreshLoop()
-    }).not.toThrow()
-  })
-})
+      selector.stopRefreshLoop();
+      selector.stopRefreshLoop();
+    }).not.toThrow();
+  });
+});
 
 // ── CoinSelector with custom fetchRankedFn (BB mode) ────────────────────────
 
-describe('CoinSelector with fetchRankedFn (BB mode)', () => {
-  it('uses provided fetchRankedFn instead of HL API', async () => {
-    const staticCoins = ['BTC', 'ETH', 'SOL']
-    const fetchRankedFn = async () => staticCoins
-    const selector = createCoinSelector(() => [], undefined, fetchRankedFn)
-    await selector.refresh()
-    expect(selector.getTopCoins()).toEqual(staticCoins)
-  })
+describe("CoinSelector with fetchRankedFn (BB mode)", () => {
+  it("uses provided fetchRankedFn instead of HL API", async () => {
+    const staticCoins = ["BTC", "ETH", "SOL"];
+    const fetchRankedFn = async () => staticCoins;
+    const selector = createCoinSelector(() => [], undefined, fetchRankedFn);
+    await selector.refresh();
+    expect(selector.getTopCoins()).toEqual(staticCoins);
+  });
 
-  it('skips HIP-3 when fetchRankedFn is provided', async () => {
-    const selector = createCoinSelector(() => [], undefined, async () => ['BTC'])
-    await selector.refresh()
-    expect(selector.getHip3Coins()).toEqual([])
-  })
+  it("skips HIP-3 when fetchRankedFn is provided", async () => {
+    const selector = createCoinSelector(
+      () => [],
+      undefined,
+      async () => ["BTC"],
+    );
+    await selector.refresh();
+    expect(selector.getHip3Coins()).toEqual([]);
+  });
 
-  it('does not call HL API (mockResponse) when fetchRankedFn is provided', async () => {
+  it("does not call HL API (mockResponse) when fetchRankedFn is provided", async () => {
     // Set mockResponse to error — if HL API is called, result would be empty
-    mockResponse = new Error('Should not be called')
-    const selector = createCoinSelector(() => [], undefined, async () => ['BTC', 'ETH'])
-    await selector.refresh()
+    mockResponse = new Error("Should not be called");
+    const selector = createCoinSelector(
+      () => [],
+      undefined,
+      async () => ["BTC", "ETH"],
+    );
+    await selector.refresh();
     // coins come from fetchRankedFn, not HL API
-    expect(selector.getTopCoins()).toEqual(['BTC', 'ETH'])
-  })
+    expect(selector.getTopCoins()).toEqual(["BTC", "ETH"]);
+  });
 
-  it('refresh diff works with fetchRankedFn', async () => {
-    let coins = ['BTC', 'ETH']
-    const selector = createCoinSelector(() => [], undefined, async () => coins)
-    await selector.refresh()
-    expect(selector.getTopCoins()).toEqual(['BTC', 'ETH'])
+  it("refresh diff works with fetchRankedFn", async () => {
+    let coins = ["BTC", "ETH"];
+    const selector = createCoinSelector(
+      () => [],
+      undefined,
+      async () => coins,
+    );
+    await selector.refresh();
+    expect(selector.getTopCoins()).toEqual(["BTC", "ETH"]);
 
-    coins = ['BTC', 'SOL']
-    const result = await selector.refresh()
-    expect(result.added).toEqual(['SOL'])
-    expect(result.dropped).toEqual(['ETH'])
-  })
-})
+    coins = ["BTC", "SOL"];
+    const result = await selector.refresh();
+    expect(result.added).toEqual(["SOL"]);
+    expect(result.dropped).toEqual(["ETH"]);
+  });
+});
 
 // ── getActiveSetupCoins (pipeline export) ───────────────────────────────────
 
-describe('getActiveSetupCoins', () => {
-  it('exports from pipeline', async () => {
-    const { getActiveSetupCoins } = await import('../../src/strategy/orchestrator.js')
-    expect(typeof getActiveSetupCoins).toBe('function')
+describe("getActiveSetupCoins", () => {
+  it("exports from pipeline", async () => {
+    const { getActiveSetupCoins } = await import(
+      "../../src/strategy/orchestrator.js"
+    );
+    expect(typeof getActiveSetupCoins).toBe("function");
     // With no active setups, returns empty
-    const { clearPipelineState } = await import('../../src/strategy/orchestrator.js')
-    clearPipelineState()
-    expect(getActiveSetupCoins()).toEqual([])
-  })
-})
+    const { clearPipelineState } = await import(
+      "../../src/strategy/orchestrator.js"
+    );
+    clearPipelineState();
+    expect(getActiveSetupCoins()).toEqual([]);
+  });
+});
