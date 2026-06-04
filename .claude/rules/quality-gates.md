@@ -2,7 +2,10 @@
 
 ## Every Task
 
-- [ ] `bun test --run` — all tests pass
+- [ ] `bun run test:run` — all tests pass (main + dashboard vitest; per package.json + CONTRIBUTING)
+- [ ] `bun run typecheck` — passes (for non-trivial)
+- [ ] `bun run lint` — clean or with documented suppressions (biome; no `any` w/o comment, no unused)
+- [ ] `bun run deadcode` — clean or documented (knip)
 - [ ] No `any` without justification comment
 - [ ] No magic numbers — all thresholds in `config.ts`
 - [ ] Pure function boundary maintained (`src/indicators/` and pure `src/strategy/` helpers stay zero-I/O)

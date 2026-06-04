@@ -1,0 +1,27 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/index.ts",
+    "src/**/*.test.ts",
+    "test/**/*.ts",
+    "dashboard/src/main.tsx"
+  ],
+  "project": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "dashboard/src/**/*.ts",
+    "dashboard/src/**/*.tsx"
+  ],
+  "ignore": [
+    "scripts/**",
+    "docs/**",
+    ".claude/**"
+  ],
+  "ignoreDependencies": [
+    "vite",
+    "@vitejs/plugin-react",
+    "vitest",
+    "@testing-library/*",
+    "jsdom"
+  ]
+}

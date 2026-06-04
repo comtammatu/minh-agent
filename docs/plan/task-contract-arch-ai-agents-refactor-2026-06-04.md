@@ -76,6 +76,56 @@ ESTIMATE: 30-45 min.
 
 All work will preserve runtime invariants listed in CLAUDE.md. This contract is committed alongside changes.
 
+## Mini Task Contract for s2-move-script (S2)
+SESSION: #ARCH-2 / S2
+DATE: 2026-06-04
+TASK: Move src/compare-exchanges.ts → scripts/compare-exchanges.ts (per May refactor-cleanup S2). Update internal relative imports (to ../src/...), update usage docs in file header. Verify: typecheck, `bun run scripts/compare-exchanges.ts` (smoke), full test:run. Commit: chore(scripts): move compare-exchanges out of src (S2). Update PR.
+OPERATIONAL RISK ASSESSMENT:
+  - Risk 1: Relative imports break after mv → typecheck + manual run will catch; fix in same session.
+  - Risk 2: Some doc in active tree references old path → we grepped, only self + archive/plan (leave archive historical). Update self header.
+  - Risk 3: Low blast — one-shot script, not imported by runtime (per plan audit).
+  - Challenge from protocol: "ask 3 hard questions" — is moving script worth a full session? Yes, to complete documented cleanup and keep src/ only for runtime modules (per CLAUDE layout).
+SCOPE:
+  - Use `git mv` for history.
+  - Read file first.
+  - StrReplace imports + header comments.
+  - No change to package.json (no script entry for it).
+  - After move: `bun run typecheck`, smoke run of script (may need --coins to avoid long run; or just --help if parses), `bun run test:run`.
+  - Update todo, commit, push, PR.
+  - Mark complete only after gates.
+CONSTRAINTS: root + no plan edit + test:run pass.
+COMPLETION CRITERIA:
+  - [ ] git mv done; old path gone from src/ (git grep "compare-exchanges" src/ returns nothing in active).
+  - [ ] Imports fixed (../src/feed etc).
+  - [ ] Header usage updated to scripts/.
+  - [ ] `bun run typecheck` passes.
+  - [ ] Script runnable via bun run scripts/compare-exchanges.ts (smoke, e.g. with limited flags).
+  - [ ] test:run passes (no regression from move).
+  - [ ] Commit + push + PR update.
+  - [ ] s2 todo complete; s3 in_progress.
+ESTIMATE: 20-30 min.
+==========================
+
+## Mini Task Contract for s3-add-lint-tools (S3)
+SESSION: #ARCH-3 / S3
+DATE: 2026-06-04
+TASK: Add Biome (lint) + Knip (deadcode) per May cleanup S3. Permissive config (no any w/o comment, no unused). Add scripts to package.json. Update CLAUDE/CONTRIBUTING/quality-gates. Run baselines, record counts (no fixes). Verify test:run. Commit as needed.
+OPERATIONAL RISK: Medium per plan — Biome may surface hundreds; keep S3 to "add + baseline", triage in S4. Risk of style conflict low with permissive preset.
+SCOPE:
+  - bun add -d @biomejs/biome knip
+  - bunx @biomejs/biome init  (or equivalent non-interactive)
+  - Edit biome.json : include recommended, add rules for any/ unused (permissive: warn or info).
+  - knip.json or default.
+  - package.json scripts + "lint:ci" etc if needed.
+  - Update 3+ docs.
+  - bun run lint ; bun run deadcode ; record output.
+  - test:run pass.
+  - Commit: chore(lint): add biome + knip + baseline scripts (S3)
+CONSTRAINTS: no auto-fix in S3; test:run always; update only listed.
+COMPLETION: scripts work, baselines recorded in commit or PR note, tests pass, todo complete.
+ESTIMATE: 25-40 min.
+==========================
+
 ## Mini Task Contract for doc-sync-reality phase (ARCH-1 / S1 extended)
 SESSION: #ARCH-1
 DATE: 2026-06-04

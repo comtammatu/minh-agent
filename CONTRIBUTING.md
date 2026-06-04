@@ -24,12 +24,14 @@ Use `ACTIVE_EXCHANGE=HL` for benchmark validation unless you are intentionally w
 
 Every non-trivial change should satisfy all of these:
 
-1. `bun test --run` passes
+1. `bun run test:run` passes (includes dashboard)
 2. `bun run typecheck` passes
-3. `ACTIVE_EXCHANGE=HL bun run bench:pipeline:ci` passes when touching strategy, indicators, cache, config, or CI budget code
-4. No new `any` without a justification comment
-5. No new magic numbers outside `src/config.ts`
-6. No side effects inside pure indicator/strategy helpers
+3. `bun run lint` passes (or only justified biome warnings; run `bun run lint:fix` for auto)
+4. `bun run deadcode` passes (or documented knip false positives)
+5. `ACTIVE_EXCHANGE=HL bun run bench:pipeline:ci` passes when touching strategy, indicators, cache, config, or CI budget code
+6. No new `any` without a justification comment
+7. No new magic numbers outside `src/config.ts`
+8. No side effects inside pure indicator/strategy helpers
 
 ## Typecheck Scope
 
