@@ -95,7 +95,7 @@ export async function getLastTimestamp(
     LIMIT 1
   `;
   if (rows.length === 0) return null;
-  return rows[0]?.t.getTime();
+  return rows[0]!.t.getTime();
 }
 
 /**

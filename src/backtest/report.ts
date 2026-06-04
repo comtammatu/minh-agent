@@ -159,12 +159,12 @@ function formatComparisonTable(
 
   // Compute column widths
   const widths = rows[0]?.map((_, col) =>
-    Math.max(...rows.map((r) => r[col]?.length)),
-  );
+    Math.max(...rows.map((r) => r[col]?.length ?? 0)),
+  ) ?? [];
 
   return rows
     .map((row, i) => {
-      const cells = row.map((cell, col) => cell.padStart(widths[col]!));
+      const cells = row.map((cell, col) => cell.padStart(widths[col] ?? 0));
       const line = `  ${cells.join("  |  ")}`;
       if (i === 0) return `${line}\n  ${"-".repeat(line.length - 2)}`;
       return line;

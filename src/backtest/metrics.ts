@@ -128,7 +128,7 @@ function computeDrawdown(
   let currentDDStart = -1;
 
   for (let i = 0; i < trades.length; i++) {
-    equity += trades[i]?.pnl;
+    equity += trades[i]?.pnl ?? 0;
     if (equity > peak) {
       peak = equity;
       currentDDStart = -1;

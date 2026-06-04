@@ -10,7 +10,7 @@ import type { Candle, MarketRegime } from "../types.js";
 export function sma(candles: Candle[], idx: number, period: number): number {
   if (idx < period - 1) return NaN;
   let sum = 0;
-  for (let i = idx - period + 1; i <= idx; i++) sum += candles[i]?.c;
+  for (let i = idx - period + 1; i <= idx; i++) sum += candles[i]!.c; // non-null: bounds checked, dense candle window
   return sum / period;
 }
 
@@ -19,7 +19,7 @@ export function ema(candles: Candle[], idx: number, period: number): number {
   const k = 2 / (period + 1);
   let value = sma(candles, period - 1, period);
   for (let i = period; i <= idx; i++) {
-    value = (candles[i]?.c - value) * k + value;
+    value = (candles[i]!.c - value) * k + value; // non-null: loop after pre-warm sma
   }
   return value;
 }
@@ -27,7 +27,7 @@ export function ema(candles: Candle[], idx: number, period: number): number {
 // ─── ATR ──────────────────────────────────────────────────────────────────────
 
 function trueRange(candles: Candle[], idx: number): number {
-  if (idx === 0) return candles[0]?.h - candles[0]?.l;
+  if (idx === 0) return candles[0]!.h - candles[0]!.l; // non-null: idx==0 guard
   const c = candles[idx]!;
   const p = candles[idx - 1]!;
   return Math.max(c.h - c.l, Math.abs(c.h - p.c), Math.abs(c.l - p.c));
@@ -106,14 +106,14 @@ export function rsi(candles: Candle[], idx: number, period: number): number {
   let gain = 0,
     loss = 0;
   for (let i = 1; i <= period; i++) {
-    const d = candles[i]?.c - candles[i - 1]?.c;
+    const d = candles[i]!.c - candles[i - 1]!.c; // non-null: idx >= period guard, dense window
     if (d > 0) gain += d;
     else loss += -d;
   }
   gain /= period;
   loss /= period;
   for (let i = period + 1; i <= idx; i++) {
-    const d = candles[i]?.c - candles[i - 1]?.c;
+    const d = candles[i]!.c - candles[i - 1]!.c; // non-null: bounds in rsi
     gain = (gain * (period - 1) + (d > 0 ? d : 0)) / period;
     loss = (loss * (period - 1) + (d < 0 ? -d : 0)) / period;
   }
@@ -130,9 +130,9 @@ export function volumeRatio(
 ): number {
   if (idx < lookback) return NaN;
   let sum = 0;
-  for (let i = idx - lookback; i < idx; i++) sum += candles[i]?.v;
+  for (let i = idx - lookback; i < idx; i++) sum += candles[i]!.v; // non-null: idx >= lookback guard
   const avg = sum / lookback;
-  return avg === 0 ? 0 : candles[idx]?.v / avg;
+  return avg === 0 ? 0 : candles[idx]!.v / avg; // non-null: idx in range
 }
 
 export function volumeTrend(
@@ -144,8 +144,8 @@ export function volumeTrend(
   const half = Math.floor(lookback / 2);
   let first = 0,
     second = 0;
-  for (let i = idx - lookback + 1; i <= idx - half; i++) first += candles[i]?.v;
-  for (let i = idx - half + 1; i <= idx; i++) second += candles[i]?.v;
+  for (let i = idx - lookback + 1; i <= idx - half; i++) first += candles[i]!.v; // non-null: volume trend window guard
+  for (let i = idx - half + 1; i <= idx; i++) second += candles[i]!.v; // non-null: volume trend window guard
   if (first === 0) return second > 0 ? 1 : 0;
   return (second - first) / first;
 }

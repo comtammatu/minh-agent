@@ -81,7 +81,7 @@ export async function insertMemory(mem: NewTradeMemory): Promise<number> {
       )
       RETURNING id
     `;
-    return rows[0]?.id;
+    return rows[0]?.id ?? -1;
   } catch (err) {
     log.error("memory", `Failed to insert memory: ${(err as Error).message}`);
     return -1;

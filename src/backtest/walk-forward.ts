@@ -166,8 +166,8 @@ function getDataRange(candles: Map<string, Candle[]>): {
 
   for (const [_key, series] of candles) {
     if (series.length === 0) continue;
-    const first = series[0]?.t;
-    const last = series[series.length - 1]?.t;
+    const first = series[0]!.t;
+    const last = series[series.length - 1]!.t;
     if (first < minTs) minTs = first;
     if (last > maxTs) maxTs = last;
   }

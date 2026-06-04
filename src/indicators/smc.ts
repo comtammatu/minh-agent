@@ -298,7 +298,7 @@ export function detectStructureBreaks(
     c.c > prevHigh.price - tol &&
     Math.abs(c.c - prevHigh.price) >= minPriceDist * 0.3
   ) {
-    const isCHoCH = lastLow.price < lows[Math.max(0, lows.length - 3)]?.price;
+    const isCHoCH = lastLow.price < (lows[Math.max(0, lows.length - 3)]?.price ?? Infinity);
     breaks.push({
       kind: isCHoCH ? "choch" : "bos",
       direction: "bullish",
@@ -313,7 +313,7 @@ export function detectStructureBreaks(
     Math.abs(c.c - prevLow.price) >= minPriceDist * 0.3
   ) {
     const isCHoCH =
-      lastHigh.price > highs[Math.max(0, highs.length - 3)]?.price;
+      lastHigh.price > (highs[Math.max(0, highs.length - 3)]?.price ?? -Infinity);
     breaks.push({
       kind: isCHoCH ? "choch" : "bos",
       direction: "bearish",
@@ -439,11 +439,11 @@ function mergeAndRank(
 
   const merged: MergedZone[] = [];
   let cur: MergedZone = {
-    top: raw[0]?.top,
-    bottom: raw[0]?.bottom,
-    origin: raw[0]?.origin,
+    top: raw[0]!.top,
+    bottom: raw[0]!.bottom,
+    origin: raw[0]!.origin,
     originCount: 1,
-    latestSourceIdx: raw[0]?.sourceIdx,
+    latestSourceIdx: raw[0]!.sourceIdx,
   };
 
   for (let i = 1; i < raw.length; i++) {
@@ -472,7 +472,7 @@ function mergeAndRank(
   const zones: KeyZone[] = [];
   const pushTopZone = (zone: KeyZone): void => {
     let insertAt = zones.length;
-    while (insertAt > 0 && zones[insertAt - 1]?.strength < zone.strength)
+    while (insertAt > 0 && (zones[insertAt - 1]?.strength ?? -1) < zone.strength)
       insertAt--;
     zones.splice(insertAt, 0, zone);
     if (zones.length > max) zones.length = max;
@@ -605,7 +605,7 @@ export function compileKeyZones(
     MAX_ZONES,
   );
 
-  const price = candles[upToIdx]?.c;
+  const price = candles[upToIdx]?.c ?? 0;
   demandZones.sort(
     (a, b) =>
       Math.abs(price - (a.top + a.bottom) / 2) -
@@ -813,11 +813,11 @@ export function htfStructureBias(
     llCount = 0;
 
   for (let i = Math.max(1, highs.length - 2); i < highs.length; i++) {
-    if (highs[i]?.price > highs[i - 1]?.price) hhCount++;
+    if ((highs[i]?.price ?? 0) > (highs[i - 1]?.price ?? 0)) hhCount++;
     else lhCount++;
   }
   for (let i = Math.max(1, lows.length - 2); i < lows.length; i++) {
-    if (lows[i]?.price > lows[i - 1]?.price) hlCount++;
+    if ((lows[i]?.price ?? 0) > (lows[i - 1]?.price ?? 0)) hlCount++;
     else llCount++;
   }
 
@@ -934,7 +934,7 @@ export function findLiquidityPools(
 
     const sortedPrices = new Array<number>(points.length);
     for (let i = 0; i < points.length; i++) {
-      sortedPrices[i] = points[i]?.price;
+      sortedPrices[i] = points[i]?.price ?? 0;
     }
     sortedPrices.sort((a, b) => a - b);
     const uniquePrices: number[] = [];
@@ -1089,7 +1089,7 @@ export function detectSessionRange(
   let count = 0;
 
   // Scan backwards to find candles within the session window (same day as idx candle)
-  const refTimestamp = candles[idx]?.t;
+  const refTimestamp = candles[idx]?.t ?? 0;
   const refDay = utcDayId(refTimestamp);
   const minTimestamp = refTimestamp - MS_PER_DAY * 1.5;
 

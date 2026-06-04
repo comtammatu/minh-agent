@@ -48,7 +48,7 @@ function trendAt(
   atrValue: number,
 ): "up" | "down" | "flat" {
   if (idx < lookback) return "flat";
-  const change = candles[idx]?.c - candles[idx - lookback]?.c;
+  const change = (candles[idx]?.c ?? 0) - (candles[idx - lookback]?.c ?? 0); // safe delta for bias
   if (Number.isNaN(atrValue) || atrValue === 0) return "flat";
   if (change > atrValue * 0.5) return "up";
   if (change < -atrValue * 0.5) return "down";

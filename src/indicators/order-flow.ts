@@ -56,7 +56,7 @@ export function cumulativeDelta(history: DeltaState[], n: number): number {
   if (history.length === 0) return 0;
   let cum = 0;
   const start = Math.max(0, history.length - n);
-  for (let i = start; i < history.length; i++) cum += history[i]?.delta;
+  for (let i = start; i < history.length; i++) cum += history[i]?.delta ?? 0; // safe: delta may be absent in partial state
   return cum;
 }
 
@@ -199,8 +199,8 @@ function pocIndex(bins: VPBin[]): number {
   let idx = 0,
     maxVol = 0;
   for (let i = 0; i < bins.length; i++) {
-    if (bins[i]?.volume > maxVol) {
-      maxVol = bins[i]?.volume;
+    if ((bins[i]?.volume ?? 0) > maxVol) {
+      maxVol = bins[i]?.volume ?? 0;
       idx = i;
     }
   }
@@ -215,22 +215,22 @@ function vpValueArea(
   const total = bins.reduce((s, b) => s + b.volume, 0);
   if (total === 0) return { vahIdx: poc, valIdx: poc };
   const target = total * pct;
-  let acc = bins[poc]?.volume;
+  let acc = bins[poc]?.volume ?? 0;
   let upper = poc,
     lower = poc;
 
   while (acc < target && (upper < bins.length - 1 || lower > 0)) {
-    const upVol = upper < bins.length - 1 ? bins[upper + 1]?.volume : 0;
-    const dnVol = lower > 0 ? bins[lower - 1]?.volume : 0;
+    const upVol = upper < bins.length - 1 ? bins[upper + 1]?.volume ?? 0 : 0;
+    const dnVol = lower > 0 ? bins[lower - 1]?.volume ?? 0 : 0;
     if (upVol >= dnVol && upper < bins.length - 1) {
       upper++;
-      acc += bins[upper]?.volume;
+      acc += bins[upper]?.volume ?? 0;
     } else if (lower > 0) {
       lower--;
-      acc += bins[lower]?.volume;
+      acc += bins[lower]?.volume ?? 0;
     } else {
       upper++;
-      acc += bins[upper]?.volume;
+      acc += bins[upper]?.volume ?? 0;
     }
   }
 
@@ -288,36 +288,36 @@ export function buildVolumeProfile(
   const pocPrice = bins[poc]?.priceLevel;
 
   const { vahIdx, valIdx } = vpValueArea(bins, poc, vaPct);
-  const vah = bins[vahIdx]?.priceLevel + binSize / 2;
-  const val = bins[valIdx]?.priceLevel - binSize / 2;
+  const vah = (bins[vahIdx]?.priceLevel ?? 0) + binSize / 2;
+  const val = (bins[valIdx]?.priceLevel ?? 0) - binSize / 2;
 
   const avgVol = totalVol / numBins;
   const lvnThreshold = avgVol * 0.5;
   const hvn: number[] = [];
   for (let i = 1; i < bins.length - 1; i++) {
-    const v = bins[i]?.volume;
+    const v = bins[i]?.volume ?? 0;
     if (
       v > avgVol * 1.5 &&
-      v > bins[i - 1]?.volume &&
-      v > bins[i + 1]?.volume
+      v > (bins[i - 1]?.volume ?? 0) &&
+      v > (bins[i + 1]?.volume ?? 0)
     ) {
-      hvn.push(bins[i]?.priceLevel);
+      hvn.push(bins[i]?.priceLevel ?? 0);
     }
   }
 
   const lvn: number[] = [];
   let zoneStart = -1;
   for (let i = 1; i < bins.length - 1; i++) {
-    if (bins[i]?.volume < lvnThreshold) {
+    if ((bins[i]?.volume ?? 0) < lvnThreshold) {
       if (zoneStart === -1) zoneStart = i;
     } else if (zoneStart !== -1) {
-      lvn.push(bins[Math.floor((zoneStart + i - 1) / 2)]?.priceLevel);
+      lvn.push(bins[Math.floor((zoneStart + i - 1) / 2)]?.priceLevel ?? 0);
       zoneStart = -1;
     }
   }
   if (zoneStart !== -1) {
-    lvn.push(bins[Math.floor((zoneStart + bins.length - 2) / 2)]?.priceLevel);
+    lvn.push(bins[Math.floor((zoneStart + bins.length - 2) / 2)]?.priceLevel ?? 0);
   }
 
-  return { poc: pocPrice, vah, val, hvn, lvn };
+  return { poc: pocPrice ?? 0, vah, val, hvn, lvn }; // pocPrice from valid poc index
 }

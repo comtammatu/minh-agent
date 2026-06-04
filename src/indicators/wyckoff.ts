@@ -14,7 +14,7 @@ export interface WyckoffResult {
 }
 
 function trueRange(candles: Candle[], idx: number): number {
-  if (idx === 0) return candles[0]?.h - candles[0]?.l;
+  if (idx === 0) return candles[0]!.h - candles[0]!.l; // non-null: idx 0 guard
   const c = candles[idx]!;
   const p = candles[idx - 1]!;
   return Math.max(c.h - c.l, Math.abs(c.h - p.c), Math.abs(c.l - p.c));
@@ -102,7 +102,7 @@ function computeWindowStats(
     volRatio: hasVolRatio
       ? volSum / rangePeriod === 0
         ? 0
-        : candles[idx]?.v / (volSum / rangePeriod)
+        : (candles[idx]?.v ?? 0) / (volSum / rangePeriod)
       : NaN,
   };
 }
@@ -117,7 +117,7 @@ export function isSpring(
   if (idx < lookback + 1) return false;
   let rangeLow = Infinity;
   for (let i = idx - lookback; i < idx; i++) {
-    const l = candles[i]?.l;
+    const l = candles[i]?.l ?? Infinity;
     if (l < rangeLow) rangeLow = l;
   }
   const c = candles[idx]!;
@@ -132,7 +132,7 @@ export function isUTAD(
   if (idx < lookback + 1) return false;
   let rangeHigh = -Infinity;
   for (let i = idx - lookback; i < idx; i++) {
-    const h = candles[i]?.h;
+    const h = candles[i]?.h ?? -Infinity;
     if (h > rangeHigh) rangeHigh = h;
   }
   const c = candles[idx]!;

@@ -54,7 +54,7 @@ function computeVsaInputs(
 
   const avgVolume = previousVolumeSum / lookback;
   return {
-    volRatio: avgVolume === 0 ? 0 : candles[idx]?.v / avgVolume,
+    volRatio: avgVolume === 0 ? 0 : (candles[idx]?.v ?? 0) / avgVolume,
     atrValue,
   };
 }
@@ -83,7 +83,7 @@ export function detectVSA(
 
   const spreadR = spread(c) / atrVal;
   const bodyR = body(c) / Math.max(spread(c), 0.0001);
-  const trendChange = c.c - candles[idx - lb]?.c;
+  const trendChange = c.c - (candles[idx - lb]?.c ?? c.c);
   const signals: VSASignal[] = [];
 
   // ── Bullish signals ────────────────────────────────────────────────────────

@@ -796,8 +796,8 @@ async function main(): Promise<void> {
           const result = await svc.scheduleCancel?.(
             Date.now() + DMS_DEADLINE_MS,
           );
-          lastArmOk = result.success;
-          if (!result.success) {
+          lastArmOk = result?.success ?? false;
+          if (result && !result.success) {
             log.error("dms", `DMS arm failed: ${result.error}`);
           }
         } catch (err) {

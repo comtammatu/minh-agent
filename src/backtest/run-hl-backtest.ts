@@ -118,7 +118,7 @@ async function fetchAllCandles(
       }
 
       result.set(`${coin}|${tf}`, candles);
-      const dateRange = `${new Date(candles[0]?.t).toISOString().slice(0, 10)} → ${new Date(candles.at(-1)?.t).toISOString().slice(0, 10)}`;
+      const dateRange = `${new Date(candles[0]!.t).toISOString().slice(0, 10)} → ${new Date(candles.at(-1)!.t).toISOString().slice(0, 10)}`;
       log.info(
         "hl-backtest",
         `[${done}/${total}] ${coin} ${tf}: ${candles.length} candles (${dateRange})`,

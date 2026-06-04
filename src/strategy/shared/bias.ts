@@ -112,7 +112,7 @@ export function determineBias(
     if (
       springLow !== null &&
       !Number.isNaN(atrVal) &&
-      candles[idx]?.c < springLow - atrVal * 1.5
+      candles[idx]!.c < springLow - atrVal * 1.5 // non-null: idx valid in caller
     ) {
       bias = "short";
       confidence = 0.6;

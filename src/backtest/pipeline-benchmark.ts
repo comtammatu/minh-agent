@@ -274,7 +274,7 @@ function parseStringArg(argv: readonly string[], flag: string): string | null {
   const idx = argv.indexOf(flag);
   if (idx === -1 || idx + 1 >= argv.length) return null;
 
-  const raw = argv[idx + 1]?.trim();
+  const raw = argv[idx + 1]?.trim() ?? "";
   return raw.length > 0 ? raw : null;
 }
 

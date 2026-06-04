@@ -213,7 +213,7 @@ function refreshStatusSnapshot(
   htfCandles: Candle[],
 ): void {
   const sk = statusKey(coin, interval);
-  const barClock = barClockFor(candles[idx]?.t, interval);
+  const barClock = barClockFor(candles[idx]!.t, interval); // non-null: caller provides valid idx
   if (!shouldRefreshStatus(sk, interval, barClock)) return;
 
   // Status/watchlist path: compute at a separate cadence from setup detection.

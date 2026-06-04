@@ -86,7 +86,7 @@ export function appendCandle(
       onPersist?.(coin, interval, candle);
       return;
     }
-    if (arr[mid]?.t < candle.t) lo = mid + 1;
+    if ((arr[mid]?.t ?? -Infinity) < candle.t) lo = mid + 1;
     else hi = mid - 1;
   }
   // Insert at position `lo` to maintain sort
@@ -161,7 +161,7 @@ export function dayChangePctFromUtcDayOpen(
 ): number | null {
   const candles = getCandles(coin, "1d", 1, exchange);
   if (candles.length === 0) return null;
-  const dayOpen = candles[candles.length - 1]?.o;
+  const dayOpen = candles[candles.length - 1]!.o; // non-null: length > 0 guard
   if (dayOpen <= 0 || !Number.isFinite(dayOpen) || !Number.isFinite(markPrice))
     return null;
   return ((markPrice - dayOpen) / dayOpen) * 100;

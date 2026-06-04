@@ -45,7 +45,7 @@ async function main() {
       }
       candleMap.set(`${coin}|${tf}`, candles);
       console.log(
-        `OK (${candles.length} candles, ${new Date(candles[0]?.t).toISOString().slice(0, 10)} → ${new Date(candles.at(-1)?.t).toISOString().slice(0, 10)})`,
+        `OK (${candles.length} candles, ${new Date(candles[0]!.t).toISOString().slice(0, 10)} → ${new Date(candles.at(-1)!.t).toISOString().slice(0, 10)})`,
       );
     }
   }

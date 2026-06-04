@@ -61,10 +61,11 @@ const isLive = args.includes("--live");
 function parseListArg(flag: string): string[] | null {
   const idx = args.indexOf(flag);
   if (idx === -1 || idx + 1 >= args.length) return null;
-  return args[idx + 1]
+  const v = args[idx + 1]
     ?.split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+  return v ?? null;
 }
 
 const coins = parseListArg("--coins") ?? COMMON_COINS;
@@ -543,8 +544,8 @@ function printSignalReport(matches: SignalMatch[]): void {
     console.log(`  ${"─".repeat(84)}`);
 
     for (const m of bothExchanges) {
-      const hl = m.hlSignal?.signal;
-      const bb = m.bbSignal?.signal;
+      const hl = m.hlSignal?.signal!;
+      const bb = m.bbSignal?.signal!;
       console.log(
         `  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${"smc-sd".padEnd(8)} ${hl.side.padEnd(6)} ` +
           `${(`$${fmt(hl.entryPrice)}`).padStart(12)} ${(`$${fmt(bb.entryPrice)}`).padStart(12)} ` +
@@ -560,7 +561,7 @@ function printSignalReport(matches: SignalMatch[]): void {
   if (hlOnly.length > 0) {
     console.log(`\n  🔵 HL-ONLY: ${hlOnly.length}`);
     for (const m of hlOnly) {
-      const s = m.hlSignal?.signal;
+      const s = m.hlSignal?.signal!;
       console.log(
         `  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${"smc-sd".padEnd(8)} ${s.side.padEnd(6)} entry=$${fmt(s.entryPrice)} conf=${fmt(s.confidence)}`,
       );
@@ -571,7 +572,7 @@ function printSignalReport(matches: SignalMatch[]): void {
   if (bbOnly.length > 0) {
     console.log(`\n  🟡 BB-ONLY: ${bbOnly.length}`);
     for (const m of bbOnly) {
-      const s = m.bbSignal?.signal;
+      const s = m.bbSignal?.signal!;
       console.log(
         `  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${"smc-sd".padEnd(8)} ${s.side.padEnd(6)} entry=$${fmt(s.entryPrice)} conf=${fmt(s.confidence)}`,
       );
