@@ -66,6 +66,15 @@ Current implementation source of truth:
 - `docs/strategy-engine.md`
 - `docs/agent-and-execution.md`
 
+### [DONE 2026-06-04] Arch + AI Agents Refactor (cursor/refactor-arch-ai-agents-f5ce)
+- Doc reality sync (Elysia/SSE/memory lies removed from active; DESIGN tagged current vs target).
+- May cleanup S2-S5 complete (script move, biome+knip + baseline/triage, telegram split to <600 files).
+- Memory tests (S6c) + test/memory/ added.
+- AI Agent System Structure rebuilt: .claude/ now has environment/cursor-cloud.md (exact match to Cloud tools/git/PR/MCP/Task), agents/ as playbooks, .cursor/ optional, protocol/gates/CLAUDE aligned, no fiction.
+- Advisor skeleton + minimal journal wire (optional, deferred full).
+- All 10 plan todos complete; PR #10; all gates noted (pre-existing type issues + env for PG in tests); reviewer checklist on diff.
+- See docs/plan/task-contract-arch-ai-agents-refactor-2026-06-04.md and .claude/README.md .
+
 Planning note:
 
 - `docs/archive/plan/` contains historical sprint plans and roadmap drafts.
