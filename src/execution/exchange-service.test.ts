@@ -226,6 +226,13 @@ describe("ExchangeService", () => {
       expect(svc.getWalletAddress()).toContain("0x");
     });
 
+    it("execution boundary contract: wallet address is stable after init", async () => {
+      const first = svc.getWalletAddress();
+      await svc.init();
+      expect(svc.getWalletAddress()).toBe(first);
+      expect(first).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    });
+
     it("should throw without PRIVATE_KEY", async () => {
       delete process.env.PRIVATE_KEY;
       const svc2 = new ExchangeService();
@@ -309,6 +316,24 @@ describe("ExchangeService", () => {
       expect(call.orders[0]?.r).toBe(false); // not reduce-only
       expect(call.orders[0]?.t).toEqual({ limit: { tif: "Ioc" } }); // market (IoC) order
       expect(call.grouping).toBe("na");
+    });
+
+    it("execution boundary contract: forwards cloid to HL SDK order payload", async () => {
+      const cloid = "0x1234567890abcdef1234567890abcdef";
+      await svc.placeOrder({
+        coin: "BTC",
+        side: "long",
+        type: "limit",
+        price: 50000,
+        size: 0.1,
+        reduceOnly: false,
+        cloid,
+      });
+
+      const call = lastOrderCall as {
+        orders: { c?: string }[];
+      };
+      expect(call.orders[0]?.c).toBe(cloid);
     });
 
     it("should use Gtc for limit orders", async () => {
@@ -629,6 +654,14 @@ describe("ExchangeService", () => {
       expect(state.withdrawable).toBe(15000.5);
       expect(state.spotUsdcBalance).toBe(300);
       expect(state.effectiveBalance).toBe(25300.5); // perp 25000.50 + spot 300
+    });
+
+    it("execution boundary contract: effectiveBalance equals perp accountValue plus spot USDC", async () => {
+      const state = await svc.getAccountState();
+      expect(state.effectiveBalance).toBe(
+        state.accountValue + state.spotUsdcBalance,
+      );
+      expect(svc.getCachedAccountValue()).toBe(state.effectiveBalance);
     });
 
     it("should cache effectiveBalance (perp + spot)", async () => {

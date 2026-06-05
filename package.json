@@ -8,6 +8,7 @@
     "start": "bun run src/index.ts",
     "test": "bun test",
     "test:run": "bun test --run && bun run dashboard:test",
+    "test:execution-contract": "bun test --run test/execution",
     "typecheck": "bunx tsc --noEmit -p tsconfig.typecheck.json",
     "lint": "biome check . || echo 'LINT-BASELINE-NONZERO (S3/S4 recorded; justified in research/backtest + recovery paths; see task-contract + PR)'",
     "lint:fix": "biome check . --write || true",

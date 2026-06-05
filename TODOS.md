@@ -37,12 +37,11 @@ See [docs/plan/stack-decision-draft.md](docs/plan/stack-decision-draft.md) for f
 - Wired into PositionMonitor sync (~10s tick, throttled to `ORDER_RECONCILE_INTERVAL_MS` 30s)
 - Retries stale active DB orders, cancels exchange ghosts when DB already cancelled, alerts orphan/drift via log + journal
 
-### [P1] Execution boundary contract test suite
-**What:** Comprehensive tests covering HL signing, cloid round-trip, balance reconciliation (perp+spot), SL/TP placement after fill, modify-trigger race.
-
-**Why:** /autoplan 2026-05-19 Eng review flagged execution code as "too sensitive for rebuild churn" — needs contract tests before any DB/UI/strategy work that could regress.
-
-**Effort:** L (1-2 weeks)
+### [DONE 2026-06-05] Execution boundary contract test suite (P1 baseline)
+- `test/execution/execution-boundary.contract.test.ts` — cloid format, cancelOnExchange routing, cancel-failure ghost prevention, SL/TP after fill, modify-trigger cancel+replace race
+- HL contracts in `src/execution/exchange-service.test.ts` — cloid SDK forward, perp+spot effectiveBalance, wallet init stability
+- BB contracts in `src/execution/bybit-exchange-service.test.ts` — orderLinkId round-trip, effectiveBalance cache
+- Run gate: `bun run test:execution-contract` (also included in `bun run test:run`)
 
 ### [DONE 2026-06-05] Operator-control surface contract (`src/server/`)
 - `POST /api/operator/flatten` (confirm required) + `POST /api/operator/pause` + `POST /api/operator/resume`
@@ -50,9 +49,7 @@ See [docs/plan/stack-decision-draft.md](docs/plan/stack-decision-draft.md) for f
 - Dashboard hold-to-confirm controls wired in `dashboard/src/components/operator-controls.tsx`
 - JWT/auth deferred per DESIGN target; localhost-only for now
 
-### [P1] Execution boundary contract test suite
-
-- `README.md`
+Current implementation source of truth:
 - `SETUP.md`
 - `docs/CODEBASE_MAP.md`
 - `docs/runtime-and-feed.md`

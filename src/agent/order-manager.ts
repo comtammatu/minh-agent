@@ -200,11 +200,10 @@ export async function cancelOnExchange(
 ): Promise<ExchangeOrderResult> {
   try {
     const exchange = svc ?? getExchangeService();
-    const oid = parseInt(exchangeOrderId, 10);
 
-    // If we have a valid oid and coin, cancel by oid (preferred)
-    if (!Number.isNaN(oid) && coin) {
-      const result = await exchange.cancelByOid(coin, oid);
+    // Cloid path first — parseInt("0x…", 10) === 0 would mis-route HL cloids to oid 0.
+    if (exchangeOrderId.startsWith("0x") && coin) {
+      const result = await exchange.cancelByCloid(coin, exchangeOrderId);
       return {
         success: result.success,
         exchangeOrderId: null,
@@ -212,9 +211,11 @@ export async function cancelOnExchange(
       };
     }
 
-    // Fallback: if exchangeOrderId looks like a cloid (0x...) and coin is available
-    if (exchangeOrderId.startsWith("0x") && coin) {
-      const result = await exchange.cancelByCloid(coin, exchangeOrderId);
+    const oid = parseInt(exchangeOrderId, 10);
+
+    // If we have a valid oid and coin, cancel by oid (preferred)
+    if (!Number.isNaN(oid) && coin) {
+      const result = await exchange.cancelByOid(coin, oid);
       return {
         success: result.success,
         exchangeOrderId: null,

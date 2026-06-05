@@ -352,6 +352,30 @@ describe("BybitExchangeService", () => {
       expect(result.error).toBeNull();
     });
 
+    it("execution boundary contract: forwards cloid as orderLinkId on submit", async () => {
+      const { BybitExchangeService } = await import(
+        "./bybit-exchange-service.js"
+      );
+      const svc = new BybitExchangeService();
+      await svc.init();
+
+      await svc.placeOrder({
+        coin: "BTC",
+        side: "long",
+        type: "limit",
+        price: 50000,
+        size: 0.1,
+        reduceOnly: false,
+        cloid: "bb-link-contract-1",
+      });
+
+      expect(mockSubmitOrder).toHaveBeenCalled();
+      const call = mockSubmitOrder.mock.calls[0]?.[0] as {
+        orderLinkId?: string;
+      };
+      expect(call.orderLinkId).toBe("bb-link-contract-1");
+    });
+
     it("returns error when Bybit API returns non-zero retCode", async () => {
       mockSubmitOrder = mock(() =>
         Promise.resolve({
@@ -588,6 +612,18 @@ describe("BybitExchangeService", () => {
       expect(state.withdrawable).toBe(8000);
       expect(state.spotUsdcBalance).toBe(300);
       expect(state.effectiveBalance).toBe(10000);
+    });
+
+    it("execution boundary contract: caches effectiveBalance from totalEquity", async () => {
+      const { BybitExchangeService } = await import(
+        "./bybit-exchange-service.js"
+      );
+      const svc = new BybitExchangeService();
+      await svc.init();
+
+      const state = await svc.getAccountState();
+      expect(svc.getCachedAccountValue()).toBe(state.effectiveBalance);
+      expect(state.effectiveBalance).toBe(state.accountValue);
     });
 
     it("updates cachedAccountValue", async () => {
