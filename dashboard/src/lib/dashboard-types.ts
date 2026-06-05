@@ -21,6 +21,10 @@ export interface DashboardSnapshotResponse {
     exchange: "HL" | "BB";
     paperTrade: boolean;
   };
+  operator: {
+    globalPaused: boolean;
+    pauseReason: string | null;
+  };
   health: {
     overall: string;
     uptime: number;

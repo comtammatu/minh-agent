@@ -13,13 +13,14 @@ As of `2026-06-04`, this branch implements:
 - Trading agent, order manager, position monitor, circuit breakers, and thesis monitoring
 - Full-screen Ink TUI and Telegram operator commands
 - Backtest, optimization, walk-forward, and pipeline benchmark tooling
-- `dashboard/` browser dashboard (Vite + React + shadcn/ui) on `localhost:3030` with TradingView chart, Overview/Market/Journal pages (HTTP polling, no SSE)
+- `dashboard/` Algo Trading Terminal (Vite + React + shadcn/ui) on `localhost:3030` with TradingView chart, vital strip, Overview/Market/Journal pages (HTTP polling, no SSE)
+- `src/advisor/` optional LLM advisor stub (not wired to live runtime — see `src/advisor/index.ts`)
 - `src/memory/` trade memory foundation (structured PG + FTS + scoring; not yet wired to live runtime — see CLAUDE.md)
 - Dead-man's switch (HL native + BB watchdog), DMS policy tests
 
 This branch does **not** contain:
 
-- `src/advisor/` LLM advisor (historical plans in `docs/archive/plan/sprint-5.md` etc.; see open scope in task contract)
+- A fully wired LLM advisor (only the optional `src/advisor/` stub; historical plans in `docs/archive/plan/sprint-5.md` etc.)
 
 Several sprint docs in `docs/archive/` still describe planned or superseded systems (e.g. full embeddings/RAG, ict-smc rename) for roadmap or historical context. Treat active root docs (`README.md`, `TODOS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `docs/DESIGN.md`, `docs/CODEBASE_MAP.md`) + `.claude/rules/` as the source of truth. `src/memory/` is foundation-only (unwired).
 
@@ -49,7 +50,7 @@ Exchange REST/WS
   -> TUI + Telegram
 
 Historical replay tools reuse the same strategy path through backtest/optimize flows.
-Browser dashboard (localhost:3030) serves live candle, position, and journal views via Bun.serve HTTP polling (1s snapshot / 5s journal). Primary real-time operator surface remains the Ink TUI; Telegram provides remote commands. `src/server/` uses native `Bun.serve` (no Elysia).
+Browser dashboard (localhost:3030) is the **Minh Algo Trading Terminal** — live snapshot via Bun.serve HTTP polling (1s snapshot / 5s journal), vital strip, and status bar. Primary real-time operator surface remains the Ink TUI; Telegram provides remote commands. `src/server/` uses native `Bun.serve` (no Elysia).
 ```
 
 ## Where To Read Next

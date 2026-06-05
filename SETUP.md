@@ -146,7 +146,7 @@ The current branch starts both an Ink terminal dashboard AND a browser dashboard
 - account, scanner, system, positions, and watchlist panels after warmup
 - positions and setup state refreshing roughly once per second
 
-The browser dashboard provides a richer read-only view (TradingView chart, Overview / Market / Journal pages) with live SSE updates.
+The browser dashboard provides a richer read-only view (TradingView chart, Overview / Market / Journal pages) with HTTP polling updates (1s snapshot / 5s journal).
 
 ### Logs
 

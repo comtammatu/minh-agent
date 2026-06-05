@@ -46,12 +46,15 @@ Walk-forward validation reports remain pure formatters with overfit detection an
 
 ## Operator surfaces
 
-Current operator surfaces tied to this data path:
-- Ink TUI
-- Telegram alerts/commands
-- Structured logs
+Three operator surfaces run alongside the trading loop:
 
-There is no browser dashboard or SSE pipeline in the active runtime path. Operational debugging assumes terminal + logs + Telegram.
+| Surface | Where | Purpose |
+|---|---|---|
+| Ink TUI | terminal (stdout) | Primary real-time view: candles, positions, agent state, health |
+| Browser dashboard | `localhost:3030` | Algo Trading Terminal — TradingView chart, vital strip, Overview / Market / Journal pages (HTTP polling) |
+| Telegram bot | remote | Remote operator commands: `/status`, `/pnl`, `/pause`, `/resume`, `/closeall`, `/mode` |
+
+Operational debugging uses terminal + browser dashboard + logs + Telegram. Real-time browser updates use HTTP polling today; SSE/WS is a documented target in `docs/DESIGN.md`.
 
 ## Failure modes and recovery
 

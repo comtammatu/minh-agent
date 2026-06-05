@@ -17,7 +17,8 @@ vi.mock("@/components/tradingview-chart", () => ({
 
 const SNAPSHOT_PAYLOAD = {
   bootstrap: { phase: "ready", trackedCoins: ["BTC", "ETH"] },
-  mode: { exchange: "HL", paperTrade: false },
+  mode: { exchange: "HL", paperTrade: true },
+  operator: { globalPaused: false, pauseReason: null },
   health: {
     overall: "ok",
     uptime: 120,
@@ -122,8 +123,11 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("Read-only ops console")).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Minh Algo Trading Terminal").length,
+      ).toBeGreaterThan(0);
       expect(screen.getByText("Live exposure")).toBeInTheDocument();
+      expect(screen.getByText("PAPER")).toBeInTheDocument();
     });
   });
 

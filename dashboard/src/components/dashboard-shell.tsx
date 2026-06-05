@@ -21,6 +21,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { StatusBar } from "@/components/status-bar";
+import { VitalStrip } from "@/components/vital-strip";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -28,6 +30,8 @@ const NAV_ITEMS = [
   { to: "/market", label: "Market", icon: CandlestickChart },
   { to: "/journal", label: "Journal", icon: ScrollText },
 ] as const;
+
+const TERMINAL_TITLE = "Minh Algo Trading Terminal";
 
 function NavRail({ mobile = false }: { mobile?: boolean }) {
   return (
@@ -55,6 +59,23 @@ function NavRail({ mobile = false }: { mobile?: boolean }) {
   );
 }
 
+function RuntimeBadge({
+  paperTrade,
+  exchange,
+}: {
+  paperTrade: boolean;
+  exchange: string;
+}) {
+  return (
+    <>
+      <Badge variant={paperTrade ? "secondary" : "destructive"}>
+        {paperTrade ? "paper" : "live"}
+      </Badge>
+      <Badge variant="outline">{exchange}</Badge>
+    </>
+  );
+}
+
 export function DashboardShell() {
   const snapshot = useDashboardData();
   const data = snapshot.data;
@@ -72,10 +93,10 @@ export function DashboardShell() {
         <aside className="hidden border-r border-white/5 bg-card/60 lg:flex lg:flex-col lg:backdrop-blur">
           <div className="flex h-full flex-col p-6">
             <div className="space-y-1">
-              <h1 className="text-lg font-semibold">Minh Dashboard</h1>
+              <h1 className="text-lg font-semibold">{TERMINAL_TITLE}</h1>
               <p className="text-sm text-muted-foreground">
-                Read-only runtime view for operations, market context, and
-                journal review.
+                Bloomberg-density operator console for runtime inspection,
+                market context, and journal review.
               </p>
             </div>
             <Separator className="my-6" />
@@ -84,15 +105,19 @@ export function DashboardShell() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Runtime state</CardTitle>
                 <CardDescription>
-                  Current bootstrap phase and execution mode.
+                  Bootstrap phase, exchange, and execution mode.
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2">
                 <Badge variant={isReady ? "default" : "secondary"}>
                   {data?.bootstrap.phase ?? "warming_up"}
                 </Badge>
-                <Badge variant="outline">{data?.mode.exchange ?? "—"}</Badge>
-                <Badge variant="destructive">live</Badge>
+                {data ? (
+                  <RuntimeBadge
+                    paperTrade={data.mode.paperTrade}
+                    exchange={data.mode.exchange}
+                  />
+                ) : null}
               </CardContent>
             </Card>
           </div>
@@ -100,7 +125,7 @@ export function DashboardShell() {
 
         <div className="flex min-h-screen flex-col">
           <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur">
-            <div className="flex items-center justify-between gap-4 px-4 py-4 md:px-6">
+            <div className="flex items-center justify-between gap-4 px-4 py-3 md:px-6">
               <div className="flex items-start gap-3">
                 <Sheet>
                   <SheetTrigger asChild>
@@ -115,7 +140,7 @@ export function DashboardShell() {
                   </SheetTrigger>
                   <SheetContent side="left">
                     <SheetHeader>
-                      <SheetTitle>Minh Dashboard</SheetTitle>
+                      <SheetTitle>{TERMINAL_TITLE}</SheetTitle>
                       <SheetDescription>
                         Overview, market canvas, and journal pages.
                       </SheetDescription>
@@ -124,12 +149,10 @@ export function DashboardShell() {
                   </SheetContent>
                 </Sheet>
                 <div className="space-y-1">
-                  <h2 className="text-lg font-semibold">
-                    Read-only ops console
-                  </h2>
+                  <h2 className="text-lg font-semibold">{TERMINAL_TITLE}</h2>
                   <p className="text-sm text-muted-foreground">
-                    Live snapshot of the current runtime with market and journal
-                    drilldown.
+                    Read-only ops console with live polling snapshot, chart
+                    drilldown, and decision trail.
                   </p>
                 </div>
               </div>
@@ -137,10 +160,17 @@ export function DashboardShell() {
                 <Badge variant={isReady ? "default" : "secondary"}>
                   {isReady ? "ready" : "warming up"}
                 </Badge>
-                <Badge variant="outline">{data?.mode.exchange ?? "—"}</Badge>
-                <Badge variant="destructive">live</Badge>
+                {data ? (
+                  <RuntimeBadge
+                    paperTrade={data.mode.paperTrade}
+                    exchange={data.mode.exchange}
+                  />
+                ) : null}
               </div>
             </div>
+            {data ? (
+              <VitalStrip data={data} snapshotError={snapshot.error} />
+            ) : null}
           </header>
 
           <ScrollArea className="flex-1">
@@ -154,6 +184,10 @@ export function DashboardShell() {
               <Outlet />
             </main>
           </ScrollArea>
+
+          {data ? (
+            <StatusBar data={data} snapshotError={snapshot.error} />
+          ) : null}
         </div>
       </div>
     </div>

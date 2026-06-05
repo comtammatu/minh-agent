@@ -85,12 +85,18 @@ export interface DashboardJournalRow {
   exchange: ExchangeId;
 }
 
+export interface DashboardOperatorSummary {
+  globalPaused: boolean;
+  pauseReason: string | null;
+}
+
 export interface DashboardSnapshotResponse {
   bootstrap: {
     phase: DashboardBootstrapPhase;
     trackedCoins: string[];
   };
   mode: DashboardMode;
+  operator: DashboardOperatorSummary;
   health: {
     overall: string;
     uptime: number;

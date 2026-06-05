@@ -83,7 +83,7 @@ Three operator surfaces run alongside the trading loop:
 | Surface | Where | Purpose |
 |---|---|---|
 | Ink TUI | terminal (stdout) | Primary real-time view: candles, positions, agent state, health |
-| Browser dashboard | `localhost:3030` | Richer read-only inspection: TradingView chart (candle history from PG), Overview / Market / Journal pages, HTTP polling updates |
+| Browser dashboard | `localhost:3030` | Algo Trading Terminal — vital strip, TradingView chart, Overview / Market / Journal pages, HTTP polling updates |
 | Telegram bot | remote | Remote operator commands: `/status`, `/pnl`, `/pause`, `/resume`, `/closeall`, `/mode` |
 
 The browser dashboard (`dashboard/`) is a separate Vite + React + shadcn/ui package. Its built output is served by the native `Bun.serve` layer in `src/server/` (no Elysia); no separate Node process is needed. Source: `dashboard/src/`, server handlers in `src/server/`. Real-time uses HTTP polling (see server/handlers.ts); TUI remains primary live view.

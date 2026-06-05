@@ -17,7 +17,7 @@ If a future change conflicts with this reference, **update this reference in the
 | Charts | TradingView Lightweight Charts | Same | 2026-05-19 |
 | State | React Context + polling hooks (no Zustand/TanStack Query yet) | Zustand (UI) + TanStack Query (REST) + native WS hook | 2026-05-19 |
 | Typography | IBM Plex Mono + Plex Sans Condensed (already vendored) | Same (Bloomberg density) | 2026-05-19 |
-| Density | 3-page sidebar (Overview/Market/Journal) + Ink TUI primary | 10-panel Bloomberg grid, drag-resize, cmdk, 28px row, 13px | 2026-05-19 |
+| Density | 3-page sidebar + vital strip/status bar (Overview/Market/Journal) + Ink TUI primary | 10-panel Bloomberg grid, drag-resize, cmdk, 28px row, 13px | 2026-05-19 |
 | Mobile | NO PWA — Telegram bot is the mobile interface | Same | 2026-05-19 |
 | Auth | None (localhost dev only; operator via TUI/Telegram) | JWT signed cookie; owner full / viewer manual token | 2026-05-19 |
 

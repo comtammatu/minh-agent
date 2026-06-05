@@ -183,6 +183,8 @@ describe("createDashboardFetchHandler", () => {
     expect(response.status).toBe(200);
     expect(body.bootstrap.phase).toBe("warming_up");
     expect(body.positions).toHaveLength(1);
+    expect(body.mode.paperTrade).toBe(true);
+    expect(body.operator.globalPaused).toBe(false);
   });
 
   it("filters journal rows by coin and eventType", async () => {

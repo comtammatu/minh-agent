@@ -10,6 +10,7 @@ import type { LiveMetrics } from "../analytics/types.js";
 import {
   DASHBOARD_CHART_HISTORY_BATCH_SIZE,
   HOT_CACHE_CAP_BARS,
+  isPaperMode,
 } from "../config.js";
 import { loadCandlesBefore, loadLatestCandle } from "../db/candle-repo.js";
 import { getCandles } from "../feed/store.js";
@@ -355,6 +356,7 @@ export function createDashboardFetchHandler(
         ]);
 
         const positions = serializePositions(options.state);
+        const agentGlobal = options.state.sources.getAgentSnapshot().global;
         const snapshot: DashboardSnapshotResponse = {
           bootstrap: {
             phase: options.state.getBootstrapPhase(),
@@ -362,7 +364,11 @@ export function createDashboardFetchHandler(
           },
           mode: {
             exchange: options.state.activeExchange,
-            paperTrade: false,
+            paperTrade: isPaperMode(),
+          },
+          operator: {
+            globalPaused: agentGlobal.globalPaused,
+            pauseReason: agentGlobal.globalPauseReason,
           },
           health: options.state.sources.getHealthReport(),
           account: buildAccountSnapshot(
