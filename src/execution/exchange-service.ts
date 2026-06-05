@@ -8,7 +8,10 @@
  * that already point here continue to work during migration.
  */
 
-import type { ExchangePositionSnapshot } from "../agent/types.js";
+import type {
+  ExchangeOpenOrderSnapshot,
+  ExchangePositionSnapshot,
+} from "../agent/types.js";
 import type {
   AccountState,
   OrderResult,
@@ -118,6 +121,12 @@ export interface IExchangeService {
 
   /** Query open positions. */
   getPositions(): Promise<ExchangePositionSnapshot[]>;
+
+  /**
+   * Query open/resting orders on the active account.
+   * Returns null on API/network error — callers must skip reconciliation that cycle.
+   */
+  getOpenOrders(): Promise<ExchangeOpenOrderSnapshot[] | null>;
 
   /** Aggregate fill size + VWAP for an entry order by cloid.
    * `isFilled` is true when the exchange confirms the order is fully filled

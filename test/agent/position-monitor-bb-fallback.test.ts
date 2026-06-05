@@ -52,9 +52,25 @@ mock.module("../../src/execution/hl-exchange-service.js", () => ({
   },
 }));
 
+mock.module("../../src/agent/trading-orchestrator.js", () => ({
+  getAgent: () => ({
+    getSnapshot: () => ({
+      coins: {},
+      global: {
+        dailyPnl: 0,
+        totalConsecutiveLosses: 0,
+        globalPaused: false,
+        globalPauseReason: null,
+        uptime: 0,
+      },
+    }),
+  }),
+}));
+
 mock.module("../../src/agent/order-manager.js", () => ({
   getOrderManager: () => ({
     syncSubmittedEntryFills: async () => {},
+    reconcileWithExchange: async () => {},
   }),
 }));
 

@@ -36,6 +36,7 @@ import {
   isTrailingStopHit,
 } from "./exits.js";
 import { getOrderManager } from "./order-manager.js";
+import { getAgent } from "./trading-orchestrator.js";
 import {
   captureThesis,
   evaluateThesis,
@@ -540,6 +541,13 @@ export class PositionMonitor {
 
       // Detect entry fills that were not inline in placeOrder (e.g. limit) → onOrderFilled → SL/TP (R9)
       await getOrderManager().syncSubmittedEntryFills();
+
+      const agentSnapshot = getAgent().getSnapshot();
+      const pendingByCoin = new Map<string, string | null>();
+      for (const [coin, entry] of Object.entries(agentSnapshot.coins)) {
+        pendingByCoin.set(coin, entry.pendingOrderId);
+      }
+      await getOrderManager().reconcileWithExchange(pendingByCoin);
 
       if (this.positions.size === 0) return [];
 

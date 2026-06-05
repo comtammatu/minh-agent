@@ -281,6 +281,16 @@ export interface ExchangePositionSnapshot {
   tpPrice?: number;
 }
 
+/** Normalized open order row from exchange REST (order reconciliation). */
+export interface ExchangeOpenOrderSnapshot {
+  coin: string;
+  exchangeOrderId: string;
+  cloid: string | null;
+  side: "long" | "short";
+  size: number;
+  price: number;
+}
+
 // ─── Trade Journal (S9) ─────────────────────────────────────────────────────
 
 export type JournalEventType =

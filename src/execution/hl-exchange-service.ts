@@ -45,14 +45,17 @@ import {
 } from "@nktkas/hyperliquid/utils";
 import { privateKeyToAccount } from "viem/accounts";
 import { getHealthMonitor } from "../agent/self-healing.js";
-import type { ExchangePositionSnapshot } from "../agent/types.js";
+import type {
+  ExchangeOpenOrderSnapshot,
+  ExchangePositionSnapshot,
+} from "../agent/types.js";
 import {
   HL_MIN_ORDER_NOTIONAL_USD,
   MARKET_ORDER_SLIPPAGE_PCT,
   RETRY,
 } from "../config.js";
 import { getLatestBook } from "../feed/orderbook.js";
-import { fetchAllMids } from "../feed/perp-info.js";
+import { fetchAllMids, fetchOpenOrders } from "../feed/perp-info.js";
 import { acquire } from "../feed/rate-limiter.js";
 import { info } from "../feed/rest.js";
 import { log } from "../lib/logger.js";
@@ -1083,6 +1086,57 @@ export class HLExchangeService {
     );
     health.recordError("exchange", msg);
     return [];
+  }
+
+  /**
+   * Query open/resting orders for the active account (HL frontendOpenOrders).
+   * Returns null on API failure so callers skip reconciliation that cycle.
+   */
+  async getOpenOrders(): Promise<ExchangeOpenOrderSnapshot[] | null> {
+    this.ensureInit();
+
+    const health = getHealthMonitor();
+    const retryResult = await withRetry(
+      async () => {
+        const orders = await fetchOpenOrders(this.accountAddress, "");
+        return orders.map((order) => ({
+          coin: order.coin,
+          exchangeOrderId: String(order.oid),
+          cloid: null,
+          side: order.side === "B" ? ("long" as const) : ("short" as const),
+          size: Math.abs(parseFloat(order.sz)),
+          price: parseFloat(order.limitPx),
+        }));
+      },
+      {
+        maxAttempts: RETRY.exchangeMaxAttempts,
+        initialDelayMs: RETRY.initialDelayMs,
+        jitterFraction: RETRY.jitterFraction,
+        shouldRetry: (err) => isRetryableExchangeError(err),
+        onRetry: (err, attempt, delayMs) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          log.warn(
+            "exchange-service",
+            `getOpenOrders retry ${attempt}: ${msg} (backoff ${delayMs}ms)`,
+          );
+        },
+      },
+    );
+
+    if (retryResult.success && retryResult.value) {
+      health.recordSuccess("exchange");
+      return retryResult.value;
+    }
+    const msg =
+      retryResult.lastError instanceof Error
+        ? retryResult.lastError.message
+        : String(retryResult.lastError);
+    log.error(
+      "exchange-service",
+      `getOpenOrders failed after ${retryResult.attempts} attempts: ${msg}`,
+    );
+    health.recordError("exchange", msg);
+    return null;
   }
 
   /**

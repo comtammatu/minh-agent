@@ -23,9 +23,12 @@ import {
   DEFAULT_RISK_PERCENT,
   getActiveExchange,
   HL_MIN_ORDER_NOTIONAL_USD,
+  isPaperMode,
   MARKET_ORDER_SLIPPAGE_PCT,
   MAX_ORDERS_PER_COIN,
   ORDER_FILL_TIMEOUT_MS,
+  ORDER_RECONCILE_ALERT_THRESHOLD,
+  ORDER_RECONCILE_INTERVAL_MS,
   RETRY,
   SIMULATED_ACCOUNT,
   SL_IS_MARKET,
@@ -47,6 +50,11 @@ import { getLatestBook } from "../feed/orderbook.js";
 import { log } from "../lib/logger.js";
 import { isRetryableExchangeError, withRetry } from "../lib/retry.js";
 import type { ActiveSetup, ExchangeId } from "../types.js";
+import { logJournalEntry } from "./journal.js";
+import {
+  planOrderReconciliation,
+  type OrderReconcileAction,
+} from "./order-reconciler.js";
 import {
   computeEntryLeverageForTargetMargin,
   computePositionSize,
@@ -399,6 +407,14 @@ export class OrderManager {
     new Map();
   /** Shared exchange routing pool for the active runtime. */
   private exchangePool: ExchangePool | null = null;
+  /** Guard concurrent reconciliation sweeps. */
+  private reconcileInProgress = false;
+  /** Last successful reconciliation timestamp (ms). */
+  private lastReconcileAt = 0;
+  /** Consecutive failed cancel retries keyed by order id. */
+  private reconcileDriftCounts = new Map<string, number>();
+  /** Orphan exchange alerts already emitted this session (dedupe). */
+  private orphanAlertsSeen = new Set<string>();
 
   /** Set the callback for dispatching events to the agent state machine. */
   setAgentDispatch(fn: (coin: string, event: AgentEvent) => void): void {
@@ -1144,6 +1160,178 @@ export class OrderManager {
         });
       }
     }
+  }
+
+  // ── Order Reconciliation (P0 ghost-order loop) ─────────────────────────
+
+  /** Load DB orders relevant for exchange reconciliation (active + recent cancelled). */
+  private async fetchOrdersForReconciliation(): Promise<Order[]> {
+    const exchange = getActiveExchange();
+    const rows = await sql`
+      SELECT * FROM orders
+      WHERE exchange = ${exchange}
+        AND (
+          status IN ('pending', 'submitted', 'partial')
+          OR (
+            status = 'cancelled'
+            AND exchange_order_id IS NOT NULL
+            AND updated_at > NOW() - INTERVAL '24 hours'
+          )
+        )
+    `;
+    return rows.map((row) => rowToOrder(row as Record<string, unknown>));
+  }
+
+  /**
+   * Periodic reconciliation: diff exchange open orders vs DB, retry failed cancels,
+   * cancel exchange ghosts, alert on persistent drift / orphan orders.
+   */
+  async reconcileWithExchange(
+    pendingByCoin: Map<string, string | null>,
+  ): Promise<void> {
+    if (this.reconcileInProgress) return;
+    if (isPaperMode()) return;
+
+    const now = Date.now();
+    if (now - this.lastReconcileAt < ORDER_RECONCILE_INTERVAL_MS) return;
+
+    this.reconcileInProgress = true;
+    try {
+      const svc = this.getExchange();
+      const exchangeOrders = await svc.getOpenOrders();
+      if (exchangeOrders === null) {
+        log.warn(
+          "order-manager",
+          "getOpenOrders failed — skipping order reconciliation this cycle",
+        );
+        return;
+      }
+
+      const dbOrders = await this.fetchOrdersForReconciliation();
+      const plan = planOrderReconciliation({
+        dbOrders,
+        exchangeOrders,
+        pendingByCoin,
+      });
+
+      if (plan.length === 0) {
+        this.lastReconcileAt = now;
+        return;
+      }
+
+      log.info(
+        "order-manager",
+        `Order reconciliation plan: ${plan.length} action(s) (${exchangeOrders.length} exchange open, ${dbOrders.length} db rows)`,
+      );
+
+      for (const action of plan) {
+        await this.executeReconcileAction(action);
+      }
+
+      this.lastReconcileAt = now;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error("order-manager", `Order reconciliation failed: ${msg}`);
+    } finally {
+      this.reconcileInProgress = false;
+    }
+  }
+
+  private async executeReconcileAction(
+    action: OrderReconcileAction,
+  ): Promise<void> {
+    if (action.type === "retry_cancel") {
+      const before = this.orders.get(action.orderId)?.status;
+      await this.cancelOrder(action.orderId, action.reason);
+      const after = this.orders.get(action.orderId)?.status;
+      const succeeded = after === "cancelled";
+      if (succeeded) {
+        this.reconcileDriftCounts.delete(action.orderId);
+        return;
+      }
+      const attempts = (this.reconcileDriftCounts.get(action.orderId) ?? 0) + 1;
+      this.reconcileDriftCounts.set(action.orderId, attempts);
+      if (attempts >= ORDER_RECONCILE_ALERT_THRESHOLD) {
+        await this.alertOrderDrift({
+          kind: "retry_cancel_failed",
+          orderId: action.orderId,
+          attempts,
+          previousStatus: before ?? "unknown",
+          currentStatus: after ?? "unknown",
+        });
+      }
+      return;
+    }
+
+    if (action.type === "cancel_exchange") {
+      const svc = this.getExchange();
+      let cancelResult = await cancelOnExchange(
+        action.exchangeOrderId,
+        action.coin,
+        svc,
+      );
+      if (!cancelResult.success && action.cloid) {
+        const retry = await svc.cancelByCloid(action.coin, action.cloid);
+        cancelResult = {
+          success: retry.success,
+          exchangeOrderId: null,
+          error: retry.error,
+        };
+      }
+      if (cancelResult.success) {
+        log.warn(
+          "order-manager",
+          `Reconcile cancelled exchange ghost ${action.coin} oid=${action.exchangeOrderId}`,
+        );
+        this.reconcileDriftCounts.delete(
+          `${action.coin}|${action.exchangeOrderId}`,
+        );
+        return;
+      }
+      const driftKey = `${action.coin}|${action.exchangeOrderId}`;
+      const attempts = (this.reconcileDriftCounts.get(driftKey) ?? 0) + 1;
+      this.reconcileDriftCounts.set(driftKey, attempts);
+      if (attempts >= ORDER_RECONCILE_ALERT_THRESHOLD) {
+        await this.alertOrderDrift({
+          kind: "exchange_ghost_cancel_failed",
+          coin: action.coin,
+          exchangeOrderId: action.exchangeOrderId,
+          attempts,
+          error: cancelResult.error,
+        });
+      }
+      return;
+    }
+
+    if (action.type === "alert") {
+      const alertKey = `${action.coin ?? "unknown"}|${action.message}`;
+      if (this.orphanAlertsSeen.has(alertKey)) return;
+      this.orphanAlertsSeen.add(alertKey);
+      log.warn("order-manager", `ORDER RECONCILE ALERT: ${action.message}`);
+      await logJournalEntry("error", action.coin ?? null, {
+        kind: "order_reconcile_orphan",
+        message: action.message,
+      });
+    }
+  }
+
+  private async alertOrderDrift(details: Record<string, unknown>): Promise<void> {
+    const orderId =
+      typeof details.orderId === "string" ? details.orderId : undefined;
+    const coin = typeof details.coin === "string" ? details.coin : null;
+    const driftKey =
+      orderId ?? `${String(details.coin)}|${String(details.exchangeOrderId)}`;
+    if (this.orphanAlertsSeen.has(`drift|${driftKey}`)) return;
+    this.orphanAlertsSeen.add(`drift|${driftKey}`);
+
+    log.error(
+      "order-manager",
+      `ORDER RECONCILE DRIFT: ${JSON.stringify(details)}`,
+    );
+    await logJournalEntry("error", coin, {
+      kind: "order_reconcile_drift",
+      ...details,
+    });
   }
 
   // ── Action Listener (from TradingAgent) ────────────────────────────────

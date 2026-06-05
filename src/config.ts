@@ -1076,6 +1076,12 @@ export const PORTFOLIO_RISK = {
 /** Order fill timeout (ms) — cancel entry if not filled. */
 export const ORDER_FILL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
+/** Interval between order reconciliation sweeps (exchange open orders vs DB). */
+export const ORDER_RECONCILE_INTERVAL_MS = 30_000; // 30 seconds
+
+/** Consecutive failed cancel retries before persistent drift alert. */
+export const ORDER_RECONCILE_ALERT_THRESHOLD = 3;
+
 /** Max open orders per coin (enforces 1-position-per-coin rule). */
 export const MAX_ORDERS_PER_COIN = 1;
 

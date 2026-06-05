@@ -31,15 +31,11 @@ See [docs/plan/stack-decision-draft.md](docs/plan/stack-decision-draft.md) for f
 - Deploy guide (systemd + pm2 + container) and design rationale in [docs/operations/dead-man-switch.md](docs/operations/dead-man-switch.md).
 - Tests: `test/runtime/heartbeat.test.ts` (writer/reader + isPidAlive) and `test/runtime/bb-watchdog.test.ts` (decision matrix + gating + cadence invariants).
 
-### [P0] Reconciliation pass — surface cancel-failed orders + sync exchange state
-**What:** Today the cancel-failure-hidden bug fix prevents corruption but leaves the order ACTIVE on the exchange while marked as something other than `cancelled` in DB. Need a reconciliation loop that: (1) periodically queries exchange for open orders, (2) diffs against DB, (3) re-attempts failed cancels, (4) alerts on persistent drift.
-
-**Why:** Without reconciliation, a single 503 during cancel can leave a ghost order open indefinitely until `checkTimeouts` happens to retry.
-
-**How to start:** Extend `src/agent/position-monitor.ts` or new `src/agent/reconciler.ts`. Compare `getOrders()` (DB) vs `exchange.getOpenOrders()` every N seconds.
-
-**Effort:** M (1-2 sessions)
-**Added by:** /autoplan 2026-05-19 (Eng review medium finding)
+### [DONE 2026-06-05] Reconciliation pass — surface cancel-failed orders + sync exchange state
+- `getOpenOrders()` on HL + BB exchange services (null on API error → skip cycle)
+- Pure planner in `src/agent/order-reconciler.ts`; executor in `OrderManager.reconcileWithExchange()`
+- Wired into PositionMonitor sync (~10s tick, throttled to `ORDER_RECONCILE_INTERVAL_MS` 30s)
+- Retries stale active DB orders, cancels exchange ghosts when DB already cancelled, alerts orphan/drift via log + journal
 
 ### [P1] Execution boundary contract test suite
 **What:** Comprehensive tests covering HL signing, cloid round-trip, balance reconciliation (perp+spot), SL/TP placement after fill, modify-trigger race.

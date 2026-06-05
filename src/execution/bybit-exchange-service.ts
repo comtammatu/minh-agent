@@ -16,7 +16,10 @@
 
 import { RestClientV5 } from "bybit-api";
 import { getHealthMonitor } from "../agent/self-healing.js";
-import type { ExchangePositionSnapshot } from "../agent/types.js";
+import type {
+  ExchangeOpenOrderSnapshot,
+  ExchangePositionSnapshot,
+} from "../agent/types.js";
 import { BYBIT_EXEC_BURST_TOKENS, BYBIT_EXEC_REFILL_MS } from "../config.js";
 import { log } from "../lib/logger.js";
 import type {
@@ -687,6 +690,52 @@ export class BybitExchangeService {
   async getPosition(coin: string): Promise<ExchangePositionSnapshot | null> {
     const positions = await this.getPositions();
     return positions.find((p) => p.coin === coin) ?? null;
+  }
+
+  /**
+   * Query unfilled/partially filled linear orders (Bybit getActiveOrders).
+   * Returns null on API failure so callers skip reconciliation that cycle.
+   */
+  async getOpenOrders(): Promise<ExchangeOpenOrderSnapshot[] | null> {
+    this.ensureInit();
+
+    try {
+      await acquireExec();
+      const resp = await this.client?.getActiveOrders({
+        category: "linear",
+        settleCoin: "USDT",
+      });
+
+      if (resp.retCode !== 0) {
+        const errMsg =
+          resp.retMsg ?? `Bybit getActiveOrders error code ${resp.retCode}`;
+        log.error("bybit-exec", `getOpenOrders failed: ${errMsg}`);
+        getHealthMonitor().recordError("exchange", errMsg);
+        return null;
+      }
+
+      const snaps: ExchangeOpenOrderSnapshot[] = [];
+      for (const row of resp.result?.list ?? []) {
+        const coin = row.symbol.endsWith("USDT")
+          ? row.symbol.slice(0, -4)
+          : row.symbol;
+        snaps.push({
+          coin,
+          exchangeOrderId: row.orderId,
+          cloid: row.orderLinkId?.trim() ? row.orderLinkId : null,
+          side: row.side === "Buy" ? "long" : "short",
+          size: Math.abs(parseFloat(row.qty)),
+          price: parseFloat(row.price),
+        });
+      }
+      getHealthMonitor().recordSuccess("exchange");
+      return snaps;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error("bybit-exec", `getOpenOrders exception: ${msg}`);
+      getHealthMonitor().recordError("exchange", msg);
+      return null;
+    }
   }
 
   // ── Account State ──────────────────────────────────────────────────────────
