@@ -38,10 +38,10 @@ See [docs/plan/stack-decision-draft.md](docs/plan/stack-decision-draft.md) for f
 - Retries stale active DB orders, cancels exchange ghosts when DB already cancelled, alerts orphan/drift via log + journal
 
 ### [DONE 2026-06-05] Execution boundary contract test suite (P1 baseline)
-- `test/execution/execution-boundary.contract.test.ts` — cloid format, cancelOnExchange routing, cancel-failure ghost prevention, SL/TP after fill, modify-trigger cancel+replace race
-- HL contracts in `src/execution/exchange-service.test.ts` — cloid SDK forward, perp+spot effectiveBalance, wallet init stability
+- `test/execution/execution-boundary.contract.test.ts` — cloid format, cancelOnExchange routing (incl. 0x parseInt regression), cancel-failure ghost prevention, HL SL/TP after fill, BB inline SL/TP skip, modify-trigger cancel+replace race, reconcileWithExchange (ghost cancel, stale retry, paper skip, API null)
+- HL contracts in `src/execution/exchange-service.test.ts` — cloid SDK forward, perp+spot effectiveBalance, wallet init stability, scheduleCancel DMS
 - BB contracts in `src/execution/bybit-exchange-service.test.ts` — orderLinkId round-trip, effectiveBalance cache
-- Run gate: `bun run test:execution-contract` (also included in `bun run test:run`)
+- Run gate: `bun run test:execution-contract` (14 tests; also included in `bun run test:run`)
 
 ### [DONE 2026-06-05] Operator-control surface contract (`src/server/`)
 - `POST /api/operator/flatten` (confirm required) + `POST /api/operator/pause` + `POST /api/operator/resume`
