@@ -22,6 +22,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { StatusBar } from "@/components/status-bar";
+import { OperatorControls } from "@/components/operator-controls";
 import { VitalStrip } from "@/components/vital-strip";
 import { cn } from "@/lib/utils";
 
@@ -151,19 +152,27 @@ export function DashboardShell() {
                 <div className="space-y-1">
                   <h2 className="text-lg font-semibold">{TERMINAL_TITLE}</h2>
                   <p className="text-sm text-muted-foreground">
-                    Read-only ops console with live polling snapshot, chart
-                    drilldown, and decision trail.
+                    Operator console with hold-to-confirm controls, live polling
+                    snapshot, chart drilldown, and decision trail.
                   </p>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <Badge variant={isReady ? "default" : "secondary"}>
-                  {isReady ? "ready" : "warming up"}
-                </Badge>
+              <div className="flex flex-col items-end gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Badge variant={isReady ? "default" : "secondary"}>
+                    {isReady ? "ready" : "warming up"}
+                  </Badge>
+                  {data ? (
+                    <RuntimeBadge
+                      paperTrade={data.mode.paperTrade}
+                      exchange={data.mode.exchange}
+                    />
+                  ) : null}
+                </div>
                 {data ? (
-                  <RuntimeBadge
-                    paperTrade={data.mode.paperTrade}
-                    exchange={data.mode.exchange}
+                  <OperatorControls
+                    globalPaused={data.operator.globalPaused}
+                    disabled={!isReady}
                   />
                 ) : null}
               </div>

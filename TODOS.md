@@ -48,16 +48,13 @@ See [docs/plan/stack-decision-draft.md](docs/plan/stack-decision-draft.md) for f
 
 **Effort:** L (1-2 weeks)
 
-### [P1] Operator-control surface contract (`src/server/`)
-**What:** `POST /api/operator/flatten` with hold-to-confirm + `POST /api/operator/pause`. Audit log of operator actions. Distinct from `circuit-breakers.ts` which only pauses new entries.
+### [DONE 2026-06-05] Operator-control surface contract (`src/server/`)
+- `POST /api/operator/flatten` (confirm required) + `POST /api/operator/pause` + `POST /api/operator/resume`
+- Audit log via `logOperatorAuditEntry` with `operatorSource: dashboard`
+- Dashboard hold-to-confirm controls wired in `dashboard/src/components/operator-controls.tsx`
+- JWT/auth deferred per DESIGN target; localhost-only for now
 
-**Why:** /autoplan 2026-05-19 Design review DIM 3 (2/10) — kill-switch journey unspecified. `dashboard-shell.tsx:99` is labelled "Read-only ops console"; emergency path only exists in Telegram.
-
-**Effort:** M (1 session for contract + 1 for dashboard wire-up)
-
----
-
-Current implementation source of truth:
+### [P1] Execution boundary contract test suite
 
 - `README.md`
 - `SETUP.md`

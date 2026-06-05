@@ -34,6 +34,14 @@ import type {
   DashboardSnapshotResponse,
   DashboardWatchlistRow,
 } from "./contracts.js";
+import {
+  createOperatorActionDeps,
+  handleOperatorFlatten,
+  handleOperatorPause,
+  handleOperatorResume,
+  readJsonBody,
+  type OperatorActionDeps,
+} from "./operator-actions.js";
 
 const DASHBOARD_DIST_DIR = path.resolve(
   import.meta.dir,
@@ -70,6 +78,7 @@ export interface DashboardFetchHandlerOptions {
   readCandlesBefore?: typeof loadCandlesBefore;
   readLatestCandle?: typeof loadLatestCandle;
   distDir?: string;
+  operatorActions?: OperatorActionDeps;
 }
 
 function json(data: unknown, status = 200): Response {
@@ -334,6 +343,8 @@ export function createDashboardFetchHandler(
   const readCandlesBefore = options.readCandlesBefore ?? loadCandlesBefore;
   const readLatest = options.readLatestCandle ?? loadLatestCandle;
   const distDir = options.distDir ?? DASHBOARD_DIST_DIR;
+  const operatorActions =
+    options.operatorActions ?? createOperatorActionDeps();
 
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
@@ -403,6 +414,48 @@ export function createDashboardFetchHandler(
         };
         const rows = await readJournal(filter);
         return json({ rows: serializeJournal(rows) });
+      }
+
+      if (pathname === "/api/operator/flatten") {
+        if (request.method !== "POST") {
+          return json({ error: "POST required", code: "method_not_allowed" }, 405);
+        }
+        const body = await readJsonBody(request);
+        const result = await handleOperatorFlatten(body, operatorActions);
+        if ("code" in result) {
+          const status =
+            result.code === "missing_confirm"
+              ? 400
+              : result.code === "action_failed"
+                ? 500
+                : 400;
+          return json(result, status);
+        }
+        return json(result);
+      }
+
+      if (pathname === "/api/operator/pause") {
+        if (request.method !== "POST") {
+          return json({ error: "POST required", code: "method_not_allowed" }, 405);
+        }
+        const body = await readJsonBody(request);
+        const result = await handleOperatorPause(body, operatorActions);
+        if ("code" in result) {
+          const status = result.code === "missing_confirm" ? 400 : 500;
+          return json(result, status);
+        }
+        return json(result);
+      }
+
+      if (pathname === "/api/operator/resume") {
+        if (request.method !== "POST") {
+          return json({ error: "POST required", code: "method_not_allowed" }, 405);
+        }
+        const result = await handleOperatorResume(operatorActions);
+        if ("code" in result) {
+          return json(result, 500);
+        }
+        return json(result);
       }
 
       if (pathname === "/api/chart/symbols") {

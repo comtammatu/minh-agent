@@ -199,6 +199,85 @@ describe("createDashboardFetchHandler", () => {
     expect(body.rows[0].coin).toBe("BTC");
   });
 
+  it("POST /api/operator/flatten requires confirm", async () => {
+    const response = await handler(
+      new Request("http://localhost/api/operator/flatten", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(400);
+    expect(body.code).toBe("missing_confirm");
+  });
+
+  it("POST /api/operator/flatten executes with confirm", async () => {
+    const operatorHandler = createDashboardFetchHandler({
+      state: createState(),
+      getSummaryMetrics: async () => ({
+        winRate: { daily: 0, weekly: 0, monthly: 0, allTime: 0 },
+        pnl: { daily: 0, weekly: 0, monthly: 0, allTime: 0 },
+        trades: { daily: 0, weekly: 0, monthly: 0, allTime: 0 },
+        patternMetrics: [],
+        coinMetrics: [],
+        currentDrawdown: 0,
+        maxDrawdown: 0,
+        openPositionCount: 0,
+      }),
+      readJournal: async () => [],
+      operatorActions: {
+        flatten: async () => ({ cancelled: 1, closed: 2 }),
+        pause: () => {},
+        resume: () => {},
+        logAudit: async () => {},
+      },
+    });
+    const response = await operatorHandler(
+      new Request("http://localhost/api/operator/flatten", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: true, reason: "test" }),
+      }),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ ok: true, cancelled: 1, closed: 2 });
+  });
+
+  it("POST /api/operator/resume succeeds", async () => {
+    let resumed = false;
+    const operatorHandler = createDashboardFetchHandler({
+      state: createState(),
+      getSummaryMetrics: async () => ({
+        winRate: { daily: 0, weekly: 0, monthly: 0, allTime: 0 },
+        pnl: { daily: 0, weekly: 0, monthly: 0, allTime: 0 },
+        trades: { daily: 0, weekly: 0, monthly: 0, allTime: 0 },
+        patternMetrics: [],
+        coinMetrics: [],
+        currentDrawdown: 0,
+        maxDrawdown: 0,
+        openPositionCount: 0,
+      }),
+      readJournal: async () => [],
+      operatorActions: {
+        flatten: async () => ({ cancelled: 0, closed: 0 }),
+        pause: () => {},
+        resume: () => {
+          resumed = true;
+        },
+        logAudit: async () => {},
+      },
+    });
+    const response = await operatorHandler(
+      new Request("http://localhost/api/operator/resume", { method: "POST" }),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ ok: true, resumed: true });
+    expect(resumed).toBe(true);
+  });
+
   it("returns chart history in ascending order", async () => {
     const response = await handler(
       new Request(
