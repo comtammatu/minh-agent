@@ -9,48 +9,73 @@
  * This script is dev-only and never runs in production.
  */
 
-import { HttpTransport, InfoClient } from '@nktkas/hyperliquid'
-import { writeFileSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 
 // Import Tuệ indicators as the reference implementation
 // These are the spec — Minh's output must match these exactly.
-import { sma, ema, atr, rsi, adx, volumeRatio, detectRegime } from '../../gettueapp/src/entities/hanh/features/research/indicators/core.js'
-import { detectFVG, scanFVGs, detectOrderBlocks, findSwingPoints } from '../../gettueapp/src/entities/hanh/features/research/indicators/smc.js'
-import { detectPriceAction } from '../../gettueapp/src/entities/hanh/features/research/indicators/price-action.js'
-import { detectVSA } from '../../gettueapp/src/entities/hanh/features/research/indicators/vsa.js'
-import { detectWyckoffPhase } from '../../gettueapp/src/entities/hanh/features/research/indicators/wyckoff.js'
-import { buildVolumeProfile } from '../../gettueapp/src/entities/hanh/features/research/indicators/volume-profile.js'
-import { analyzeStructure } from '../../gettueapp/src/entities/hanh/features/research/indicators/structure.js'
+import {
+  adx,
+  atr,
+  detectRegime,
+  ema,
+  rsi,
+  sma,
+  volumeRatio,
+} from "../../gettueapp/src/entities/hanh/features/research/indicators/core.js";
+import { detectPriceAction } from "../../gettueapp/src/entities/hanh/features/research/indicators/price-action.js";
+import {
+  detectFVG,
+  detectOrderBlocks,
+  findSwingPoints,
+  scanFVGs,
+} from "../../gettueapp/src/entities/hanh/features/research/indicators/smc.js";
+import { analyzeStructure } from "../../gettueapp/src/entities/hanh/features/research/indicators/structure.js";
+import { buildVolumeProfile } from "../../gettueapp/src/entities/hanh/features/research/indicators/volume-profile.js";
+import { detectVSA } from "../../gettueapp/src/entities/hanh/features/research/indicators/vsa.js";
+import { detectWyckoffPhase } from "../../gettueapp/src/entities/hanh/features/research/indicators/wyckoff.js";
 
-type TueCandle = { t: number; o: number; h: number; l: number; c: number; v: number }
+type TueCandle = {
+  t: number;
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  v: number;
+};
 
 async function fetchBTC4H(): Promise<TueCandle[]> {
-  const transport = new HttpTransport()
-  const info = new InfoClient({ transport })
-  const endTime = Date.now()
-  const startTime = endTime - 200 * 4 * 60 * 60 * 1000  // ~200 4H bars
+  const transport = new HttpTransport();
+  const info = new InfoClient({ transport });
+  const endTime = Date.now();
+  const startTime = endTime - 200 * 4 * 60 * 60 * 1000; // ~200 4H bars
 
-  const raw = await info.candleSnapshot({ coin: 'BTC', interval: '4h', startTime, endTime })
-  return raw.slice(-200).map(c => ({
+  const raw = await info.candleSnapshot({
+    coin: "BTC",
+    interval: "4h",
+    startTime,
+    endTime,
+  });
+  return raw.slice(-200).map((c) => ({
     t: c.t,
     o: parseFloat(c.o),
     h: parseFloat(c.h),
     l: parseFloat(c.l),
     c: parseFloat(c.c),
     v: parseFloat(c.v),
-  }))
+  }));
 }
 
 async function main() {
-  console.log('Fetching 200 BTC 4H candles from HL...')
-  const candles = await fetchBTC4H()
-  console.log(`Got ${candles.length} candles`)
+  console.log("Fetching 200 BTC 4H candles from HL...");
+  const candles = await fetchBTC4H();
+  console.log(`Got ${candles.length} candles`);
 
-  const outDir = join(import.meta.dir, '../test/fixtures')
-  mkdirSync(outDir, { recursive: true })
+  const outDir = join(import.meta.dir, "../test/fixtures");
+  mkdirSync(outDir, { recursive: true });
 
-  const idx = candles.length - 1
+  const idx = candles.length - 1;
 
   // ── core ──────────────────────────────────────────────────────────────────
   const coreFixture = {
@@ -64,11 +89,18 @@ async function main() {
     volRatio20: volumeRatio(candles, idx, 20),
     regime: detectRegime(candles, idx),
     // Also capture a slice of sma7 values over last 30 bars to verify incremental correctness
-    sma7Series: Array.from({ length: 30 }, (_, i) => sma(candles, idx - 29 + i, 7)),
-    atr14Series: Array.from({ length: 30 }, (_, i) => atr(candles, idx - 29 + i, 14)),
-  }
-  writeFileSync(join(outDir, 'core.json'), JSON.stringify(coreFixture, null, 2))
-  console.log('✓ core.json')
+    sma7Series: Array.from({ length: 30 }, (_, i) =>
+      sma(candles, idx - 29 + i, 7),
+    ),
+    atr14Series: Array.from({ length: 30 }, (_, i) =>
+      atr(candles, idx - 29 + i, 14),
+    ),
+  };
+  writeFileSync(
+    join(outDir, "core.json"),
+    JSON.stringify(coreFixture, null, 2),
+  );
+  console.log("✓ core.json");
 
   // ── smc ───────────────────────────────────────────────────────────────────
   const smcFixture = {
@@ -77,9 +109,9 @@ async function main() {
     activeFVGs: scanFVGs(candles, idx),
     orderBlocks: detectOrderBlocks(candles, idx, { lookback: 50 }),
     swingPoints: findSwingPoints(candles, idx, 3),
-  }
-  writeFileSync(join(outDir, 'smc.json'), JSON.stringify(smcFixture, null, 2))
-  console.log('✓ smc.json')
+  };
+  writeFileSync(join(outDir, "smc.json"), JSON.stringify(smcFixture, null, 2));
+  console.log("✓ smc.json");
 
   // ── price-action ──────────────────────────────────────────────────────────
   const paFixture = {
@@ -89,9 +121,12 @@ async function main() {
       idx: idx - 19 + i,
       patterns: detectPriceAction(candles, idx - 19 + i),
     })),
-  }
-  writeFileSync(join(outDir, 'price-action.json'), JSON.stringify(paFixture, null, 2))
-  console.log('✓ price-action.json')
+  };
+  writeFileSync(
+    join(outDir, "price-action.json"),
+    JSON.stringify(paFixture, null, 2),
+  );
+  console.log("✓ price-action.json");
 
   // ── vsa ───────────────────────────────────────────────────────────────────
   const vsaFixture = {
@@ -100,9 +135,9 @@ async function main() {
       idx: idx - 19 + i,
       signals: detectVSA(candles, idx - 19 + i),
     })),
-  }
-  writeFileSync(join(outDir, 'vsa.json'), JSON.stringify(vsaFixture, null, 2))
-  console.log('✓ vsa.json')
+  };
+  writeFileSync(join(outDir, "vsa.json"), JSON.stringify(vsaFixture, null, 2));
+  console.log("✓ vsa.json");
 
   // ── wyckoff ───────────────────────────────────────────────────────────────
   const wyckoffFixture = {
@@ -111,26 +146,38 @@ async function main() {
       idx: idx - 9 + i,
       result: detectWyckoffPhase(candles, idx - 9 + i),
     })),
-  }
-  writeFileSync(join(outDir, 'wyckoff.json'), JSON.stringify(wyckoffFixture, null, 2))
-  console.log('✓ wyckoff.json')
+  };
+  writeFileSync(
+    join(outDir, "wyckoff.json"),
+    JSON.stringify(wyckoffFixture, null, 2),
+  );
+  console.log("✓ wyckoff.json");
 
   // ── volume-profile ────────────────────────────────────────────────────────
   const vpFixture = {
     profile: buildVolumeProfile(candles, idx - 99, idx, { numBins: 50 }),
     profileShort: buildVolumeProfile(candles, idx - 49, idx, { numBins: 50 }),
-  }
-  writeFileSync(join(outDir, 'volume-profile.json'), JSON.stringify(vpFixture, null, 2))
-  console.log('✓ volume-profile.json')
+  };
+  writeFileSync(
+    join(outDir, "volume-profile.json"),
+    JSON.stringify(vpFixture, null, 2),
+  );
+  console.log("✓ volume-profile.json");
 
   // ── structure ─────────────────────────────────────────────────────────────
   const structureFixture = {
     structure: analyzeStructure(candles, idx),
-  }
-  writeFileSync(join(outDir, 'structure.json'), JSON.stringify(structureFixture, null, 2))
-  console.log('✓ structure.json')
+  };
+  writeFileSync(
+    join(outDir, "structure.json"),
+    JSON.stringify(structureFixture, null, 2),
+  );
+  console.log("✓ structure.json");
 
-  console.log(`\nAll fixtures written to ${outDir}`)
+  console.log(`\nAll fixtures written to ${outDir}`);
 }
 
-main().catch(e => { console.error(e); process.exit(1) })
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

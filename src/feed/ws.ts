@@ -5,60 +5,71 @@
  * Per-coin tracking: coinSubs Map enables selective unsubscribe on coin drop.
  */
 
-import { WebSocketTransport, SubscriptionClient } from '@nktkas/hyperliquid'
-import type { ISubscription } from '@nktkas/hyperliquid'
-import type { Candle, CandleInterval } from '../types.js'
-import { STALENESS_THRESHOLD_MS, WS_MAX_SUBSCRIPTIONS } from '../config.js'
-import { log } from '../lib/logger.js'
+import type { ISubscription } from "@nktkas/hyperliquid";
+import { SubscriptionClient, WebSocketTransport } from "@nktkas/hyperliquid";
+import { STALENESS_THRESHOLD_MS, WS_MAX_SUBSCRIPTIONS } from "../config.js";
+import { log } from "../lib/logger.js";
+import type { Candle, CandleInterval } from "../types.js";
 
 // Module-level WS client (one process, one WS connection)
-let wsClient: SubscriptionClient | null = null
-const activeSubscriptions: ISubscription[] = []
+let wsClient: SubscriptionClient | null = null;
+const activeSubscriptions: ISubscription[] = [];
 
 // Per-coin subscription tracking for selective unsubscribe
-const coinSubs = new Map<string, ISubscription[]>()
+const coinSubs = new Map<string, ISubscription[]>();
 
 // lastCandleTime: key = "BTC|4h", value = Date.now() at last received candle
-const lastCandleTime = new Map<string, number>()
+const lastCandleTime = new Map<string, number>();
 
 function getClient(): SubscriptionClient {
   if (!wsClient) {
-    const transport = new WebSocketTransport()
-    wsClient = new SubscriptionClient({ transport })
+    const transport = new WebSocketTransport();
+    wsClient = new SubscriptionClient({ transport });
   }
-  return wsClient
+  return wsClient;
 }
 
 /** Get shared WS client — used by trades.ts and orderbook.ts feeds. */
 export function getWsClient(): SubscriptionClient {
-  return getClient()
+  return getClient();
 }
 
 /** Register a subscription for centralized cleanup on closeAll(). Warns near HL 1000 limit. */
 export function registerSubscription(sub: ISubscription): void {
   if (activeSubscriptions.length >= WS_MAX_SUBSCRIPTIONS) {
-    log.warn('ws', `LIMIT — ${activeSubscriptions.length}/${WS_MAX_SUBSCRIPTIONS} subscriptions, cannot add more`)
-    return
+    log.warn(
+      "ws",
+      `LIMIT — ${activeSubscriptions.length}/${WS_MAX_SUBSCRIPTIONS} subscriptions, cannot add more`,
+    );
+    return;
   }
-  activeSubscriptions.push(sub)
+  activeSubscriptions.push(sub);
   if (activeSubscriptions.length >= WS_MAX_SUBSCRIPTIONS * 0.8) {
-    log.warn('ws', `${activeSubscriptions.length}/${WS_MAX_SUBSCRIPTIONS} subscriptions (80%+ capacity)`)
+    log.warn(
+      "ws",
+      `${activeSubscriptions.length}/${WS_MAX_SUBSCRIPTIONS} subscriptions (80%+ capacity)`,
+    );
   }
 }
 
 /** Get total active WS subscription count. */
 export function getSubscriptionCount(): number {
-  return activeSubscriptions.length
+  return activeSubscriptions.length;
 }
 
 /** Remove a subscription from the global activeSubscriptions array. */
 export function removeSubscription(sub: ISubscription): void {
-  const idx = activeSubscriptions.indexOf(sub)
-  if (idx !== -1) activeSubscriptions.splice(idx, 1)
+  const idx = activeSubscriptions.indexOf(sub);
+  if (idx !== -1) activeSubscriptions.splice(idx, 1);
 }
 
 function parseCandle(raw: {
-  t: number; o: string; h: string; l: string; c: string; v: string
+  t: number;
+  o: string;
+  h: string;
+  l: string;
+  c: string;
+  v: string;
 }): Candle {
   return {
     t: raw.t,
@@ -67,7 +78,7 @@ function parseCandle(raw: {
     l: parseFloat(raw.l),
     c: parseFloat(raw.c),
     v: parseFloat(raw.v),
-  }
+  };
 }
 
 /**
@@ -79,56 +90,71 @@ export async function subscribeCandles(
   interval: CandleInterval,
   onCandle: (coin: string, interval: CandleInterval, candle: Candle) => void,
 ): Promise<void> {
-  const client = getClient()
-  const k = `${coin}|${interval}`
+  const client = getClient();
+  const k = `${coin}|${interval}`;
 
   const sub = await client.candle({ coin, interval }, (event) => {
     try {
-      const candle = parseCandle(event)
-      lastCandleTime.set(k, Date.now())
-      onCandle(coin, interval, candle)
+      const candle = parseCandle(event);
+      lastCandleTime.set(k, Date.now());
+      onCandle(coin, interval, candle);
     } catch (err) {
-      log.error('ws', `${k}: parse error — ${err instanceof Error ? err.message : String(err)}`)
+      log.error(
+        "ws",
+        `${k}: parse error — ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
-  })
+  });
 
-  registerSubscription(sub)
-  lastCandleTime.set(k, Date.now())
+  registerSubscription(sub);
+  lastCandleTime.set(k, Date.now());
 
   // Track per-coin for selective unsubscribe
-  const existing = coinSubs.get(coin) ?? []
-  existing.push(sub)
-  coinSubs.set(coin, existing)
+  const existing = coinSubs.get(coin) ?? [];
+  existing.push(sub);
+  coinSubs.set(coin, existing);
 }
 
 /** Unsubscribe all candle streams for a specific coin. */
 export async function unsubscribeCandles(coin: string): Promise<void> {
-  const subs = coinSubs.get(coin)
-  if (!subs) return
+  const subs = coinSubs.get(coin);
+  if (!subs) return;
 
   for (const sub of subs) {
-    try { await sub.unsubscribe() } catch { /* ignore */ }
-    removeSubscription(sub)
+    try {
+      await sub.unsubscribe();
+    } catch {
+      /* ignore */
+    }
+    removeSubscription(sub);
   }
-  coinSubs.delete(coin)
+  coinSubs.delete(coin);
 
   // Clear staleness entries for this coin
   for (const k of lastCandleTime.keys()) {
-    if (k.startsWith(`${coin}|`)) lastCandleTime.delete(k)
+    if (k.startsWith(`${coin}|`)) lastCandleTime.delete(k);
   }
 }
 
 /** Close all active WS subscriptions (call on SIGINT). */
 export async function closeAll(): Promise<void> {
   for (const sub of activeSubscriptions) {
-    try { await sub.unsubscribe() } catch { /* ignore */ }
+    try {
+      await sub.unsubscribe();
+    } catch {
+      /* ignore */
+    }
   }
-  activeSubscriptions.length = 0
-  coinSubs.clear()
-  lastCandleTime.clear()
+  activeSubscriptions.length = 0;
+  coinSubs.clear();
+  lastCandleTime.clear();
   if (wsClient) {
-    try { (wsClient as unknown as { close?: () => void }).close?.() } catch { /* ignore */ }
-    wsClient = null
+    try {
+      (wsClient as unknown as { close?: () => void }).close?.();
+    } catch {
+      /* ignore */
+    }
+    wsClient = null;
   }
 }
 
@@ -138,11 +164,14 @@ export async function closeAll(): Promise<void> {
  * Called by setInterval in index.ts.
  */
 export function checkStaleness(): void {
-  const now = Date.now()
+  const now = Date.now();
   for (const [k, lastTime] of lastCandleTime) {
-    const silent = now - lastTime
+    const silent = now - lastTime;
     if (silent > STALENESS_THRESHOLD_MS) {
-      log.warn('ws', `${k}: stale ${Math.round(silent / 1000)}s — no candle update`)
+      log.warn(
+        "ws",
+        `${k}: stale ${Math.round(silent / 1000)}s — no candle update`,
+      );
     }
   }
 }

@@ -13,13 +13,13 @@
  * See: docs/operations/dead-man-switch.md
  */
 
-import { writeFileSync, unlinkSync, readFileSync } from 'fs'
+import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 
 export interface HeartbeatRecord {
   /** PID of the process that wrote this heartbeat. */
-  pid: number
+  pid: number;
   /** Unix epoch ms when the heartbeat was written. */
-  ts: number
+  ts: number;
 }
 
 /**
@@ -31,7 +31,7 @@ export interface HeartbeatRecord {
  * crash the polling loop.
  */
 export function writeHeartbeat(path: string, record: HeartbeatRecord): void {
-  writeFileSync(path, JSON.stringify(record))
+  writeFileSync(path, JSON.stringify(record));
 }
 
 /**
@@ -40,28 +40,33 @@ export function writeHeartbeat(path: string, record: HeartbeatRecord): void {
  * heartbeat", which the watchdog interprets as "main process not running".
  */
 export function readHeartbeat(path: string): HeartbeatRecord | null {
-  let raw: string
+  let raw: string;
   try {
-    raw = readFileSync(path, 'utf8')
+    raw = readFileSync(path, "utf8");
   } catch {
-    return null
+    return null;
   }
   try {
-    const parsed = JSON.parse(raw) as unknown
+    const parsed = JSON.parse(raw) as unknown;
     if (
-      parsed !== null
-      && typeof parsed === 'object'
-      && typeof (parsed as { pid?: unknown }).pid === 'number'
-      && typeof (parsed as { ts?: unknown }).ts === 'number'
+      parsed !== null &&
+      typeof parsed === "object" &&
+      typeof (parsed as { pid?: unknown }).pid === "number" &&
+      typeof (parsed as { ts?: unknown }).ts === "number"
     ) {
-      const r = parsed as HeartbeatRecord
-      if (Number.isFinite(r.pid) && Number.isFinite(r.ts) && r.pid > 0 && r.ts > 0) {
-        return r
+      const r = parsed as HeartbeatRecord;
+      if (
+        Number.isFinite(r.pid) &&
+        Number.isFinite(r.ts) &&
+        r.pid > 0 &&
+        r.ts > 0
+      ) {
+        return r;
       }
     }
-    return null
+    return null;
   } catch {
-    return null
+    return null;
   }
 }
 
@@ -71,7 +76,7 @@ export function readHeartbeat(path: string): HeartbeatRecord | null {
  */
 export function deleteHeartbeat(path: string): void {
   try {
-    unlinkSync(path)
+    unlinkSync(path);
   } catch {
     // File may already be gone — this is a clean-up call, not a guarantee.
   }
@@ -83,26 +88,26 @@ export function deleteHeartbeat(path: string): void {
  * before returning so the watchdog can see the bot immediately.
  */
 export function startHeartbeatWriter(opts: {
-  path: string
-  writeMs: number
+  path: string;
+  writeMs: number;
   /** Injected for tests. Defaults to `Date.now`. */
-  now?: () => number
+  now?: () => number;
   /** Injected for tests. Defaults to `process.pid`. */
-  pid?: number
+  pid?: number;
 }): () => void {
-  const now = opts.now ?? (() => Date.now())
-  const pid = opts.pid ?? process.pid
+  const now = opts.now ?? (() => Date.now());
+  const pid = opts.pid ?? process.pid;
 
-  writeHeartbeat(opts.path, { pid, ts: now() })
+  writeHeartbeat(opts.path, { pid, ts: now() });
 
   const id = setInterval(() => {
-    writeHeartbeat(opts.path, { pid, ts: now() })
-  }, opts.writeMs)
+    writeHeartbeat(opts.path, { pid, ts: now() });
+  }, opts.writeMs);
 
   return (): void => {
-    clearInterval(id)
-    deleteHeartbeat(opts.path)
-  }
+    clearInterval(id);
+    deleteHeartbeat(opts.path);
+  };
 }
 
 /**
@@ -116,13 +121,13 @@ export function startHeartbeatWriter(opts: {
  * Exported so the watchdog can reuse the same liveness rule.
  */
 export function isPidAlive(pid: number): boolean {
-  if (!Number.isFinite(pid) || pid <= 0) return false
+  if (!Number.isFinite(pid) || pid <= 0) return false;
   try {
-    process.kill(pid, 0)
-    return true
+    process.kill(pid, 0);
+    return true;
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code
-    if (code === 'EPERM') return true
-    return false
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "EPERM") return true;
+    return false;
   }
 }

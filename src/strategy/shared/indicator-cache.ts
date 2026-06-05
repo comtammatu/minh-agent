@@ -7,6 +7,19 @@
  *   - Avoid stale state via explicit clear APIs on pipeline reset
  */
 
+import { adx, atr, detectRegime, volumeRatio } from "../../indicators/core.js";
+import {
+  type BreakerBlock,
+  compileKeyZones,
+  detectBreakerBlocks,
+  detectInversionFVGs,
+  detectStructureBreaks,
+  findPivots,
+  htfStructureBias,
+  type InversionFVG,
+} from "../../indicators/smc.js";
+import { detectVSA, type VSASignal } from "../../indicators/vsa.js";
+import { detectWyckoff, type WyckoffResult } from "../../indicators/wyckoff.js";
 import type {
   Candle,
   CandleInterval,
@@ -14,60 +27,55 @@ import type {
   MarketRegime,
   PivotPoint,
   StructureBreak,
-} from '../../types.js'
-import { adx, atr, detectRegime, volumeRatio } from '../../indicators/core.js'
-import {
-  compileKeyZones,
-  detectBreakerBlocks,
-  detectInversionFVGs,
-  type BreakerBlock,
-  type InversionFVG,
-  detectStructureBreaks,
-  findPivots,
-  htfStructureBias,
-} from '../../indicators/smc.js'
-import { detectWyckoff, type WyckoffResult } from '../../indicators/wyckoff.js'
-import { detectVSA, type VSASignal } from '../../indicators/vsa.js'
+} from "../../types.js";
 
-type HtfStructureBiasResult = ReturnType<typeof htfStructureBias>
+type HtfStructureBiasResult = ReturnType<typeof htfStructureBias>;
 
 interface IndicatorCacheEntry {
-  idx: number
-  candlesLen: number
-  candleTs: number
-  candleO: number
-  candleH: number
-  candleL: number
-  candleC: number
-  candleV: number
-  regime?: MarketRegime
-  atr14?: number
-  adx14?: number
-  volumeRatio20?: number
-  vsaByLookback?: Map<string, VSASignal[]>
-  wyckoffByParams?: Map<string, WyckoffResult>
-  pivotsByParams?: Map<string, PivotPoint[]>
-  pivots3?: PivotPoint[]
-  structureBreaksByParams?: Map<string, StructureBreak[]>
-  htfStructureBiasByParams?: Map<string, HtfStructureBiasResult>
-  keyZonesByTolerance?: Map<string, { demandZones: KeyZone[]; supplyZones: KeyZone[] }>
-  breakerBlocks50?: BreakerBlock[]
-  inversionFVGsByTolerance?: Map<string, InversionFVG[]>
+  idx: number;
+  candlesLen: number;
+  candleTs: number;
+  candleO: number;
+  candleH: number;
+  candleL: number;
+  candleC: number;
+  candleV: number;
+  regime?: MarketRegime;
+  atr14?: number;
+  adx14?: number;
+  volumeRatio20?: number;
+  vsaByLookback?: Map<string, VSASignal[]>;
+  wyckoffByParams?: Map<string, WyckoffResult>;
+  pivotsByParams?: Map<string, PivotPoint[]>;
+  pivots3?: PivotPoint[];
+  structureBreaksByParams?: Map<string, StructureBreak[]>;
+  htfStructureBiasByParams?: Map<string, HtfStructureBiasResult>;
+  keyZonesByTolerance?: Map<
+    string,
+    { demandZones: KeyZone[]; supplyZones: KeyZone[] }
+  >;
+  breakerBlocks50?: BreakerBlock[];
+  inversionFVGsByTolerance?: Map<string, InversionFVG[]>;
 }
 
-const indicatorCache = new Map<string, IndicatorCacheEntry>()
+const indicatorCache = new Map<string, IndicatorCacheEntry>();
 
 function cacheKey(coin: string, interval: CandleInterval): string {
-  return `${coin}|${interval}`
+  return `${coin}|${interval}`;
 }
 
-function ensureEntry(coin: string, interval: CandleInterval, candles: Candle[], idx: number): IndicatorCacheEntry | null {
-  if (idx < 0 || idx >= candles.length) return null
+function ensureEntry(
+  coin: string,
+  interval: CandleInterval,
+  candles: Candle[],
+  idx: number,
+): IndicatorCacheEntry | null {
+  if (idx < 0 || idx >= candles.length) return null;
 
-  const key = cacheKey(coin, interval)
-  const candle = candles[idx]!
-  const candleTs = candle.t
-  const existing = indicatorCache.get(key)
+  const key = cacheKey(coin, interval);
+  const candle = candles[idx]!;
+  const candleTs = candle.t;
+  const existing = indicatorCache.get(key);
 
   if (
     existing &&
@@ -80,7 +88,7 @@ function ensureEntry(coin: string, interval: CandleInterval, candles: Candle[], 
     existing.candleC === candle.c &&
     existing.candleV === candle.v
   ) {
-    return existing
+    return existing;
   }
 
   const next: IndicatorCacheEntry = {
@@ -92,9 +100,9 @@ function ensureEntry(coin: string, interval: CandleInterval, candles: Candle[], 
     candleL: candle.l,
     candleC: candle.c,
     candleV: candle.v,
-  }
-  indicatorCache.set(key, next)
-  return next
+  };
+  indicatorCache.set(key, next);
+  return next;
 }
 
 function getCachedPivotsIfAvailable(
@@ -103,10 +111,10 @@ function getCachedPivotsIfAvailable(
   tolerance: number,
 ): PivotPoint[] | undefined {
   if (lookback === 3 && tolerance === 0) {
-    return entry.pivots3
+    return entry.pivots3;
   }
-  const cacheParamsKey = `${lookback}|${tolerance}`
-  return entry.pivotsByParams?.get(cacheParamsKey)
+  const cacheParamsKey = `${lookback}|${tolerance}`;
+  return entry.pivotsByParams?.get(cacheParamsKey);
 }
 
 export function getCachedRegime(
@@ -115,12 +123,12 @@ export function getCachedRegime(
   candles: Candle[],
   idx: number,
 ): MarketRegime {
-  const entry = ensureEntry(coin, interval, candles, idx)
-  if (!entry) return 'SIDEWAYS'
+  const entry = ensureEntry(coin, interval, candles, idx);
+  if (!entry) return "SIDEWAYS";
   if (entry.regime === undefined) {
-    entry.regime = detectRegime(candles, idx)
+    entry.regime = detectRegime(candles, idx);
   }
-  return entry.regime
+  return entry.regime;
 }
 
 export function getCachedAtr14(
@@ -129,12 +137,12 @@ export function getCachedAtr14(
   candles: Candle[],
   idx: number,
 ): number {
-  const entry = ensureEntry(coin, interval, candles, idx)
-  if (!entry) return NaN
+  const entry = ensureEntry(coin, interval, candles, idx);
+  if (!entry) return NaN;
   if (entry.atr14 === undefined) {
-    entry.atr14 = atr(candles, idx, 14)
+    entry.atr14 = atr(candles, idx, 14);
   }
-  return entry.atr14
+  return entry.atr14;
 }
 
 export function getCachedAdx14(
@@ -143,12 +151,12 @@ export function getCachedAdx14(
   candles: Candle[],
   idx: number,
 ): number {
-  const entry = ensureEntry(coin, interval, candles, idx)
-  if (!entry) return NaN
+  const entry = ensureEntry(coin, interval, candles, idx);
+  if (!entry) return NaN;
   if (entry.adx14 === undefined) {
-    entry.adx14 = adx(candles, idx, 14)
+    entry.adx14 = adx(candles, idx, 14);
   }
-  return entry.adx14
+  return entry.adx14;
 }
 
 export function getCachedVolumeRatio20(
@@ -157,12 +165,12 @@ export function getCachedVolumeRatio20(
   candles: Candle[],
   idx: number,
 ): number {
-  const entry = ensureEntry(coin, interval, candles, idx)
-  if (!entry) return NaN
+  const entry = ensureEntry(coin, interval, candles, idx);
+  if (!entry) return NaN;
   if (entry.volumeRatio20 === undefined) {
-    entry.volumeRatio20 = volumeRatio(candles, idx, 20)
+    entry.volumeRatio20 = volumeRatio(candles, idx, 20);
   }
-  return entry.volumeRatio20
+  return entry.volumeRatio20;
 }
 
 export function getCachedVsa(
@@ -172,19 +180,19 @@ export function getCachedVsa(
   idx: number,
   lookback: number = 20,
 ): VSASignal[] {
-  const entry = ensureEntry(coin, interval, candles, idx)
-  if (!entry) return []
+  const entry = ensureEntry(coin, interval, candles, idx);
+  if (!entry) return [];
   if (entry.vsaByLookback === undefined) {
-    entry.vsaByLookback = new Map<string, VSASignal[]>()
+    entry.vsaByLookback = new Map<string, VSASignal[]>();
   }
 
-  const lookbackKey = String(lookback)
-  const cached = entry.vsaByLookback.get(lookbackKey)
-  if (cached !== undefined) return cached
+  const lookbackKey = String(lookback);
+  const cached = entry.vsaByLookback.get(lookbackKey);
+  if (cached !== undefined) return cached;
 
-  const computed = detectVSA(candles, idx, { lookback })
-  entry.vsaByLookback.set(lookbackKey, computed)
-  return computed
+  const computed = detectVSA(candles, idx, { lookback });
+  entry.vsaByLookback.set(lookbackKey, computed);
+  return computed;
 }
 
 export function getCachedWyckoff(
@@ -194,19 +202,19 @@ export function getCachedWyckoff(
   idx: number,
   params: { rangePeriod?: number; trendPeriod?: number } = {},
 ): WyckoffResult {
-  const entry = ensureEntry(coin, interval, candles, idx)
-  if (!entry) return { phase: null, confidence: 0, event: null }
+  const entry = ensureEntry(coin, interval, candles, idx);
+  if (!entry) return { phase: null, confidence: 0, event: null };
   if (entry.wyckoffByParams === undefined) {
-    entry.wyckoffByParams = new Map<string, WyckoffResult>()
+    entry.wyckoffByParams = new Map<string, WyckoffResult>();
   }
 
-  const cacheParamsKey = `${params.rangePeriod ?? ''}|${params.trendPeriod ?? ''}`
-  const cached = entry.wyckoffByParams.get(cacheParamsKey)
-  if (cached !== undefined) return cached
+  const cacheParamsKey = `${params.rangePeriod ?? ""}|${params.trendPeriod ?? ""}`;
+  const cached = entry.wyckoffByParams.get(cacheParamsKey);
+  if (cached !== undefined) return cached;
 
-  const computed = detectWyckoff(candles, idx, params)
-  entry.wyckoffByParams.set(cacheParamsKey, computed)
-  return computed
+  const computed = detectWyckoff(candles, idx, params);
+  entry.wyckoffByParams.set(cacheParamsKey, computed);
+  return computed;
 }
 
 export function getCachedPivots3(
@@ -215,7 +223,7 @@ export function getCachedPivots3(
   candles: Candle[],
   idx: number,
 ): PivotPoint[] {
-  return getCachedPivots(coin, interval, candles, idx, 3)
+  return getCachedPivots(coin, interval, candles, idx, 3);
 }
 
 export function getCachedPivots(
@@ -226,25 +234,25 @@ export function getCachedPivots(
   lookback: number = 3,
   tolerance: number = 0,
 ): PivotPoint[] {
-  const entry = ensureEntry(coin, interval, candles, idx)
-  if (!entry) return []
+  const entry = ensureEntry(coin, interval, candles, idx);
+  if (!entry) return [];
   if (lookback === 3 && tolerance === 0 && entry.pivots3 !== undefined) {
-    return entry.pivots3
+    return entry.pivots3;
   }
   if (entry.pivotsByParams === undefined) {
-    entry.pivotsByParams = new Map<string, PivotPoint[]>()
+    entry.pivotsByParams = new Map<string, PivotPoint[]>();
   }
 
-  const cacheParamsKey = `${lookback}|${tolerance}`
-  const cached = entry.pivotsByParams.get(cacheParamsKey)
-  if (cached !== undefined) return cached
+  const cacheParamsKey = `${lookback}|${tolerance}`;
+  const cached = entry.pivotsByParams.get(cacheParamsKey);
+  if (cached !== undefined) return cached;
 
-  const computed = findPivots(candles, idx, lookback, tolerance)
-  entry.pivotsByParams.set(cacheParamsKey, computed)
+  const computed = findPivots(candles, idx, lookback, tolerance);
+  entry.pivotsByParams.set(cacheParamsKey, computed);
   if (lookback === 3 && tolerance === 0) {
-    entry.pivots3 = computed
+    entry.pivots3 = computed;
   }
-  return computed
+  return computed;
 }
 
 export function getCachedStructureBreaks(
@@ -252,28 +260,44 @@ export function getCachedStructureBreaks(
   interval: CandleInterval,
   candles: Candle[],
   idx: number,
-  params: { swingLookback?: number; tolerance?: number; minPivotSpacing?: number } = {},
+  params: {
+    swingLookback?: number;
+    tolerance?: number;
+    minPivotSpacing?: number;
+  } = {},
 ): StructureBreak[] {
-  const entry = ensureEntry(coin, interval, candles, idx)
-  if (!entry) return []
+  const entry = ensureEntry(coin, interval, candles, idx);
+  if (!entry) return [];
   if (entry.structureBreaksByParams === undefined) {
-    entry.structureBreaksByParams = new Map<string, StructureBreak[]>()
+    entry.structureBreaksByParams = new Map<string, StructureBreak[]>();
   }
 
   const cacheParamsKey = [
-    params.swingLookback ?? '',
-    params.tolerance ?? '',
-    params.minPivotSpacing ?? '',
-  ].join('|')
-  const cached = entry.structureBreaksByParams.get(cacheParamsKey)
-  if (cached !== undefined) return cached
+    params.swingLookback ?? "",
+    params.tolerance ?? "",
+    params.minPivotSpacing ?? "",
+  ].join("|");
+  const cached = entry.structureBreaksByParams.get(cacheParamsKey);
+  if (cached !== undefined) return cached;
 
-  const swingLookback = params.swingLookback ?? 3
-  const tolerance = params.tolerance ?? 0
-  const pivots = getCachedPivots(coin, interval, candles, idx, swingLookback, tolerance)
-  const computed = detectStructureBreaks(candles, idx, { ...params, swingLookback, tolerance, pivots })
-  entry.structureBreaksByParams.set(cacheParamsKey, computed)
-  return computed
+  const swingLookback = params.swingLookback ?? 3;
+  const tolerance = params.tolerance ?? 0;
+  const pivots = getCachedPivots(
+    coin,
+    interval,
+    candles,
+    idx,
+    swingLookback,
+    tolerance,
+  );
+  const computed = detectStructureBreaks(candles, idx, {
+    ...params,
+    swingLookback,
+    tolerance,
+    pivots,
+  });
+  entry.structureBreaksByParams.set(cacheParamsKey, computed);
+  return computed;
 }
 
 export function getCachedKeyZones(
@@ -283,25 +307,28 @@ export function getCachedKeyZones(
   idx: number,
   tolerance: number = 0,
 ): { demandZones: KeyZone[]; supplyZones: KeyZone[] } {
-  const entry = ensureEntry(coin, interval, candles, idx)
-  if (!entry) return { demandZones: [], supplyZones: [] }
+  const entry = ensureEntry(coin, interval, candles, idx);
+  if (!entry) return { demandZones: [], supplyZones: [] };
   if (entry.keyZonesByTolerance === undefined) {
-    entry.keyZonesByTolerance = new Map<string, { demandZones: KeyZone[]; supplyZones: KeyZone[] }>()
+    entry.keyZonesByTolerance = new Map<
+      string,
+      { demandZones: KeyZone[]; supplyZones: KeyZone[] }
+    >();
   }
 
-  const toleranceKey = String(tolerance)
-  const cached = entry.keyZonesByTolerance.get(toleranceKey)
-  if (cached !== undefined) return cached
+  const toleranceKey = String(tolerance);
+  const cached = entry.keyZonesByTolerance.get(toleranceKey);
+  if (cached !== undefined) return cached;
 
-  const pivots = getCachedPivotsIfAvailable(entry, 3, tolerance)
+  const pivots = getCachedPivotsIfAvailable(entry, 3, tolerance);
   const computed = compileKeyZones(
     candles,
     idx,
     tolerance,
     pivots !== undefined ? { pivots } : {},
-  )
-  entry.keyZonesByTolerance.set(toleranceKey, computed)
-  return computed
+  );
+  entry.keyZonesByTolerance.set(toleranceKey, computed);
+  return computed;
 }
 
 export function getCachedHtfStructureBias(
@@ -311,19 +338,19 @@ export function getCachedHtfStructureBias(
   idx: number,
   params: { swingLookback?: number; tolerance?: number } = {},
 ): HtfStructureBiasResult {
-  const entry = ensureEntry(coin, interval, candles, idx)
-  if (!entry) return { bias: 'neutral', confidence: 0 }
+  const entry = ensureEntry(coin, interval, candles, idx);
+  if (!entry) return { bias: "neutral", confidence: 0 };
   if (entry.htfStructureBiasByParams === undefined) {
-    entry.htfStructureBiasByParams = new Map<string, HtfStructureBiasResult>()
+    entry.htfStructureBiasByParams = new Map<string, HtfStructureBiasResult>();
   }
 
-  const cacheParamsKey = `${params.swingLookback ?? ''}|${params.tolerance ?? ''}`
-  const cached = entry.htfStructureBiasByParams.get(cacheParamsKey)
-  if (cached !== undefined) return cached
+  const cacheParamsKey = `${params.swingLookback ?? ""}|${params.tolerance ?? ""}`;
+  const cached = entry.htfStructureBiasByParams.get(cacheParamsKey);
+  if (cached !== undefined) return cached;
 
-  const computed = htfStructureBias(candles, idx, params)
-  entry.htfStructureBiasByParams.set(cacheParamsKey, computed)
-  return computed
+  const computed = htfStructureBias(candles, idx, params);
+  entry.htfStructureBiasByParams.set(cacheParamsKey, computed);
+  return computed;
 }
 
 export function getCachedBreakerBlocks50(
@@ -332,12 +359,12 @@ export function getCachedBreakerBlocks50(
   candles: Candle[],
   idx: number,
 ): BreakerBlock[] {
-  const entry = ensureEntry(coin, interval, candles, idx)
-  if (!entry) return []
+  const entry = ensureEntry(coin, interval, candles, idx);
+  if (!entry) return [];
   if (entry.breakerBlocks50 === undefined) {
-    entry.breakerBlocks50 = detectBreakerBlocks(candles, idx, { lookback: 50 })
+    entry.breakerBlocks50 = detectBreakerBlocks(candles, idx, { lookback: 50 });
   }
-  return entry.breakerBlocks50
+  return entry.breakerBlocks50;
 }
 
 export function getCachedInversionFVGs(
@@ -347,30 +374,30 @@ export function getCachedInversionFVGs(
   idx: number,
   tolerance: number = 0,
 ): InversionFVG[] {
-  const entry = ensureEntry(coin, interval, candles, idx)
-  if (!entry) return []
+  const entry = ensureEntry(coin, interval, candles, idx);
+  if (!entry) return [];
   if (entry.inversionFVGsByTolerance === undefined) {
-    entry.inversionFVGsByTolerance = new Map<string, InversionFVG[]>()
+    entry.inversionFVGsByTolerance = new Map<string, InversionFVG[]>();
   }
 
-  const toleranceKey = String(tolerance)
-  const cached = entry.inversionFVGsByTolerance.get(toleranceKey)
-  if (cached !== undefined) return cached
+  const toleranceKey = String(tolerance);
+  const cached = entry.inversionFVGsByTolerance.get(toleranceKey);
+  if (cached !== undefined) return cached;
 
-  const computed = detectInversionFVGs(candles, idx, tolerance)
-  entry.inversionFVGsByTolerance.set(toleranceKey, computed)
-  return computed
+  const computed = detectInversionFVGs(candles, idx, tolerance);
+  entry.inversionFVGsByTolerance.set(toleranceKey, computed);
+  return computed;
 }
 
 /** Clear all cached indicator snapshots (used by full pipeline reset). */
 export function clearIndicatorCache(): void {
-  indicatorCache.clear()
+  indicatorCache.clear();
 }
 
 /** Clear cached snapshots for a specific coin (all TFs). */
 export function clearIndicatorCacheForCoin(coin: string): void {
-  const prefix = `${coin}|`
+  const prefix = `${coin}|`;
   for (const key of indicatorCache.keys()) {
-    if (key.startsWith(prefix)) indicatorCache.delete(key)
+    if (key.startsWith(prefix)) indicatorCache.delete(key);
   }
 }

@@ -8,341 +8,379 @@
  *   - Actions are discriminated unions — orchestrator executes them in S6/S7
  */
 
-import type { ActiveSetup, CandleInterval, ConfluenceGrade, ExchangeId, MarketRegime } from '../types.js'
-export type { ActiveSetup, ExchangeId } from '../types.js'
+import type {
+  ActiveSetup,
+  CandleInterval,
+  ExchangeId,
+  MarketRegime,
+} from "../types.js";
+
+export type { ActiveSetup, ExchangeId } from "../types.js";
 
 // ─── Agent States ────────────────────────────────────────────────────────────
 
 export type AgentState =
-  | 'IDLE'          // scanning, no active setup for this coin
-  | 'WATCHING'      // setup detected, waiting for entry trigger
-  | 'ENTERING'      // order placed, awaiting fill
-  | 'IN_POSITION'   // position open, monitoring SL/TP/trail
-  | 'EXITING'       // closing position
-  | 'PAUSED'        // circuit breaker or manual override
+  | "IDLE" // scanning, no active setup for this coin
+  | "WATCHING" // setup detected, waiting for entry trigger
+  | "ENTERING" // order placed, awaiting fill
+  | "IN_POSITION" // position open, monitoring SL/TP/trail
+  | "EXITING" // closing position
+  | "PAUSED"; // circuit breaker or manual override
 
 // ─── Per-Coin Context ────────────────────────────────────────────────────────
 
 export interface CoinContext {
-  state: AgentState
-  coin: string
+  state: AgentState;
+  coin: string;
   /** The setup being watched/entered (null when IDLE/PAUSED). */
-  activeSetup: ActiveSetup | null
+  activeSetup: ActiveSetup | null;
   /** Pending order ID (set in ENTERING, cleared on fill/reject). */
-  pendingOrderId: string | null
+  pendingOrderId: string | null;
   /** Open position ID (set in IN_POSITION). */
-  positionId: string | null
+  positionId: string | null;
   /** Timestamp when current state was entered. */
-  stateEnteredAt: number
+  stateEnteredAt: number;
   /** Number of consecutive losses for this coin. */
-  consecutiveLosses: number
+  consecutiveLosses: number;
   /** Reason for current PAUSED state (null if not paused). */
-  pauseReason: string | null
+  pauseReason: string | null;
   /** When PAUSED state should auto-resume (null = manual resume only). */
-  pauseUntil: number | null
+  pauseUntil: number | null;
 }
 
 // ─── Global Context ──────────────────────────────────────────────────────────
 
 /** Timestamped PnL entry for sliding-window circuit breaker checks. */
 export interface PnlEntry {
-  ts: number   // ms timestamp
-  pnl: number  // realized PnL of this trade
+  ts: number; // ms timestamp
+  pnl: number; // realized PnL of this trade
 }
 
 export interface GlobalContext {
   /** Daily realized PnL (resets at UTC midnight). */
-  dailyPnl: number
+  dailyPnl: number;
   /** Peak account value for drawdown tracking. */
-  peakAccountValue: number
+  peakAccountValue: number;
   /** Total consecutive losses across all coins. */
-  totalConsecutiveLosses: number
+  totalConsecutiveLosses: number;
   /** Timestamp of last trade close. */
-  lastTradeTime: number
+  lastTradeTime: number;
   /** Global pause override (emergency). */
-  globalPaused: boolean
+  globalPaused: boolean;
   /** Reason for global pause. */
-  globalPauseReason: string | null
+  globalPauseReason: string | null;
   /** Agent start time. */
-  startedAt: number
+  startedAt: number;
   /** Recent trade PnL history for rapid-loss sliding window (S11). */
-  pnlHistory: PnlEntry[]
+  pnlHistory: PnlEntry[];
 }
 
 // ─── Actions (returned by handlers, executed by orchestrator) ────────────────
 
 export type AgentAction =
-  | { type: 'none' }
-  | { type: 'watch'; setup: ActiveSetup }
-  | { type: 'place_order'; setup: ActiveSetup }
-  | { type: 'cancel_order'; orderId: string; reason: string }
-  | { type: 'close_position'; positionId: string; reason: string }
-  | { type: 'update_stop'; positionId: string; newStopPrice: number }
-  | { type: 'partial_close'; positionId: string; closePct: number }
-  | { type: 'log_journal'; eventType: string; coin: string; details: Record<string, unknown> }
+  | { type: "none" }
+  | { type: "watch"; setup: ActiveSetup }
+  | { type: "place_order"; setup: ActiveSetup }
+  | { type: "cancel_order"; orderId: string; reason: string }
+  | { type: "close_position"; positionId: string; reason: string }
+  | { type: "update_stop"; positionId: string; newStopPrice: number }
+  | { type: "partial_close"; positionId: string; closePct: number }
+  | {
+      type: "log_journal";
+      eventType: string;
+      coin: string;
+      details: Record<string, unknown>;
+    };
 
 // ─── Transition Result ───────────────────────────────────────────────────────
 
 export interface TransitionResult {
-  nextState: AgentState
-  actions: AgentAction[]
+  nextState: AgentState;
+  actions: AgentAction[];
 }
 
 // ─── Events (input to state machine) ─────────────────────────────────────────
 
 export type AgentEvent =
-  | { type: 'setup_detected'; setup: ActiveSetup }
-  | { type: 'setup_invalidated'; setupId: string; reason: string }
-  | { type: 'order_submitted'; orderId: string }
-  | { type: 'order_filled'; orderId: string; fillPrice: number; positionId: string }
-  | { type: 'order_rejected'; orderId: string; reason: string }
-  | { type: 'order_timeout'; orderId: string }
-  | { type: 'sl_hit'; positionId: string; closePrice: number; pnl: number }
-  | { type: 'tp_hit'; positionId: string; closePrice: number; pnl: number }
-  | { type: 'trail_stop_hit'; positionId: string; closePrice: number; pnl: number }
-  | { type: 'position_closed'; positionId: string; closePrice: number; pnl: number; reason: string }
-  | { type: 'circuit_break'; reason: string; pauseUntil: number | null }
-  | { type: 'pause'; reason: string }
-  | { type: 'resume' }
-  | { type: 'tick' }  // periodic check (timeouts, cooldowns)
+  | { type: "setup_detected"; setup: ActiveSetup }
+  | { type: "setup_invalidated"; setupId: string; reason: string }
+  | { type: "order_submitted"; orderId: string }
+  | {
+      type: "order_filled";
+      orderId: string;
+      fillPrice: number;
+      positionId: string;
+    }
+  | { type: "order_rejected"; orderId: string; reason: string }
+  | { type: "order_timeout"; orderId: string }
+  | { type: "sl_hit"; positionId: string; closePrice: number; pnl: number }
+  | { type: "tp_hit"; positionId: string; closePrice: number; pnl: number }
+  | {
+      type: "trail_stop_hit";
+      positionId: string;
+      closePrice: number;
+      pnl: number;
+    }
+  | {
+      type: "position_closed";
+      positionId: string;
+      closePrice: number;
+      pnl: number;
+      reason: string;
+    }
+  | { type: "circuit_break"; reason: string; pauseUntil: number | null }
+  | { type: "pause"; reason: string }
+  | { type: "resume" }
+  | { type: "tick" }; // periodic check (timeouts, cooldowns)
 
 // ─── Order Types (S6: Order Lifecycle Manager) ──────────────────────────────
 
-export type OrderStatus = 'pending' | 'submitted' | 'filled' | 'partial' | 'cancelled' | 'rejected'
-export type OrderType = 'limit' | 'market'
-export type TriggerOrderType = 'sl' | 'tp'
+export type OrderStatus =
+  | "pending"
+  | "submitted"
+  | "filled"
+  | "partial"
+  | "cancelled"
+  | "rejected";
+export type OrderType = "limit" | "market";
+export type TriggerOrderType = "sl" | "tp";
 
 /** Persisted order record — maps to `orders` table. */
 export interface Order {
-  id: string             // UUID from DB
-  coin: string
-  side: 'long' | 'short'
-  type: OrderType
-  price: number          // limit price or market ref price
-  size: number           // in coin units
-  status: OrderStatus
-  setupId: string | null
-  slPrice: number | null
-  tpPrice: number | null
-  cloid: string          // client order ID for idempotency (0x hex, 128-bit)
-  exchangeOrderId: string | null
-  createdAt: number      // ms timestamp
-  updatedAt: number
-  filledAt: number | null
-  fillPrice: number | null
-  fillSize: number       // filled so far (for partials)
-  positionId: string | null  // set at fill time — links order to position
-  exchange: string       // 'HL' | 'BB' — exchange this order was placed on
+  id: string; // UUID from DB
+  coin: string;
+  side: "long" | "short";
+  type: OrderType;
+  price: number; // limit price or market ref price
+  size: number; // in coin units
+  status: OrderStatus;
+  setupId: string | null;
+  slPrice: number | null;
+  tpPrice: number | null;
+  cloid: string; // client order ID for idempotency (0x hex, 128-bit)
+  exchangeOrderId: string | null;
+  createdAt: number; // ms timestamp
+  updatedAt: number;
+  filledAt: number | null;
+  fillPrice: number | null;
+  fillSize: number; // filled so far (for partials)
+  positionId: string | null; // set at fill time — links order to position
+  exchange: string; // 'HL' | 'BB' — exchange this order was placed on
 }
 
 /** SL/TP trigger order placed on exchange after entry fill (R9). */
 export interface TriggerOrder {
-  type: TriggerOrderType
-  coin: string
-  side: 'long' | 'short'  // close side (opposite of position)
-  triggerPrice: number
-  size: number
-  isMarket: boolean        // trigger-market closes at market on trigger
-  cloid: string
-  exchangeOrderId: string | null
-  parentOrderId: string    // links to entry order
+  type: TriggerOrderType;
+  coin: string;
+  side: "long" | "short"; // close side (opposite of position)
+  triggerPrice: number;
+  size: number;
+  isMarket: boolean; // trigger-market closes at market on trigger
+  cloid: string;
+  exchangeOrderId: string | null;
+  parentOrderId: string; // links to entry order
 }
 
 /** Result from exchange order submission (stubbed until S10). */
 export interface ExchangeOrderResult {
-  success: boolean
-  exchangeOrderId: string | null
-  error: string | null
+  success: boolean;
+  exchangeOrderId: string | null;
+  error: string | null;
   /** Set when HL returns immediate fill (e.g. market IOC) in the place-order response. */
-  fillPrice?: number
-  fillSize?: number
+  fillPrice?: number;
+  fillSize?: number;
 }
 
 // ─── Position Monitor (S7) ──────────────────────────────────────────────────
 
 /** Tracked state for an open position. Managed by PositionMonitor. */
 export interface PositionState {
-  positionId: string
-  coin: string
-  side: 'long' | 'short'
-  entryPrice: number
-  currentSize: number         // remaining size (decreases on partial close)
-  originalSize: number
-  slPrice: number
-  tpPrice: number
-  entryOrderId: string        // links to Order.id
+  positionId: string;
+  coin: string;
+  side: "long" | "short";
+  entryPrice: number;
+  currentSize: number; // remaining size (decreases on partial close)
+  originalSize: number;
+  slPrice: number;
+  tpPrice: number;
+  entryOrderId: string; // links to Order.id
   /** Cross leverage set at entry (same rule as live `setLeverage`). */
-  leverage: number
+  leverage: number;
   /** Trailing stop state — null until first monitor() call. */
-  trailingState: import('./exits.js').TrailingStopState | null
+  trailingState: import("./exits.js").TrailingStopState | null;
   /** Which partial close levels have been triggered (by index). */
-  partialClosesFired: number[]
+  partialClosesFired: number[];
   /** Timestamp of last exchange sync. */
-  lastSyncAt: number
-  openedAt: number
+  lastSyncAt: number;
+  openedAt: number;
   /** Trade thesis at entry — multi-TF regime/bias state. Null for legacy positions. */
-  thesis: TradeThesis | null
+  thesis: TradeThesis | null;
   /** Timestamp of last thesis evaluation (cooldown tracking). */
-  lastThesisCheckAt: number
+  lastThesisCheckAt: number;
 }
 
 /** Action returned by monitor() — tells orchestrator what to do. */
 export type MonitorAction =
-  | { type: 'hold' }
-  | { type: 'trail_update'; positionId: string; newSlPrice: number }
-  | { type: 'partial_close'; positionId: string; closePct: number; newSlPrice?: number | null }
-  | { type: 'close'; positionId: string; reason: string }
-  | { type: 'alert'; positionId: string; message: string }
+  | { type: "hold" }
+  | { type: "trail_update"; positionId: string; newSlPrice: number }
+  | {
+      type: "partial_close";
+      positionId: string;
+      closePct: number;
+      newSlPrice?: number | null;
+    }
+  | { type: "close"; positionId: string; reason: string }
+  | { type: "alert"; positionId: string; message: string };
 
 // ─── Thesis Monitor ────────────────────────────────────────────────────────
 
 /** Regime + bias snapshot for a single timeframe at a point in time. */
 export interface ThesisTFSnapshot {
-  interval: CandleInterval
-  regime: MarketRegime
-  bias: 'long' | 'short' | 'neutral'
-  biasConfidence: number
+  interval: CandleInterval;
+  regime: MarketRegime;
+  bias: "long" | "short" | "neutral";
+  biasConfidence: number;
 }
 
 /** Full thesis captured at trade entry — multi-TF regime/bias state. */
 export interface TradeThesis {
-  entryInterval: CandleInterval
-  side: 'long' | 'short'
-  snapshots: ThesisTFSnapshot[]
-  capturedAt: number
+  entryInterval: CandleInterval;
+  side: "long" | "short";
+  snapshots: ThesisTFSnapshot[];
+  capturedAt: number;
 }
 
 /** Result of evaluating current conditions against the entry thesis. */
 export interface ThesisEvaluation {
   /** Overall deterioration score: 0.0 = fully aligned, 1.0 = fully opposed. */
-  score: number
-  severity: 'aligned' | 'minor' | 'moderate' | 'severe'
+  score: number;
+  severity: "aligned" | "minor" | "moderate" | "severe";
   /** Per-TF comparison detail (for logging). */
   details: Array<{
-    interval: CandleInterval
-    entryRegime: MarketRegime
-    currentRegime: MarketRegime
-    entryBias: string
-    currentBias: string
-    contribution: number
-  }>
+    interval: CandleInterval;
+    entryRegime: MarketRegime;
+    currentRegime: MarketRegime;
+    entryBias: string;
+    currentBias: string;
+    contribution: number;
+  }>;
 }
 
 /** Exchange position snapshot from clearinghouseState (stubbed until S10). */
 export interface ExchangePositionSnapshot {
-  coin: string
-  size: number          // positive = long, negative = short, 0 = closed
-  entryPrice: number
-  unrealizedPnl: number
-  liquidationPrice: number | null
+  coin: string;
+  size: number; // positive = long, negative = short, 0 = closed
+  entryPrice: number;
+  unrealizedPnl: number;
+  liquidationPrice: number | null;
   /** Cross/isolated leverage from HL `position.leverage.value` when present. */
-  leverage?: number
+  leverage?: number;
   /** Stop-loss price set on the exchange (Bybit: stopLoss field). */
-  slPrice?: number
+  slPrice?: number;
   /** Take-profit price set on the exchange (Bybit: takeProfit field). */
-  tpPrice?: number
+  tpPrice?: number;
 }
 
 // ─── Trade Journal (S9) ─────────────────────────────────────────────────────
 
 export type JournalEventType =
-  | 'signal'
-  | 'enter'
-  | 'exit'
-  | 'skip'
-  | 'invalidate'
-  | 'circuit_break'
-  | 'pause'
-  | 'resume'
-  | 'error'
-  | 'operator'
+  | "signal"
+  | "enter"
+  | "exit"
+  | "skip"
+  | "invalidate"
+  | "circuit_break"
+  | "pause"
+  | "resume"
+  | "error"
+  | "operator";
 
 /** A persisted journal row from trade_journal table. */
 export interface JournalEntry {
-  id: number
-  ts: Date
-  eventType: JournalEventType
-  coin: string | null
-  details: Record<string, unknown>
-  agentState: string | null
-  exchange: ExchangeId
+  id: number;
+  ts: Date;
+  eventType: JournalEventType;
+  coin: string | null;
+  details: Record<string, unknown>;
+  agentState: string | null;
+  exchange: ExchangeId;
 }
 
 /** Filter for querying journal entries. */
 export interface JournalFilter {
-  coin?: string
-  eventType?: JournalEventType
-  since?: Date
-  until?: Date
-  limit?: number
-  exchange?: ExchangeId
+  coin?: string;
+  eventType?: JournalEventType;
+  since?: Date;
+  until?: Date;
+  limit?: number;
+  exchange?: ExchangeId;
 }
 
 /** Aggregated daily summary. */
 export interface DailySummary {
-  date: string         // YYYY-MM-DD
-  totalTrades: number
-  wins: number
-  losses: number
-  winRate: number      // 0–1
-  totalPnl: number
-  avgPnl: number
-  largestWin: number
-  largestLoss: number
-  entryCount: number   // total journal entries for the day
+  date: string; // YYYY-MM-DD
+  totalTrades: number;
+  wins: number;
+  losses: number;
+  winRate: number; // 0–1
+  totalPnl: number;
+  avgPnl: number;
+  largestWin: number;
+  largestLoss: number;
+  entryCount: number; // total journal entries for the day
 }
 
 // ─── Pipeline Event (emitted by scanner) ─────────────────────────────────────
 
 export interface PipelineEvents {
-  setup: [setup: ActiveSetup]
-  invalidation: [setupId: string, reason: string]
+  setup: [setup: ActiveSetup];
+  invalidation: [setupId: string, reason: string];
 }
 
 // ─── Self-Healing / Health (S13) ────────────────────────────────────────────
 
-export type ComponentStatus = 'ok' | 'degraded' | 'critical'
+export type ComponentStatus = "ok" | "degraded" | "critical";
 
 export interface ComponentHealth {
-  status: ComponentStatus
-  lastSuccessAt: number   // ms timestamp of last successful operation
-  lastErrorAt: number     // ms timestamp of last error (0 = never)
-  lastError: string | null
-  consecutiveErrors: number
+  status: ComponentStatus;
+  lastSuccessAt: number; // ms timestamp of last successful operation
+  lastErrorAt: number; // ms timestamp of last error (0 = never)
+  lastError: string | null;
+  consecutiveErrors: number;
 }
 
 export interface HealthReport {
-  overall: ComponentStatus
-  uptime: number           // seconds
-  rssBytes: number
+  overall: ComponentStatus;
+  uptime: number; // seconds
+  rssBytes: number;
   components: {
-    feed: ComponentHealth
-    db: ComponentHealth
-    exchange: ComponentHealth
-  }
+    feed: ComponentHealth;
+    db: ComponentHealth;
+    exchange: ComponentHealth;
+  };
 }
 
 // ─── Snapshot (for API) ──────────────────────────────────────────────────────
 
 export interface CoinSnapshotEntry {
-  state: AgentState
-  activeSetup: ActiveSetup | null
-  pendingOrderId: string | null
-  positionId: string | null
-  consecutiveLosses: number
-  stateAge: number  // ms since state entered
+  state: AgentState;
+  activeSetup: ActiveSetup | null;
+  pendingOrderId: string | null;
+  positionId: string | null;
+  consecutiveLosses: number;
+  stateAge: number; // ms since state entered
 }
 
 export interface GlobalSnapshotEntry {
-  dailyPnl: number
-  totalConsecutiveLosses: number
-  globalPaused: boolean
-  globalPauseReason: string | null
-  uptime: number
+  dailyPnl: number;
+  totalConsecutiveLosses: number;
+  globalPaused: boolean;
+  globalPauseReason: string | null;
+  uptime: number;
 }
 
 export interface AgentSnapshot {
   /** Keyed by coin. */
-  coins: Record<string, CoinSnapshotEntry>
-  global: GlobalSnapshotEntry
+  coins: Record<string, CoinSnapshotEntry>;
+  global: GlobalSnapshotEntry;
 }

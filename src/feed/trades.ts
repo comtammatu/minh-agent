@@ -10,36 +10,36 @@
  *   "A" = seller aggressor → sell volume
  */
 
-import type { ISubscription } from '@nktkas/hyperliquid'
-import { getWsClient, registerSubscription, removeSubscription } from './ws.js'
-import { computeDelta } from '../indicators/order-flow.js'
-import type { DeltaState } from '../types.js'
-import { log } from '../lib/logger.js'
+import type { ISubscription } from "@nktkas/hyperliquid";
+import { computeDelta } from "../indicators/order-flow.js";
+import { log } from "../lib/logger.js";
+import type { DeltaState } from "../types.js";
+import { getWsClient, registerSubscription, removeSubscription } from "./ws.js";
 
 // coin → current accumulated delta state
-const deltaStore = new Map<string, DeltaState>()
+const deltaStore = new Map<string, DeltaState>();
 
 // Per-coin subscription tracking for selective unsubscribe
-const tradeSubs = new Map<string, ISubscription>()
+const tradeSubs = new Map<string, ISubscription>();
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /** Get latest accumulated delta for a coin, or null if not yet subscribed. */
 export function getLatestDelta(coin: string): DeltaState | null {
-  return deltaStore.get(coin) ?? null
+  return deltaStore.get(coin) ?? null;
 }
 
 /** Reset delta accumulator for a coin (call after pipeline processes a bar). */
 export function resetDelta(coin: string): void {
-  const existing = deltaStore.get(coin)
-  if (!existing) return
+  const existing = deltaStore.get(coin);
+  if (!existing) return;
   deltaStore.set(coin, {
     delta: 0,
-    cumDelta: existing.cumDelta,  // preserve cumulative
+    cumDelta: existing.cumDelta, // preserve cumulative
     buyVol: 0,
     sellVol: 0,
     barTs: Date.now(),
-  })
+  });
 }
 
 /**
@@ -47,7 +47,7 @@ export function resetDelta(coin: string): void {
  * Aggregates each batch of trades into the running DeltaState.
  */
 export async function subscribeTrades(coin: string): Promise<void> {
-  const client = getWsClient()
+  const client = getWsClient();
 
   // Init delta state
   deltaStore.set(coin, {
@@ -56,24 +56,32 @@ export async function subscribeTrades(coin: string): Promise<void> {
     buyVol: 0,
     sellVol: 0,
     barTs: Date.now(),
-  })
+  });
 
   const sub = await client.trades({ coin }, (events) => {
     try {
       // events is an array of trade records
-      const raw = events.map(e => ({
-        side: e.side as 'A' | 'B',
-        size: parseFloat(e.sz),
-      })).filter(t => !isNaN(t.size) && t.size > 0)
+      const raw = events
+        .map((e) => ({
+          side: e.side as "A" | "B",
+          size: parseFloat(e.sz),
+        }))
+        .filter((t) => !Number.isNaN(t.size) && t.size > 0);
 
-      if (raw.length === 0) return
+      if (raw.length === 0) return;
 
-      const { delta, buyVol, sellVol } = computeDelta(raw)
+      const { delta, buyVol, sellVol } = computeDelta(raw);
 
-      const prev = deltaStore.get(coin) ?? { delta: 0, cumDelta: 0, buyVol: 0, sellVol: 0, barTs: Date.now() }
-      const newBuyVol = prev.buyVol + buyVol
-      const newSellVol = prev.sellVol + sellVol
-      const newDelta = newBuyVol - newSellVol
+      const prev = deltaStore.get(coin) ?? {
+        delta: 0,
+        cumDelta: 0,
+        buyVol: 0,
+        sellVol: 0,
+        barTs: Date.now(),
+      };
+      const newBuyVol = prev.buyVol + buyVol;
+      const newSellVol = prev.sellVol + sellVol;
+      const newDelta = newBuyVol - newSellVol;
 
       deltaStore.set(coin, {
         delta: newDelta,
@@ -81,53 +89,76 @@ export async function subscribeTrades(coin: string): Promise<void> {
         buyVol: newBuyVol,
         sellVol: newSellVol,
         barTs: prev.barTs,
-      })
+      });
     } catch (err) {
-      log.error('trades', `${coin}: parse error — ${err instanceof Error ? err.message : String(err)}`)
+      log.error(
+        "trades",
+        `${coin}: parse error — ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
-  })
+  });
 
-  tradeSubs.set(coin, sub)
-  registerSubscription(sub)
+  tradeSubs.set(coin, sub);
+  registerSubscription(sub);
 }
 
 // ── Exchange-agnostic write API (used by Bybit feed) ─────────────────────────
 
 /** Initialise delta state for a coin to zero (call before subscribing). */
 export function initDelta(coin: string): void {
-  deltaStore.set(coin, { delta: 0, cumDelta: 0, buyVol: 0, sellVol: 0, barTs: Date.now() })
+  deltaStore.set(coin, {
+    delta: 0,
+    cumDelta: 0,
+    buyVol: 0,
+    sellVol: 0,
+    barTs: Date.now(),
+  });
 }
 
 /**
  * Apply an incremental delta update from external feed (e.g. Bybit).
  * Accumulates into running totals — same semantic as subscribeTrades handler.
  */
-export function applyDeltaUpdate(coin: string, buyVol: number, sellVol: number): void {
-  const prev = deltaStore.get(coin) ?? { delta: 0, cumDelta: 0, buyVol: 0, sellVol: 0, barTs: Date.now() }
-  const newBuyVol = prev.buyVol + buyVol
-  const newSellVol = prev.sellVol + sellVol
-  const newDelta = newBuyVol - newSellVol
+export function applyDeltaUpdate(
+  coin: string,
+  buyVol: number,
+  sellVol: number,
+): void {
+  const prev = deltaStore.get(coin) ?? {
+    delta: 0,
+    cumDelta: 0,
+    buyVol: 0,
+    sellVol: 0,
+    barTs: Date.now(),
+  };
+  const newBuyVol = prev.buyVol + buyVol;
+  const newSellVol = prev.sellVol + sellVol;
+  const newDelta = newBuyVol - newSellVol;
   deltaStore.set(coin, {
     delta: newDelta,
     cumDelta: prev.cumDelta + (buyVol - sellVol),
     buyVol: newBuyVol,
     sellVol: newSellVol,
     barTs: prev.barTs,
-  })
+  });
 }
 
 /** Remove delta state for a coin (used by Bybit unsubscribe). */
 export function removeDelta(coin: string): void {
-  deltaStore.delete(coin)
+  deltaStore.delete(coin);
 }
 
 /** Unsubscribe trades stream for a specific coin and clear its delta state. */
 export async function unsubscribeTrades(coin: string): Promise<void> {
-  const sub = tradeSubs.get(coin)
+  const sub = tradeSubs.get(coin);
   if (sub) {
-    try { await sub.unsubscribe() } catch { /* ignore */ }
-    removeSubscription(sub)
-    tradeSubs.delete(coin)
+    try {
+      await sub.unsubscribe();
+    } catch {
+      /* ignore */
+    }
+    removeSubscription(sub);
+    tradeSubs.delete(coin);
   }
-  deltaStore.delete(coin)
+  deltaStore.delete(coin);
 }

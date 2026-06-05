@@ -4,20 +4,31 @@
 
 // Alerts (fire-and-forget notifications)
 export {
-  sendTelegramAlert,
-  escapeMarkdownV2,
+  checkTelegramConfig,
   escapeHtml,
+  escapeMarkdownV2,
   formatAlert,
   formatDailySummary,
   formatDailySummaryHtml,
-  checkTelegramConfig,
-} from './alerts.js'
+  sendTelegramAlert,
+} from "./alerts.js";
 
 // Bot (command interface)
-export { startBot, stopBot } from './bot.js'
+export { startBot, stopBot } from "./bot.js";
 
 // Commands (registry)
-export { registerCommand, getCommands, findCommand, executeCommandByName, getMainMenuKeyboard } from './commands.js'
+export {
+  executeCommandByName,
+  findCommand,
+  getCommands,
+  getMainMenuKeyboard,
+  registerCommand,
+} from "./commands.js";
 
 // Types
-export type { CommandDef, CommandHandler, TelegramUpdate, TelegramMessage } from './types.js'
+export type {
+  CommandDef,
+  CommandHandler,
+  TelegramMessage,
+  TelegramUpdate,
+} from "./types.js";

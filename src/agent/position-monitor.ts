@@ -14,43 +14,46 @@
  *   - Exchange sync stubbed until S10 (same pattern as order-manager)
  */
 
-import type {
-  PositionState,
-  MonitorAction,
-  ExchangePositionSnapshot,
-  AgentEvent,
-} from './types.js'
-import {
-  computeTrailingStop,
-  isTrailingStopHit,
-  computePartialCloseLevels,
-  getDefaultTrailingConfig,
-  getDefaultPartialCloseConfig,
-} from './exits.js'
-import type { TrailingStopState } from './exits.js'
-import type { SignalSide } from '../types.js'
 import {
   EXCHANGE_SYNC_INTERVAL_MS,
+  getThesisMonitorTFs,
   THESIS_MONITOR,
   TIMEFRAME_MS,
   TRAIL_UPDATE_THRESHOLD,
-  getThesisMonitorTFs,
   tryGetActiveExchange,
-} from '../config.js'
-import { captureThesis, evaluateThesis, shouldCheckThesis, thesisToActions } from './thesis-monitor.js'
-import type { ThesisTFSnapshot } from './types.js'
-import { getStatus } from '../strategy/orchestrator.js'
-import type { MarketRegime } from '../types.js'
-import { getHLExchangeService as getExchangeService } from '../execution/hl-exchange-service.js'
-import type { IExchangeService as ExchangeService, AccountState } from '../execution/exchange-service.js'
-import { getExchangePool, type IExchangeService as PoolExchangeService } from '../execution/exchange-pool.js'
-import { log } from '../lib/logger.js'
-import { getOrderManager } from './order-manager.js'
+} from "../config.js";
+import { getExchangePool } from "../execution/exchange-pool.js";
+import type { AccountState } from "../execution/exchange-service.js";
+import { getHLExchangeService as getExchangeService } from "../execution/hl-exchange-service.js";
+import { log } from "../lib/logger.js";
+import { getStatus } from "../strategy/orchestrator.js";
+import type { MarketRegime } from "../types.js";
+import {
+  computePartialCloseLevels,
+  computeTrailingStop,
+  getDefaultPartialCloseConfig,
+  getDefaultTrailingConfig,
+  isTrailingStopHit,
+} from "./exits.js";
+import { getOrderManager } from "./order-manager.js";
+import {
+  captureThesis,
+  evaluateThesis,
+  shouldCheckThesis,
+  thesisToActions,
+} from "./thesis-monitor.js";
+import type {
+  AgentEvent,
+  ExchangePositionSnapshot,
+  MonitorAction,
+  PositionState,
+  ThesisTFSnapshot,
+} from "./types.js";
 
 // ─── Exchange Query (S10: real HL clearinghouseState) ──────────────────────
 
 function isBybitLiveMode(): boolean {
-  return tryGetActiveExchange() === 'BB'
+  return tryGetActiveExchange() === "BB";
 }
 
 /**
@@ -58,24 +61,31 @@ function isBybitLiveMode(): boolean {
  * Returns ExchangePositionSnapshot[] on success, null on API/network error.
  * Callers must treat null as "skip reconciliation" to avoid false position closes.
  */
-export async function queryExchangePositions(): Promise<ExchangePositionSnapshot[] | null> {
+export async function queryExchangePositions(): Promise<
+  ExchangePositionSnapshot[] | null
+> {
   try {
-    const pool = getExchangePool()
+    const pool = getExchangePool();
     if (!pool.isInitialized()) {
       if (isBybitLiveMode()) {
-        throw new Error('PositionMonitor: ExchangePool must be initialized in BB live mode (HL fallback blocked)')
+        throw new Error(
+          "PositionMonitor: ExchangePool must be initialized in BB live mode (HL fallback blocked)",
+        );
       }
-      return await getExchangeService().getPositions()
+      return await getExchangeService().getPositions();
     }
 
     // Single shared account: one position query.
     if (!pool.isMultiWallet()) {
-      return await pool.getShared().getPositions()
+      return await pool.getShared().getPositions();
     }
-    return await pool.getShared().getPositions()
+    return await pool.getShared().getPositions();
   } catch (err) {
-    log.error('position-monitor', `queryExchangePositions failed: ${err instanceof Error ? err.message : err}`)
-    return null  // null = API error; caller skips reconciliation to avoid false position closes
+    log.error(
+      "position-monitor",
+      `queryExchangePositions failed: ${err instanceof Error ? err.message : err}`,
+    );
+    return null; // null = API error; caller skips reconciliation to avoid false position closes
   }
 }
 
@@ -91,83 +101,95 @@ export function evaluatePosition(
   position: PositionState,
   currentPrice: number,
 ): MonitorAction[] {
-  if (currentPrice <= 0) return [{ type: 'hold' }]
+  if (currentPrice <= 0) return [{ type: "hold" }];
 
-  const actions: MonitorAction[] = []
-  const side = position.side
+  const actions: MonitorAction[] = [];
+  const side = position.side;
 
   // 1. Compute trailing stop state
-  const trailingConfig = getDefaultTrailingConfig()
+  const trailingConfig = getDefaultTrailingConfig();
   const newTrailingState = computeTrailingStop(
     side,
     position.entryPrice,
     currentPrice,
     position.trailingState,
     trailingConfig,
-  )
+  );
 
   // 2. Check if trailing stop HIT → close position
-  if (newTrailingState.active && isTrailingStopHit(side, currentPrice, newTrailingState)) {
+  if (
+    newTrailingState.active &&
+    isTrailingStopHit(side, currentPrice, newTrailingState)
+  ) {
     actions.push({
-      type: 'close',
+      type: "close",
       positionId: position.positionId,
       reason: `trail_stop_hit @ ${currentPrice.toFixed(2)} (trail=${newTrailingState.currentStopPrice.toFixed(2)})`,
-    })
-    return actions  // trailing stop hit takes priority — close immediately
+    });
+    return actions; // trailing stop hit takes priority — close immediately
   }
 
   // 3. Check partial close levels
-  const partialConfig = getDefaultPartialCloseConfig()
+  const partialConfig = getDefaultPartialCloseConfig();
   const levels = computePartialCloseLevels(
     side,
     position.entryPrice,
     position.slPrice,
     partialConfig,
-  )
+  );
 
   for (let i = 0; i < levels.length; i++) {
-    if (position.partialClosesFired.includes(i)) continue  // already fired
+    if (position.partialClosesFired.includes(i)) continue; // already fired
 
-    const level = levels[i]!
-    const hit = side === 'long'
-      ? currentPrice >= level.targetPrice
-      : currentPrice <= level.targetPrice
+    // biome-ignore lint/style/noNonNullAssertion: levels after filter; i valid
+    const level = levels[i]!;
+    const hit =
+      side === "long"
+        ? currentPrice >= level.targetPrice
+        : currentPrice <= level.targetPrice;
 
     if (hit) {
       actions.push({
-        type: 'partial_close',
+        type: "partial_close",
         positionId: position.positionId,
         closePct: level.closePct,
-        ...(level.newSlPrice !== undefined ? { newSlPrice: level.newSlPrice } : {}),
-      })
+        ...(level.newSlPrice !== undefined
+          ? { newSlPrice: level.newSlPrice }
+          : {}),
+      });
       // Only fire one partial close per tick to avoid cascading
-      break
+      break;
     }
   }
 
   // 4. Check if trailing stop needs SL update on exchange
   //    Skip if partial close already fired this tick (breakeven SL takes priority)
-  const hasPartialClose = actions.some(a => a.type === 'partial_close')
-  if (!hasPartialClose && newTrailingState.active && newTrailingState.currentStopPrice > 0) {
-    const prevStop = position.trailingState?.currentStopPrice ?? 0
-    const changePct = prevStop > 0
-      ? Math.abs(newTrailingState.currentStopPrice - prevStop) / prevStop
-      : 1  // first activation always sends update
+  const hasPartialClose = actions.some((a) => a.type === "partial_close");
+  if (
+    !hasPartialClose &&
+    newTrailingState.active &&
+    newTrailingState.currentStopPrice > 0
+  ) {
+    const prevStop = position.trailingState?.currentStopPrice ?? 0;
+    const changePct =
+      prevStop > 0
+        ? Math.abs(newTrailingState.currentStopPrice - prevStop) / prevStop
+        : 1; // first activation always sends update
 
     if (changePct >= TRAIL_UPDATE_THRESHOLD) {
       actions.push({
-        type: 'trail_update',
+        type: "trail_update",
         positionId: position.positionId,
         newSlPrice: newTrailingState.currentStopPrice,
-      })
+      });
     }
   }
 
   if (actions.length === 0) {
-    actions.push({ type: 'hold' })
+    actions.push({ type: "hold" });
   }
 
-  return actions
+  return actions;
 }
 
 /**
@@ -179,85 +201,92 @@ export function reconcilePositions(
   tracked: Map<string, PositionState>,
   exchangeSnapshots: ExchangePositionSnapshot[],
 ): MonitorAction[] {
-  const actions: MonitorAction[] = []
-  const exchangeCoins = new Set(exchangeSnapshots.map(s => s.coin))
+  const actions: MonitorAction[] = [];
+  const _exchangeCoins = new Set(exchangeSnapshots.map((s) => s.coin));
 
   for (const [, pos] of tracked) {
-    const snap = exchangeSnapshots.find(s => s.coin === pos.coin)
+    const snap = exchangeSnapshots.find((s) => s.coin === pos.coin);
 
     if (!snap || snap.size === 0) {
       // Position gone on exchange — liquidation or external close
       actions.push({
-        type: 'close',
+        type: "close",
         positionId: pos.positionId,
-        reason: snap ? 'exchange_position_closed' : 'exchange_position_not_found',
-      })
+        reason: snap
+          ? "exchange_position_closed"
+          : "exchange_position_not_found",
+      });
     } else {
       // Position exists — check for size mismatch (external partial close)
-      const exchangeSize = Math.abs(snap.size)
+      const exchangeSize = Math.abs(snap.size);
       if (exchangeSize < pos.currentSize * 0.95) {
         // Significant size reduction — external partial close
         actions.push({
-          type: 'alert',
+          type: "alert",
           positionId: pos.positionId,
           message: `Size mismatch: tracked=${pos.currentSize.toFixed(4)} exchange=${exchangeSize.toFixed(4)}`,
-        })
+        });
       }
     }
   }
 
-  return actions
+  return actions;
 }
 
 // ─── PositionMonitor Class ──────────────────────────────────────────────────
 
 export class PositionMonitor {
   /** Tracked open positions — keyed by positionId. */
-  private positions: Map<string, PositionState> = new Map()
+  private positions: Map<string, PositionState> = new Map();
   /** Exchange sync interval handle. */
-  private syncInterval: ReturnType<typeof setInterval> | null = null
+  private syncInterval: ReturnType<typeof setInterval> | null = null;
   /** Guard against concurrent syncWithExchange calls (setInterval fires even if previous async call hasn't resolved). */
-  private syncInProgress = false
+  private syncInProgress = false;
   /** Callback to dispatch events to TradingAgent. */
-  private dispatchToAgent: ((coin: string, event: AgentEvent) => void) | null = null
+  private dispatchToAgent: ((coin: string, event: AgentEvent) => void) | null =
+    null;
   /** Callback to update SL on exchange via OrderManager (parentOrderId, newSlPrice). */
-  private onUpdateStop: ((parentOrderId: string, newSlPrice: number) => void) | null = null
+  private onUpdateStop:
+    | ((parentOrderId: string, newSlPrice: number) => void)
+    | null = null;
   /** Callback to update account equity on TradingAgent. */
-  private onEquityUpdate: ((equity: number) => void) | null = null
+  private onEquityUpdate: ((equity: number) => void) | null = null;
   /** Cached exchange position snapshots from last syncWithExchange (TUI reuse — avoids duplicate API calls). */
-  private lastExchangeSnapshots: ExchangePositionSnapshot[] | null = null
+  private lastExchangeSnapshots: ExchangePositionSnapshot[] | null = null;
   /** Cached account state from last syncWithExchange (TUI reuse — avoids duplicate API calls). */
-  private lastAccountState: AccountState | null = null
+  private lastAccountState: AccountState | null = null;
 
   /** Set the callback for dispatching events to the agent state machine. */
   setAgentDispatch(fn: (coin: string, event: AgentEvent) => void): void {
-    this.dispatchToAgent = fn
+    this.dispatchToAgent = fn;
   }
 
   /** Set the callback for SL updates via OrderManager.modifySLPrice. */
-  setUpdateStopCallback(fn: (parentOrderId: string, newSlPrice: number) => void): void {
-    this.onUpdateStop = fn
+  setUpdateStopCallback(
+    fn: (parentOrderId: string, newSlPrice: number) => void,
+  ): void {
+    this.onUpdateStop = fn;
   }
 
   /** Set the callback for updating account equity used by portfolio risk checks. */
   setEquityCallback(fn: (equity: number) => void): void {
-    this.onEquityUpdate = fn
+    this.onEquityUpdate = fn;
   }
 
   // ── Position Lifecycle ────────────────────────────────────────────────
 
   /** Register a new position for monitoring (called on order fill). */
   openPosition(params: {
-    positionId: string
-    coin: string
-    side: 'long' | 'short'
-    entryPrice: number
-    size: number
-    slPrice: number
-    tpPrice: number
-    entryOrderId: string
-    leverage: number
-    entryInterval?: import('../types.js').CandleInterval
+    positionId: string;
+    coin: string;
+    side: "long" | "short";
+    entryPrice: number;
+    size: number;
+    slPrice: number;
+    tpPrice: number;
+    entryOrderId: string;
+    leverage: number;
+    entryInterval?: import("../types.js").CandleInterval;
   }): PositionState {
     const state: PositionState = {
       positionId: params.positionId,
@@ -276,41 +305,71 @@ export class PositionMonitor {
       openedAt: Date.now(),
       thesis: null,
       lastThesisCheckAt: 0,
-    }
-    this.positions.set(params.positionId, state)
-    log.info('position-monitor', `Tracking position: ${params.coin} ${params.side} @ ${params.entryPrice} size=${params.size}`)
+    };
+    this.positions.set(params.positionId, state);
+    log.info(
+      "position-monitor",
+      `Tracking position: ${params.coin} ${params.side} @ ${params.entryPrice} size=${params.size}`,
+    );
 
     // Auto-capture thesis from current regime/bias status if entry interval provided
     if (THESIS_MONITOR.enabled && params.entryInterval) {
       try {
-        const snapshots = this.gatherCurrentSnapshots({ ...state, thesis: { entryInterval: params.entryInterval, side: params.side, snapshots: [], capturedAt: 0 } })
+        const snapshots = this.gatherCurrentSnapshots({
+          ...state,
+          thesis: {
+            entryInterval: params.entryInterval,
+            side: params.side,
+            snapshots: [],
+            capturedAt: 0,
+          },
+        });
         if (snapshots && snapshots.length > 0) {
-          state.thesis = captureThesis(params.side, params.entryInterval, snapshots)
-          log.info('position-monitor', `Thesis captured for ${params.coin}: ${snapshots.map(s => `${s.interval}=${s.regime}/${s.bias}`).join(', ')}`)
+          state.thesis = captureThesis(
+            params.side,
+            params.entryInterval,
+            snapshots,
+          );
+          log.info(
+            "position-monitor",
+            `Thesis captured for ${params.coin}: ${snapshots.map((s) => `${s.interval}=${s.regime}/${s.bias}`).join(", ")}`,
+          );
         }
       } catch (err) {
-        log.warn('position-monitor', `Thesis capture failed for ${params.coin}: ${err instanceof Error ? err.message : err}`)
+        log.warn(
+          "position-monitor",
+          `Thesis capture failed for ${params.coin}: ${err instanceof Error ? err.message : err}`,
+        );
       }
     }
 
-    return state
+    return state;
   }
 
   /** Set trade thesis for active position monitoring. Called after openPosition. */
-  setPositionThesis(positionId: string, thesis: import('./types.js').TradeThesis): void {
-    const pos = this.positions.get(positionId)
+  setPositionThesis(
+    positionId: string,
+    thesis: import("./types.js").TradeThesis,
+  ): void {
+    const pos = this.positions.get(positionId);
     if (pos) {
-      pos.thesis = thesis
-      log.info('position-monitor', `Thesis set for ${pos.coin}: ${thesis.snapshots.map(s => `${s.interval}=${s.regime}/${s.bias}`).join(', ')}`)
+      pos.thesis = thesis;
+      log.info(
+        "position-monitor",
+        `Thesis set for ${pos.coin}: ${thesis.snapshots.map((s) => `${s.interval}=${s.regime}/${s.bias}`).join(", ")}`,
+      );
     }
   }
 
   /** Remove a position from monitoring (called on close). */
   closePositionTracking(positionId: string): void {
-    const pos = this.positions.get(positionId)
+    const pos = this.positions.get(positionId);
     if (pos) {
-      log.info('position-monitor', `Stopped tracking: ${pos.coin} ${positionId}`)
-      this.positions.delete(positionId)
+      log.info(
+        "position-monitor",
+        `Stopped tracking: ${pos.coin} ${positionId}`,
+      );
+      this.positions.delete(positionId);
     }
   }
 
@@ -321,81 +380,97 @@ export class PositionMonitor {
    * Called by agent tick or on price update.
    * Executes returned actions via OrderManager dispatch.
    */
-  async monitorPosition(positionId: string, currentPrice: number): Promise<MonitorAction[]> {
-    const pos = this.positions.get(positionId)
-    if (!pos) return [{ type: 'hold' }]
+  async monitorPosition(
+    positionId: string,
+    currentPrice: number,
+  ): Promise<MonitorAction[]> {
+    const pos = this.positions.get(positionId);
+    if (!pos) return [{ type: "hold" }];
 
-    const actions = evaluatePosition(pos, currentPrice)
+    const actions = evaluatePosition(pos, currentPrice);
 
     for (const action of actions) {
-      await this.executeAction(pos, action)
+      await this.executeAction(pos, action);
     }
 
     // Update trailing state (always, even if no action — tracks highestPrice)
-    const trailingConfig = getDefaultTrailingConfig()
+    const trailingConfig = getDefaultTrailingConfig();
     pos.trailingState = computeTrailingStop(
       pos.side,
       pos.entryPrice,
       currentPrice,
       pos.trailingState,
       trailingConfig,
-    )
+    );
 
-    return actions
+    return actions;
   }
 
   /** Execute a monitor action — dispatch to agent or order manager. */
-  private async executeAction(pos: PositionState, action: MonitorAction): Promise<void> {
+  private async executeAction(
+    pos: PositionState,
+    action: MonitorAction,
+  ): Promise<void> {
     switch (action.type) {
-      case 'hold':
-        break
+      case "hold":
+        break;
 
-      case 'trail_update':
-        pos.slPrice = action.newSlPrice
-        log.info('position-monitor', `Trail SL update: ${pos.coin} new SL @ ${action.newSlPrice.toFixed(2)}`)
+      case "trail_update":
+        pos.slPrice = action.newSlPrice;
+        log.info(
+          "position-monitor",
+          `Trail SL update: ${pos.coin} new SL @ ${action.newSlPrice.toFixed(2)}`,
+        );
         // Dispatch directly to OrderManager for SL modification on exchange
-        this.onUpdateStop?.(pos.entryOrderId, action.newSlPrice)
-        break
+        this.onUpdateStop?.(pos.entryOrderId, action.newSlPrice);
+        break;
 
-      case 'partial_close': {
-        const levelIdx = this.findPartialCloseLevel(pos, action.closePct)
+      case "partial_close": {
+        const levelIdx = this.findPartialCloseLevel(pos, action.closePct);
         if (levelIdx >= 0) {
-          pos.partialClosesFired.push(levelIdx)
+          pos.partialClosesFired.push(levelIdx);
         }
-        const closeSize = pos.currentSize * action.closePct
-        pos.currentSize -= closeSize
-        if (action.newSlPrice != null) {  // null and undefined both excluded
-          pos.slPrice = action.newSlPrice
+        const closeSize = pos.currentSize * action.closePct;
+        pos.currentSize -= closeSize;
+        if (action.newSlPrice != null) {
+          // null and undefined both excluded
+          pos.slPrice = action.newSlPrice;
         }
-        log.info('position-monitor', `Partial close: ${pos.coin} ${(action.closePct * 100).toFixed(0)}% (${closeSize.toFixed(4)} coins) remaining=${pos.currentSize.toFixed(4)}`)
-        break
+        log.info(
+          "position-monitor",
+          `Partial close: ${pos.coin} ${(action.closePct * 100).toFixed(0)}% (${closeSize.toFixed(4)} coins) remaining=${pos.currentSize.toFixed(4)}`,
+        );
+        break;
       }
 
-      case 'close': {
-        log.info('position-monitor', `Position close: ${pos.coin} reason=${action.reason}`)
+      case "close": {
+        log.info(
+          "position-monitor",
+          `Position close: ${pos.coin} reason=${action.reason}`,
+        );
 
-        if (action.reason.startsWith('trail_stop_hit')) {
+        if (action.reason.startsWith("trail_stop_hit")) {
           this.dispatchToAgent?.(pos.coin, {
-            type: 'trail_stop_hit',
+            type: "trail_stop_hit",
             positionId: pos.positionId,
             closePrice: 0,
             pnl: 0,
-          })
+          });
         } else {
           this.dispatchToAgent?.(pos.coin, {
-            type: 'position_closed',
+            type: "position_closed",
             positionId: pos.positionId,
             closePrice: 0,
             pnl: 0,
             reason: action.reason,
-          })
+          });
         }
-        break
+        break;
       }
 
-      case 'alert':
-        log.warn('position-monitor', `ALERT ${pos.coin}: ${action.message}`)
-        break
+      case "alert":
+        log.warn("position-monitor", `ALERT ${pos.coin}: ${action.message}`);
+        break;
     }
   }
 
@@ -405,29 +480,32 @@ export class PositionMonitor {
       pos.side,
       pos.entryPrice,
       pos.slPrice,
-    )
-    return levels.findIndex(l => Math.abs(l.closePct - closePct) < 0.001)
+    );
+    return levels.findIndex((l) => Math.abs(l.closePct - closePct) < 0.001);
   }
 
   // ── Exchange Sync (R3) ────────────────────────────────────────────────
 
   /** Start the exchange-sync heartbeat interval. */
   startSync(): void {
-    if (this.syncInterval) return  // already running
+    if (this.syncInterval) return; // already running
     this.syncInterval = setInterval(() => {
-      this.syncWithExchange().catch(err => {
-        log.error('position-monitor', `Exchange sync error: ${err}`)
-      })
-    }, EXCHANGE_SYNC_INTERVAL_MS)
-    log.info('position-monitor', `Exchange sync started (interval=${EXCHANGE_SYNC_INTERVAL_MS}ms)`)
+      this.syncWithExchange().catch((err) => {
+        log.error("position-monitor", `Exchange sync error: ${err}`);
+      });
+    }, EXCHANGE_SYNC_INTERVAL_MS);
+    log.info(
+      "position-monitor",
+      `Exchange sync started (interval=${EXCHANGE_SYNC_INTERVAL_MS}ms)`,
+    );
   }
 
   /** Stop the exchange-sync heartbeat. */
   stopSync(): void {
     if (this.syncInterval) {
-      clearInterval(this.syncInterval)
-      this.syncInterval = null
-      log.info('position-monitor', 'Exchange sync stopped')
+      clearInterval(this.syncInterval);
+      this.syncInterval = null;
+      log.info("position-monitor", "Exchange sync stopped");
     }
   }
 
@@ -436,92 +514,97 @@ export class PositionMonitor {
    * Detects: liquidation, external close, missed fills.
    */
   async syncWithExchange(): Promise<MonitorAction[]> {
-    if (this.syncInProgress) return []
-    this.syncInProgress = true
+    if (this.syncInProgress) return [];
+    this.syncInProgress = true;
     try {
       // Update account equity for portfolio risk checks (even with 0 positions)
       try {
-        const pool = getExchangePool()
+        const pool = getExchangePool();
         if (pool.isInitialized()) {
-          const st = await pool.getShared().getAccountState()
-          this.lastAccountState = st
-          this.onEquityUpdate?.(st.effectiveBalance)
+          const st = await pool.getShared().getAccountState();
+          this.lastAccountState = st;
+          this.onEquityUpdate?.(st.effectiveBalance);
         } else {
           if (isBybitLiveMode()) {
-            throw new Error('PositionMonitor: ExchangePool must be initialized in BB live mode (HL fallback blocked)')
+            throw new Error(
+              "PositionMonitor: ExchangePool must be initialized in BB live mode (HL fallback blocked)",
+            );
           }
-          const accountState = await getExchangeService().getAccountState()
-          this.lastAccountState = accountState
-          this.onEquityUpdate?.(accountState.effectiveBalance)
+          const accountState = await getExchangeService().getAccountState();
+          this.lastAccountState = accountState;
+          this.onEquityUpdate?.(accountState.effectiveBalance);
         }
       } catch {
         // Non-fatal — equity update is best-effort
       }
 
       // Detect entry fills that were not inline in placeOrder (e.g. limit) → onOrderFilled → SL/TP (R9)
-      await getOrderManager().syncSubmittedEntryFills()
+      await getOrderManager().syncSubmittedEntryFills();
 
-      if (this.positions.size === 0) return []
+      if (this.positions.size === 0) return [];
 
       // Thesis evaluation: re-check multi-TF regime/bias for open positions.
       if (THESIS_MONITOR.enabled) {
         for (const [, pos] of this.positions) {
-          if (!pos.thesis) continue
-          const entryTfMs = TIMEFRAME_MS[pos.thesis.entryInterval] ?? 300_000
-          const now = Date.now()
-          if (!shouldCheckThesis(pos, now, entryTfMs)) continue
-          pos.lastThesisCheckAt = now
-          const currentSnaps = this.gatherCurrentSnapshots(pos)
-          if (!currentSnaps) continue
-          const evaluation = evaluateThesis(pos.thesis, currentSnaps)
-          const thesisActions = thesisToActions(evaluation, pos)
+          if (!pos.thesis) continue;
+          const entryTfMs = TIMEFRAME_MS[pos.thesis.entryInterval] ?? 300_000;
+          const now = Date.now();
+          if (!shouldCheckThesis(pos, now, entryTfMs)) continue;
+          pos.lastThesisCheckAt = now;
+          const currentSnaps = this.gatherCurrentSnapshots(pos);
+          if (!currentSnaps) continue;
+          const evaluation = evaluateThesis(pos.thesis, currentSnaps);
+          const thesisActions = thesisToActions(evaluation, pos);
           for (const action of thesisActions) {
-            await this.executeAction(pos, action)
-            if (action.type === 'close') {
+            await this.executeAction(pos, action);
+            if (action.type === "close") {
               // Position closed by thesis — dispatch to agent and stop further checks
               this.dispatchToAgent?.(pos.coin, {
-                type: 'position_closed',
-                closePrice: pos.entryPrice,  // approximate — actual close may differ
+                type: "position_closed",
+                closePrice: pos.entryPrice, // approximate — actual close may differ
                 pnl: 0,
                 reason: action.reason,
-              } as AgentEvent)
-              this.positions.delete(pos.positionId)
-              break
+              } as AgentEvent);
+              this.positions.delete(pos.positionId);
+              break;
             }
           }
         }
       }
 
-      const snapshots = await queryExchangePositions()
-      this.lastExchangeSnapshots = snapshots
+      const snapshots = await queryExchangePositions();
+      this.lastExchangeSnapshots = snapshots;
       // null = API/network error — skip reconciliation to avoid false position closes
       if (snapshots === null) {
-        log.warn('position-monitor', `getPositions API error — skipping reconciliation this cycle (${this.positions.size} position(s) still tracked)`)
-        return []
+        log.warn(
+          "position-monitor",
+          `getPositions API error — skipping reconciliation this cycle (${this.positions.size} position(s) still tracked)`,
+        );
+        return [];
       }
 
-      const actions = reconcilePositions(this.positions, snapshots)
+      const actions = reconcilePositions(this.positions, snapshots);
 
       for (const action of actions) {
-        if (!('positionId' in action)) continue
-        const pos = this.positions.get(action.positionId)
+        if (!("positionId" in action)) continue;
+        const pos = this.positions.get(action.positionId);
         if (pos) {
-          await this.executeAction(pos, action)
-          if (action.type === 'close') {
-            this.positions.delete(pos.positionId)
+          await this.executeAction(pos, action);
+          if (action.type === "close") {
+            this.positions.delete(pos.positionId);
           }
         }
       }
 
       // Update sync timestamps
-      const now = Date.now()
+      const now = Date.now();
       for (const [, pos] of this.positions) {
-        pos.lastSyncAt = now
+        pos.lastSyncAt = now;
       }
 
-      return actions
+      return actions;
     } finally {
-      this.syncInProgress = false
+      this.syncInProgress = false;
     }
   }
 
@@ -530,76 +613,81 @@ export class PositionMonitor {
    * Uses orchestrator's cached StatusSnapshot (updated on each candle close).
    * Returns null if insufficient data for any monitored TF.
    */
-  private gatherCurrentSnapshots(pos: PositionState): ThesisTFSnapshot[] | null {
-    if (!pos.thesis) return null
-    const monitorTFs = getThesisMonitorTFs(pos.thesis.entryInterval)
-    const statusSnaps = getStatus()
-    const result: ThesisTFSnapshot[] = []
+  private gatherCurrentSnapshots(
+    pos: PositionState,
+  ): ThesisTFSnapshot[] | null {
+    if (!pos.thesis) return null;
+    const monitorTFs = getThesisMonitorTFs(pos.thesis.entryInterval);
+    const statusSnaps = getStatus();
+    const result: ThesisTFSnapshot[] = [];
 
     for (const tf of monitorTFs) {
-      const snap = statusSnaps.find(s => s.coin === pos.coin && s.interval === tf)
-      if (!snap) continue  // TF not yet populated — skip rather than fail
+      const snap = statusSnaps.find(
+        (s) => s.coin === pos.coin && s.interval === tf,
+      );
+      if (!snap) continue; // TF not yet populated — skip rather than fail
       result.push({
         interval: tf,
         regime: snap.regime as MarketRegime,
-        bias: (snap.bias === 'long' || snap.bias === 'short') ? snap.bias : 'neutral',
+        bias:
+          snap.bias === "long" || snap.bias === "short" ? snap.bias : "neutral",
         biasConfidence: snap.biasConfidence,
-      })
+      });
     }
 
-    return result.length > 0 ? result : null
+    return result.length > 0 ? result : null;
   }
 
   // ── Query ─────────────────────────────────────────────────────────────
 
   /** Get a tracked position by ID. */
   getPosition(positionId: string): PositionState | null {
-    return this.positions.get(positionId) ?? null
+    return this.positions.get(positionId) ?? null;
   }
 
   /** Get all tracked positions. */
   getPositions(): Map<string, PositionState> {
-    return new Map(this.positions)
+    return new Map(this.positions);
   }
 
   /** Get position by coin. */
   getPositionByCoin(coin: string): PositionState | null {
     for (const [, pos] of this.positions) {
-      if (pos.coin === coin) return pos
+      if (pos.coin === coin) return pos;
     }
-    return null
+    return null;
   }
 
   /** Check if sync interval is running. */
   isSyncRunning(): boolean {
-    return this.syncInterval !== null
+    return this.syncInterval !== null;
   }
 
   /** Get cached exchange position snapshots from last sync (TUI reuse). */
   getLastExchangeSnapshots(): ExchangePositionSnapshot[] | null {
-    return this.lastExchangeSnapshots
+    return this.lastExchangeSnapshots;
   }
 
   /** Get cached account state from last sync (TUI reuse). */
   getLastAccountState(): AccountState | null {
-    return this.lastAccountState
+    return this.lastAccountState;
   }
 }
 
 // ─── Singleton ──────────────────────────────────────────────────────────────
 
-let instance: PositionMonitor | null = null
+let instance: PositionMonitor | null = null;
 
 /** Get or create the singleton PositionMonitor. */
 export function getPositionMonitor(): PositionMonitor {
   if (!instance) {
-    instance = new PositionMonitor()
+    instance = new PositionMonitor();
   }
-  return instance
+  return instance;
 }
 
 /** Reset PositionMonitor (tests only). */
 export function resetPositionMonitor(): void {
-  instance?.stopSync()
-  instance = null
+  instance?.stopSync();
+  instance = null;
 }

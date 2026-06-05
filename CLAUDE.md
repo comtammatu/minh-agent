@@ -14,8 +14,15 @@ bun run start                                  # Start the live runtime (= bun r
 bun run test:run                               # Run tests once (preferred final check)
 bun test                                       # Watch mode
 bun run typecheck                              # Strict TS typecheck
+bun run lint                                   # Biome lint (baseline + fixes in S4)
+bun run deadcode                               # Knip dead code detection
 ACTIVE_EXCHANGE=HL bun run bench:pipeline:ci   # Pipeline latency gate
 ```
+
+## Tooling Health (S3+)
+- `bun run lint` / `lint:fix` (biome) — style, no-any, unused.
+- `bun run deadcode` (knip) — exports/imports/files.
+Baselines recorded in S3; fixes/triage in S4. These feed into runtime `/health` composite (when wired) and PR quality.
 
 ## Architecture
 
@@ -85,7 +92,7 @@ Detailed rules live in `.claude/rules/`. Each file is the canonical source for i
 
 | Topic | File |
 |---|---|
-| Session workflow + Task Contract | [session-protocol.md](.claude/rules/session-protocol.md) |
+| Session workflow + Task Contract | [session-protocol.md](.claude/rules/session-protocol.md) (Cloud: see environment/cursor-cloud.md) |
 | Test / lint / typecheck gates | [quality-gates.md](.claude/rules/quality-gates.md) |
 | Pattern TTLs (Order Block, FVG, Spring, …) | [invalidation-table.md](.claude/rules/invalidation-table.md) |
 | Indicator rules (zero I/O, golden tests) | [indicators.md](.claude/rules/indicators.md) |

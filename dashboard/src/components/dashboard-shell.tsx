@@ -1,48 +1,64 @@
-import { Activity, CandlestickChart, Menu, ScrollText } from 'lucide-react'
-import { NavLink, Outlet } from 'react-router-dom'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
-import { Button, buttonVariants } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
-import { useDashboardData } from '@/app'
-import { cn } from '@/lib/utils'
+import { Activity, CandlestickChart, Menu, ScrollText } from "lucide-react";
+import { NavLink, Outlet } from "react-router-dom";
+import { useDashboardData } from "@/app";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Overview', icon: Activity },
-  { to: '/market', label: 'Market', icon: CandlestickChart },
-  { to: '/journal', label: 'Journal', icon: ScrollText },
-] as const
+  { to: "/", label: "Overview", icon: Activity },
+  { to: "/market", label: "Market", icon: CandlestickChart },
+  { to: "/journal", label: "Journal", icon: ScrollText },
+] as const;
 
 function NavRail({ mobile = false }: { mobile?: boolean }) {
   return (
-    <nav className={cn('grid gap-1', mobile && 'pt-4')}>
-      {NAV_ITEMS.map(item => {
-        const Icon = item.icon
+    <nav className={cn("grid gap-1", mobile && "pt-4")}>
+      {NAV_ITEMS.map((item) => {
+        const Icon = item.icon;
         return (
           <NavLink
             key={item.to}
             to={item.to}
-            end={item.to === '/'}
+            end={item.to === "/"}
             className={({ isActive }) =>
-              cn(buttonVariants({ variant: isActive ? 'secondary' : 'ghost' }), 'w-full justify-start')
+              cn(
+                buttonVariants({ variant: isActive ? "secondary" : "ghost" }),
+                "w-full justify-start",
+              )
             }
           >
             <Icon className="h-4 w-4" aria-hidden="true" />
             <span>{item.label}</span>
           </NavLink>
-        )
+        );
       })}
     </nav>
-  )
+  );
 }
 
 export function DashboardShell() {
-  const snapshot = useDashboardData()
-  const data = snapshot.data
-  const isReady = data?.bootstrap.phase === 'ready'
+  const snapshot = useDashboardData();
+  const data = snapshot.data;
+  const isReady = data?.bootstrap.phase === "ready";
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.06),_transparent_28%),linear-gradient(180deg,_#18181b_0%,_#101113_100%)] text-foreground">
@@ -58,7 +74,8 @@ export function DashboardShell() {
             <div className="space-y-1">
               <h1 className="text-lg font-semibold">Minh Dashboard</h1>
               <p className="text-sm text-muted-foreground">
-                Read-only runtime view for operations, market context, and journal review.
+                Read-only runtime view for operations, market context, and
+                journal review.
               </p>
             </div>
             <Separator className="my-6" />
@@ -66,11 +83,15 @@ export function DashboardShell() {
             <Card className="mt-auto">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Runtime state</CardTitle>
-                <CardDescription>Current bootstrap phase and execution mode.</CardDescription>
+                <CardDescription>
+                  Current bootstrap phase and execution mode.
+                </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2">
-                <Badge variant={isReady ? 'default' : 'secondary'}>{data?.bootstrap.phase ?? 'warming_up'}</Badge>
-                <Badge variant="outline">{data?.mode.exchange ?? '—'}</Badge>
+                <Badge variant={isReady ? "default" : "secondary"}>
+                  {data?.bootstrap.phase ?? "warming_up"}
+                </Badge>
+                <Badge variant="outline">{data?.mode.exchange ?? "—"}</Badge>
                 <Badge variant="destructive">live</Badge>
               </CardContent>
             </Card>
@@ -83,30 +104,40 @@ export function DashboardShell() {
               <div className="flex items-start gap-3">
                 <Sheet>
                   <SheetTrigger asChild>
-                    <Button variant="outline" size="icon" className="lg:hidden" aria-label="Open navigation menu">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="lg:hidden"
+                      aria-label="Open navigation menu"
+                    >
                       <Menu className="h-4 w-4" aria-hidden="true" />
                     </Button>
                   </SheetTrigger>
                   <SheetContent side="left">
                     <SheetHeader>
                       <SheetTitle>Minh Dashboard</SheetTitle>
-                      <SheetDescription>Overview, market canvas, and journal pages.</SheetDescription>
+                      <SheetDescription>
+                        Overview, market canvas, and journal pages.
+                      </SheetDescription>
                     </SheetHeader>
                     <NavRail mobile />
                   </SheetContent>
                 </Sheet>
                 <div className="space-y-1">
-                  <h2 className="text-lg font-semibold">Read-only ops console</h2>
+                  <h2 className="text-lg font-semibold">
+                    Read-only ops console
+                  </h2>
                   <p className="text-sm text-muted-foreground">
-                    Live snapshot of the current runtime with market and journal drilldown.
+                    Live snapshot of the current runtime with market and journal
+                    drilldown.
                   </p>
                 </div>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
-                <Badge variant={isReady ? 'default' : 'secondary'}>
-                  {isReady ? 'ready' : 'warming up'}
+                <Badge variant={isReady ? "default" : "secondary"}>
+                  {isReady ? "ready" : "warming up"}
                 </Badge>
-                <Badge variant="outline">{data?.mode.exchange ?? '—'}</Badge>
+                <Badge variant="outline">{data?.mode.exchange ?? "—"}</Badge>
                 <Badge variant="destructive">live</Badge>
               </div>
             </div>
@@ -126,5 +157,5 @@ export function DashboardShell() {
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -11,30 +11,29 @@
  *   - S10: activeExchange read once in init(), cached — never per-get()
  */
 
-import { ExchangeService, getExchangeService } from './exchange-service.js'
-import { BybitExchangeService } from './bybit-exchange-service.js'
-import type { IExchangeService } from './exchange-service.js'
-export type { IExchangeService } from './exchange-service.js'
-import {
-  getActiveExchange,
-  SIMULATED_ACCOUNT,
-} from '../config.js'
-import type { ExchangeId } from '../types.js'
-import { log } from '../lib/logger.js'
+import { BybitExchangeService } from "./bybit-exchange-service.js";
+import type { IExchangeService } from "./exchange-service.js";
+import { ExchangeService, getExchangeService } from "./exchange-service.js";
+
+export type { IExchangeService } from "./exchange-service.js";
+
+import { getActiveExchange, SIMULATED_ACCOUNT } from "../config.js";
+import { log } from "../lib/logger.js";
+import type { ExchangeId } from "../types.js";
 
 export class ExchangePool {
   /** Shared instance for the active runtime. */
-  private shared: IExchangeService | null = null
+  private shared: IExchangeService | null = null;
 
   /** Active exchange, read once in init() and cached. */
-  private activeExchange: ExchangeId = 'HL'
+  private activeExchange: ExchangeId = "HL";
 
   /** Whether init() completed successfully. */
-  private initialized = false
+  private initialized = false;
 
   /** True after {@link init} succeeds. If false, {@link get} must not be called. */
   isInitialized(): boolean {
-    return this.initialized
+    return this.initialized;
   }
 
   /**
@@ -42,24 +41,24 @@ export class ExchangePool {
    * Routes to HL or Bybit based on ACTIVE_EXCHANGE env.
    */
   async init(): Promise<void> {
-    if (this.initialized) return
+    if (this.initialized) return;
 
-    this.activeExchange = getActiveExchange()
-    log.info('exchange-pool', `Active exchange: ${this.activeExchange}`)
+    this.activeExchange = getActiveExchange();
+    log.info("exchange-pool", `Active exchange: ${this.activeExchange}`);
 
-    if (this.activeExchange === 'BB') {
-      log.info('exchange-pool', 'Bybit single-wallet mode')
-      const svc = new BybitExchangeService()
-      await svc.init()
-      this.shared = svc
+    if (this.activeExchange === "BB") {
+      log.info("exchange-pool", "Bybit single-wallet mode");
+      const svc = new BybitExchangeService();
+      await svc.init();
+      this.shared = svc;
     } else {
-      log.info('exchange-pool', 'HL single-wallet mode')
-      this.shared = new ExchangeService()
-      await this.shared.init()
+      log.info("exchange-pool", "HL single-wallet mode");
+      this.shared = new ExchangeService();
+      await this.shared.init();
     }
 
-    this.initialized = true
-    log.info('exchange-pool', 'ExchangePool ready (shared wallet)')
+    this.initialized = true;
+    log.info("exchange-pool", "ExchangePool ready (shared wallet)");
   }
 
   /**
@@ -68,29 +67,29 @@ export class ExchangePool {
    */
   get(exchange?: ExchangeId): IExchangeService {
     if (!this.initialized) {
-      throw new Error('ExchangePool not initialized — call init() first')
+      throw new Error("ExchangePool not initialized — call init() first");
     }
-    const ex = exchange ?? this.activeExchange
-    if (this.shared) return this.shared
-    return this.getFallback(ex)
+    const ex = exchange ?? this.activeExchange;
+    if (this.shared) return this.shared;
+    return this.getFallback(ex);
   }
 
   /** Get the shared instance. */
   getShared(): IExchangeService {
     if (!this.initialized) {
-      throw new Error('ExchangePool not initialized — call init() first')
+      throw new Error("ExchangePool not initialized — call init() first");
     }
-    return this.shared!
+    return this.shared!;
   }
 
   /** Always false — the runtime uses one shared wallet. */
   isMultiWallet(): boolean {
-    return false
+    return false;
   }
 
   /** Active exchange cached at init(). */
   getActiveExchangeId(): ExchangeId {
-    return this.activeExchange
+    return this.activeExchange;
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
@@ -101,26 +100,28 @@ export class ExchangePool {
    * BB: throws — BB mode requires explicit init().
    */
   private getFallback(exchange: ExchangeId): IExchangeService {
-    if (exchange === 'HL') return getExchangeService()
-    throw new Error(`No BybitExchangeService initialized for exchange=${exchange}. Call ExchangePool.init() first.`)
+    if (exchange === "HL") return getExchangeService();
+    throw new Error(
+      `No BybitExchangeService initialized for exchange=${exchange}. Call ExchangePool.init() first.`,
+    );
   }
 }
 
 // ─── Singleton ──────────────────────────────────────────────────────────────
 
-let poolInstance: ExchangePool | null = null
+let poolInstance: ExchangePool | null = null;
 
 /** Get or create the singleton ExchangePool. */
 export function getExchangePool(): ExchangePool {
   if (!poolInstance) {
-    poolInstance = new ExchangePool()
+    poolInstance = new ExchangePool();
   }
-  return poolInstance
+  return poolInstance;
 }
 
 /** Reset ExchangePool (tests only). */
 export function resetExchangePool(): void {
-  poolInstance = null
+  poolInstance = null;
 }
 
 /**
@@ -130,9 +131,9 @@ export function resetExchangePool(): void {
  */
 export function getCachedAccountValue(): number {
   try {
-    const svc = getExchangePool().get()
-    return svc.getCachedAccountValue() || SIMULATED_ACCOUNT
+    const svc = getExchangePool().get();
+    return svc.getCachedAccountValue() || SIMULATED_ACCOUNT;
   } catch {
-    return getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT
+    return getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT;
   }
 }

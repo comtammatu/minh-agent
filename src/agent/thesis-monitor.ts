@@ -12,48 +12,48 @@
  *   severe   (>= 0.8): close position immediately
  */
 
-import type { CandleInterval, MarketRegime } from '../types.js'
+import { THESIS_MONITOR } from "../config.js";
+import type { CandleInterval, MarketRegime } from "../types.js";
 import type {
   MonitorAction,
   PositionState,
   ThesisEvaluation,
   ThesisTFSnapshot,
   TradeThesis,
-} from './types.js'
-import { THESIS_MONITOR } from '../config.js'
+} from "./types.js";
 
 // ─── Capture ────────────────────────────────────────────────────────────────
 
 /** Wrap per-TF snapshots into a TradeThesis struct at entry time. */
 export function captureThesis(
-  side: 'long' | 'short',
+  side: "long" | "short",
   entryInterval: CandleInterval,
   snapshots: ThesisTFSnapshot[],
 ): TradeThesis {
   return {
     entryInterval,
     side,
-    snapshots: snapshots.map(s => ({ ...s })),
+    snapshots: snapshots.map((s) => ({ ...s })),
     capturedAt: Date.now(),
-  }
+  };
 }
 
 // ─── Evaluate ───────────────────────────────────────────────────────────────
 
 /** Is this regime opposed to the trade side? */
-function regimeScore(side: 'long' | 'short', regime: MarketRegime): number {
-  const opposed = side === 'long' ? 'BEAR' : 'BULL'
-  if (regime === opposed) return 0.5
-  if (regime === 'SIDEWAYS' || regime === 'VOLATILE') return 0.25
-  return 0  // aligned
+function regimeScore(side: "long" | "short", regime: MarketRegime): number {
+  const opposed = side === "long" ? "BEAR" : "BULL";
+  if (regime === opposed) return 0.5;
+  if (regime === "SIDEWAYS" || regime === "VOLATILE") return 0.25;
+  return 0; // aligned
 }
 
 /** Is this bias opposed to the trade side? */
-function biasScore(side: 'long' | 'short', bias: string): number {
-  const opposed = side === 'long' ? 'short' : 'long'
-  if (bias === opposed) return 0.5
-  if (bias === 'neutral') return 0.25
-  return 0  // aligned
+function biasScore(side: "long" | "short", bias: string): number {
+  const opposed = side === "long" ? "short" : "long";
+  if (bias === opposed) return 0.5;
+  if (bias === "neutral") return 0.25;
+  return 0; // aligned
 }
 
 /**
@@ -71,21 +71,24 @@ export function evaluateThesis(
   currentSnapshots: ThesisTFSnapshot[],
   config: typeof THESIS_MONITOR = THESIS_MONITOR,
 ): ThesisEvaluation {
-  const details: ThesisEvaluation['details'] = []
-  let totalScore = 0
-  let totalWeight = 0
+  const details: ThesisEvaluation["details"] = [];
+  let totalScore = 0;
+  let totalWeight = 0;
 
   for (const entrySnap of thesis.snapshots) {
-    const current = currentSnapshots.find(s => s.interval === entrySnap.interval)
-    if (!current) continue
+    const current = currentSnapshots.find(
+      (s) => s.interval === entrySnap.interval,
+    );
+    if (!current) continue;
 
-    const weight = entrySnap.interval === thesis.entryInterval ? 1.0 : config.htfWeight
-    const rScore = regimeScore(thesis.side, current.regime)
-    const bScore = biasScore(thesis.side, current.bias)
-    const contribution = (rScore + bScore) * weight
+    const weight =
+      entrySnap.interval === thesis.entryInterval ? 1.0 : config.htfWeight;
+    const rScore = regimeScore(thesis.side, current.regime);
+    const bScore = biasScore(thesis.side, current.bias);
+    const contribution = (rScore + bScore) * weight;
 
-    totalScore += contribution
-    totalWeight += weight
+    totalScore += contribution;
+    totalWeight += weight;
 
     details.push({
       interval: entrySnap.interval,
@@ -94,19 +97,19 @@ export function evaluateThesis(
       entryBias: entrySnap.bias,
       currentBias: current.bias,
       contribution,
-    })
+    });
   }
 
   // Normalize to [0, 1]
-  const score = totalWeight > 0 ? Math.min(totalScore / totalWeight, 1.0) : 0
+  const score = totalWeight > 0 ? Math.min(totalScore / totalWeight, 1.0) : 0;
 
-  let severity: ThesisEvaluation['severity']
-  if (score >= config.severeThreshold) severity = 'severe'
-  else if (score >= config.moderateThreshold) severity = 'moderate'
-  else if (score >= config.minorThreshold) severity = 'minor'
-  else severity = 'aligned'
+  let severity: ThesisEvaluation["severity"];
+  if (score >= config.severeThreshold) severity = "severe";
+  else if (score >= config.moderateThreshold) severity = "moderate";
+  else if (score >= config.minorThreshold) severity = "minor";
+  else severity = "aligned";
 
-  return { score, severity, details }
+  return { score, severity, details };
 }
 
 // ─── Actions ────────────────────────────────────────────────────────────────
@@ -118,52 +121,61 @@ export function evaluateThesis(
 export function thesisToActions(
   evaluation: ThesisEvaluation,
   position: PositionState,
-  config: typeof THESIS_MONITOR = THESIS_MONITOR,
+  _config: typeof THESIS_MONITOR = THESIS_MONITOR,
 ): MonitorAction[] {
   switch (evaluation.severity) {
-    case 'aligned':
-      return []
+    case "aligned":
+      return [];
 
-    case 'minor':
-      return [{
-        type: 'alert',
-        positionId: position.positionId,
-        message: `Thesis minor deterioration: score=${evaluation.score.toFixed(2)} — ${formatDetails(evaluation)}`,
-      }]
-
-    case 'moderate': {
-      // Move SL to breakeven if not already there or better
-      const slAlreadyProtected = position.side === 'long'
-        ? position.slPrice >= position.entryPrice
-        : position.slPrice <= position.entryPrice
-      if (slAlreadyProtected) {
-        return [{
-          type: 'alert',
+    case "minor":
+      return [
+        {
+          type: "alert",
           positionId: position.positionId,
-          message: `Thesis moderate deterioration: score=${evaluation.score.toFixed(2)} (SL already protected)`,
-        }]
+          message: `Thesis minor deterioration: score=${evaluation.score.toFixed(2)} — ${formatDetails(evaluation)}`,
+        },
+      ];
+
+    case "moderate": {
+      // Move SL to breakeven if not already there or better
+      const slAlreadyProtected =
+        position.side === "long"
+          ? position.slPrice >= position.entryPrice
+          : position.slPrice <= position.entryPrice;
+      if (slAlreadyProtected) {
+        return [
+          {
+            type: "alert",
+            positionId: position.positionId,
+            message: `Thesis moderate deterioration: score=${evaluation.score.toFixed(2)} (SL already protected)`,
+          },
+        ];
       }
-      return [{
-        type: 'trail_update',
-        positionId: position.positionId,
-        newSlPrice: position.entryPrice,
-      }]
+      return [
+        {
+          type: "trail_update",
+          positionId: position.positionId,
+          newSlPrice: position.entryPrice,
+        },
+      ];
     }
 
-    case 'severe':
-      return [{
-        type: 'close',
-        positionId: position.positionId,
-        reason: `thesis_deteriorated (score=${evaluation.score.toFixed(2)}) — ${formatDetails(evaluation)}`,
-      }]
+    case "severe":
+      return [
+        {
+          type: "close",
+          positionId: position.positionId,
+          reason: `thesis_deteriorated (score=${evaluation.score.toFixed(2)}) — ${formatDetails(evaluation)}`,
+        },
+      ];
   }
 }
 
 /** Format evaluation details for log messages. */
 function formatDetails(evaluation: ThesisEvaluation): string {
   return evaluation.details
-    .map(d => `${d.interval}:${d.currentRegime}/${d.currentBias}`)
-    .join(', ')
+    .map((d) => `${d.interval}:${d.currentRegime}/${d.currentBias}`)
+    .join(", ");
 }
 
 // ─── Cooldown ───────────────────────────────────────────────────────────────
@@ -175,8 +187,8 @@ export function shouldCheckThesis(
   entryTfMs: number,
   config: typeof THESIS_MONITOR = THESIS_MONITOR,
 ): boolean {
-  if (!config.enabled) return false
-  if (!position.thesis) return false
-  const cooldown = entryTfMs * config.cooldownMultiplier
-  return now - position.lastThesisCheckAt >= cooldown
+  if (!config.enabled) return false;
+  if (!position.thesis) return false;
+  const cooldown = entryTfMs * config.cooldownMultiplier;
+  return now - position.lastThesisCheckAt >= cooldown;
 }

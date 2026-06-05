@@ -8,13 +8,13 @@
  * and queue without races.
  */
 
-import { BYBIT_REST_BURST_TOKENS, BYBIT_REST_REFILL_MS } from '../../config.js'
+import { BYBIT_REST_BURST_TOKENS, BYBIT_REST_REFILL_MS } from "../../config.js";
 
-let tokens = BYBIT_REST_BURST_TOKENS
-let lastRefillAt = Date.now()
+let tokens = BYBIT_REST_BURST_TOKENS;
+let lastRefillAt = Date.now();
 
 /** Next available queue slot (ms). Used after burst exhaustion. */
-let nextSlotTime = 0
+let nextSlotTime = 0;
 
 /**
  * Acquire a slot before making a REST request.
@@ -23,24 +23,27 @@ let nextSlotTime = 0
  */
 export async function acquire(): Promise<void> {
   // Refill tokens based on elapsed time (1 token per BYBIT_REST_REFILL_MS)
-  const now = Date.now()
-  const elapsed = now - lastRefillAt
-  tokens = Math.min(BYBIT_REST_BURST_TOKENS, tokens + elapsed / BYBIT_REST_REFILL_MS)
-  lastRefillAt = now
+  const now = Date.now();
+  const elapsed = now - lastRefillAt;
+  tokens = Math.min(
+    BYBIT_REST_BURST_TOKENS,
+    tokens + elapsed / BYBIT_REST_REFILL_MS,
+  );
+  lastRefillAt = now;
 
   if (tokens >= 1) {
-    tokens -= 1
-    return
+    tokens -= 1;
+    return;
   }
 
   // Burst exhausted — enter even-spacing queue
   if (now >= nextSlotTime) {
-    nextSlotTime = now + BYBIT_REST_REFILL_MS
-    return
+    nextSlotTime = now + BYBIT_REST_REFILL_MS;
+    return;
   }
 
   // Queue behind other waiters
-  const waitUntil = nextSlotTime
-  nextSlotTime = waitUntil + BYBIT_REST_REFILL_MS
-  await new Promise(r => setTimeout(r, waitUntil - now))
+  const waitUntil = nextSlotTime;
+  nextSlotTime = waitUntil + BYBIT_REST_REFILL_MS;
+  await new Promise((r) => setTimeout(r, waitUntil - now));
 }

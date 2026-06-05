@@ -1,5 +1,8 @@
 # 05 — UI Layout
 
+> **TARGET / ASPIRATIONAL (2026-06 note):** Describes 10-panel Bloomberg grid, drag-resize, cmdk palette, vital strip, per-panel hotkeys (see DESIGN 06). 
+> **Current:** `dashboard/` is 3-page sidebar app (Overview/Market/Journal via react-router) + Ink TUI as primary. Polling, no cmdk, no panels. See task-contract Q1 and DESIGN.md status table. Treat this as future spec until decision.
+
 Panel taxonomy, default grid, header / status bar, page structure, UX flows.
 
 The dashboard is a **multi-panel workspace**, not a stack of pages. Operator switches focus by hotkey, never by navigation chrome. Inspired by Bloomberg Terminal, TradingView desktop, Hyperliquid pro UI.

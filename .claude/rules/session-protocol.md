@@ -1,5 +1,10 @@
 # Session Protocol
 
+> **Note (2026-06 during arch+ai refactor):** This file describes historical Claude Code + gstack Agent Teams workflow (worktrees, SendMessage, /review slash skills, sprint-N.md as live). 
+> Current Cursor Cloud execution uses: single agent + `Task` tool (subagent_type e.g. explore/coder/test-writer/code-reviewer), `TodoWrite`, `Shell`, `StrReplace`, `CreatePlan`, `ManagePullRequest`, `SwitchMode`, cursor/*-f5ce branches + draft PRs, `bun run test:run` gate.
+> See new `.claude/environment/cursor-cloud.md` (to be added in ai-agents-rebuild phase) and root task-contract. 
+> Domain rules (pure fn, config, etc.) remain valid. Sprint workflow here is historical; use `TODOS.md` + `docs/plan/*.md` for active.
+
 ## Core Rules
 
 - **One task = one session.** Context degrades after ~45 minutes.
@@ -161,7 +166,7 @@ ESTIMATE: [X] exchanges / [Y] minutes
 | New feed integration | 10–15 | 25–40 min |
 | Agent component (state machine, order mgr) | 12–18 | 30–45 min |
 | Database schema + persistence layer | 10–15 | 25–40 min |
-| HTTP endpoints (Elysia routes) | 8–12 | 20–30 min |
+| HTTP endpoints (Bun.serve / src/server/) | 8–12 | 20–30 min |
 | Security-sensitive (wallet, execution) | 15–20 | 35–50 min |
 | Large feature (cross-layer) | — | Split into 2–3 sessions |
 
@@ -177,34 +182,21 @@ Do not let the agent fix its own errors in the same session. Context is already 
 
 ---
 
-## gstack Skills Usage Guide
+## Verification in Cursor Cloud (no gstack slash skills here)
 
-### Every Session
-| Skill | When | Purpose |
-|---|---|---|
-| `/review` | Before checkpoint commit | Find bugs CI misses |
+Every Session (lead does):
+- Shell: `bun run test:run` + typecheck (before commit)
+- Reviewer.md checklist (Shell `git diff` + Read of files, or Task subagent_type=code-reviewer)
+- For wallet/execution: manual STRIDE + reviewer CRITICAL money section (or ai-architect Task)
 
-### When Touching Sensitive Code
-| Skill | When | Purpose |
-|---|---|---|
-| `/cso` | After wallet/execution/auth code | OWASP + STRIDE security audit |
-| `/careful` | When writing DROP TABLE, rm, force-push | Prevent destructive accidents |
+Phase/Sprint:
+- Use CreatePlan for new plans, docs/plan/ for active (archive/ historical only).
+- Update TODOS.md + .claude/memory.md + decisions.md on close.
+- PR via ManagePullRequest (draft), body refs contracts.
 
-### Phase/Sprint Boundaries
-| Skill | When | Purpose |
-|---|---|---|
-| `/plan-ceo-review` | Sprint kickoff | Challenge scope and priorities |
-| `/plan-eng-review` | Sprint kickoff + phase transitions | Lock architecture, edge cases |
-| `/retro` | Phase completion + sprint close | Retrospective, velocity tracking |
-| `/document-release` | Sprint close | Sync docs with reality |
+Dashboard: same gates; use Cursor skills (shadcn, nextjs if applicable) when editing dashboard/.
 
-### Dashboard Development (Sprint 3D+)
-| Skill | When | Purpose |
-|---|---|---|
-| `/qa` | After dashboard feature complete | Autonomous QA + auto-fix |
-| `/browse` | During dashboard development | Visual verification |
-| `/benchmark` | Before/after performance changes | Core Web Vitals |
-| `/canary` | After dashboard deploy | Monitor for regressions |
+See .claude/environment/cursor-cloud.md for full tool/mode/git/MCP mapping. Old gstack /review etc replaced by reviewer.md + Shell + Task.
 
 ---
 

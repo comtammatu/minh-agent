@@ -1,5 +1,10 @@
 # 07 — API Contracts
 
+> **TARGET / ASPIRATIONAL (2026-06 note):** This document describes the planned `/api/v1` + JWT auth + WS + owner/viewer model (multi-panel workspace vision in DESIGN 05/06). 
+> **Current implementation:** `src/server/` uses `Bun.serve` with unauthenticated `/api/dashboard/*`, `/api/chart/*`, `/api/operator/*` (polling only, no JWT, no WS, no v1 prefix). See `src/server/handlers.ts`, `contracts.ts`, and task-contract open decision Q1. 
+> Do not edit code to match this doc until owner decision + follow-on plan. If implementing, update DESIGN status table + this header in same PR.
+> For now, this is the contract *to evolve toward*.
+
 HTTP and WebSocket interface between the dashboard (browser) and the trading runtime (Bun process). Auth flow, endpoint shapes, message contracts.
 
 The HTTP server is in `src/server/`. It exists ONLY to serve the dashboard and accept operator commands. It is not the primary input to the system (the primary inputs are exchange feeds and Telegram).

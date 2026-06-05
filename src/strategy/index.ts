@@ -5,44 +5,43 @@
  * Internal files import directly from their source modules.
  */
 
-// ── Orchestrator (runtime state + WS dispatch) ──────────────────────────────
-export {
-  onCandleTick,
-  getStatus,
-  getActiveSetups,
-  getActiveSetupCoins,
-  clearPipelineState,
-  clearCoinState,
-  getPipelineEmitter,
-  bootstrapReplayFromStore,
-  materializeCurrentSetupsFromStore,
-  setReplayMode,
-  isInReplayMode,
-  type StatusSnapshot,
-  getDecisionTraces,
-  getDecisionTracesForCoin,
-  getDecisionTraceByPositionId,
-  getDecisionTraceBySetupId,
-  recordDecisionTraceAgentAction,
-} from './orchestrator.js'
-
-// ── Concrete setup generator ────────────────────────────────────────────────
-export {
-  getSetupGenerator,
-  getSetupGeneratorWindowRequirements,
-  runSetupGenerator,
-  clearSetupGeneratorState,
-  resetSetupGenerator,
-  setSetupGeneratorForTests,
-  type SetupGenerator,
-  type WindowRequirements,
-} from './engine.js'
-
 // ── Diagnostics (pipeline stats) ────────────────────────────────────────────
 export {
-  type PipelineStats,
   formatPipelineStats,
   getPipelineStats,
   getPipelineStatsMap,
+  type PipelineStats,
   resetPipelineStats,
-} from './diagnostics.js'
+} from "./diagnostics.js";
+
+// ── Concrete setup generator ────────────────────────────────────────────────
+export {
+  clearSetupGeneratorState,
+  getSetupGenerator,
+  getSetupGeneratorWindowRequirements,
+  resetSetupGenerator,
+  runSetupGenerator,
+  type SetupGenerator,
+  setSetupGeneratorForTests,
+  type WindowRequirements,
+} from "./engine.js";
+// ── Orchestrator (runtime state + WS dispatch) ──────────────────────────────
+export {
+  bootstrapReplayFromStore,
+  clearCoinState,
+  clearPipelineState,
+  getActiveSetupCoins,
+  getActiveSetups,
+  getDecisionTraceByPositionId,
+  getDecisionTraceBySetupId,
+  getDecisionTraces,
+  getDecisionTracesForCoin,
+  getPipelineEmitter,
+  getStatus,
+  isInReplayMode,
+  materializeCurrentSetupsFromStore,
+  onCandleTick,
+  recordDecisionTraceAgentAction,
+  type StatusSnapshot,
+  setReplayMode,
+} from "./orchestrator.js";

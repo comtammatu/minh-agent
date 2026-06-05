@@ -4,7 +4,7 @@ Single-process Bun trading runtime for multi-timeframe setup detection, live or 
 
 ## Current Branch Status
 
-As of `2026-04-16`, this branch implements:
+As of `2026-06-04`, this branch implements:
 
 - PostgreSQL/TimescaleDB migrations and candle persistence
 - Hyperliquid and Bybit feed adapters
@@ -13,14 +13,15 @@ As of `2026-04-16`, this branch implements:
 - Trading agent, order manager, position monitor, circuit breakers, and thesis monitoring
 - Full-screen Ink TUI and Telegram operator commands
 - Backtest, optimization, walk-forward, and pipeline benchmark tooling
-- `dashboard/` browser dashboard (Vite + React + shadcn/ui) on `localhost:3030` with TradingView chart, Overview/Market/Journal pages, and live SSE updates
+- `dashboard/` browser dashboard (Vite + React + shadcn/ui) on `localhost:3030` with TradingView chart, Overview/Market/Journal pages (HTTP polling, no SSE)
+- `src/memory/` trade memory foundation (structured PG + FTS + scoring; not yet wired to live runtime — see CLAUDE.md)
+- Dead-man's switch (HL native + BB watchdog), DMS policy tests
 
-This branch does **not** currently contain the planned:
+This branch does **not** contain:
 
-- `src/advisor/` LLM advisor
-- `src/memory/` advisor memory system
+- `src/advisor/` LLM advisor (historical plans in `docs/archive/plan/sprint-5.md` etc.; see open scope in task contract)
 
-Several sprint docs still describe those planned systems for roadmap or historical context. Treat this `README`, [TODOS.md](TODOS.md), and [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md) as the source of truth for what is actually present in the repo today.
+Several sprint docs in `docs/archive/` still describe planned or superseded systems (e.g. full embeddings/RAG, ict-smc rename) for roadmap or historical context. Treat active root docs (`README.md`, `TODOS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `docs/DESIGN.md`, `docs/CODEBASE_MAP.md`) + `.claude/rules/` as the source of truth. `src/memory/` is foundation-only (unwired).
 
 ## Quick Start
 
@@ -48,7 +49,7 @@ Exchange REST/WS
   -> TUI + Telegram
 
 Historical replay tools reuse the same strategy path through backtest/optimize flows.
-Browser dashboard (localhost:3030) serves live candle, position, and journal views via Elysia SSE.
+Browser dashboard (localhost:3030) serves live candle, position, and journal views via Bun.serve HTTP polling (1s snapshot / 5s journal). Primary real-time operator surface remains the Ink TUI; Telegram provides remote commands. `src/server/` uses native `Bun.serve` (no Elysia).
 ```
 
 ## Where To Read Next

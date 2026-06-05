@@ -13,7 +13,7 @@
 
 The browser dashboard ships in this branch (`dashboard/` + `src/server/`) and is wired into the runtime alongside the TUI and Telegram surfaces. `src/memory/` is a new trade-memory foundation (storage + scored retrieval, commit ef441e6) that is not yet wired into the live runtime — treat it as a feature flag turned off, not as live code.
 
-The codebase is dense rather than wide. The generated import graph covers 118 TS/TSX files and 472 internal edges, with `types.ts`, `config.ts`, and `lib/logger.ts` acting as the dominant hubs (`docs/archive/oracle-data/analysis-summary.md:5`, `docs/archive/oracle-data/analysis-summary.md:23`). That makes contract files and shared operational helpers the highest-blast-radius edit points even though most business logic lives deeper in `strategy/`, `agent/`, `feed/`, and `backtest/`.
+The codebase is dense rather than wide. The generated import graph covers ~142 TS/TSX files under `src/` (as of 2026-06; older oracle reported 118) and 472+ internal edges, with `types.ts`, `config.ts`, and `lib/logger.ts` acting as the dominant hubs (`docs/archive/oracle-data/analysis-summary.md:5`, `docs/archive/oracle-data/analysis-summary.md:23`). That makes contract files and shared operational helpers the highest-blast-radius edit points even though most business logic lives deeper in `strategy/`, `agent/`, `feed/`, and `backtest/`.
 
 ## Architecture map
 
@@ -83,10 +83,10 @@ Three operator surfaces run alongside the trading loop:
 | Surface | Where | Purpose |
 |---|---|---|
 | Ink TUI | terminal (stdout) | Primary real-time view: candles, positions, agent state, health |
-| Browser dashboard | `localhost:3030` | Richer read-only inspection: TradingView chart (candle history from PG), Overview / Market / Journal pages, live SSE updates |
+| Browser dashboard | `localhost:3030` | Richer read-only inspection: TradingView chart (candle history from PG), Overview / Market / Journal pages, HTTP polling updates |
 | Telegram bot | remote | Remote operator commands: `/status`, `/pnl`, `/pause`, `/resume`, `/closeall`, `/mode` |
 
-The browser dashboard (`dashboard/`) is a separate Vite + React + shadcn/ui package. Its built output is served by the Elysia layer in the main process; no separate Node process is needed. Source: `dashboard/src/`, server handlers in `src/server/`.
+The browser dashboard (`dashboard/`) is a separate Vite + React + shadcn/ui package. Its built output is served by the native `Bun.serve` layer in `src/server/` (no Elysia); no separate Node process is needed. Source: `dashboard/src/`, server handlers in `src/server/`. Real-time uses HTTP polling (see server/handlers.ts); TUI remains primary live view.
 
 ## Infrastructure and runtime context
 

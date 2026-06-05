@@ -1,0 +1,3 @@
+docs/archive/**
+**/*.html
+node_modules/**

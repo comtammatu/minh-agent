@@ -11,13 +11,22 @@
  * Sprint 3 S4.
  */
 
-import { describe, test, expect } from 'bun:test'
-import { formatExpectancyReport, formatMetricsSummary } from '../../src/backtest/report.js'
-import type { BacktestMetrics, WalkForwardResult, WalkForwardWindow } from '../../src/backtest/types.js'
+import { describe, expect, test } from "bun:test";
+import {
+  formatExpectancyReport,
+  formatMetricsSummary,
+} from "../../src/backtest/report.js";
+import type {
+  BacktestMetrics,
+  WalkForwardResult,
+  WalkForwardWindow,
+} from "../../src/backtest/types.js";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-function makeMetrics(overrides: Partial<BacktestMetrics> = {}): BacktestMetrics {
+function makeMetrics(
+  overrides: Partial<BacktestMetrics> = {},
+): BacktestMetrics {
   return {
     totalTrades: 20,
     wins: 12,
@@ -39,7 +48,7 @@ function makeMetrics(overrides: Partial<BacktestMetrics> = {}): BacktestMetrics 
     sortinoRatio: 2.0,
     calmarRatio: 3.0,
     ...overrides,
-  }
+  };
 }
 
 function makeWindow(
@@ -47,7 +56,7 @@ function makeWindow(
   trainMetrics: BacktestMetrics,
   testMetrics: BacktestMetrics,
 ): WalkForwardWindow {
-  const DAY_MS = 86400000
+  const DAY_MS = 86400000;
   return {
     index,
     trainStart: Date.UTC(2025, 0, 1) + index * 7 * DAY_MS,
@@ -56,103 +65,135 @@ function makeWindow(
     testEnd: Date.UTC(2025, 0, 22) + index * 7 * DAY_MS,
     trainMetrics,
     testMetrics,
-  }
+  };
 }
 
 // ─── Report Tests ──────────────────────────────────────────────────────────
 
-describe('formatExpectancyReport', () => {
-  test('shows PASS verdict when OOS expectancy > 0', () => {
+describe("formatExpectancyReport", () => {
+  test("shows PASS verdict when OOS expectancy > 0", () => {
     const result: WalkForwardResult = {
       windows: [
-        makeWindow(0, makeMetrics({ expectancy: 50 }), makeMetrics({ expectancy: 30 })),
-        makeWindow(1, makeMetrics({ expectancy: 45 }), makeMetrics({ expectancy: 25 })),
+        makeWindow(
+          0,
+          makeMetrics({ expectancy: 50 }),
+          makeMetrics({ expectancy: 30 }),
+        ),
+        makeWindow(
+          1,
+          makeMetrics({ expectancy: 45 }),
+          makeMetrics({ expectancy: 25 }),
+        ),
       ],
       isMetrics: makeMetrics({ expectancy: 47.5 }),
       oosMetrics: makeMetrics({ expectancy: 27.5 }),
       overfitRatio: 1.73,
       passesGate: true,
-    }
+    };
 
-    const report = formatExpectancyReport(result)
+    const report = formatExpectancyReport(result);
 
-    expect(report).toContain('PASS')
-    expect(report).toContain('[+]')
-    expect(report).toContain('OOS Expectancy')
-    expect(report).toContain('IN-SAMPLE vs OUT-OF-SAMPLE')
-    expect(report).toContain('PER-WINDOW BREAKDOWN')
-    expect(report).toContain('W0')
-    expect(report).toContain('W1')
-  })
+    expect(report).toContain("PASS");
+    expect(report).toContain("[+]");
+    expect(report).toContain("OOS Expectancy");
+    expect(report).toContain("IN-SAMPLE vs OUT-OF-SAMPLE");
+    expect(report).toContain("PER-WINDOW BREAKDOWN");
+    expect(report).toContain("W0");
+    expect(report).toContain("W1");
+  });
 
-  test('shows FAIL verdict when OOS expectancy <= 0', () => {
+  test("shows FAIL verdict when OOS expectancy <= 0", () => {
     const result: WalkForwardResult = {
       windows: [
-        makeWindow(0, makeMetrics({ expectancy: 50 }), makeMetrics({ expectancy: -10 })),
-        makeWindow(1, makeMetrics({ expectancy: 45 }), makeMetrics({ expectancy: -5 })),
+        makeWindow(
+          0,
+          makeMetrics({ expectancy: 50 }),
+          makeMetrics({ expectancy: -10 }),
+        ),
+        makeWindow(
+          1,
+          makeMetrics({ expectancy: 45 }),
+          makeMetrics({ expectancy: -5 }),
+        ),
       ],
       isMetrics: makeMetrics({ expectancy: 47.5 }),
       oosMetrics: makeMetrics({ expectancy: -7.5 }),
       overfitRatio: Infinity,
       passesGate: false,
-    }
+    };
 
-    const report = formatExpectancyReport(result)
+    const report = formatExpectancyReport(result);
 
-    expect(report).toContain('FAIL')
-    expect(report).toContain('[-]')
-  })
+    expect(report).toContain("FAIL");
+    expect(report).toContain("[-]");
+  });
 
-  test('shows INSUFFICIENT DATA when no windows', () => {
+  test("shows INSUFFICIENT DATA when no windows", () => {
     const result: WalkForwardResult = {
       windows: [],
       isMetrics: makeMetrics({ totalTrades: 0, expectancy: 0 }),
       oosMetrics: makeMetrics({ totalTrades: 0, expectancy: 0 }),
       overfitRatio: 0,
       passesGate: false,
-    }
+    };
 
-    const report = formatExpectancyReport(result)
+    const report = formatExpectancyReport(result);
 
-    expect(report).toContain('INSUFFICIENT DATA')
-  })
+    expect(report).toContain("INSUFFICIENT DATA");
+  });
 
-  test('shows OVERFIT WARNING when ratio exceeds threshold', () => {
+  test("shows OVERFIT WARNING when ratio exceeds threshold", () => {
     const result: WalkForwardResult = {
       windows: [
-        makeWindow(0, makeMetrics({ expectancy: 100 }), makeMetrics({ expectancy: 10 })),
-        makeWindow(1, makeMetrics({ expectancy: 90 }), makeMetrics({ expectancy: 8 })),
+        makeWindow(
+          0,
+          makeMetrics({ expectancy: 100 }),
+          makeMetrics({ expectancy: 10 }),
+        ),
+        makeWindow(
+          1,
+          makeMetrics({ expectancy: 90 }),
+          makeMetrics({ expectancy: 8 }),
+        ),
       ],
       isMetrics: makeMetrics({ expectancy: 95 }),
       oosMetrics: makeMetrics({ expectancy: 9 }),
       overfitRatio: 10.56, // 95/9
       passesGate: true,
-    }
+    };
 
-    const report = formatExpectancyReport(result)
+    const report = formatExpectancyReport(result);
 
-    expect(report).toContain('OVERFIT WARNING')
-    expect(report).toContain('10.56')
-  })
+    expect(report).toContain("OVERFIT WARNING");
+    expect(report).toContain("10.56");
+  });
 
-  test('does NOT show overfit warning when ratio is within threshold', () => {
+  test("does NOT show overfit warning when ratio is within threshold", () => {
     const result: WalkForwardResult = {
       windows: [
-        makeWindow(0, makeMetrics({ expectancy: 50 }), makeMetrics({ expectancy: 40 })),
-        makeWindow(1, makeMetrics({ expectancy: 45 }), makeMetrics({ expectancy: 35 })),
+        makeWindow(
+          0,
+          makeMetrics({ expectancy: 50 }),
+          makeMetrics({ expectancy: 40 }),
+        ),
+        makeWindow(
+          1,
+          makeMetrics({ expectancy: 45 }),
+          makeMetrics({ expectancy: 35 }),
+        ),
       ],
       isMetrics: makeMetrics({ expectancy: 47.5 }),
       oosMetrics: makeMetrics({ expectancy: 37.5 }),
       overfitRatio: 1.27,
       passesGate: true,
-    }
+    };
 
-    const report = formatExpectancyReport(result)
+    const report = formatExpectancyReport(result);
 
-    expect(report).not.toContain('OVERFIT WARNING')
-  })
+    expect(report).not.toContain("OVERFIT WARNING");
+  });
 
-  test('comparison table includes all key metrics', () => {
+  test("comparison table includes all key metrics", () => {
     const result: WalkForwardResult = {
       windows: [
         makeWindow(0, makeMetrics(), makeMetrics()),
@@ -162,52 +203,52 @@ describe('formatExpectancyReport', () => {
       oosMetrics: makeMetrics(),
       overfitRatio: 1.0,
       passesGate: true,
-    }
+    };
 
-    const report = formatExpectancyReport(result)
+    const report = formatExpectancyReport(result);
 
-    expect(report).toContain('Win Rate')
-    expect(report).toContain('Net PnL')
-    expect(report).toContain('Expectancy')
-    expect(report).toContain('Profit Factor')
-    expect(report).toContain('Sharpe')
-    expect(report).toContain('Sortino')
-    expect(report).toContain('Max Drawdown')
-    expect(report).toContain('Avg R:R')
-  })
-})
+    expect(report).toContain("Win Rate");
+    expect(report).toContain("Net PnL");
+    expect(report).toContain("Expectancy");
+    expect(report).toContain("Profit Factor");
+    expect(report).toContain("Sharpe");
+    expect(report).toContain("Sortino");
+    expect(report).toContain("Max Drawdown");
+    expect(report).toContain("Avg R:R");
+  });
+});
 
 // ─── MetricsSummary Tests ──────────────────────────────────────────────────
 
-describe('formatMetricsSummary', () => {
-  test('formats one-line summary with all key fields', () => {
-    const m = makeMetrics()
-    const summary = formatMetricsSummary(m)
+describe("formatMetricsSummary", () => {
+  test("formats one-line summary with all key fields", () => {
+    const m = makeMetrics();
+    const summary = formatMetricsSummary(m);
 
-    expect(summary).toContain('Trades: 20')
-    expect(summary).toContain('WR: 60.0%')
-    expect(summary).toContain('PnL: $600.00')
-    expect(summary).toContain('Exp: $30.00')
-    expect(summary).toContain('Sharpe: 1.50')
-    expect(summary).toContain('MaxDD: 5.0%')
-    expect(summary).toContain('PF: 2.00')
-  })
+    expect(summary).toContain("Trades: 20");
+    expect(summary).toContain("WR: 60.0%");
+    expect(summary).toContain("PnL: $600.00");
+    expect(summary).toContain("Exp: $30.00");
+    expect(summary).toContain("Sharpe: 1.50");
+    expect(summary).toContain("MaxDD: 5.0%");
+    expect(summary).toContain("PF: 2.00");
+  });
 
-  test('includes label prefix when provided', () => {
-    const m = makeMetrics()
-    const summary = formatMetricsSummary(m, 'OOS')
+  test("includes label prefix when provided", () => {
+    const m = makeMetrics();
+    const summary = formatMetricsSummary(m, "OOS");
 
-    expect(summary).toContain('[OOS]')
-  })
+    expect(summary).toContain("[OOS]");
+  });
 
-  test('handles Infinity profit factor', () => {
-    const m = makeMetrics({ profitFactor: Infinity })
-    const summary = formatMetricsSummary(m)
+  test("handles Infinity profit factor", () => {
+    const m = makeMetrics({ profitFactor: Infinity });
+    const summary = formatMetricsSummary(m);
 
-    expect(summary).toContain('PF: Inf')
-  })
+    expect(summary).toContain("PF: Inf");
+  });
 
-  test('handles zero trades', () => {
+  test("handles zero trades", () => {
     const m = makeMetrics({
       totalTrades: 0,
       winRate: 0,
@@ -216,10 +257,10 @@ describe('formatMetricsSummary', () => {
       sharpeRatio: 0,
       maxDrawdown: 0,
       profitFactor: 0,
-    })
-    const summary = formatMetricsSummary(m)
+    });
+    const summary = formatMetricsSummary(m);
 
-    expect(summary).toContain('Trades: 0')
-    expect(summary).toContain('WR: 0.0%')
-  })
-})
+    expect(summary).toContain("Trades: 0");
+    expect(summary).toContain("WR: 0.0%");
+  });
+});

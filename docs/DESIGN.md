@@ -10,18 +10,20 @@ If a future change conflicts with this reference, **update this reference in the
 
 ## Status
 
-| Aspect | State | Last decided |
-|---|---|---|
-| Database | PostgreSQL + TimescaleDB (no swap) | 2026-05-19 |
-| Frontend stack | Vite + React 19 + TanStack Router + shadcn/ui | 2026-05-19 |
-| Charts | TradingView Lightweight Charts | 2026-05-19 |
-| State | Zustand (UI) + TanStack Query (REST) + native WS hook | 2026-05-19 |
-| Typography | IBM Plex Mono + Plex Sans Condensed (already vendored) | 2026-05-19 |
-| Density | Bloomberg-style — 28px row, 13px font, 4px gap | 2026-05-19 |
-| Mobile | NO PWA — Telegram bot is the mobile interface | 2026-05-19 |
-| Auth | JWT signed cookie; owner full / viewer manual token | 2026-05-19 |
+| Aspect | State (Current Impl 2026-06) | Target (per DESIGN subdocs; pending owner decision Q1 in task-contract) | Last decided |
+|---|---|---|---|
+| Database | PostgreSQL + TimescaleDB (no swap) | Same (or SQLite after bake-off) | 2026-05-19 |
+| Frontend stack | Vite + React 19 + react-router-dom + shadcn/ui + HTTP polling (Bun.serve) | Vite + React 19 + TanStack Router + shadcn/ui + Zustand + TanStack Query + native WS/SSE | 2026-05-19 |
+| Charts | TradingView Lightweight Charts | Same | 2026-05-19 |
+| State | React Context + polling hooks (no Zustand/TanStack Query yet) | Zustand (UI) + TanStack Query (REST) + native WS hook | 2026-05-19 |
+| Typography | IBM Plex Mono + Plex Sans Condensed (already vendored) | Same (Bloomberg density) | 2026-05-19 |
+| Density | 3-page sidebar (Overview/Market/Journal) + Ink TUI primary | 10-panel Bloomberg grid, drag-resize, cmdk, 28px row, 13px | 2026-05-19 |
+| Mobile | NO PWA — Telegram bot is the mobile interface | Same | 2026-05-19 |
+| Auth | None (localhost dev only; operator via TUI/Telegram) | JWT signed cookie; owner full / viewer manual token | 2026-05-19 |
 
-Decision provenance: see [.claude/projects/.../memory/project_stack_decision_2026_05.md](../.claude) and [project_dashboard_design_2026_05.md](../.claude). All decisions ratified through `/autoplan` dual-voice consensus.
+**Note:** DESIGN 05-ui-layout.md and 07-api-contracts.md describe the multi-panel + auth + v1 SSE target. Current `dashboard/` + `src/server/` is intentionally minimal (see CODEBASE_MAP). Do not assume subdocs match code until decision + implementation. Update this table + subdocs in same PR on any change. See open scope decision in [task-contract-arch-ai-agents-refactor-2026-06-04.md](../plan/task-contract-arch-ai-agents-refactor-2026-06-04.md).
+
+Decision provenance: see [docs/plan/stack-decision-draft.md](plan/stack-decision-draft.md) (final 2026-05-19: targeted refactor path B approved; SQLite/DB bake-off deferred, TUI delete split, etc.). Linked .claude/projects/... paths do not exist in repo (historical /autoplan restore points referenced in archive). DESIGN sub-docs 05-07 describe aspirational "Target" UI (see notes below); current impl is simpler (see CODEBASE_MAP + runtime). All future changes must keep this index in sync.
 
 ---
 

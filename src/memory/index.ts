@@ -1,15 +1,14 @@
+export {
+  countMemories,
+  getMemory,
+  insertMemory,
+  pruneMemories,
+  queryMemories,
+} from "./repository.js";
 export type {
   MemoryCategory,
-  TradeMemory,
-  NewTradeMemory,
   MemoryQuery,
+  NewTradeMemory,
   ScoredMemory,
-} from './types.js'
-
-export {
-  insertMemory,
-  getMemory,
-  countMemories,
-  queryMemories,
-  pruneMemories,
-} from './repository.js'
+  TradeMemory,
+} from "./types.js";

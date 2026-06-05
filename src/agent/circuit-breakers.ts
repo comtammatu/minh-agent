@@ -8,19 +8,19 @@
  * Thresholds come from config.ts CIRCUIT_BREAKER.
  */
 
-import { CIRCUIT_BREAKER } from '../config.js'
-import type { PnlEntry } from './types.js'
+import { CIRCUIT_BREAKER } from "../config.js";
+import type { PnlEntry } from "./types.js";
 
 // ─── Check Result ──────────────────────────────────────────────────────────
 
 export interface CBCheckResult {
-  tripped: boolean
-  reason: string | null
+  tripped: boolean;
+  reason: string | null;
   /** When the pause should auto-resume (ms timestamp). null = manual only (e.g., daily resets at midnight). */
-  pauseUntil: number | null
+  pauseUntil: number | null;
 }
 
-const OK: CBCheckResult = { tripped: false, reason: null, pauseUntil: null }
+const OK: CBCheckResult = { tripped: false, reason: null, pauseUntil: null };
 
 // ─── Individual Checks ─────────────────────────────────────────────────────
 
@@ -30,17 +30,21 @@ const OK: CBCheckResult = { tripped: false, reason: null, pauseUntil: null }
  * @param accountValue - Current account value
  * @param now - Current timestamp (ms)
  */
-export function checkDailyLoss(dailyPnl: number, accountValue: number, now: number): CBCheckResult {
-  if (accountValue <= 0) return OK
-  const lossPct = -dailyPnl / accountValue
+export function checkDailyLoss(
+  dailyPnl: number,
+  accountValue: number,
+  now: number,
+): CBCheckResult {
+  if (accountValue <= 0) return OK;
+  const lossPct = -dailyPnl / accountValue;
   if (lossPct >= CIRCUIT_BREAKER.dailyLossLimit) {
     return {
       tripped: true,
       reason: `Daily loss ${(lossPct * 100).toFixed(1)}% >= ${(CIRCUIT_BREAKER.dailyLossLimit * 100).toFixed(0)}% limit`,
       pauseUntil: nextUtcMidnight(now),
-    }
+    };
   }
-  return OK
+  return OK;
 }
 
 /**
@@ -48,15 +52,18 @@ export function checkDailyLoss(dailyPnl: number, accountValue: number, now: numb
  * @param consecutiveLosses - Number of consecutive losing trades (per-coin)
  * @param now - Current timestamp (ms)
  */
-export function checkConsecutiveLosses(consecutiveLosses: number, now: number): CBCheckResult {
+export function checkConsecutiveLosses(
+  consecutiveLosses: number,
+  now: number,
+): CBCheckResult {
   if (consecutiveLosses >= CIRCUIT_BREAKER.consecutiveLossCount) {
     return {
       tripped: true,
       reason: `${consecutiveLosses} consecutive losses >= ${CIRCUIT_BREAKER.consecutiveLossCount} limit`,
       pauseUntil: now + CIRCUIT_BREAKER.consecutiveLossPauseMs,
-    }
+    };
   }
-  return OK
+  return OK;
 }
 
 /**
@@ -65,29 +72,33 @@ export function checkConsecutiveLosses(consecutiveLosses: number, now: number): 
  * @param accountValue - Current account value
  * @param now - Current timestamp (ms)
  */
-export function checkRapidLoss(pnlHistory: readonly PnlEntry[], accountValue: number, now: number): CBCheckResult {
-  if (accountValue <= 0 || pnlHistory.length === 0) return OK
+export function checkRapidLoss(
+  pnlHistory: readonly PnlEntry[],
+  accountValue: number,
+  now: number,
+): CBCheckResult {
+  if (accountValue <= 0 || pnlHistory.length === 0) return OK;
 
-  const windowStart = now - CIRCUIT_BREAKER.rapidLossWindowMs
-  let windowPnl = 0
+  const windowStart = now - CIRCUIT_BREAKER.rapidLossWindowMs;
+  let windowPnl = 0;
   for (const entry of pnlHistory) {
     if (entry.ts >= windowStart) {
-      windowPnl += entry.pnl
+      windowPnl += entry.pnl;
     }
   }
 
   // Only trip on losses (negative PnL)
-  if (windowPnl >= 0) return OK
+  if (windowPnl >= 0) return OK;
 
-  const lossPct = -windowPnl / accountValue
+  const lossPct = -windowPnl / accountValue;
   if (lossPct >= CIRCUIT_BREAKER.rapidLossLimit) {
     return {
       tripped: true,
       reason: `Rapid loss ${(lossPct * 100).toFixed(1)}% in ${Math.round(CIRCUIT_BREAKER.rapidLossWindowMs / 60_000)}min >= ${(CIRCUIT_BREAKER.rapidLossLimit * 100).toFixed(0)}% limit`,
       pauseUntil: now + CIRCUIT_BREAKER.rapidLossPauseMs,
-    }
+    };
   }
-  return OK
+  return OK;
 }
 
 /**
@@ -95,19 +106,22 @@ export function checkRapidLoss(pnlHistory: readonly PnlEntry[], accountValue: nu
  * @param currentValue - Current account value
  * @param peakValue - Highest account value observed
  */
-export function checkMaxDrawdown(currentValue: number, peakValue: number): CBCheckResult {
-  if (peakValue <= 0 || currentValue <= 0) return OK
+export function checkMaxDrawdown(
+  currentValue: number,
+  peakValue: number,
+): CBCheckResult {
+  if (peakValue <= 0 || currentValue <= 0) return OK;
 
-  const drawdown = (peakValue - currentValue) / peakValue
+  const drawdown = (peakValue - currentValue) / peakValue;
   if (drawdown >= CIRCUIT_BREAKER.maxDrawdownLimit) {
     return {
       tripped: true,
       reason: `Max drawdown ${(drawdown * 100).toFixed(1)}% from peak >= ${(CIRCUIT_BREAKER.maxDrawdownLimit * 100).toFixed(0)}% limit`,
       // No auto-resume — manual only (this is a serious condition)
       pauseUntil: null,
-    }
+    };
   }
-  return OK
+  return OK;
 }
 
 // ─── Aggregate Check ───────────────────────────────────────────────────────
@@ -117,38 +131,45 @@ export function checkMaxDrawdown(currentValue: number, peakValue: number): CBChe
  * Order: max drawdown (most severe, no auto-resume) → daily loss → rapid loss → consecutive.
  */
 export function runAllChecks(params: {
-  dailyPnl: number
-  accountValue: number
-  peakAccountValue: number
-  consecutiveLosses: number
-  pnlHistory: readonly PnlEntry[]
-  now: number
+  dailyPnl: number;
+  accountValue: number;
+  peakAccountValue: number;
+  consecutiveLosses: number;
+  pnlHistory: readonly PnlEntry[];
+  now: number;
 }): CBCheckResult {
-  const { dailyPnl, accountValue, peakAccountValue, consecutiveLosses, pnlHistory, now } = params
+  const {
+    dailyPnl,
+    accountValue,
+    peakAccountValue,
+    consecutiveLosses,
+    pnlHistory,
+    now,
+  } = params;
 
   // Most severe first — max drawdown has no auto-resume
-  const drawdown = checkMaxDrawdown(accountValue, peakAccountValue)
-  if (drawdown.tripped) return drawdown
+  const drawdown = checkMaxDrawdown(accountValue, peakAccountValue);
+  if (drawdown.tripped) return drawdown;
 
-  const daily = checkDailyLoss(dailyPnl, accountValue, now)
-  if (daily.tripped) return daily
+  const daily = checkDailyLoss(dailyPnl, accountValue, now);
+  if (daily.tripped) return daily;
 
-  const rapid = checkRapidLoss(pnlHistory, accountValue, now)
-  if (rapid.tripped) return rapid
+  const rapid = checkRapidLoss(pnlHistory, accountValue, now);
+  if (rapid.tripped) return rapid;
 
-  const consecutive = checkConsecutiveLosses(consecutiveLosses, now)
-  if (consecutive.tripped) return consecutive
+  const consecutive = checkConsecutiveLosses(consecutiveLosses, now);
+  if (consecutive.tripped) return consecutive;
 
-  return OK
+  return OK;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 /** Next UTC midnight timestamp from a given time. */
 export function nextUtcMidnight(now: number): number {
-  const d = new Date(now)
-  d.setUTCHours(24, 0, 0, 0)
-  return d.getTime()
+  const d = new Date(now);
+  d.setUTCHours(24, 0, 0, 0);
+  return d.getTime();
 }
 
 /**
@@ -156,6 +177,6 @@ export function nextUtcMidnight(now: number): number {
  * Call periodically to prevent unbounded growth.
  */
 export function prunePnlHistory(history: PnlEntry[], now: number): PnlEntry[] {
-  const cutoff = now - CIRCUIT_BREAKER.rapidLossWindowMs
-  return history.filter(e => e.ts >= cutoff)
+  const cutoff = now - CIRCUIT_BREAKER.rapidLossWindowMs;
+  return history.filter((e) => e.ts >= cutoff);
 }

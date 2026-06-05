@@ -2,28 +2,19 @@
   "nodes": [
     {
       "path": "agent/circuit-breakers.test.ts",
-      "imports": [
-        "agent/circuit-breakers.ts",
-        "agent/types.ts",
-        "config.ts"
-      ],
+      "imports": ["agent/circuit-breakers.ts", "agent/types.ts", "config.ts"],
       "in_degree": 0,
       "out_degree": 3
     },
     {
       "path": "agent/circuit-breakers.ts",
-      "imports": [
-        "agent/types.ts",
-        "config.ts"
-      ],
+      "imports": ["agent/types.ts", "config.ts"],
       "in_degree": 2,
       "out_degree": 2
     },
     {
       "path": "agent/close-all.test.ts",
-      "imports": [
-        "agent/close-all.ts"
-      ],
+      "imports": ["agent/close-all.ts"],
       "in_degree": 0,
       "out_degree": 2
     },
@@ -39,27 +30,19 @@
     },
     {
       "path": "agent/correlation-guard.test.ts",
-      "imports": [
-        "agent/correlation-guard.ts",
-        "config.ts"
-      ],
+      "imports": ["agent/correlation-guard.ts", "config.ts"],
       "in_degree": 0,
       "out_degree": 2
     },
     {
       "path": "agent/correlation-guard.ts",
-      "imports": [
-        "config.ts"
-      ],
+      "imports": ["config.ts"],
       "in_degree": 4,
       "out_degree": 1
     },
     {
       "path": "agent/exits.ts",
-      "imports": [
-        "config.ts",
-        "types.ts"
-      ],
+      "imports": ["config.ts", "types.ts"],
       "in_degree": 4,
       "out_degree": 2
     },
@@ -88,20 +71,13 @@
     },
     {
       "path": "agent/invalidation-bridge.ts",
-      "imports": [
-        "agent/trading-agent.ts",
-        "agent/types.ts",
-        "lib/logger.ts"
-      ],
+      "imports": ["agent/trading-agent.ts", "agent/types.ts", "lib/logger.ts"],
       "in_degree": 4,
       "out_degree": 3
     },
     {
       "path": "agent/journal.test.ts",
-      "imports": [
-        "agent/journal.ts",
-        "agent/types.ts"
-      ],
+      "imports": ["agent/journal.ts", "agent/types.ts"],
       "in_degree": 0,
       "out_degree": 2
     },
@@ -146,9 +122,7 @@
     },
     {
       "path": "agent/paper-tracker.test.ts",
-      "imports": [
-        "agent/paper-tracker.ts"
-      ],
+      "imports": ["agent/paper-tracker.ts"],
       "in_degree": 0,
       "out_degree": 1
     },
@@ -165,19 +139,13 @@
     },
     {
       "path": "agent/portfolio-risk.ts",
-      "imports": [
-        "config.ts"
-      ],
+      "imports": ["config.ts"],
       "in_degree": 1,
       "out_degree": 1
     },
     {
       "path": "agent/position-monitor.test.ts",
-      "imports": [
-        "agent/position-monitor.ts",
-        "agent/types.ts",
-        "config.ts"
-      ],
+      "imports": ["agent/position-monitor.ts", "agent/types.ts", "config.ts"],
       "in_degree": 0,
       "out_degree": 3
     },
@@ -200,30 +168,19 @@
     },
     {
       "path": "agent/self-healing.ts",
-      "imports": [
-        "agent/types.ts",
-        "config.ts",
-        "lib/logger.ts"
-      ],
+      "imports": ["agent/types.ts", "config.ts", "lib/logger.ts"],
       "in_degree": 4,
       "out_degree": 3
     },
     {
       "path": "agent/trading-agent.test.ts",
-      "imports": [
-        "agent/trading-agent.ts",
-        "agent/types.ts",
-        "types.ts"
-      ],
+      "imports": ["agent/trading-agent.ts", "agent/types.ts", "types.ts"],
       "in_degree": 0,
       "out_degree": 3
     },
     {
       "path": "agent/trading-agent.ts",
-      "imports": [
-        "agent/types.ts",
-        "types.ts"
-      ],
+      "imports": ["agent/types.ts", "types.ts"],
       "in_degree": 10,
       "out_degree": 2
     },
@@ -244,18 +201,13 @@
     },
     {
       "path": "agent/types.ts",
-      "imports": [
-        "types.ts"
-      ],
+      "imports": ["types.ts"],
       "in_degree": 25,
       "out_degree": 1
     },
     {
       "path": "alert/telegram/alerts.test.ts",
-      "imports": [
-        "agent/types.ts",
-        "alert/telegram/alerts.ts"
-      ],
+      "imports": ["agent/types.ts", "alert/telegram/alerts.ts"],
       "in_degree": 0,
       "out_degree": 2
     },
@@ -300,9 +252,7 @@
     },
     {
       "path": "alert/telegram/commands.test.ts",
-      "imports": [
-        "alert/telegram/commands.ts"
-      ],
+      "imports": ["alert/telegram/commands.ts"],
       "in_degree": 0,
       "out_degree": 1
     },
@@ -340,27 +290,19 @@
     },
     {
       "path": "analytics/metrics-repo.test.ts",
-      "imports": [
-        "db/migrate.ts"
-      ],
+      "imports": ["db/migrate.ts"],
       "in_degree": 0,
       "out_degree": 1
     },
     {
       "path": "analytics/metrics-repo.ts",
-      "imports": [
-        "analytics/types.ts",
-        "db/connection.ts",
-        "lib/logger.ts"
-      ],
+      "imports": ["analytics/types.ts", "db/connection.ts", "lib/logger.ts"],
       "in_degree": 2,
       "out_degree": 3
     },
     {
       "path": "analytics/metrics-service.test.ts",
-      "imports": [
-        "agent/trading-agent.ts"
-      ],
+      "imports": ["agent/trading-agent.ts"],
       "in_degree": 0,
       "out_degree": 1
     },
@@ -381,18 +323,13 @@
     },
     {
       "path": "analytics/metrics.test.ts",
-      "imports": [
-        "analytics/metrics.ts",
-        "analytics/types.ts"
-      ],
+      "imports": ["analytics/metrics.ts", "analytics/types.ts"],
       "in_degree": 0,
       "out_degree": 2
     },
     {
       "path": "analytics/metrics.ts",
-      "imports": [
-        "analytics/types.ts"
-      ],
+      "imports": ["analytics/types.ts"],
       "in_degree": 2,
       "out_degree": 1
     },
@@ -434,17 +371,13 @@
     },
     {
       "path": "backtest/metrics.ts",
-      "imports": [
-        "backtest/types.ts"
-      ],
+      "imports": ["backtest/types.ts"],
       "in_degree": 5,
       "out_degree": 1
     },
     {
       "path": "backtest/optimize.test.ts",
-      "imports": [
-        "backtest/optimize.ts"
-      ],
+      "imports": ["backtest/optimize.ts"],
       "in_degree": 0,
       "out_degree": 2
     },
@@ -465,28 +398,19 @@
     },
     {
       "path": "backtest/performance-budget.ts",
-      "imports": [
-        "backtest/pipeline-benchmark.ts",
-        "config.ts"
-      ],
+      "imports": ["backtest/pipeline-benchmark.ts", "config.ts"],
       "in_degree": 0,
       "out_degree": 2
     },
     {
       "path": "backtest/pipeline-benchmark.ts",
-      "imports": [
-        "config.ts",
-        "types.ts"
-      ],
+      "imports": ["config.ts", "types.ts"],
       "in_degree": 2,
       "out_degree": 2
     },
     {
       "path": "backtest/report.ts",
-      "imports": [
-        "backtest/types.ts",
-        "config.ts"
-      ],
+      "imports": ["backtest/types.ts", "config.ts"],
       "in_degree": 4,
       "out_degree": 3
     },
@@ -576,10 +500,7 @@
     },
     {
       "path": "backtest/run-pipeline-benchmark.ts",
-      "imports": [
-        "backtest/pipeline-benchmark.ts",
-        "types.ts"
-      ],
+      "imports": ["backtest/pipeline-benchmark.ts", "types.ts"],
       "in_degree": 0,
       "out_degree": 2
     },
@@ -628,10 +549,7 @@
     },
     {
       "path": "backtest/types.ts",
-      "imports": [
-        "strategy/diagnostics.ts",
-        "types.ts"
-      ],
+      "imports": ["strategy/diagnostics.ts", "types.ts"],
       "in_degree": 20,
       "out_degree": 2
     },
@@ -666,34 +584,25 @@
     },
     {
       "path": "config.ts",
-      "imports": [
-        "types.ts"
-      ],
+      "imports": ["types.ts"],
       "in_degree": 60,
       "out_degree": 1
     },
     {
       "path": "db/candle-repo.ts",
-      "imports": [
-        "db/connection.ts",
-        "types.ts"
-      ],
+      "imports": ["db/connection.ts", "types.ts"],
       "in_degree": 2,
       "out_degree": 2
     },
     {
       "path": "db/connection.ts",
-      "imports": [
-        "config.ts"
-      ],
+      "imports": ["config.ts"],
       "in_degree": 7,
       "out_degree": 1
     },
     {
       "path": "db/migrate.ts",
-      "imports": [
-        "lib/logger.ts"
-      ],
+      "imports": ["lib/logger.ts"],
       "in_degree": 3,
       "out_degree": 1
     },
@@ -729,18 +638,13 @@
     },
     {
       "path": "execution/exchange-service.test.ts",
-      "imports": [
-        "execution/exchange-service.ts"
-      ],
+      "imports": ["execution/exchange-service.ts"],
       "in_degree": 0,
       "out_degree": 1
     },
     {
       "path": "execution/exchange-service.ts",
-      "imports": [
-        "agent/types.ts",
-        "execution/hl-exchange-service.ts"
-      ],
+      "imports": ["agent/types.ts", "execution/hl-exchange-service.ts"],
       "in_degree": 8,
       "out_degree": 2
     },
@@ -804,17 +708,13 @@
     },
     {
       "path": "feed/bybit/bybit-rate-limiter.ts",
-      "imports": [
-        "config.ts"
-      ],
+      "imports": ["config.ts"],
       "in_degree": 2,
       "out_degree": 1
     },
     {
       "path": "feed/bybit/bybit-rest.test.ts",
-      "imports": [
-        "feed/bybit/bybit-rest.ts"
-      ],
+      "imports": ["feed/bybit/bybit-rest.ts"],
       "in_degree": 0,
       "out_degree": 1
     },
@@ -843,10 +743,7 @@
     },
     {
       "path": "feed/bybit/bybit-trades.ts",
-      "imports": [
-        "feed/trades.ts",
-        "lib/logger.ts"
-      ],
+      "imports": ["feed/trades.ts", "lib/logger.ts"],
       "in_degree": 1,
       "out_degree": 2
     },
@@ -858,11 +755,7 @@
     },
     {
       "path": "feed/bybit/bybit-ws.ts",
-      "imports": [
-        "config.ts",
-        "lib/logger.ts",
-        "types.ts"
-      ],
+      "imports": ["config.ts", "lib/logger.ts", "types.ts"],
       "in_degree": 1,
       "out_degree": 3
     },
@@ -880,9 +773,7 @@
     },
     {
       "path": "feed/exchange-feed.ts",
-      "imports": [
-        "types.ts"
-      ],
+      "imports": ["types.ts"],
       "in_degree": 4,
       "out_degree": 1
     },
@@ -924,17 +815,13 @@
     },
     {
       "path": "feed/perp-info.ts",
-      "imports": [
-        "feed/rate-limiter.ts"
-      ],
+      "imports": ["feed/rate-limiter.ts"],
       "in_degree": 3,
       "out_degree": 1
     },
     {
       "path": "feed/rate-limiter.ts",
-      "imports": [
-        "config.ts"
-      ],
+      "imports": ["config.ts"],
       "in_degree": 6,
       "out_degree": 1
     },
@@ -951,10 +838,7 @@
     },
     {
       "path": "feed/store.ts",
-      "imports": [
-        "config.ts",
-        "types.ts"
-      ],
+      "imports": ["config.ts", "types.ts"],
       "in_degree": 5,
       "out_degree": 2
     },
@@ -971,11 +855,7 @@
     },
     {
       "path": "feed/ws.ts",
-      "imports": [
-        "config.ts",
-        "lib/logger.ts",
-        "types.ts"
-      ],
+      "imports": ["config.ts", "lib/logger.ts", "types.ts"],
       "in_degree": 5,
       "out_degree": 3
     },
@@ -1026,37 +906,25 @@
     },
     {
       "path": "indicators/core.ts",
-      "imports": [
-        "types.ts"
-      ],
+      "imports": ["types.ts"],
       "in_degree": 6,
       "out_degree": 1
     },
     {
       "path": "indicators/order-flow.ts",
-      "imports": [
-        "config.ts",
-        "types.ts"
-      ],
+      "imports": ["config.ts", "types.ts"],
       "in_degree": 2,
       "out_degree": 2
     },
     {
       "path": "indicators/price-action.ts",
-      "imports": [
-        "indicators/core.ts",
-        "indicators/smc.ts",
-        "types.ts"
-      ],
+      "imports": ["indicators/core.ts", "indicators/smc.ts", "types.ts"],
       "in_degree": 0,
       "out_degree": 3
     },
     {
       "path": "indicators/smc.ts",
-      "imports": [
-        "indicators/core.ts",
-        "types.ts"
-      ],
+      "imports": ["indicators/core.ts", "types.ts"],
       "in_degree": 5,
       "out_degree": 2
     },
@@ -1068,17 +936,13 @@
     },
     {
       "path": "indicators/vsa.ts",
-      "imports": [
-        "types.ts"
-      ],
+      "imports": ["types.ts"],
       "in_degree": 1,
       "out_degree": 1
     },
     {
       "path": "indicators/wyckoff.ts",
-      "imports": [
-        "types.ts"
-      ],
+      "imports": ["types.ts"],
       "in_degree": 3,
       "out_degree": 1
     },
@@ -1090,9 +954,7 @@
     },
     {
       "path": "lib/retry.ts",
-      "imports": [
-        "config.ts"
-      ],
+      "imports": ["config.ts"],
       "in_degree": 2,
       "out_degree": 1
     },
@@ -1104,9 +966,7 @@
     },
     {
       "path": "strategy/index.ts",
-      "imports": [
-        "strategy/orchestrator.ts"
-      ],
+      "imports": ["strategy/orchestrator.ts"],
       "in_degree": 1,
       "out_degree": 1
     },
@@ -1130,11 +990,7 @@
     },
     {
       "path": "strategy/registry.ts",
-      "imports": [
-        "backtest/types.ts",
-        "lib/logger.ts",
-        "types.ts"
-      ],
+      "imports": ["backtest/types.ts", "lib/logger.ts", "types.ts"],
       "in_degree": 13,
       "out_degree": 3
     },
@@ -1163,20 +1019,13 @@
     },
     {
       "path": "strategy/shared/invalidation.ts",
-      "imports": [
-        "config.ts",
-        "types.ts"
-      ],
+      "imports": ["config.ts", "types.ts"],
       "in_degree": 1,
       "out_degree": 2
     },
     {
       "path": "strategy/shared/regime.ts",
-      "imports": [
-        "backtest/types.ts",
-        "config.ts",
-        "types.ts"
-      ],
+      "imports": ["backtest/types.ts", "config.ts", "types.ts"],
       "in_degree": 1,
       "out_degree": 3
     },
@@ -1224,36 +1073,25 @@
     },
     {
       "path": "ui/live-account-stats.ts",
-      "imports": [
-        "config.ts"
-      ],
+      "imports": ["config.ts"],
       "in_degree": 3,
       "out_degree": 1
     },
     {
       "path": "ui/sound.ts",
-      "imports": [
-        "agent/types.ts",
-        "types.ts"
-      ],
+      "imports": ["agent/types.ts", "types.ts"],
       "in_degree": 0,
       "out_degree": 2
     },
     {
       "path": "ui/terminal.ts",
-      "imports": [
-        "agent/types.ts",
-        "types.ts"
-      ],
+      "imports": ["agent/types.ts", "types.ts"],
       "in_degree": 0,
       "out_degree": 2
     },
     {
       "path": "ui/tui-positions.ts",
-      "imports": [
-        "agent/types.ts",
-        "ui/live-account-stats.ts"
-      ],
+      "imports": ["agent/types.ts", "ui/live-account-stats.ts"],
       "in_degree": 1,
       "out_degree": 2
     },
@@ -3164,12 +3002,7 @@
     }
   ],
   "top_level_groups": {
-    "(root)": [
-      "compare-exchanges.ts",
-      "config.ts",
-      "index.ts",
-      "types.ts"
-    ],
+    "(root)": ["compare-exchanges.ts", "config.ts", "index.ts", "types.ts"],
     "agent": [
       "agent/circuit-breakers.test.ts",
       "agent/circuit-breakers.ts",
@@ -3236,11 +3069,7 @@
       "backtest/types.ts",
       "backtest/walk-forward.ts"
     ],
-    "db": [
-      "db/candle-repo.ts",
-      "db/connection.ts",
-      "db/migrate.ts"
-    ],
+    "db": ["db/candle-repo.ts", "db/connection.ts", "db/migrate.ts"],
     "execution": [
       "execution/bybit-exchange-service.test.ts",
       "execution/bybit-exchange-service.ts",
@@ -3282,10 +3111,7 @@
       "indicators/vsa.ts",
       "indicators/wyckoff.ts"
     ],
-    "lib": [
-      "lib/logger.ts",
-      "lib/retry.ts"
-    ],
+    "lib": ["lib/logger.ts", "lib/retry.ts"],
     "strategy": [
       "strategy/diagnostics.ts",
       "strategy/index.ts",

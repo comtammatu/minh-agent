@@ -1,6 +1,8 @@
 # Minh (明) — Session Memory
 
-## Current state (2026-05-19)
+## Current state (2026-06-04; updated during arch+ai refactor)
+
+**AI Agent System:** .claude/ restructured (environment/cursor-cloud.md, agents/ as playbooks, .cursor/ optional, protocol updated for Cloud tools). Old Claude Code Teams fiction isolated. See task-contract and .claude/README.md .
 
 **Stack:** Bun / TypeScript. **Exchanges:** Hyperliquid + Bybit behind one exchange-service boundary. **Live runtime:** one active exchange per process, one shared wallet/account per process, one concrete `smc-sd` setup engine.
 

@@ -8,6 +8,14 @@ All architectural and engineering decisions made during plan reviews.
 
 ## Active Repository Decisions
 
+### 2026-06-04 — Architecture + AI Agent System Structure Refactor
+- Targeted cleanup + doc sync (no greenfield of execution invariants).
+- May 2026 refactor-cleanup S2-S5 + S6c memory tests completed.
+- .claude/ restructured for Cursor Cloud reality (environment/cursor-cloud.md, agents/ playbooks, .cursor/ optional, protocol/gates updated; old Teams/gstack isolated).
+- Advisor foundation stub + memory wire on journal close (optional; gate secrets).
+- All per plan in artifacts + task-contract; PR #10.
+- Pre-existing type issues in src/strategy noted; env PG for some tests.
+
 ### 2026-04-13 — Typecheck + CI split by responsibility
 
 - `bun run typecheck` now uses [`tsconfig.typecheck.json`](../../tsconfig.typecheck.json).

@@ -1,14 +1,18 @@
-import { useId } from 'react'
-import { Switch } from '@/components/ui/switch'
+import { useId } from "react";
+import { Switch } from "@/components/ui/switch";
 
 interface SwitchControlProps {
-  label: string
-  checked: boolean
-  onCheckedChange: (checked: boolean) => void
+  label: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
 }
 
-export function SwitchControl({ label, checked, onCheckedChange }: SwitchControlProps) {
-  const id = useId()
+export function SwitchControl({
+  label,
+  checked,
+  onCheckedChange,
+}: SwitchControlProps) {
+  const id = useId();
 
   return (
     <div className="flex items-center gap-3">
@@ -17,5 +21,5 @@ export function SwitchControl({ label, checked, onCheckedChange }: SwitchControl
         {label}
       </label>
     </div>
-  )
+  );
 }

@@ -4,18 +4,18 @@
  * Extracted from the former layered/layers/confirm.ts and layered/layers/trigger.ts.
  */
 
-import type { Candle, KeyZone, PivotPoint } from '../../types.js'
-import { ZONE_BUFFER_ATR_MULT, MIN_TP1_RR } from '../../config.js'
-import { compileKeyZones, findPivots } from '../../indicators/smc.js'
-import { atr } from '../../indicators/core.js'
+import { MIN_TP1_RR, ZONE_BUFFER_ATR_MULT } from "../../config.js";
+import { atr } from "../../indicators/core.js";
+import { compileKeyZones, findPivots } from "../../indicators/smc.js";
+import type { Candle, KeyZone, PivotPoint } from "../../types.js";
 
 // ── isAtZone ─────────────────────────────────────────────────────────────────
 
 export interface ZoneProximity {
-  atZone: boolean
-  wickTouch: boolean
-  nearZone: boolean
-  throughZone: boolean  // Spring/Sweep — strongest signal
+  atZone: boolean;
+  wickTouch: boolean;
+  nearZone: boolean;
+  throughZone: boolean; // Spring/Sweep — strongest signal
 }
 
 export function isAtZone(
@@ -23,28 +23,28 @@ export function isAtZone(
   zone: KeyZone,
   atrValue: number,
 ): ZoneProximity {
-  const buffer = atrValue * ZONE_BUFFER_ATR_MULT
-  let wickTouch = false
-  let nearZone = false
-  let throughZone = false
+  const buffer = atrValue * ZONE_BUFFER_ATR_MULT;
+  let wickTouch = false;
+  let nearZone = false;
+  let throughZone = false;
 
-  if (zone.type === 'demand') {
+  if (zone.type === "demand") {
     // Demand zone — price dips into / touches from above
-    wickTouch = candle.l <= zone.top && candle.l >= zone.bottom
+    wickTouch = candle.l <= zone.top && candle.l >= zone.bottom;
     // nearZone tightened: require wick to at least touch zone top (not just close near)
-    nearZone = candle.l <= (zone.top + buffer) && candle.c > zone.top
-    throughZone = candle.l < zone.bottom && candle.c > zone.bottom  // Spring/Sweep
+    nearZone = candle.l <= zone.top + buffer && candle.c > zone.top;
+    throughZone = candle.l < zone.bottom && candle.c > zone.bottom; // Spring/Sweep
   } else {
     // Supply zone — price pushes into / touches from below
-    wickTouch = candle.h >= zone.bottom && candle.h <= zone.top
+    wickTouch = candle.h >= zone.bottom && candle.h <= zone.top;
     // nearZone tightened: require wick to at least touch zone bottom (not just close near)
-    nearZone = candle.h >= (zone.bottom - buffer) && candle.c < zone.bottom
-    throughZone = candle.h > zone.top && candle.c < zone.top  // False breakout
+    nearZone = candle.h >= zone.bottom - buffer && candle.c < zone.bottom;
+    throughZone = candle.h > zone.top && candle.c < zone.top; // False breakout
   }
 
   // Require actual wick interaction — nearZone alone now demands wick proximity
-  const atZone = wickTouch || nearZone || throughZone
-  return { atZone, wickTouch, nearZone, throughZone }
+  const atZone = wickTouch || nearZone || throughZone;
+  return { atZone, wickTouch, nearZone, throughZone };
 }
 
 // ── computeStructureTargets ──────────────────────────────────────────────────
@@ -54,73 +54,73 @@ export function computeStructureTargets(
   idx: number,
   entry: number,
   sl: number,
-  side: 'long' | 'short',
+  side: "long" | "short",
   opposingZones?: KeyZone[],
   swingPivots?: PivotPoint[],
   atrValue?: number,
 ): { tp1: number; tp2: number } {
-  const risk = Math.abs(entry - sl)
-  if (risk === 0) return { tp1: entry, tp2: entry }
+  const risk = Math.abs(entry - sl);
+  if (risk === 0) return { tp1: entry, tp2: entry };
 
-  const dir = side === 'long' ? 1 : -1
-  const minTp1 = entry + dir * risk * MIN_TP1_RR
+  const dir = side === "long" ? 1 : -1;
+  const minTp1 = entry + dir * risk * MIN_TP1_RR;
 
   // ── TP1: Nearest opposing zone ──────────────────────────────────────────
-  const targetZones = opposingZones ?? (
-    side === 'long'
+  const targetZones =
+    opposingZones ??
+    (side === "long"
       ? compileKeyZones(candles, idx).supplyZones
-      : compileKeyZones(candles, idx).demandZones
-  )
+      : compileKeyZones(candles, idx).demandZones);
 
-  let tp1: number | null = null
+  let tp1: number | null = null;
   for (const z of targetZones) {
-    const edge = side === 'long' ? z.bottom : z.top
-    const valid = side === 'long' ? edge > entry : edge < entry
+    const edge = side === "long" ? z.bottom : z.top;
+    const valid = side === "long" ? edge > entry : edge < entry;
     if (valid) {
-      tp1 = edge
-      break  // zones sorted by proximity — first valid is nearest
+      tp1 = edge;
+      break; // zones sorted by proximity — first valid is nearest
     }
   }
 
   // Apply floor + fallback — raised from 2R to 3R to improve avg win
   if (tp1 === null) {
-    tp1 = entry + dir * risk * 3
+    tp1 = entry + dir * risk * 3;
   }
   // Ensure TP1 >= MIN_TP1_RR
-  if (side === 'long' && tp1 < minTp1) tp1 = minTp1
-  if (side === 'short' && tp1 > minTp1) tp1 = minTp1
+  if (side === "long" && tp1 < minTp1) tp1 = minTp1;
+  if (side === "short" && tp1 > minTp1) tp1 = minTp1;
 
   // Minimum TP distance: max of 2 ATR or MIN_TP1_RR × risk
-  const curAtr = atrValue ?? atr(candles, idx, 14)
-  if (!isNaN(curAtr) && curAtr > 0) {
-    const minTpDist = Math.max(curAtr * 2, risk * MIN_TP1_RR)
-    const minTpPrice = entry + dir * minTpDist
-    if (side === 'long' && tp1 < minTpPrice) tp1 = minTpPrice
-    if (side === 'short' && tp1 > minTpPrice) tp1 = minTpPrice
+  const curAtr = atrValue ?? atr(candles, idx, 14);
+  if (!Number.isNaN(curAtr) && curAtr > 0) {
+    const minTpDist = Math.max(curAtr * 2, risk * MIN_TP1_RR);
+    const minTpPrice = entry + dir * minTpDist;
+    if (side === "long" && tp1 < minTpPrice) tp1 = minTpPrice;
+    if (side === "short" && tp1 > minTpPrice) tp1 = minTpPrice;
   }
 
   // ── TP2: Swing structure target ─────────────────────────────────────────
-  const pivots = swingPivots ?? findPivots(candles, idx, 5)
+  const pivots = swingPivots ?? findPivots(candles, idx, 5);
 
-  let tp2: number | null = null
-  if (side === 'long') {
+  let tp2: number | null = null;
+  if (side === "long") {
     for (const pivot of pivots) {
-      if (pivot.kind !== 'high' || pivot.price <= tp1) continue
-      if (tp2 === null || pivot.price < tp2) tp2 = pivot.price
+      if (pivot.kind !== "high" || pivot.price <= tp1) continue;
+      if (tp2 === null || pivot.price < tp2) tp2 = pivot.price;
     }
   } else {
     for (const pivot of pivots) {
-      if (pivot.kind !== 'low' || pivot.price >= tp1) continue
-      if (tp2 === null || pivot.price > tp2) tp2 = pivot.price
+      if (pivot.kind !== "low" || pivot.price >= tp1) continue;
+      if (tp2 === null || pivot.price > tp2) tp2 = pivot.price;
     }
   }
 
   // Fallback + ensure TP2 > TP1
   if (tp2 === null) {
-    tp2 = entry + dir * risk * 5
+    tp2 = entry + dir * risk * 5;
   }
-  if (side === 'long' && tp2 <= tp1) tp2 = tp1 + risk
-  if (side === 'short' && tp2 >= tp1) tp2 = tp1 - risk
+  if (side === "long" && tp2 <= tp1) tp2 = tp1 + risk;
+  if (side === "short" && tp2 >= tp1) tp2 = tp1 - risk;
 
-  return { tp1, tp2 }
+  return { tp1, tp2 };
 }
