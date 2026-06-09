@@ -158,9 +158,10 @@ function formatComparisonTable(
   ];
 
   // Compute column widths
-  const widths = rows[0]?.map((_, col) =>
-    Math.max(...rows.map((r) => r[col]?.length ?? 0)),
-  ) ?? [];
+  const widths =
+    rows[0]?.map((_, col) =>
+      Math.max(...rows.map((r) => r[col]?.length ?? 0)),
+    ) ?? [];
 
   return rows
     .map((row, i) => {

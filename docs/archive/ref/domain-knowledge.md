@@ -201,7 +201,7 @@ Uses mathematics, statistics, and programming to develop & execute trading strat
 
 - **Philosophy**: Systematize strategies into code, eliminate emotions, backtest on historical data, and let bots execute automatically.
 - **Workflow**: Idea → Code → Backtest → Optimize → Paper trade → Live trade → Monitor.
-- **Common languages**: Python (Backtrader, Zipline, QuantConnect), Pine Script (TradingView), MQL4/5 (MetaTrader), C++ (HFT).
+- **Common languages**: Python (Backtrader, Zipline, QuantConnect), MQL4/5 (MetaTrader), C++ (HFT).
 - **Common strategies**:
   - Trend Following (MA crossover, Breakout)
   - Mean Reversion (Bollinger Band bounce, RSI extremes)
@@ -597,7 +597,6 @@ Walk-Forward Test (Out-of-Sample) → Paper Trade → Live Trading → Monitor &
 **Languages:**
 - Python: Backtest, research, ML (Backtrader, VectorBT, QuantConnect).
 - TypeScript/JavaScript: Execution bot, real-time processing.
-- Pine Script: Quick prototyping on TradingView.
 - C++/Rust: HFT (not needed for retail).
 
 **Backtest frameworks:**

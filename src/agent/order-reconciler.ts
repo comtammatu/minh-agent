@@ -1,8 +1,4 @@
-import type {
-  ExchangeOpenOrderSnapshot,
-  Order,
-  OrderStatus,
-} from "./types.js";
+import type { ExchangeOpenOrderSnapshot, Order, OrderStatus } from "./types.js";
 
 export type OrderReconcileAction =
   | { type: "retry_cancel"; orderId: string; reason: string }

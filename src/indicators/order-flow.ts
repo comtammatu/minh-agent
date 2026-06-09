@@ -220,8 +220,8 @@ function vpValueArea(
     lower = poc;
 
   while (acc < target && (upper < bins.length - 1 || lower > 0)) {
-    const upVol = upper < bins.length - 1 ? bins[upper + 1]?.volume ?? 0 : 0;
-    const dnVol = lower > 0 ? bins[lower - 1]?.volume ?? 0 : 0;
+    const upVol = upper < bins.length - 1 ? (bins[upper + 1]?.volume ?? 0) : 0;
+    const dnVol = lower > 0 ? (bins[lower - 1]?.volume ?? 0) : 0;
     if (upVol >= dnVol && upper < bins.length - 1) {
       upper++;
       acc += bins[upper]?.volume ?? 0;
@@ -316,7 +316,9 @@ export function buildVolumeProfile(
     }
   }
   if (zoneStart !== -1) {
-    lvn.push(bins[Math.floor((zoneStart + bins.length - 2) / 2)]?.priceLevel ?? 0);
+    lvn.push(
+      bins[Math.floor((zoneStart + bins.length - 2) / 2)]?.priceLevel ?? 0,
+    );
   }
 
   return { poc: pocPrice ?? 0, vah, val, hvn, lvn }; // pocPrice from valid poc index

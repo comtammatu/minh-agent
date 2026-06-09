@@ -298,9 +298,9 @@ No size change, no scale, no shake. Color flash only.
 
 ---
 
-## Charts
+## Market Panels
 
-TradingView Lightweight Charts. Wrapper in `dashboard/src/components/tradingview-chart.tsx` (already exists). Conventions:
+The current dashboard has no vendor chart dependency. If charting returns, use a native in-repo panel with these conventions:
 
 - Background: `--bg-panel`.
 - Grid: faint, `--border-faint`.

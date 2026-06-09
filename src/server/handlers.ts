@@ -1,32 +1,11 @@
 import path from "node:path";
 import { getJournalEntries } from "../agent/journal.js";
-import type {
-  JournalEntry,
-  JournalEventType,
-  PositionState,
-} from "../agent/types.js";
+import type { JournalEntry, JournalEventType } from "../agent/types.js";
 import { getLiveMetrics } from "../analytics/metrics-service.js";
 import type { LiveMetrics } from "../analytics/types.js";
-import {
-  DASHBOARD_CHART_HISTORY_BATCH_SIZE,
-  HOT_CACHE_CAP_BARS,
-  isPaperMode,
-} from "../config.js";
-import { loadCandlesBefore, loadLatestCandle } from "../db/candle-repo.js";
-import { getCandles } from "../feed/store.js";
+import { isPaperMode } from "../config.js";
 import { log } from "../lib/logger.js";
-import {
-  buildChartLines,
-  buildChartMarks,
-  buildChartSymbolInfo,
-  candleToChartBar,
-  mergeCandlesForHistory,
-  parseTicker,
-  resolutionToInterval,
-} from "./chart.js";
 import type {
-  ChartHistoryResponse,
-  ChartOverlayResponse,
   DashboardAccountSnapshot,
   DashboardJournalRow,
   DashboardPositionRow,
@@ -39,8 +18,8 @@ import {
   handleOperatorFlatten,
   handleOperatorPause,
   handleOperatorResume,
-  readJsonBody,
   type OperatorActionDeps,
+  readJsonBody,
 } from "./operator-actions.js";
 
 const DASHBOARD_DIST_DIR = path.resolve(
@@ -75,8 +54,6 @@ export interface DashboardFetchHandlerOptions {
   state: DashboardServerState;
   getSummaryMetrics?: () => Promise<LiveMetrics>;
   readJournal?: typeof getJournalEntries;
-  readCandlesBefore?: typeof loadCandlesBefore;
-  readLatestCandle?: typeof loadLatestCandle;
   distDir?: string;
   operatorActions?: OperatorActionDeps;
 }
@@ -118,12 +95,6 @@ function clampLimit(
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return Math.min(parsed, max);
-}
-
-function parseTimestampMs(raw: string | null, fallback: number): number {
-  if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) ? parsed * 1000 : fallback;
 }
 
 function serializeJournal(entries: JournalEntry[]): DashboardJournalRow[] {
@@ -321,30 +292,13 @@ async function serveDashboardApp(
   `);
 }
 
-async function serveDistAsset(
-  pathname: string,
-  prefix: string,
-  distDir: string,
-): Promise<Response> {
-  const segments = relativePathFromPrefix(pathname, prefix);
-  if (segments === null || segments.length === 0)
-    return notFound("Asset not found");
-  const response = await serveStaticFile(
-    path.join(distDir, prefix.slice(1), ...segments),
-  );
-  return response ?? notFound("Asset not found");
-}
-
 export function createDashboardFetchHandler(
   options: DashboardFetchHandlerOptions,
 ) {
   const readJournal = options.readJournal ?? getJournalEntries;
   const getSummaryMetrics = options.getSummaryMetrics ?? getLiveMetrics;
-  const readCandlesBefore = options.readCandlesBefore ?? loadCandlesBefore;
-  const readLatest = options.readLatestCandle ?? loadLatestCandle;
   const distDir = options.distDir ?? DASHBOARD_DIST_DIR;
-  const operatorActions =
-    options.operatorActions ?? createOperatorActionDeps();
+  const operatorActions = options.operatorActions ?? createOperatorActionDeps();
 
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
@@ -418,7 +372,10 @@ export function createDashboardFetchHandler(
 
       if (pathname === "/api/operator/flatten") {
         if (request.method !== "POST") {
-          return json({ error: "POST required", code: "method_not_allowed" }, 405);
+          return json(
+            { error: "POST required", code: "method_not_allowed" },
+            405,
+          );
         }
         const body = await readJsonBody(request);
         const result = await handleOperatorFlatten(body, operatorActions);
@@ -436,7 +393,10 @@ export function createDashboardFetchHandler(
 
       if (pathname === "/api/operator/pause") {
         if (request.method !== "POST") {
-          return json({ error: "POST required", code: "method_not_allowed" }, 405);
+          return json(
+            { error: "POST required", code: "method_not_allowed" },
+            405,
+          );
         }
         const body = await readJsonBody(request);
         const result = await handleOperatorPause(body, operatorActions);
@@ -449,144 +409,18 @@ export function createDashboardFetchHandler(
 
       if (pathname === "/api/operator/resume") {
         if (request.method !== "POST") {
-          return json({ error: "POST required", code: "method_not_allowed" }, 405);
+          return json(
+            { error: "POST required", code: "method_not_allowed" },
+            405,
+          );
         }
-        const result = await handleOperatorResume(operatorActions);
+        const body = await readJsonBody(request);
+        const result = await handleOperatorResume(body, operatorActions);
         if ("code" in result) {
-          return json(result, 500);
+          const status = result.code === "missing_confirm" ? 400 : 500;
+          return json(result, status);
         }
         return json(result);
-      }
-
-      if (pathname === "/api/chart/symbols") {
-        const symbols = options.state.sources
-          .getTrackedCoins()
-          .map((coin) =>
-            buildChartSymbolInfo(options.state.activeExchange, coin),
-          );
-        return json({ symbols });
-      }
-
-      if (pathname.startsWith("/api/chart/symbols/")) {
-        const ticker = decodeURIComponent(
-          pathname.slice("/api/chart/symbols/".length),
-        );
-        const parsed = parseTicker(ticker, options.state.activeExchange);
-        if (!options.state.sources.getTrackedCoins().includes(parsed.coin)) {
-          return notFound(`Unknown ticker "${ticker}"`);
-        }
-        return json(buildChartSymbolInfo(parsed.exchange, parsed.coin));
-      }
-
-      if (pathname === "/api/chart/history") {
-        const ticker = url.searchParams.get("ticker");
-        const resolution = url.searchParams.get("resolution");
-        if (!ticker || !resolution) {
-          return badRequest("ticker and resolution are required");
-        }
-
-        const { coin } = parseTicker(ticker, options.state.activeExchange);
-        const interval = resolutionToInterval(resolution);
-        // Keep history responses bounded so TradingView back-scroll loads in stable 300-bar chunks.
-        const countBack = DASHBOARD_CHART_HISTORY_BATCH_SIZE;
-        const toMs = parseTimestampMs(url.searchParams.get("to"), Date.now());
-        const fromMs = parseTimestampMs(
-          url.searchParams.get("from"),
-          Math.max(0, toMs - 7 * 24 * 60 * 60 * 1000),
-        );
-        const hotCandles = getCandles(
-          coin,
-          interval,
-          HOT_CACHE_CAP_BARS[interval],
-          options.state.activeExchange,
-        );
-        const persisted = await readCandlesBefore(
-          coin,
-          interval,
-          toMs,
-          Math.max(countBack + hotCandles.length + 8, countBack),
-        );
-        const merged = mergeCandlesForHistory(
-          persisted,
-          hotCandles,
-          fromMs,
-          toMs,
-          countBack,
-        );
-        const response: ChartHistoryResponse = {
-          bars: merged.map(candleToChartBar),
-          noData: merged.length === 0,
-        };
-        return json(response);
-      }
-
-      if (pathname === "/api/chart/latest") {
-        const ticker = url.searchParams.get("ticker");
-        const resolution = url.searchParams.get("resolution");
-        if (!ticker || !resolution) {
-          return badRequest("ticker and resolution are required");
-        }
-
-        const { coin } = parseTicker(ticker, options.state.activeExchange);
-        const interval = resolutionToInterval(resolution);
-        const hot = getCandles(coin, interval, 1, options.state.activeExchange);
-        const latest =
-          hot[hot.length - 1] ?? (await readLatest(coin, interval));
-        return json({ bar: latest ? candleToChartBar(latest) : null });
-      }
-
-      if (pathname === "/api/chart/overlays") {
-        const ticker = url.searchParams.get("ticker");
-        if (!ticker) return badRequest("ticker is required");
-
-        const { coin } = parseTicker(ticker, options.state.activeExchange);
-        const journal = await readJournal({
-          coin,
-          limit: 200,
-          exchange: options.state.activeExchange,
-        });
-        const positions = [...options.state.sources.getPositions().values()]
-          .filter((position) => position.coin === coin)
-          .map(
-            (position) =>
-              ({
-                positionId:
-                  position.positionId ??
-                  position.rowKey ??
-                  `${position.coin}:${position.side}`,
-                coin: position.coin,
-                side: position.side,
-                entryPrice: position.entryPrice,
-                currentSize: position.currentSize,
-                originalSize: position.currentSize,
-                slPrice: position.slPrice,
-                tpPrice: position.tpPrice,
-                entryOrderId: "",
-                leverage: position.leverage,
-                trailingState: null,
-                partialClosesFired: [],
-                lastSyncAt: Date.now(),
-                openedAt: Date.now(),
-                thesis: null,
-                lastThesisCheckAt: 0,
-              }) satisfies PositionState,
-          );
-        const activeSetups = options.state.sources
-          .getActiveSetups()
-          .filter((setup) => setup.coin === coin);
-        const overlays: ChartOverlayResponse = {
-          marks: buildChartMarks(journal),
-          lines: buildChartLines(activeSetups, positions),
-        };
-        return json(overlays);
-      }
-
-      if (pathname.startsWith("/charting_library/")) {
-        return serveDistAsset(pathname, "/charting_library/", distDir);
-      }
-
-      if (pathname.startsWith("/datafeeds/")) {
-        return serveDistAsset(pathname, "/datafeeds/", distDir);
       }
 
       if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {

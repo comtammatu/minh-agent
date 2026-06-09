@@ -14,7 +14,12 @@
  * - No SymbolConverter needed — symbol = coin + 'USDT'
  */
 
-import { RestClientV5 } from "bybit-api";
+import {
+  type APIResponseV3WithTime,
+  type CategoryCursorListV5,
+  type PositionV5,
+  RestClientV5,
+} from "bybit-api";
 import { getHealthMonitor } from "../agent/self-healing.js";
 import type {
   ExchangeOpenOrderSnapshot,
@@ -622,8 +627,9 @@ export class BybitExchangeService {
     this.ensureInit();
 
     // Phase 1: network call — throw on network/SDK error (so caller can skip reconciliation)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let resp: any;
+    let resp:
+      | APIResponseV3WithTime<CategoryCursorListV5<PositionV5[]>>
+      | undefined;
     try {
       resp = await this.client?.getPositionInfo({
         category: "linear",
@@ -899,7 +905,8 @@ export class BybitExchangeService {
   private async loadRiskTiers(
     coin: string,
   ): Promise<Array<{ riskLimitValue: number; maxLeverage: number }>> {
-    if (this.riskTierCache.has(coin)) return this.riskTierCache.get(coin)!;
+    const cached = this.riskTierCache.get(coin);
+    if (cached !== undefined) return cached;
 
     const symbol = this.toSymbol(coin);
     try {
@@ -954,7 +961,8 @@ export class BybitExchangeService {
       const tiers = await this.loadRiskTiers(coin);
       if (tiers.length > 0) {
         // First tier where position fits (sizeUsd ≤ tier.riskLimitValue)
-        const lastTier = tiers[tiers.length - 1]!;
+        const lastTier = tiers[tiers.length - 1];
+        if (!lastTier) return;
         const tier = tiers.find((t) => sizeUsd <= t.riskLimitValue) ?? lastTier;
         if (tier === lastTier && sizeUsd > tier.riskLimitValue) {
           log.warn(

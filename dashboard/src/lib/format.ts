@@ -9,28 +9,34 @@ const compactFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
-export function formatUsd(value: number | null): string {
-  if (value === null || Number.isNaN(value)) return "—";
+type NullableNumber = number | null | undefined;
+
+function isDisplayableNumber(value: NullableNumber): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+export function formatUsd(value: NullableNumber): string {
+  if (!isDisplayableNumber(value)) return "—";
   return usdFormatter.format(value);
 }
 
-export function formatNumber(value: number | null, digits = 2): string {
-  if (value === null || Number.isNaN(value)) return "—";
+export function formatNumber(value: NullableNumber, digits = 2): string {
+  if (!isDisplayableNumber(value)) return "—";
   return value.toFixed(digits);
 }
 
-export function formatPercent(value: number | null): string {
-  if (value === null || Number.isNaN(value)) return "—";
+export function formatPercent(value: NullableNumber): string {
+  if (!isDisplayableNumber(value)) return "—";
   return `${(value * 100).toFixed(1)}%`;
 }
 
-export function formatChangePercent(value: number | null): string {
-  if (value === null || Number.isNaN(value)) return "—";
+export function formatChangePercent(value: NullableNumber): string {
+  if (!isDisplayableNumber(value)) return "—";
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
-export function formatCompact(value: number | null): string {
-  if (value === null || Number.isNaN(value)) return "—";
+export function formatCompact(value: NullableNumber): string {
+  if (!isDisplayableNumber(value)) return "—";
   return compactFormatter.format(value);
 }
 

@@ -701,7 +701,7 @@ const PositionRow = memo(function PositionRow({
   p,
   PC,
   getAssetPrice,
-  priceTick,
+  priceTick: _priceTick,
 }: {
   p: {
     rowKey?: string;
@@ -1140,7 +1140,7 @@ const WatchlistCoinRow = memo(function WatchlistCoinRow({
   coin,
   info,
   col,
-  priceTick,
+  priceTick: _priceTick,
 }: {
   coin: string;
   info: CoinInfo | undefined;
@@ -1296,6 +1296,15 @@ const WatchlistPanel = memo(function WatchlistPanel({
 
   const pageSize = Math.max(2, rowsPerCol * 2);
   const panelMinH = pageSize + 3;
+  const total = trackedCoins.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  // { = prev page, } = next page (avoids conflict with Positions [ ])
+  useInput((input) => {
+    if (total === 0) return;
+    if (input === "{") setPage((p) => Math.max(0, p - 1));
+    if (input === "}") setPage((p) => Math.min(p + 1, totalPages - 1));
+  });
 
   if (trackedCoins.length === 0) {
     return (
@@ -1310,15 +1319,6 @@ const WatchlistPanel = memo(function WatchlistPanel({
       </Box>
     );
   }
-
-  const total = trackedCoins.length;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-
-  // { = prev page, } = next page (avoids conflict with Positions [ ])
-  useInput((input) => {
-    if (input === "{") setPage((p) => Math.max(0, p - 1));
-    if (input === "}") setPage((p) => Math.min(p + 1, totalPages - 1));
-  });
 
   const clampedPage = Math.min(page, totalPages - 1);
   const startIdx = clampedPage * pageSize;
@@ -1716,8 +1716,8 @@ const BuddyPanel = memo(function BuddyPanel({
       <Text color={DIM}>{bubbleMid}</Text>
       <Text color={DIM}>{bubbleBot}</Text>
       <Text color={DIM}>{pointer}</Text>
-      {sprite.map((line, i) => (
-        <Text key={i} color={moodColor}>
+      {sprite.map((line) => (
+        <Text key={line} color={moodColor}>
           {line}
         </Text>
       ))}

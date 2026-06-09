@@ -61,9 +61,26 @@ describe("operator-actions", () => {
     expect(pausedReason).toBe("manual halt");
   });
 
-  it("resume does not require confirm", async () => {
+  it("resume rejects missing confirm", async () => {
+    const result = await handleOperatorResume(
+      {},
+      createOperatorActionDeps({
+        flatten: async () => ({ cancelled: 0, closed: 0 }),
+        pause: () => {},
+        resume: () => {},
+        logAudit: async () => {},
+      }),
+    );
+    expect(result).toEqual({
+      error: "confirm:true is required",
+      code: "missing_confirm",
+    });
+  });
+
+  it("resume executes with confirm", async () => {
     let resumed = false;
     const result = await handleOperatorResume(
+      { confirm: true },
       createOperatorActionDeps({
         flatten: async () => ({ cancelled: 0, closed: 0 }),
         pause: () => {},

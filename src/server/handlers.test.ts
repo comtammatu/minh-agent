@@ -1,6 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { DASHBOARD_CHART_HISTORY_BATCH_SIZE } from "../config.js";
-import { clearStore } from "../feed/store.js";
 import type { TuiDataSources } from "../ui/tui.jsx";
 import type { DashboardServerState } from "./contracts.js";
 import { createDashboardFetchHandler } from "./handlers.js";
@@ -160,18 +158,6 @@ describe("createDashboardFetchHandler", () => {
         exchange: "HL",
       },
     ],
-    readCandlesBefore: async () => [
-      { t: 1_000, o: 1, h: 2, l: 0.5, c: 1.5, v: 10 },
-      { t: 2_000, o: 2, h: 3, l: 1.5, c: 2.5, v: 10 },
-    ],
-    readLatestCandle: async () => ({
-      t: 2_000,
-      o: 2,
-      h: 3,
-      l: 1.5,
-      c: 2.5,
-      v: 10,
-    }),
     distDir: "/tmp/does-not-matter",
   });
 
@@ -245,7 +231,16 @@ describe("createDashboardFetchHandler", () => {
     expect(body).toEqual({ ok: true, cancelled: 1, closed: 2 });
   });
 
-  it("POST /api/operator/resume succeeds", async () => {
+  it("POST /api/operator/resume requires confirm", async () => {
+    const response = await handler(
+      new Request("http://localhost/api/operator/resume", { method: "POST" }),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(400);
+    expect(body.code).toBe("missing_confirm");
+  });
+
+  it("POST /api/operator/resume succeeds with confirm", async () => {
     let resumed = false;
     const operatorHandler = createDashboardFetchHandler({
       state: createState(),
@@ -270,72 +265,15 @@ describe("createDashboardFetchHandler", () => {
       },
     });
     const response = await operatorHandler(
-      new Request("http://localhost/api/operator/resume", { method: "POST" }),
+      new Request("http://localhost/api/operator/resume", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      }),
     );
     const body = await response.json();
     expect(response.status).toBe(200);
     expect(body).toEqual({ ok: true, resumed: true });
     expect(resumed).toBe(true);
-  });
-
-  it("returns chart history in ascending order", async () => {
-    const response = await handler(
-      new Request(
-        "http://localhost/api/chart/history?ticker=HL:BTC&resolution=60&from=0&to=10&countBack=2",
-      ),
-    );
-    const body = await response.json();
-    expect(response.status).toBe(200);
-    expect(body.bars.map((bar: { time: number }) => bar.time)).toEqual([1, 2]);
-  });
-
-  it("uses the fixed chart history batch size even when the client requests more", async () => {
-    clearStore();
-    let requestedCount = 0;
-    const batchedHandler = createDashboardFetchHandler({
-      state: createState(),
-      readJournal: async () => [],
-      readCandlesBefore: async (_coin, _interval, _beforeMs, count) => {
-        requestedCount = count;
-        return [
-          { t: 1_000, o: 1, h: 2, l: 0.5, c: 1.5, v: 10 },
-          { t: 2_000, o: 2, h: 3, l: 1.5, c: 2.5, v: 10 },
-        ];
-      },
-      readLatestCandle: async () => null,
-      distDir: "/tmp/does-not-matter",
-    });
-
-    const response = await batchedHandler(
-      new Request(
-        "http://localhost/api/chart/history?ticker=HL:BTC&resolution=60&from=0&to=10&countBack=5000",
-      ),
-    );
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.bars).toHaveLength(2);
-    expect(requestedCount).toBe(DASHBOARD_CHART_HISTORY_BATCH_SIZE + 8);
-  });
-
-  it("returns latest bar route", async () => {
-    const response = await handler(
-      new Request(
-        "http://localhost/api/chart/latest?ticker=HL:BTC&resolution=60",
-      ),
-    );
-    const body = await response.json();
-    expect(response.status).toBe(200);
-    expect(body.bar.time).toBeGreaterThan(0);
-  });
-
-  it("returns marks and lines overlay route", async () => {
-    const response = await handler(
-      new Request("http://localhost/api/chart/overlays?ticker=HL:BTC"),
-    );
-    const body = await response.json();
-    expect(response.status).toBe(200);
-    expect(body.marks.length).toBeGreaterThan(0);
-    expect(body.lines.length).toBeGreaterThan(0);
   });
 });

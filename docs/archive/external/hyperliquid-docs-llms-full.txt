@@ -1736,7 +1736,7 @@ TP/SL orders close your position when a certain profit (resp. loss) has realized
 
 The [mark price](https://hyperliquid.gitbook.io/hyperliquid-docs/hyperliquid-docs/trading/robust-price-indices) is used to trigger TP/SL orders.&#x20;
 
-TP/SL orders can be dragged on the TradingView chart. Note that dragging in a way that causes the order to immediately execute will lead to an error. Usually this prevents user mistakes, but if this is your desired behavior you can manually close the order from the position table or order form.&#x20;
+TP/SL orders can be dragged on the exchange chart. Note that dragging in a way that causes the order to immediately execute will lead to an error. Usually this prevents user mistakes, but if this is your desired behavior you can manually close the order from the position table or order form.&#x20;
 
 ### Limit vs Market TP/SL orders
 
@@ -9355,5 +9355,4 @@ Being in DeFi means being responsible about self-custody and keeping your own as
 * Never download PDFs from unknown users or sources
 * Assume most DMs are scams. Be suspicious if someone asks you to install software or sends a link out of context
 * Keep your browsers and extensions up to date; delete any extensions that are no longer maintained
-
 

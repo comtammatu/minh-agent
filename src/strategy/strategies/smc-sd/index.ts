@@ -611,19 +611,16 @@ export class SmcSdStrategy implements SetupGenerator {
 
         confidence += kz.inKillzone ? kz.bonus : -SMC_ICT_KILLZONE_PENALTY;
 
-        const volRatioVal =
-          cachedVolRatioVal ??
-          (cachedVolRatioVal = getCachedVolumeRatio20(
-            coin,
-            "4h",
-            candles,
-            idx,
-          ));
+        if (cachedVolRatioVal === undefined) {
+          cachedVolRatioVal = getCachedVolumeRatio20(coin, "4h", candles, idx);
+        }
+        const volRatioVal = cachedVolRatioVal;
         if (!Number.isNaN(volRatioVal) && volRatioVal > 1.5) confidence += 0.05;
 
-        const regime =
-          cachedRegime ??
-          (cachedRegime = getCachedRegime(coin, "4h", candles, idx));
+        if (cachedRegime === undefined) {
+          cachedRegime = getCachedRegime(coin, "4h", candles, idx);
+        }
+        const regime = cachedRegime;
         confidence = applyRegimeModifier(
           confidence,
           side,

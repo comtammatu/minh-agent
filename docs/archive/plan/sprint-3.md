@@ -356,7 +356,7 @@ Chart layers:
 └── Order flow delta (bottom panel)
 ```
 
-Tech: Lightweight Charts (`lightweight-charts`) — TradingView open-source, financial-grade.
+Tech: Native market panels in the dashboard process.
 
 ---
 
@@ -366,7 +366,7 @@ Tech: Lightweight Charts (`lightweight-charts`) — TradingView open-source, fin
 |---|---|---|
 | Framework | React 19 | Component model, SSE support |
 | Build | Vite | Fast, Bun-compatible |
-| Charts | Lightweight Charts | TradingView open-source, financial-grade |
+| Market detail | Native dashboard panels | Vendor-free, operator-focused market context |
 | Styling | Tailwind CSS | Utility-first, dark theme |
 | State | Zustand | Minimal, SSE-friendly |
 | Deployment | Same Bun process (Elysia serves static) | Single deployment unit |

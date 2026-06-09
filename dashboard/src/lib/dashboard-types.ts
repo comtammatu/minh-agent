@@ -1,5 +1,4 @@
 export type DashboardBootstrapPhase = "warming_up" | "ready";
-export type ChartResolution = "1" | "5" | "15" | "60" | "240" | "1D";
 export type DashboardEventType =
   | "signal"
   | "enter"
@@ -105,54 +104,4 @@ export interface DashboardJournalRow {
   details: Record<string, unknown>;
   agentState: string | null;
   exchange: "HL" | "BB";
-}
-
-export interface ChartBar {
-  time: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
-
-export interface ChartMark {
-  id: number;
-  time: number;
-  color: string;
-  text: string;
-  label: string;
-  minSize: number;
-}
-
-export interface ChartLine {
-  id: string;
-  price: number;
-  text: string;
-  color: string;
-  source: "setup" | "position";
-}
-
-export interface ChartOverlayResponse {
-  marks: ChartMark[];
-  lines: ChartLine[];
-}
-
-export interface ChartSymbolInfo {
-  ticker: string;
-  name: string;
-  description: string;
-  exchange: "HL" | "BB";
-  listed_exchange: "HL" | "BB";
-  type: "crypto";
-  session: "24x7";
-  timezone: "Etc/UTC";
-  minmov: number;
-  pricescale: number;
-  volume_precision: number;
-  has_intraday: true;
-  has_daily: true;
-  has_weekly_and_monthly: false;
-  supported_resolutions: ChartResolution[];
-  data_status: "streaming";
 }

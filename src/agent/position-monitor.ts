@@ -36,13 +36,13 @@ import {
   isTrailingStopHit,
 } from "./exits.js";
 import { getOrderManager } from "./order-manager.js";
-import { getAgent } from "./trading-orchestrator.js";
 import {
   captureThesis,
   evaluateThesis,
   shouldCheckThesis,
   thesisToActions,
 } from "./thesis-monitor.js";
+import { getAgent } from "./trading-orchestrator.js";
 import type {
   AgentEvent,
   ExchangePositionSnapshot,

@@ -13,7 +13,7 @@ As of `2026-06-04`, this branch implements:
 - Trading agent, order manager, position monitor, circuit breakers, and thesis monitoring
 - Full-screen Ink TUI and Telegram operator commands
 - Backtest, optimization, walk-forward, and pipeline benchmark tooling
-- `dashboard/` Algo Trading Terminal (Vite + React + shadcn/ui) on `localhost:3030` with TradingView chart, vital strip, Overview/Market/Journal pages (HTTP polling, no SSE)
+- `dashboard/` Algo Trading Terminal (Vite + React + shadcn/ui) on `localhost:3030` with vital strip, Overview/Market/Journal pages (HTTP polling, no SSE)
 - `src/advisor/` optional LLM advisor stub (not wired to live runtime — see `src/advisor/index.ts`)
 - `src/memory/` trade memory foundation (structured PG + FTS + scoring; not yet wired to live runtime — see CLAUDE.md)
 - Dead-man's switch (HL native + BB watchdog), DMS policy tests

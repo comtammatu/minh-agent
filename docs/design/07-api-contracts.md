@@ -1,7 +1,7 @@
 # 07 — API Contracts
 
 > **TARGET / ASPIRATIONAL (2026-06 note):** This document describes the planned `/api/v1` + JWT auth + WS + owner/viewer model (multi-panel workspace vision in DESIGN 05/06). 
-> **Current implementation:** `src/server/` uses `Bun.serve` with unauthenticated `/api/dashboard/*`, `/api/chart/*`, and `/api/operator/{flatten,pause,resume}` (polling reads + hold-to-confirm writes with `{ confirm: true }`; no JWT, no WS, no v1 prefix). See `src/server/handlers.ts`, `operator-actions.ts`, `contracts.ts`, and task-contract open decision Q1. 
+> **Current implementation:** `src/server/` uses `Bun.serve` with unauthenticated `/api/dashboard/*` and `/api/operator/{flatten,pause,resume}` (polling reads + hold-to-confirm writes with `{ confirm: true }`; no JWT, no WS, no v1 prefix). See `src/server/handlers.ts`, `operator-actions.ts`, `contracts.ts`, and task-contract open decision Q1.
 > Do not edit code to match this doc until owner decision + follow-on plan. If implementing, update DESIGN status table + this header in same PR.
 > For now, this is the contract *to evolve toward*.
 

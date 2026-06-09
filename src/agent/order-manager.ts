@@ -50,15 +50,15 @@ import { getLatestBook } from "../feed/orderbook.js";
 import { log } from "../lib/logger.js";
 import { isRetryableExchangeError, withRetry } from "../lib/retry.js";
 import type { ActiveSetup, ExchangeId } from "../types.js";
-import { logJournalEntry } from "./journal.js";
-import {
-  planOrderReconciliation,
-  type OrderReconcileAction,
-} from "./order-reconciler.js";
 import {
   computeEntryLeverageForTargetMargin,
   computePositionSize,
 } from "./exits.js";
+import { logJournalEntry } from "./journal.js";
+import {
+  type OrderReconcileAction,
+  planOrderReconciliation,
+} from "./order-reconciler.js";
 import type {
   AgentAction,
   AgentEvent,
@@ -1316,7 +1316,9 @@ export class OrderManager {
     }
   }
 
-  private async alertOrderDrift(details: Record<string, unknown>): Promise<void> {
+  private async alertOrderDrift(
+    details: Record<string, unknown>,
+  ): Promise<void> {
     const orderId =
       typeof details.orderId === "string" ? details.orderId : undefined;
     const coin = typeof details.coin === "string" ? details.coin : null;

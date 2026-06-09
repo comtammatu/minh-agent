@@ -79,7 +79,10 @@ export class ExchangePool {
     if (!this.initialized) {
       throw new Error("ExchangePool not initialized — call init() first");
     }
-    return this.shared!;
+    if (!this.shared) {
+      throw new Error("ExchangePool shared service unavailable");
+    }
+    return this.shared;
   }
 
   /** Always false — the runtime uses one shared wallet. */

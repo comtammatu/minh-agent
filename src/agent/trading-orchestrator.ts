@@ -282,20 +282,21 @@ export class TradingAgent {
     });
 
     if (result.tripped && !g.globalPaused) {
+      const reason = result.reason ?? "circuit_break";
       log.warn(
         "agent",
-        `CIRCUIT BREAK | ${result.reason} | dailyPnl=$${g.dailyPnl.toFixed(2)} | pause until ${result.pauseUntil ? new Date(result.pauseUntil).toISOString().slice(11, 19) : "manual resume"}`,
+        `CIRCUIT BREAK | ${reason} | dailyPnl=$${g.dailyPnl.toFixed(2)} | pause until ${result.pauseUntil ? new Date(result.pauseUntil).toISOString().slice(11, 19) : "manual resume"}`,
       );
 
       g.globalPaused = true;
-      g.globalPauseReason = result.reason;
+      g.globalPauseReason = reason;
 
       // Dispatch circuit_break to non-IN_POSITION coins only (R5)
       for (const [coin, ctx] of this.coins) {
         if (ctx.state !== "IN_POSITION") {
           this.dispatch(coin, {
             type: "circuit_break",
-            reason: result.reason!,
+            reason,
             pauseUntil: result.pauseUntil,
           });
         }

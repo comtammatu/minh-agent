@@ -1,6 +1,8 @@
 import { Activity, CandlestickChart, Menu, ScrollText } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useDashboardData } from "@/app";
+import { OperatorControls } from "@/components/operator-controls";
+import { StatusBar } from "@/components/status-bar";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -21,8 +23,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { StatusBar } from "@/components/status-bar";
-import { OperatorControls } from "@/components/operator-controls";
 import { VitalStrip } from "@/components/vital-strip";
 import { cn } from "@/lib/utils";
 

@@ -490,8 +490,8 @@ async function main(): Promise<void> {
       if (activeExchange === "BB") {
         // BB has no separate mark-price feed — use last 1m candle close as price proxy.
         const candles = getCandles(coin, "1m", 1);
-        if (candles.length === 0) return null;
-        const last = candles[candles.length - 1]!;
+        const last = candles.at(-1);
+        if (!last) return null;
         return {
           markPrice: last.c,
           funding: getBybitFundingRate(coin),

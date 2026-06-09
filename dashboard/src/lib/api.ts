@@ -1,8 +1,5 @@
 import { startTransition, useEffect, useEffectEvent, useState } from "react";
 import type {
-  ChartOverlayResponse,
-  ChartResolution,
-  ChartSymbolInfo,
   DashboardEventType,
   DashboardJournalRow,
   DashboardSnapshotResponse,
@@ -83,34 +80,3 @@ export function useJournalRows(
   }
   return usePollingJson<{ rows: DashboardJournalRow[] }>(url, 5_000);
 }
-
-export function useChartOverlays(ticker: string | null) {
-  return usePollingJson<ChartOverlayResponse>(
-    ticker ? `/api/chart/overlays?ticker=${encodeURIComponent(ticker)}` : null,
-    1_000,
-  );
-}
-
-export async function fetchSymbols(): Promise<ChartSymbolInfo[]> {
-  const payload = await fetchJson<{ symbols: ChartSymbolInfo[] }>(
-    "/api/chart/symbols",
-  );
-  return payload.symbols;
-}
-
-export async function fetchSymbolInfo(
-  ticker: string,
-): Promise<ChartSymbolInfo> {
-  return fetchJson<ChartSymbolInfo>(
-    `/api/chart/symbols/${encodeURIComponent(ticker)}`,
-  );
-}
-
-export const CHART_RESOLUTIONS: ChartResolution[] = [
-  "1",
-  "5",
-  "15",
-  "60",
-  "240",
-  "1D",
-];

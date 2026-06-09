@@ -1,20 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { App } from "@/app";
 
-vi.mock("@/components/tradingview-chart", () => ({
-  TradingViewChart: ({
-    ticker,
-    resolution,
-  }: {
-    ticker: string | null;
-    resolution: string;
-    showMarks: boolean;
-    showLines: boolean;
-  }) => (
-    <div data-testid="chart-props">{`${ticker ?? "none"}::${resolution}`}</div>
-  ),
-}));
-
 const SNAPSHOT_PAYLOAD = {
   bootstrap: { phase: "ready", trackedCoins: ["BTC", "ETH"] },
   mode: { exchange: "HL", paperTrade: true },
@@ -55,7 +41,21 @@ const SNAPSHOT_PAYLOAD = {
       leverage: 3,
     },
   ],
-  watchlist: [],
+  watchlist: [
+    {
+      coin: "BTC",
+      interval: "1h",
+      regime: "BULL",
+      bias: "bullish",
+      biasConfidence: 0.72,
+      confluenceGrade: "A",
+      activeCount: 1,
+      lastUpdateAt: 1_780_806_000_000,
+      markPrice: 65_120,
+      funding: 0.0001,
+      dayChangePctUtc: 0.012,
+    },
+  ],
   activeSetups: [
     {
       id: "eth-setup",
@@ -145,11 +145,12 @@ describe("App", () => {
       expect(
         screen.getByRole("heading", { name: "Market" }),
       ).toBeInTheDocument();
-      expect(screen.getByTestId("chart-props")).toHaveTextContent("HL:BTC::60");
+      expect(screen.getByText("Runtime market state")).toBeInTheDocument();
+      expect(screen.getByText("$65,120.00")).toBeInTheDocument();
     });
 
     await waitFor(() => {
-      expect(window.location.search).toBe("?coin=BTC&resolution=60");
+      expect(window.location.search).toBe("?coin=BTC");
     });
   });
 

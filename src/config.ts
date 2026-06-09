@@ -1182,9 +1182,6 @@ export const DASHBOARD = {
   port: parsePortEnv("DASHBOARD_PORT", 3030),
 } as const;
 
-/** Fixed chart history batch size per timeframe for dashboard back-scroll loading. */
-export const DASHBOARD_CHART_HISTORY_BATCH_SIZE = 300;
-
 // ── Multi-exchange ─────────────────────────────────────────────────────────
 
 /**

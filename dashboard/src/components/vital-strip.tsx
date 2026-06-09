@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
-import { formatChangePercent, formatUsd } from "@/lib/format";
 import type { DashboardSnapshotResponse } from "@/lib/dashboard-types";
+import { formatChangePercent, formatUsd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 interface VitalStripProps {
@@ -66,15 +66,12 @@ export function VitalStrip({ data, snapshotError }: VitalStripProps) {
         label="Open Pos"
         value={String(data.summaryMetrics.openPositionCount)}
       />
-      <VitalSlot
-        label="Setups"
-        value={String(data.activeSetups.length)}
-      />
+      <VitalSlot label="Setups" value={String(data.activeSetups.length)} />
       <VitalSlot
         label="Circuit"
         value={
           data.operator.globalPaused
-            ? data.operator.pauseReason ?? "PAUSED"
+            ? (data.operator.pauseReason ?? "PAUSED")
             : "CB OK"
         }
         valueClassName={

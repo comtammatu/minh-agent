@@ -298,7 +298,8 @@ export function detectStructureBreaks(
     c.c > prevHigh.price - tol &&
     Math.abs(c.c - prevHigh.price) >= minPriceDist * 0.3
   ) {
-    const isCHoCH = lastLow.price < (lows[Math.max(0, lows.length - 3)]?.price ?? Infinity);
+    const isCHoCH =
+      lastLow.price < (lows[Math.max(0, lows.length - 3)]?.price ?? Infinity);
     breaks.push({
       kind: isCHoCH ? "choch" : "bos",
       direction: "bullish",
@@ -313,7 +314,8 @@ export function detectStructureBreaks(
     Math.abs(c.c - prevLow.price) >= minPriceDist * 0.3
   ) {
     const isCHoCH =
-      lastHigh.price > (highs[Math.max(0, highs.length - 3)]?.price ?? -Infinity);
+      lastHigh.price >
+      (highs[Math.max(0, highs.length - 3)]?.price ?? -Infinity);
     breaks.push({
       kind: isCHoCH ? "choch" : "bos",
       direction: "bearish",
@@ -472,7 +474,10 @@ function mergeAndRank(
   const zones: KeyZone[] = [];
   const pushTopZone = (zone: KeyZone): void => {
     let insertAt = zones.length;
-    while (insertAt > 0 && (zones[insertAt - 1]?.strength ?? -1) < zone.strength)
+    while (
+      insertAt > 0 &&
+      (zones[insertAt - 1]?.strength ?? -1) < zone.strength
+    )
       insertAt--;
     zones.splice(insertAt, 0, zone);
     if (zones.length > max) zones.length = max;

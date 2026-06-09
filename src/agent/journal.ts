@@ -12,6 +12,7 @@
 import type { JSONValue } from "postgres";
 import { sql } from "../db/connection.js";
 import { log } from "../lib/logger.js";
+import { insertMemory } from "../memory/index.js";
 import type { ExchangeId } from "../types.js";
 import type {
   AgentAction,
@@ -19,7 +20,6 @@ import type {
   JournalEntry,
   JournalFilter,
 } from "./types.js";
-import { insertMemory } from "../memory/index.js";
 
 // ─── Write ──────────────────────────────────────────────────────────────────
 
@@ -40,12 +40,15 @@ export async function logJournalEntry(
     `;
 
     // minimal memory wire (advisor-foundation optional; fire-forget, never throw)
-    if (eventType.includes('close') && typeof details.realizedPnlR === 'number') {
+    if (
+      eventType.includes("close") &&
+      typeof details.realizedPnlR === "number"
+    ) {
       insertMemory({
-        category: 'trade_outcome',
+        category: "trade_outcome",
         coin: coin ?? null,
         pnlR: details.realizedPnlR as number,
-        content: `Closed ${coin} ${details.side ?? ''} ${details.realizedPnlR}R`,
+        content: `Closed ${coin} ${details.side ?? ""} ${details.realizedPnlR}R`,
         metadata: { eventType, ...details },
         importance: Math.min(0.9, Math.abs(details.realizedPnlR as number) / 5),
       }).catch(() => {});

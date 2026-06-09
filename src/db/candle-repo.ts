@@ -95,7 +95,7 @@ export async function getLastTimestamp(
     LIMIT 1
   `;
   if (rows.length === 0) return null;
-  return rows[0]!.t.getTime();
+  return rows[0]?.t.getTime() ?? null;
 }
 
 /**
@@ -128,7 +128,7 @@ export async function loadCandles(
 
 /**
  * Load candles ending before `beforeMs` (exclusive), newest-first query, ascending return.
- * Used by the dashboard chart history route to satisfy TradingView `countBack`.
+ * Used by dashboard and backtest readers that need bounded candle history.
  */
 export async function loadCandlesBefore(
   coin: string,

@@ -98,7 +98,8 @@ export async function getMemory(id: number): Promise<TradeMemory | null> {
     WHERE id = ${id}
     RETURNING *
   `;
-  return rows.length > 0 ? rowToMemory(rows[0]!) : null;
+  const row = rows[0];
+  return row ? rowToMemory(row) : null;
 }
 
 /** Count all memories, optionally filtered by category. */

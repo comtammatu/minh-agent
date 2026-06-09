@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { HoldButton } from "@/components/ui/hold-button";
 import {
   flattenAll,
@@ -65,14 +64,15 @@ export function OperatorControls({
         >
           Hold to pause
         </HoldButton>
-        <Button
+        <HoldButton
+          holdMs={700}
           size="sm"
           variant="secondary"
           disabled={disabled || busy || !globalPaused}
-          onClick={() => void runAction("Resume", () => resumeAgent())}
+          onConfirm={() => runAction("Resume", () => resumeAgent())}
         >
-          Resume
-        </Button>
+          Hold to resume
+        </HoldButton>
       </div>
       {error ? (
         <Alert variant="destructive" className="max-w-md py-2">

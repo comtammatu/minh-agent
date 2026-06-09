@@ -183,7 +183,7 @@ Preliminary decisions for Sprint 3 — Intelligence + Scale. Final review after 
 | T4 | LLM safety | **Human approval required** for all config changes | LLM suggests → backtest validates → owner approves via Telegram/Dashboard |
 | T5 | ~~Multi-exchange~~ | ~~CCXT~~ → **REVOKED** | Removed — Hyperliquid-only focus. Complexity not justified for solo-operator agent |
 | T6 | Backtest architecture | **Reuse Sprint 1+2 pipeline code** | Same indicators, same layers, same agent logic. Only mock execution layer |
-| T7 | Dashboard frontend | **React 19 + Vite + Lightweight Charts + Tailwind** | Financial-grade charts (TradingView open-source), SSE from Elysia, same process |
+| T7 | Dashboard frontend | **React 19 + Vite + native market panels + Tailwind** | Dashboard remains vendor-free; SSE from Elysia, same process |
 | T8 | Dashboard deployment | **Single process** — Elysia serves static React build | No separate frontend deployment. Simplicity for solo dev |
 | T9 | NL control safety | **Double confirmation for destructive actions** | "Close all positions" → "Are you sure? Type YES to confirm" |
 
@@ -1495,7 +1495,7 @@ Added `dashboard/` browser UI as a complement to the Ink TUI. The TUI remains th
 | # | Decision | Choice | Rationale |
 |---|----------|--------|-----------|
 | BD1 | Stack | **Vite + React + shadcn/ui** on `localhost:3030` | Consistent with existing `dashboard/` Sprint 3 foundation; shadcn/ui provides consistent component library |
-| BD2 | Chart | **TradingView Lightweight Charts** for candle history | Same library as Sprint 3; candle data served from PG via Elysia UDF endpoint |
+| BD2 | Market detail | **Native market panels** for candle and setup context | Vendor-free dashboard; candle data served from PG via Elysia UDF endpoint |
 | BD3 | Pages | **Overview, Market, Journal** with live SSE updates | Matches operator use cases: system health, active market state, closed trade review |
 | BD4 | Server | **Elysia handlers** for candles, status, journal, chart UDF | Reuses existing `src/server/` Elysia layer; no separate backend process |
 | BD5 | TUI relationship | **TUI unchanged** — browser dashboard is additive only | No regression risk to existing operator workflow |

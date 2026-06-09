@@ -1,4 +1,4 @@
-import { closeAllPositions, type CloseAllResult } from "../agent/close-all.js";
+import { type CloseAllResult, closeAllPositions } from "../agent/close-all.js";
 import { logOperatorAuditEntry } from "../agent/journal.js";
 import { getAgent } from "../agent/trading-orchestrator.js";
 
@@ -28,7 +28,11 @@ export interface OperatorResumeResponse {
 
 export interface OperatorErrorResponse {
   error: string;
-  code: "missing_confirm" | "invalid_body" | "method_not_allowed" | "action_failed";
+  code:
+    | "missing_confirm"
+    | "invalid_body"
+    | "method_not_allowed"
+    | "action_failed";
 }
 
 function defaultDeps(): OperatorActionDeps {
@@ -114,20 +118,25 @@ export async function handleOperatorPause(
 }
 
 export async function handleOperatorResume(
+  body: unknown,
   deps: OperatorActionDeps = createOperatorActionDeps(),
 ): Promise<OperatorResumeResponse | OperatorErrorResponse> {
+  if (!hasConfirm(body)) {
+    return { error: "confirm:true is required", code: "missing_confirm" };
+  }
+  const reason = readReason(body, "dashboard resume");
   try {
     deps.resume();
     await deps.logAudit("resume", "global", "submitted", {
       source: "dashboard",
-      details: {},
+      details: { reason },
     });
     return { ok: true, resumed: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await deps.logAudit("resume", "global", "failed", {
       source: "dashboard",
-      details: { error: message },
+      details: { reason, error: message },
     });
     return { error: message, code: "action_failed" };
   }

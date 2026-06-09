@@ -10,7 +10,11 @@ describe("HoldButton", () => {
     });
 
     const onConfirm = vi.fn();
-    render(<HoldButton holdMs={700} onConfirm={onConfirm}>Hold me</HoldButton>);
+    render(
+      <HoldButton holdMs={700} onConfirm={onConfirm}>
+        Hold me
+      </HoldButton>,
+    );
 
     const button = screen.getByRole("button", { name: /hold to confirm/i });
     fireEvent.pointerDown(button, { button: 0, pointerId: 1 });
@@ -28,7 +32,11 @@ describe("HoldButton", () => {
 
   it("does not fire when released early", async () => {
     const onConfirm = vi.fn();
-    render(<HoldButton holdMs={700} onConfirm={onConfirm}>Hold me</HoldButton>);
+    render(
+      <HoldButton holdMs={700} onConfirm={onConfirm}>
+        Hold me
+      </HoldButton>,
+    );
 
     const button = screen.getByRole("button", { name: /hold to confirm/i });
     fireEvent.pointerDown(button, { button: 0, pointerId: 1 });

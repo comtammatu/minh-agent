@@ -24,11 +24,14 @@ async function postJson<T>(
   url: string,
   body?: unknown,
 ): Promise<T | OperatorErrorResponse> {
-  const response = await fetch(url, {
+  const init: RequestInit = {
     method: "POST",
-    headers: body ? { "content-type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  };
+  if (body !== undefined) {
+    init.headers = { "content-type": "application/json" };
+    init.body = JSON.stringify(body);
+  }
+  const response = await fetch(url, init);
   const payload = (await response.json()) as T | OperatorErrorResponse;
   if (!response.ok) {
     return payload as OperatorErrorResponse;
@@ -50,8 +53,11 @@ export async function pauseAgent(reason = "dashboard pause") {
   });
 }
 
-export async function resumeAgent() {
-  return postJson<OperatorResumeResponse>("/api/operator/resume");
+export async function resumeAgent(reason = "dashboard resume") {
+  return postJson<OperatorResumeResponse>("/api/operator/resume", {
+    confirm: true,
+    reason,
+  });
 }
 
 export function isOperatorError(

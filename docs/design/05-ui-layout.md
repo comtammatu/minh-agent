@@ -5,7 +5,7 @@
 
 Panel taxonomy, default grid, header / status bar, page structure, UX flows.
 
-The dashboard is a **multi-panel workspace**, not a stack of pages. Operator switches focus by hotkey, never by navigation chrome. Inspired by Bloomberg Terminal, TradingView desktop, Hyperliquid pro UI.
+The dashboard is a **multi-panel workspace**, not a stack of pages. Operator switches focus by hotkey, never by navigation chrome. Inspired by Bloomberg Terminal, Hyperliquid pro UI, and dense exchange terminals.
 
 ---
 
@@ -134,9 +134,9 @@ Ranked coin list with live price + 24h Δ + setup signal.
 
 UX: this is the operator's "what's happening" panel. Should refresh on every tick. Active setups highlight (left border + faint background).
 
-### 2. Chart
+### 2. Market Detail
 
-TradingView Lightweight Charts. Multi-timeframe tabs at top (1m, 5m, 15m, 1h, 4h, 1d). Coin symbol in panel header. Indicators overlay (FVG, Order Blocks, Spring marks) toggle via small icon button.
+Native in-repo market detail panel. Multi-timeframe context, selected coin symbol, setup levels, position state, and indicator summaries should share one compact operator surface.
 
 UX: largest panel. Operator spends most time here. Keyboard: `[` previous TF, `]` next TF, `h` toggle indicators.
 

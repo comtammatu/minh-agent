@@ -14,7 +14,7 @@ If a future change conflicts with this reference, **update this reference in the
 |---|---|---|---|
 | Database | PostgreSQL + TimescaleDB (no swap) | Same (or SQLite after bake-off) | 2026-05-19 |
 | Frontend stack | Vite + React 19 + react-router-dom + shadcn/ui + HTTP polling (Bun.serve) | Vite + React 19 + TanStack Router + shadcn/ui + Zustand + TanStack Query + native WS/SSE | 2026-05-19 |
-| Charts | TradingView Lightweight Charts | Same | 2026-05-19 |
+| Charts | No vendor chart dependency in current dashboard | Native market panels when charting is reintroduced | 2026-06-07 |
 | State | React Context + polling hooks (no Zustand/TanStack Query yet) | Zustand (UI) + TanStack Query (REST) + native WS hook | 2026-05-19 |
 | Typography | IBM Plex Mono + Plex Sans Condensed (already vendored) | Same (Bloomberg density) | 2026-05-19 |
 | Density | 3-page sidebar + vital strip/status bar (Overview/Market/Journal) + Ink TUI primary | 10-panel Bloomberg grid, drag-resize, cmdk, 28px row, 13px | 2026-05-19 |

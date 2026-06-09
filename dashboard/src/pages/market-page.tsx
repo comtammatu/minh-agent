@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useDashboardData } from "@/app";
-import { TradingViewChart } from "@/components/tradingview-chart";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -19,11 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CHART_RESOLUTIONS } from "@/lib/api";
-import type { ChartResolution } from "@/lib/dashboard-types";
 import { formatPercent, formatTimestamp, formatUsd } from "@/lib/format";
-import { SwitchControl } from "@/pages/switch-control";
 
 interface DetailRowProps {
   label: string;
@@ -39,30 +34,17 @@ function DetailRow({ label, value }: DetailRowProps) {
   );
 }
 
-function isChartResolution(value: string | null): value is ChartResolution {
-  return value !== null && CHART_RESOLUTIONS.includes(value as ChartResolution);
-}
-
-const DEFAULT_CHART_RESOLUTION: ChartResolution = "60";
-
 export function MarketPage() {
   const snapshot = useDashboardData();
   const data = snapshot.data;
   const [searchParams, setSearchParams] = useSearchParams();
-  const [showMarks, setShowMarks] = useState(true);
-  const [showLines, setShowLines] = useState(true);
 
-  const _searchKey = searchParams.toString();
   const trackedCoins = data?.bootstrap.trackedCoins ?? [];
   const requestedCoin = searchParams.get("coin");
   const selectedCoin =
     requestedCoin && trackedCoins.includes(requestedCoin)
       ? requestedCoin
       : (trackedCoins[0] ?? "");
-  const requestedResolution = searchParams.get("resolution");
-  const activeResolution = isChartResolution(requestedResolution)
-    ? requestedResolution
-    : DEFAULT_CHART_RESOLUTION;
 
   useEffect(() => {
     if (!data) return;
@@ -79,18 +61,20 @@ export function MarketPage() {
       changed = true;
     }
 
-    if (nextParams.get("resolution") !== activeResolution) {
-      nextParams.set("resolution", activeResolution);
+    if (nextParams.has("resolution")) {
+      nextParams.delete("resolution");
       changed = true;
     }
 
     if (changed) {
       setSearchParams(nextParams, { replace: true });
     }
-  }, [activeResolution, data, searchParams, selectedCoin, setSearchParams]);
+  }, [data, searchParams, selectedCoin, setSearchParams]);
 
-  const ticker =
-    data && selectedCoin ? `${data.mode.exchange}:${selectedCoin}` : null;
+  const watchlistRow = useMemo(
+    () => data?.watchlist.find((row) => row.coin === selectedCoin) ?? null,
+    [data, selectedCoin],
+  );
   const activeSetup = useMemo(
     () =>
       data?.activeSetups.find((setup) => setup.coin === selectedCoin) ?? null,
@@ -114,98 +98,83 @@ export function MarketPage() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Market</h1>
-        <p className="text-sm text-muted-foreground">
-          TradingView chart, active setup context, and open position state for
-          the selected market.
-        </p>
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Market</h1>
+          <p className="text-sm text-muted-foreground">
+            Selected market state, active setup context, and open position
+            detail from the runtime snapshot.
+          </p>
+        </div>
+        <div className="grid gap-2">
+          <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            Ticker
+          </span>
+          <Select
+            value={selectedCoin}
+            onValueChange={(value) => {
+              const nextParams = new URLSearchParams(searchParams);
+              nextParams.set("coin", value);
+              nextParams.delete("resolution");
+              setSearchParams(nextParams, { replace: true });
+            }}
+          >
+            <SelectTrigger className="min-w-44" aria-label="Select market">
+              <SelectValue placeholder="Select coin" />
+            </SelectTrigger>
+            <SelectContent>
+              {data.bootstrap.trackedCoins.map((coin) => (
+                <SelectItem key={coin} value={coin}>
+                  {coin}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_360px]">
-        <Card className="overflow-hidden">
-          <CardHeader className="gap-4 border-b">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-              <div>
-                <CardDescription>TradingView Advanced Chart</CardDescription>
-                <CardTitle>Market canvas</CardTitle>
-              </div>
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-                <div className="grid gap-2">
-                  <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    Ticker
-                  </span>
-                  <Select
-                    value={selectedCoin}
-                    onValueChange={(value) => {
-                      const nextParams = new URLSearchParams(searchParams);
-                      nextParams.set("coin", value);
-                      nextParams.set("resolution", activeResolution);
-                      setSearchParams(nextParams, { replace: true });
-                    }}
-                  >
-                    <SelectTrigger
-                      className="min-w-44"
-                      aria-label="Select market"
-                    >
-                      <SelectValue placeholder="Select coin" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {data.bootstrap.trackedCoins.map((coin) => (
-                        <SelectItem key={coin} value={coin}>
-                          {coin}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    Resolution
-                  </span>
-                  <Tabs
-                    value={activeResolution}
-                    onValueChange={(value) => {
-                      const nextParams = new URLSearchParams(searchParams);
-                      if (selectedCoin) nextParams.set("coin", selectedCoin);
-                      nextParams.set("resolution", value);
-                      setSearchParams(nextParams, { replace: true });
-                    }}
-                  >
-                    <TabsList
-                      className="grid w-full grid-cols-6 xl:w-auto"
-                      aria-label="Chart resolution"
-                    >
-                      {CHART_RESOLUTIONS.map((value) => (
-                        <TabsTrigger key={value} value={value}>
-                          {value}
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
-                  </Tabs>
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-4">
-              <SwitchControl
-                label="Show marks"
-                checked={showMarks}
-                onCheckedChange={setShowMarks}
-              />
-              <SwitchControl
-                label="Show entry / SL / TP"
-                checked={showLines}
-                onCheckedChange={setShowLines}
-              />
-            </div>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <Card>
+          <CardHeader>
+            <CardDescription>Runtime market state</CardDescription>
+            <CardTitle>{selectedCoin || "No coin selected"}</CardTitle>
           </CardHeader>
-          <CardContent className="p-0">
-            <TradingViewChart
-              ticker={ticker}
-              resolution={activeResolution}
-              showMarks={showMarks}
-              showLines={showLines}
-            />
+          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {watchlistRow ? (
+              <>
+                <DetailRow
+                  label="Mark"
+                  value={formatUsd(watchlistRow.markPrice)}
+                />
+                <DetailRow
+                  label="Bias"
+                  value={`${watchlistRow.bias} / ${watchlistRow.regime}`}
+                />
+                <DetailRow
+                  label="Bias confidence"
+                  value={formatPercent(watchlistRow.biasConfidence)}
+                />
+                <DetailRow
+                  label="Funding"
+                  value={formatPercent(watchlistRow.funding)}
+                />
+                <DetailRow
+                  label="Day change"
+                  value={formatPercent(watchlistRow.dayChangePctUtc)}
+                />
+                <DetailRow
+                  label="Active setups"
+                  value={String(watchlistRow.activeCount)}
+                />
+              </>
+            ) : (
+              <Alert className="md:col-span-2 xl:col-span-3">
+                <AlertTitle>No watchlist row</AlertTitle>
+                <AlertDescription>
+                  This coin has not reported runtime market status yet.
+                </AlertDescription>
+              </Alert>
+            )}
           </CardContent>
         </Card>
 

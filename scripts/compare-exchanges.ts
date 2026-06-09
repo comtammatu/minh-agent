@@ -544,8 +544,9 @@ function printSignalReport(matches: SignalMatch[]): void {
     console.log(`  ${"─".repeat(84)}`);
 
     for (const m of bothExchanges) {
-      const hl = m.hlSignal?.signal!;
-      const bb = m.bbSignal?.signal!;
+      const hl = m.hlSignal?.signal;
+      const bb = m.bbSignal?.signal;
+      if (!hl || !bb) continue;
       console.log(
         `  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${"smc-sd".padEnd(8)} ${hl.side.padEnd(6)} ` +
           `${(`$${fmt(hl.entryPrice)}`).padStart(12)} ${(`$${fmt(bb.entryPrice)}`).padStart(12)} ` +
@@ -561,7 +562,8 @@ function printSignalReport(matches: SignalMatch[]): void {
   if (hlOnly.length > 0) {
     console.log(`\n  🔵 HL-ONLY: ${hlOnly.length}`);
     for (const m of hlOnly) {
-      const s = m.hlSignal?.signal!;
+      const s = m.hlSignal?.signal;
+      if (!s) continue;
       console.log(
         `  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${"smc-sd".padEnd(8)} ${s.side.padEnd(6)} entry=$${fmt(s.entryPrice)} conf=${fmt(s.confidence)}`,
       );
@@ -572,7 +574,8 @@ function printSignalReport(matches: SignalMatch[]): void {
   if (bbOnly.length > 0) {
     console.log(`\n  🟡 BB-ONLY: ${bbOnly.length}`);
     for (const m of bbOnly) {
-      const s = m.bbSignal?.signal!;
+      const s = m.bbSignal?.signal;
+      if (!s) continue;
       console.log(
         `  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${"smc-sd".padEnd(8)} ${s.side.padEnd(6)} entry=$${fmt(s.entryPrice)} conf=${fmt(s.confidence)}`,
       );

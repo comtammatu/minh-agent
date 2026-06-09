@@ -51,7 +51,7 @@ Three operator surfaces run alongside the trading loop:
 | Surface | Where | Purpose |
 |---|---|---|
 | Ink TUI | terminal (stdout) | Primary real-time view: candles, positions, agent state, health |
-| Browser dashboard | `localhost:3030` | Algo Trading Terminal — TradingView chart, vital strip, Overview / Market / Journal pages (HTTP polling) |
+| Browser dashboard | `localhost:3030` | Algo Trading Terminal — vital strip, Overview / Market / Journal pages (HTTP polling) |
 | Telegram bot | remote | Remote operator commands: `/status`, `/pnl`, `/pause`, `/resume`, `/closeall`, `/mode` |
 
 Operational debugging uses terminal + browser dashboard + logs + Telegram. Real-time browser updates use HTTP polling today; SSE/WS is a documented target in `docs/DESIGN.md`.

@@ -68,7 +68,7 @@ Quyết định rebuild greenfield với 4 cột mốc kỹ thuật được ch�
 |---|---|---|
 | Framework | **Vite + React + TanStack Router** | WS-first, client-heavy, không cần SSR |
 | UI Kit | **shadcn/ui (Radix + Tailwind)** | Own all code, no version lock, headless = control density |
-| Charts | **TradingView Lightweight Charts** | Free, performant, blessed by trading community |
+| Charts | **Native market panels first** | Avoid proprietary/vendor chart dependency until charting has a proven operator need |
 | State | **Zustand (UI) + TanStack Query (REST)** | Native WS + custom hook for realtime |
 | Layout | **react-grid-layout** or **dockview-react** | Drag-resize panels, persist to localStorage |
 
@@ -95,7 +95,7 @@ Color (dark default, no light mode v1):
 - Accent: #f59e0b (amber-500)
 - Border: zinc-800
 
-Density reference: Bloomberg, TradingView, Hyperliquid, dYdX, Drift
+Density reference: Bloomberg, Hyperliquid, dYdX, Drift
 Anti-pattern: Coinbase, Binance retail (too airy)
 ```
 
@@ -257,7 +257,7 @@ The MONTH 12 scenario is where P6 (single-user) starts to bite. We're accepting 
 - **[CRITICAL]** No real-money release gate: no flatten-all kill-switch, no capital ladder, no error budget, no exit criteria. Existing `src/agent/circuit-breakers.ts:98-107` only pauses new entries — does NOT flatten exposure.
 - **[HIGH]** "Greenfield rebuild" framing is dishonest — ~70% of code (feed, execution, agent, Telegram, server contract) survives. Real scope: "targeted rewrite of DB + UI + strategy module."
 - **[HIGH]** SQLite at 10M candles is unproven. Run a bake-off: SQLite WAL vs PG/Timescale vs DuckDB/Parquet on real workloads (ingest latency, backtest queries, backup/restore, disk size).
-- **[HIGH]** UI decision bundles cheap (delete `src/ui/` TUI) with expensive (rewrite terminal). README.md:16 confirms `dashboard/` already uses Vite + React + shadcn/ui + TradingView chart + SSE — the "new stack" already exists. Just evolve it.
+- **[HIGH]** UI decision bundles cheap (delete `src/ui/` TUI) with expensive (rewrite terminal). README.md:16 confirms `dashboard/` already uses Vite + React + shadcn/ui — the "new stack" already exists. Just evolve it.
 - **[HIGH]** `src/strategy/strategies/smc-sd/index.ts:1200-1284` already contains OTE, breaker/inversion FVG, liquidity pools, killzone, displacement — the "new ICT engine" largely duplicates existing logic. Real bottleneck per TODOS P3 is additive scoring model, not concept count.
 - **[MEDIUM]** TS 6.x premise is stale: **TypeScript 6.0 actually GA'd 2026-03-23** (Microsoft announcement, post-cutoff). Plan still treats it as future. `package.json:11` uses `bunx tsc` with no pinned TS version → first fix is pinning, not chasing TS 6.
 - **[HIGH]** Alternatives (B, C, D) listed but never analyzed — then overridden at premise gate without disqualifying evidence.
@@ -356,7 +356,7 @@ Key findings:
 - **DIM 3 (3/10).** No "FLATTEN ALL" affordance. Use 2-second hold-to-confirm, not modal (modals fail in panic).
 - **DIM 4 (6/10).** Bloomberg is wrong reference for solo bot operator. Pick Hyperliquid (~20% breathing room). Ship `--density: compact | comfortable` toggle.
 - **DIM 6 (4/10).** Pure red on near-black = 4.0:1 contrast (below WCAG AA). Deuteranopia failure. Need secondary shape channel (▲/▼) + colorblind preset. Migrate `src/ui/sound.ts` → `dashboard/src/lib/sound.ts`.
-- **DIM 7 (5/10).** react-grid-layout is dashboard-builder lib (wrong); pick **dockview-react** (tabs + splitters, matches TradingView mental model). Ship `/mobile` stub during rewrite gap.
+- **DIM 7 (5/10).** react-grid-layout is dashboard-builder lib (wrong); pick **dockview-react** for dense tabs + splitters. Ship `/mobile` stub during rewrite gap.
 
 ## DESIGN DUAL VOICES — CONSENSUS TABLE
 

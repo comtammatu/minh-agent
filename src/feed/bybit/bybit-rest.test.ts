@@ -90,7 +90,8 @@ describe.serial("fetchBybitCandles", () => {
   it("parses OHLCV values as floats from strings", async () => {
     const candles = await fetchBybitCandles("BTC", "1m", TEST_START_TIME);
     expect(candles).not.toBeNull();
-    const oldest = candles?.[0]!;
+    const oldest = candles?.[0];
+    if (!oldest) throw new Error("expected oldest candle");
     expect(oldest.o).toBe(50000);
     expect(oldest.h).toBe(50100);
     expect(oldest.l).toBe(49950);
