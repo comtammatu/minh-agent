@@ -861,6 +861,48 @@ export const MEMORY_WEIGHTS = {
 /** Auto-prune memories older than this with low access + low importance. */
 export const MEMORY_RETENTION_DAYS = 90;
 
+// ─── Advisor (learning loop v1) ──────────────────────────────────────────────
+// Deterministic per-bucket outcome stats consulted pre-entry. The advisor can
+// only reduce risk (veto / dampen size) — it never boosts size or rescues
+// low-grade setups. See docs/plan/task-contract-advisor-learning-loop-2026-06-10.md
+
+export type AdvisorMode = "off" | "shadow" | "active";
+
+/**
+ * off    — advisor disabled entirely (no verdicts, no journal events)
+ * shadow — verdicts computed + journaled but never enforced (default)
+ * active — veto and size dampening are enforced on the entry path
+ */
+export function getAdvisorMode(): AdvisorMode {
+  const raw = (process.env.ADVISOR_MODE ?? "").toLowerCase();
+  if (raw === "off" || raw === "shadow" || raw === "active") return raw;
+  return "shadow";
+}
+
+export const ADVISOR = {
+  /** Minimum closed trades in a bucket before its stats are trusted at all. */
+  minSample: 8,
+  /** Veto when smoothed win rate is below this AND avgR is negative. */
+  vetoWinRate: 0.25,
+  /** Dampen position size when smoothed win rate is below this. */
+  dampenWinRate: 0.4,
+  /** Size multiplier applied when dampening (bounded (0, 1]). */
+  dampenSizeMultiplier: 0.5,
+  /** Laplace smoothing pseudo-counts (alpha wins / beta losses). */
+  smoothingAlpha: 1,
+  smoothingBeta: 1,
+  /** Only outcomes from the last N days feed the stats (regime drift guard). */
+  statsWindowDays: 120,
+  /** Stats cache refresh interval (ms). Also refreshed on every trade close. */
+  refreshMs: 5 * 60 * 1000,
+  /** Cache snapshots older than this are considered stale → advisor passes through. */
+  staleAfterMs: 30 * 60 * 1000,
+  /** Insight job cadence (ms) — writes pattern_insight memories + prunes. */
+  insightIntervalMs: 12 * 60 * 60 * 1000,
+  /** A bucket must deviate from the global win rate by ≥ this to earn an insight. */
+  insightMinWinRateDelta: 0.15,
+} as const;
+
 // ─── WebSocket Reconnection ────────────────────────────────────────────────
 
 /** Initial delay before reconnection attempt (ms). */
