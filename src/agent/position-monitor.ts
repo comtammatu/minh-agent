@@ -679,8 +679,9 @@ export class PositionMonitor {
             if (action.type === "close") {
               // Position closed by thesis. executeAction already dispatched the
               // estimate-carrying close (IN_POSITION → EXITING); this second
-              // dispatch completes EXITING → IDLE. The journal layer dedupes
-              // trade_outcome memories (setupId only on the first exit entry).
+              // dispatch only completes EXITING → IDLE, so it carries pnl 0 —
+              // the estimate already reached recordPnl + the exit journal via
+              // the first dispatch, and daily summaries sum every exit row.
               const estimate = estimateClosePnl(
                 pos,
                 action.reason,
@@ -690,7 +691,7 @@ export class PositionMonitor {
                 type: "position_closed",
                 positionId: pos.positionId,
                 closePrice: estimate.closePrice,
-                pnl: estimate.pnl,
+                pnl: 0,
                 pnlEstimated: true,
                 reason: action.reason,
               });

@@ -44,6 +44,24 @@ Decisions made during implementation that the contract didn't fully specify.
   both intervals registered in `activeIntervals` for cleanup; initial refresh
   is void-fired so boot is never delayed.
 
+## Review fixes (post-integration, 2026-06-10)
+
+- **recordPnl double-count fixed**: close-event context block in
+  `applyEventContext` now guards on `ctx.positionId !== null` — the thesis
+  close completion dispatch (EXITING→IDLE) no longer double-counts dailyPnl
+  or loss streaks. The completion dispatch also carries `pnl: 0` so daily
+  summaries (which sum every exit journal row) stay correct. Regression
+  tests added in trading-orchestrator.test.ts.
+- **`advisor` journal eventType registered** in `JournalEventType` union and
+  the server's `JOURNAL_EVENTS` filter list — `/api/dashboard/journal?eventType=advisor`
+  now works, which counterfactual measurement depends on.
+- **Pre-enrichment rows self-exclude**: old trade_outcome rows (pnl=0,
+  pnlR=null) are skipped by `isWin()` as signal-less, so historical garbage
+  cannot poison bucket stats. No backfill needed for correctness.
+- **Paper/live blending**: stats cache does NOT filter by executionMode —
+  paper outcomes inform live verdicts (intentional v1: paper data is the only
+  data at first). Tagged in metadata for a future mode-aware filter.
+
 ## Pre-existing issues surfaced (follow-ups, NOT fixed here)
 
 1. **Thesis-close double-dispatch**: `position_closed` dispatched twice →

@@ -275,3 +275,64 @@ describe("TradingAgent — advisor gate", () => {
     expect(journals[0]?.details.bucketKey).toBe("smc-sd|long");
   });
 });
+
+// ── Close-event PnL dedupe ───────────────────────────────────────────────────
+
+describe("TradingAgent — close-event PnL dedupe", () => {
+  let agent: TradingAgent;
+
+  beforeEach(() => {
+    resetAgent();
+    agent = new TradingAgent();
+  });
+
+  /** Drive a coin into IN_POSITION with a known positionId. */
+  function enterPosition(coin: string): void {
+    agent.dispatch(coin, { type: "setup_detected", setup: makeSetup() });
+    agent.dispatch(coin, {
+      type: "order_filled",
+      orderId: "ord-1",
+      fillPrice: 50000,
+      positionId: "pos-1",
+    });
+    expect(agent.getCoinState(coin)).toBe("IN_POSITION");
+  }
+
+  it("records PnL exactly once for a double-dispatched close (thesis path)", () => {
+    enterPosition("BTC");
+
+    // First close event (IN_POSITION → EXITING) carries the estimate.
+    agent.dispatch("BTC", {
+      type: "position_closed",
+      positionId: "pos-1",
+      closePrice: 49000,
+      pnl: -100,
+      reason: "thesis_deteriorated",
+    });
+    // Completion event (EXITING → IDLE) — same close, must not double-count.
+    agent.dispatch("BTC", {
+      type: "position_closed",
+      positionId: "pos-1",
+      closePrice: 49000,
+      pnl: -100,
+      reason: "thesis_deteriorated",
+    });
+
+    expect(agent.getCoinState("BTC")).toBe("IDLE");
+    expect(agent.getGlobal().dailyPnl).toBe(-100);
+    expect(agent.getCoinContext("BTC")?.consecutiveLosses).toBe(1);
+  });
+
+  it("still records PnL for a single-dispatch close", () => {
+    enterPosition("ETH");
+
+    agent.dispatch("ETH", {
+      type: "trail_stop_hit",
+      positionId: "pos-1",
+      closePrice: 51000,
+      pnl: 80,
+    });
+
+    expect(agent.getGlobal().dailyPnl).toBe(80);
+  });
+});

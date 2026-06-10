@@ -326,7 +326,8 @@ export type JournalEventType =
   | "pause"
   | "resume"
   | "error"
-  | "operator";
+  | "operator"
+  | "advisor";
 
 /** A persisted journal row from trade_journal table. */
 export interface JournalEntry {

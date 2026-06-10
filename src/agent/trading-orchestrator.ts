@@ -501,16 +501,22 @@ export class TradingAgent {
       event.type === "tp_hit" ||
       event.type === "trail_stop_hit"
     ) {
-      const pnl = "pnl" in event ? event.pnl : 0;
-      if (pnl < 0) {
-        ctx.consecutiveLosses++;
-      } else {
-        ctx.consecutiveLosses = 0;
+      // Guard on positionId: close paths can dispatch twice for one position
+      // (e.g. thesis close: IN_POSITION→EXITING then EXITING→IDLE). Only the
+      // first close event — while positionId is still set — records PnL and
+      // loss streaks; the completion event must not double-count.
+      if (ctx.positionId !== null) {
+        const pnl = "pnl" in event ? event.pnl : 0;
+        if (pnl < 0) {
+          ctx.consecutiveLosses++;
+        } else {
+          ctx.consecutiveLosses = 0;
+        }
+        // Update global dailyPnl + circuit breakers
+        this.recordPnl(pnl, undefined, ctx.coin);
       }
       ctx.positionId = null;
       ctx.activeSetup = null;
-      // Update global dailyPnl + circuit breakers
-      this.recordPnl(pnl, undefined, ctx.coin);
     }
 
     if (event.type === "pause" || event.type === "circuit_break") {

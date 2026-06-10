@@ -46,6 +46,7 @@ const JOURNAL_EVENTS: JournalEventType[] = [
   "resume",
   "error",
   "operator",
+  "advisor",
 ];
 
 type AccountStateLike = {
