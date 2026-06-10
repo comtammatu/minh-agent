@@ -5,9 +5,15 @@
  */
 
 import { EventEmitter } from "node:events";
-import { DEFAULT_RISK_PERCENT } from "../config.js";
+import {
+  type AdvisorSnapshot,
+  evaluateSetup,
+  isSnapshotFresh,
+  type SetupDims,
+} from "../advisor/index.js";
+import { type AdvisorMode, DEFAULT_RISK_PERCENT } from "../config.js";
 import { log } from "../lib/logger.js";
-import type { ActiveSetup } from "../types.js";
+import type { ActiveSetup, MarketRegime } from "../types.js";
 import { prunePnlHistory, runAllChecks } from "./circuit-breakers.js";
 import { shouldBlockCorrelatedEntry } from "./correlation-guard.js";
 import {
@@ -56,6 +62,11 @@ export class TradingAgent {
   private startedAt: number;
   /** Shared account equity for portfolio risk checks (updated by position monitor). */
   private accountEquity = 0;
+  /** Advisor snapshot provider — injected via setAdvisor(); null until runtime wires it. */
+  private advisorProvider: { getSnapshot(): AdvisorSnapshot | null } | null =
+    null;
+  /** Advisor enforcement mode — 'off' disables the gate entirely. */
+  private advisorMode: AdvisorMode = "off";
 
   constructor() {
     this.startedAt = Date.now();
@@ -70,6 +81,15 @@ export class TradingAgent {
   /** Get current account equity. */
   getAccountEquity(): number {
     return this.accountEquity;
+  }
+
+  /** Wire the advisor stats provider + mode (called by runtime wiring at boot). */
+  setAdvisor(
+    provider: { getSnapshot(): AdvisorSnapshot | null },
+    mode: AdvisorMode,
+  ): void {
+    this.advisorProvider = provider;
+    this.advisorMode = mode;
   }
 
   // ── Pipeline Integration (R10) ───────────────────────────────────────────
@@ -148,13 +168,16 @@ export class TradingAgent {
     }
     ctx.state = result.nextState;
 
-    // Portfolio risk check: block place_order if over-exposed (S6)
-    const filteredActions = this.filterByPortfolioRisk(
-      result.actions,
+    // Portfolio risk check: block place_order if over-exposed (S6),
+    // then advisor gate: veto / dampen from learned outcome stats (advisor v1)
+    const filteredActions = this.filterByAdvisor(
+      this.filterByPortfolioRisk(result.actions, coin, ctx),
       coin,
-      ctx,
     );
-    if (filteredActions !== result.actions) {
+    const placeOrderBlocked =
+      result.actions.some((a) => a.type === "place_order") &&
+      !filteredActions.some((a) => a.type === "place_order");
+    if (placeOrderBlocked) {
       // place_order was blocked — stay IDLE when entry was direct from IDLE (no watch/activeSetup)
       ctx.state = prevState === "IDLE" ? "IDLE" : prevState;
       result.nextState = ctx.state;
@@ -554,6 +577,77 @@ export class TradingAgent {
     return actions;
   }
 
+  /**
+   * Filter place_order actions through the advisor gate (learning loop v1).
+   * Same veto contract as filterByPortfolioRisk: replace place_order with a
+   * journal action (dispatch reverts state). Shadow mode journals the verdict
+   * without altering actions; active mode enforces veto + size dampening.
+   * Fail-open: mode off, no provider, or null/stale snapshot → pass-through.
+   */
+  private filterByAdvisor(actions: AgentAction[], coin: string): AgentAction[] {
+    if (this.advisorMode === "off" || !this.advisorProvider) return actions;
+
+    const placeAction = actions.find(
+      (a): a is { type: "place_order"; setup: ActiveSetup } =>
+        a.type === "place_order",
+    );
+    if (!placeAction) return actions;
+
+    const snapshot = this.advisorProvider.getSnapshot();
+    if (!isSnapshotFresh(snapshot, Date.now())) return actions;
+
+    const setup = placeAction.setup;
+    const dims: SetupDims = {
+      pattern: setup.type,
+      side: setup.side,
+      regime: parseRegime(setup.patternData.regime),
+      interval: setup.interval,
+    };
+    const verdict = evaluateSetup(dims, snapshot);
+    const applied = this.advisorMode === "active" && verdict.action !== "allow";
+
+    const advisorJournal = journalAction("advisor", coin, {
+      setupId: setup.id,
+      mode: this.advisorMode,
+      applied,
+      action: verdict.action,
+      sizeMultiplier: verdict.sizeMultiplier,
+      bucketKey: verdict.bucketKey,
+      sampleSize: verdict.sampleSize,
+      reason: verdict.reason,
+    });
+
+    if (applied && verdict.action === "veto") {
+      log.info("agent", `${coin.padEnd(8)} ADVISOR VETO | ${verdict.reason}`);
+      return [
+        ...actions.filter((a) => a.type !== "place_order"),
+        advisorJournal,
+      ];
+    }
+
+    if (applied && verdict.action === "dampen") {
+      log.info("agent", `${coin.padEnd(8)} ADVISOR DAMPEN | ${verdict.reason}`);
+      // Shallow copy — never mutate the original setup (pipeline may reuse it).
+      const dampened: AgentAction = {
+        type: "place_order",
+        setup: {
+          ...setup,
+          patternData: {
+            ...setup.patternData,
+            advisorSizeMultiplier: verdict.sizeMultiplier,
+          },
+        },
+      };
+      return [
+        ...actions.map((a) => (a === placeAction ? dampened : a)),
+        advisorJournal,
+      ];
+    }
+
+    // allow verdict, or shadow mode — actions unchanged, verdict journaled.
+    return [...actions, advisorJournal];
+  }
+
   /** Build portfolio positions from current IN_POSITION/ENTERING coins. */
   private getPortfolioPositions(): PortfolioPosition[] {
     const positions: PortfolioPosition[] = [];
@@ -584,6 +678,21 @@ function journalAction(
   details: Record<string, unknown>,
 ): AgentAction {
   return { type: "log_journal", eventType, coin, details };
+}
+
+/** Runtime guard for the MarketRegime union (patternData is untyped). */
+const MARKET_REGIMES: ReadonlySet<string> = new Set([
+  "BULL",
+  "BEAR",
+  "SIDEWAYS",
+  "VOLATILE",
+]);
+
+/** Validate untyped patternData.regime against MarketRegime; invalid → null. */
+function parseRegime(value: unknown): MarketRegime | null {
+  return typeof value === "string" && MARKET_REGIMES.has(value)
+    ? (value as MarketRegime)
+    : null;
 }
 
 // ─── Singleton ───────────────────────────────────────────────────────────────

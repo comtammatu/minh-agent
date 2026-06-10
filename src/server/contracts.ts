@@ -1,6 +1,6 @@
 import type { JournalEntry } from "../agent/types.js";
 import type { LiveMetrics } from "../analytics/types.js";
-import type { ExecutionMode } from "../config.js";
+import type { AdvisorMode, ExecutionMode } from "../config.js";
 import type { StatusSnapshot } from "../strategy/index.js";
 import type { ActiveSetup, CandleInterval, ExchangeId } from "../types.js";
 import type { LiveWalletStats } from "../ui/live-account-stats.js";
@@ -117,4 +117,27 @@ export interface DashboardSnapshotResponse {
 
 export interface DashboardAccountSources {
   liveWalletStats: () => LiveWalletStats | null;
+}
+
+interface DashboardAdvisorBucketRow {
+  key: string;
+  trades: number;
+  wins: number;
+  losses: number;
+  smoothedWinRate: number;
+  avgR: number | null;
+}
+
+interface DashboardAdvisorInsightRow {
+  content: string;
+  createdAt: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface DashboardAdvisorResponse {
+  mode: AdvisorMode;
+  builtAt: number | null;
+  sampleSize: number;
+  buckets: DashboardAdvisorBucketRow[];
+  insights: DashboardAdvisorInsightRow[];
 }

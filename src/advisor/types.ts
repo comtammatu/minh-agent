@@ -49,10 +49,8 @@ export interface AdvisorSnapshot {
 
 // ─── Verdict ─────────────────────────────────────────────────────────────────
 
-export type AdvisorAction = "allow" | "dampen" | "veto";
-
 export interface AdvisorVerdict {
-  action: AdvisorAction;
+  action: "allow" | "dampen" | "veto";
   /** Size multiplier in (0, 1]; 1 unless action === "dampen". */
   sizeMultiplier: number;
   /** Bucket that drove the decision, null when no bucket had enough samples. */

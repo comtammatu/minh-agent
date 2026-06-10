@@ -153,7 +153,13 @@ describe("evaluateSetup", () => {
   it("falls back to a broader bucket when the specific one is too small", () => {
     // L1 bucket (BEAR|short|4h) tiny, but pattern|side bucket large via other rows
     const broad = Array.from({ length: 12 }, () =>
-      outcome({ regime: "BULL", timeframe: "1h", side: "short", pnlR: -1, pnl: -50 }),
+      outcome({
+        regime: "BULL",
+        timeframe: "1h",
+        side: "short",
+        pnlR: -1,
+        pnl: -50,
+      }),
     );
     const snap = aggregateOutcomes(broad, NOW);
     const verdict = evaluateSetup(

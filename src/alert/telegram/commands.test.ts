@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 
 // ─── Mock singletons ─────────────────────────────────────────────────────────
 
@@ -277,6 +277,80 @@ mock.module("../../agent/journal.js", () => ({
   },
 }));
 
+interface MockAdvisorBucket {
+  key: string;
+  trades: number;
+  wins: number;
+  losses: number;
+  smoothedWinRate: number;
+  avgR: number | null;
+}
+
+interface MockAdvisorSnapshot {
+  buckets: Map<string, MockAdvisorBucket>;
+  global: MockAdvisorBucket | null;
+  builtAt: number;
+  sampleSize: number;
+}
+
+function defaultMockAdvisorSnapshot(): MockAdvisorSnapshot {
+  return {
+    buckets: new Map([
+      [
+        "spring|BULL|long",
+        {
+          key: "spring|BULL|long",
+          trades: 12,
+          wins: 8,
+          losses: 4,
+          smoothedWinRate: 0.6429,
+          avgR: 0.8,
+        },
+      ],
+      [
+        "ob|long",
+        {
+          key: "ob|long",
+          trades: 20,
+          wins: 9,
+          losses: 11,
+          smoothedWinRate: 0.4545,
+          avgR: -0.1,
+        },
+      ],
+    ]),
+    global: {
+      key: "*",
+      trades: 32,
+      wins: 17,
+      losses: 15,
+      smoothedWinRate: 0.5294,
+      avgR: 0.24,
+    },
+    builtAt: Date.now(),
+    sampleSize: 32,
+  };
+}
+
+let mockAdvisorSnapshot: MockAdvisorSnapshot | null =
+  defaultMockAdvisorSnapshot();
+
+mock.module("../../advisor/index.js", () => ({
+  getAdvisorCache: () => ({
+    getSnapshot: () => mockAdvisorSnapshot,
+  }),
+}));
+
+let mockInsightMemories: Array<{
+  content: string;
+  createdAt: Date;
+  metadata: Record<string, unknown>;
+}> = [];
+
+mock.module("../../memory/index.js", () => ({
+  queryMemories: async () => mockInsightMemories,
+}));
+
 mock.module("./briefing-refresh-stats.js", () => ({
   getBriefingRefreshStats: () => ({
     requested: 7,
@@ -455,13 +529,14 @@ describe("registerBuiltinCommands", () => {
     expect(reply).toContain("/closeall");
     expect(reply).toContain("/confirm");
     expect(reply).toContain("/report");
+    expect(reply).toContain("/advisor");
     expect(reply).toContain("/menu");
     expect(reply).toContain("/mode");
   });
 
-  it("registers 14 built-in commands", () => {
+  it("registers 15 built-in commands", () => {
     registerBuiltinCommands();
-    expect(getCommands()).toHaveLength(14);
+    expect(getCommands()).toHaveLength(15);
   });
 
   it("includes operator and trace buttons in the main menu keyboard", () => {
@@ -1293,5 +1368,90 @@ describe("/report command", () => {
     // Default mock has empty arrays
     expect(reply).not.toContain("Top Patterns");
     expect(reply).not.toContain("Top Coins");
+  });
+});
+
+// ─── /advisor ────────────────────────────────────────────────────────────────
+
+describe("/advisor command", () => {
+  let origAdvisorMode: string | undefined;
+
+  beforeEach(() => {
+    resetCommands();
+    registerBuiltinCommands();
+    origAdvisorMode = process.env.ADVISOR_MODE;
+    delete process.env.ADVISOR_MODE;
+    mockAdvisorSnapshot = defaultMockAdvisorSnapshot();
+    mockInsightMemories = [
+      {
+        content:
+          "Bucket ob|long underperforms baseline: winRate 45% vs global 53%",
+        createdAt: new Date("2026-06-09T00:00:00Z"),
+        metadata: { bucketKey: "ob|long" },
+      },
+      {
+        content:
+          "Bucket spring|BULL|long outperforms baseline: winRate 64% vs global 53%",
+        createdAt: new Date("2026-06-10T00:00:00Z"),
+        metadata: { bucketKey: "spring|BULL|long" },
+      },
+    ];
+  });
+
+  afterEach(() => {
+    if (origAdvisorMode === undefined) delete process.env.ADVISOR_MODE;
+    else process.env.ADVISOR_MODE = origAdvisorMode;
+  });
+
+  it("shows mode, snapshot stats, top buckets and insights", async () => {
+    const cmd = findCommand("advisor")!;
+    const reply = await cmd.handler("", 0);
+    expect(reply).toContain("Advisor");
+    expect(reply).toContain("SHADOW"); // default mode
+    expect(reply).toContain("32 outcomes");
+    expect(reply).toContain("Top Buckets");
+    // Sorted by trade count: ob|long (20t) before spring|BULL|long (12t)
+    expect(reply.indexOf("ob\\|long")).toBeLessThan(
+      reply.indexOf("spring\\|BULL\\|long"),
+    );
+    expect(reply).toContain("20t WR 45%");
+    expect(reply).toContain("12t WR 64%");
+    expect(reply).toContain("R 0\\.80");
+    expect(reply).toContain("Recent Insights");
+    // Insights newest-first
+    expect(reply.indexOf("outperforms")).toBeLessThan(
+      reply.indexOf("underperforms"),
+    );
+  });
+
+  it("reflects ADVISOR_MODE env override", async () => {
+    process.env.ADVISOR_MODE = "active";
+    const cmd = findCommand("advisor")!;
+    const reply = await cmd.handler("", 0);
+    expect(reply).toContain("ACTIVE");
+  });
+
+  it("handles missing snapshot and no insights", async () => {
+    mockAdvisorSnapshot = null;
+    mockInsightMemories = [];
+    const cmd = findCommand("advisor")!;
+    const reply = await cmd.handler("", 0);
+    expect(reply).toContain("not built yet");
+    expect(reply).toContain("No insights yet");
+    expect(reply).not.toContain("Top Buckets");
+  });
+
+  it("shows empty-bucket state when snapshot has no buckets", async () => {
+    mockAdvisorSnapshot = {
+      buckets: new Map(),
+      global: null,
+      builtAt: Date.now(),
+      sampleSize: 0,
+    };
+    mockInsightMemories = [];
+    const cmd = findCommand("advisor")!;
+    const reply = await cmd.handler("", 0);
+    expect(reply).toContain("0 outcomes");
+    expect(reply).toContain("No bucket stats yet");
   });
 });

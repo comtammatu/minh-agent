@@ -10,6 +10,7 @@
  */
 
 import type { JSONValue } from "postgres";
+import { getExecutionMode } from "../config.js";
 import { sql } from "../db/connection.js";
 import { log } from "../lib/logger.js";
 import { insertMemory } from "../memory/index.js";
@@ -87,12 +88,17 @@ function maybeWriteExitMemory(
   const pnl = numericValue(details.pnl);
   if (eventType !== "exit" || pnl === null) return;
 
+  // Dedupe: a position close can journal 'exit' twice (IN_POSITION handler with
+  // setup context, then the EXITING audit re-journal without it). Only the
+  // setupId-carrying entry writes a memory — exactly one trade_outcome per close.
+  const setupId = stringValue(details.setupId);
+  if (setupId === null) return;
+
   const pnlR = numericValue(details.pnlR) ?? numericValue(details.realizedPnlR);
   const side = signalSideValue(details.side);
   const timeframe = candleIntervalValue(details.interval ?? details.timeframe);
   const regime = marketRegimeValue(details.regime);
   const confidence = numericValue(details.confidence);
-  const setupId = stringValue(details.setupId);
   const exitReason = stringValue(details.reason ?? details.exitReason);
   const pattern = stringValue(details.pattern ?? details.type);
   const sideText = side ? ` ${side}` : "";
@@ -114,8 +120,10 @@ function maybeWriteExitMemory(
       coin,
       ...details,
       pnl,
+      setupId,
+      // Paper/live outcomes must stay distinguishable in the learning loop.
+      executionMode: getExecutionMode(),
       ...(pnlR !== null ? { pnlR } : {}),
-      ...(setupId ? { setupId } : {}),
       ...(exitReason ? { exitReason } : {}),
       ...(confidence !== null ? { confidence } : {}),
       ...(regime ? { regime } : {}),

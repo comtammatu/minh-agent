@@ -172,20 +172,98 @@ describe("logJournalEntry", () => {
       setupId: "BTC|5m|smc-sd|long",
       positionId: "pos-1",
       exitReason: "tp_hit",
+      executionMode: "paper", // EXECUTION_MODE unset in tests → paper default
       thesisSnapshot: { displacement: true },
     });
   });
 
   it("does not store exit memory when pnl is missing", async () => {
-    await logJournalEntry("exit", "BTC", { reason: "tp_hit" }, "EXITING");
+    await logJournalEntry(
+      "exit",
+      "BTC",
+      { setupId: "BTC|5m|smc-sd|long", reason: "tp_hit" },
+      "EXITING",
+    );
     await new Promise((r) => setTimeout(r, 10));
 
     expect(memoryInsertCalls).toHaveLength(0);
   });
 
+  it("does not store exit memory when setupId is missing (EXITING audit re-journal)", async () => {
+    // handleExiting re-journals the close without setup context — audit row
+    // only, no trade_outcome memory (dedupe rule).
+    await logJournalEntry(
+      "exit",
+      "BTC",
+      { pnl: -50, reason: "thesis_deteriorated", positionId: "pos-1" },
+      "EXITING",
+    );
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(anyQueryContains("INSERT INTO trade_journal")).toBe(true);
+    expect(memoryInsertCalls).toHaveLength(0);
+  });
+
+  it("writes exactly one trade_outcome memory per position close (dedupe)", async () => {
+    // 1st exit: handleInPosition path — carries setupId → writes memory.
+    await logJournalEntry(
+      "exit",
+      "BTC",
+      {
+        pnl: 80,
+        setupId: "BTC|5m|smc-sd|long",
+        side: "long",
+        reason: "position_closed",
+        positionId: "pos-1",
+      },
+      "IN_POSITION",
+    );
+    // 2nd exit: handleExiting audit re-journal — same close, no setupId.
+    await logJournalEntry(
+      "exit",
+      "BTC",
+      { pnl: 80, reason: "exchange_position_closed", positionId: "pos-1" },
+      "EXITING",
+    );
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(memoryInsertCalls).toHaveLength(1);
+    expect(memoryInsertCalls[0]?.metadata).toMatchObject({
+      setupId: "BTC|5m|smc-sd|long",
+      pnl: 80,
+    });
+  });
+
+  it("tags exit memories with the live execution mode", async () => {
+    const prev = process.env.EXECUTION_MODE;
+    process.env.EXECUTION_MODE = "live";
+    try {
+      await logJournalEntry(
+        "exit",
+        "BTC",
+        { pnl: 10, setupId: "BTC|5m|smc-sd|long" },
+        "EXITING",
+      );
+      await new Promise((r) => setTimeout(r, 10));
+
+      expect(memoryInsertCalls).toHaveLength(1);
+      expect(memoryInsertCalls[0]?.metadata).toMatchObject({
+        executionMode: "live",
+      });
+    } finally {
+      if (prev === undefined) delete process.env.EXECUTION_MODE;
+      else process.env.EXECUTION_MODE = prev;
+    }
+  });
+
   it("does not throw when fire-and-forget memory insert fails", async () => {
     memoryShouldThrow = true;
-    await logJournalEntry("exit", "BTC", { pnl: 12 }, "EXITING");
+    await logJournalEntry(
+      "exit",
+      "BTC",
+      { pnl: 12, setupId: "BTC|5m|smc-sd|long" },
+      "EXITING",
+    );
     await new Promise((r) => setTimeout(r, 10));
 
     expect(memoryInsertCalls).toHaveLength(1);

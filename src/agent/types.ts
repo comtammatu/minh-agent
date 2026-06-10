@@ -118,13 +118,29 @@ export type AgentEvent =
     }
   | { type: "order_rejected"; orderId: string; reason: string }
   | { type: "order_timeout"; orderId: string }
-  | { type: "sl_hit"; positionId: string; closePrice: number; pnl: number }
-  | { type: "tp_hit"; positionId: string; closePrice: number; pnl: number }
+  | {
+      type: "sl_hit";
+      positionId: string;
+      closePrice: number;
+      pnl: number;
+      /** True when closePrice/pnl are price-based estimates, not exchange fills. */
+      pnlEstimated?: boolean;
+    }
+  | {
+      type: "tp_hit";
+      positionId: string;
+      closePrice: number;
+      pnl: number;
+      /** True when closePrice/pnl are price-based estimates, not exchange fills. */
+      pnlEstimated?: boolean;
+    }
   | {
       type: "trail_stop_hit";
       positionId: string;
       closePrice: number;
       pnl: number;
+      /** True when closePrice/pnl are price-based estimates, not exchange fills. */
+      pnlEstimated?: boolean;
     }
   | {
       type: "position_closed";
@@ -132,6 +148,8 @@ export type AgentEvent =
       closePrice: number;
       pnl: number;
       reason: string;
+      /** True when closePrice/pnl are price-based estimates, not exchange fills. */
+      pnlEstimated?: boolean;
     }
   | { type: "circuit_break"; reason: string; pauseUntil: number | null }
   | { type: "pause"; reason: string }

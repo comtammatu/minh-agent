@@ -387,6 +387,152 @@ describe("handleInPosition", () => {
     });
   });
 
+  describe("exit journal details (learning loop)", () => {
+    function exitDetails(
+      setupOverrides: Partial<ActiveSetup> | null,
+      event: Parameters<typeof handleInPosition>[1],
+    ): Record<string, unknown> {
+      const ctx = makeCoinCtx({
+        state: "IN_POSITION",
+        positionId: "pos-1",
+        activeSetup: setupOverrides === null ? null : makeSetup(setupOverrides),
+      });
+      const result = handleInPosition(ctx, event, makeGlobal());
+      const journal = result.actions.find((a) => a.type === "log_journal");
+      if (journal?.type !== "log_journal") throw new Error("no journal action");
+      return journal.details;
+    }
+
+    it("computes price-based pnlR for longs", () => {
+      // entry 50000, SL 49000 → risk 1000; close 52000 → +2R
+      const details = exitDetails(
+        { entryPrice: 50_000, slPrice: 49_000, side: "long" },
+        { type: "tp_hit", positionId: "pos-1", closePrice: 52_000, pnl: 200 },
+      );
+      expect(details.pnlR).toBe(2);
+    });
+
+    it("computes price-based pnlR for shorts", () => {
+      // entry 50000, SL 51000 → risk 1000; close 48000 → +2R
+      const details = exitDetails(
+        { entryPrice: 50_000, slPrice: 51_000, side: "short" },
+        {
+          type: "position_closed",
+          positionId: "pos-1",
+          closePrice: 48_000,
+          pnl: 200,
+          reason: "exchange_position_closed",
+        },
+      );
+      expect(details.pnlR).toBe(2);
+    });
+
+    it("computes negative pnlR on losing closes", () => {
+      // long entry 50000, SL 49000; close at 49500 → -0.5R
+      const details = exitDetails(
+        { entryPrice: 50_000, slPrice: 49_000, side: "long" },
+        { type: "sl_hit", positionId: "pos-1", closePrice: 49_500, pnl: -50 },
+      );
+      expect(details.pnlR).toBe(-0.5);
+    });
+
+    it("omits pnlR when risk distance is not positive", () => {
+      // SL at entry → zero risk distance, R undefined
+      const details = exitDetails(
+        { entryPrice: 50_000, slPrice: 50_000, side: "long" },
+        { type: "tp_hit", positionId: "pos-1", closePrice: 52_000, pnl: 200 },
+      );
+      expect(details.pnlR).toBeUndefined();
+    });
+
+    it("omits pnlR when closePrice is invalid", () => {
+      const details = exitDetails(
+        { entryPrice: 50_000, slPrice: 49_000, side: "long" },
+        { type: "tp_hit", positionId: "pos-1", closePrice: 0, pnl: 0 },
+      );
+      expect(details.pnlR).toBeUndefined();
+    });
+
+    it("extracts regime/zoneOrigin/entryType/tradeStyle from patternData", () => {
+      const details = exitDetails(
+        {
+          patternData: {
+            regime: "BULL",
+            zoneOrigin: "order-block",
+            entryType: "strong",
+            tradeStyle: "swing",
+            zoneTop: 51_000, // non-string — must not leak into details
+          },
+        },
+        { type: "tp_hit", positionId: "pos-1", closePrice: 52_000, pnl: 200 },
+      );
+      expect(details.regime).toBe("BULL");
+      expect(details.zoneOrigin).toBe("order-block");
+      expect(details.entryType).toBe("strong");
+      expect(details.tradeStyle).toBe("swing");
+      expect(details.zoneTop).toBeUndefined();
+    });
+
+    it("omits patternData keys that are missing or not strings", () => {
+      const details = exitDetails(
+        { patternData: { regime: 42, tradeStyle: "" } },
+        { type: "tp_hit", positionId: "pos-1", closePrice: 52_000, pnl: 200 },
+      );
+      expect(details.regime).toBeUndefined();
+      expect(details.tradeStyle).toBeUndefined();
+      expect(details.zoneOrigin).toBeUndefined();
+    });
+
+    it("threads pnlEstimated marker from the event", () => {
+      const details = exitDetails(null, {
+        type: "position_closed",
+        positionId: "pos-1",
+        closePrice: 50_500,
+        pnl: 5,
+        pnlEstimated: true,
+        reason: "exchange_position_not_found",
+      });
+      expect(details.pnlEstimated).toBe(true);
+    });
+
+    it("omits pnlEstimated when the event carries exact fills", () => {
+      const details = exitDetails(null, {
+        type: "tp_hit",
+        positionId: "pos-1",
+        closePrice: 52_000,
+        pnl: 200,
+      });
+      expect(details.pnlEstimated).toBeUndefined();
+    });
+
+    it("records closeReason alongside reason for position_closed", () => {
+      const details = exitDetails(null, {
+        type: "position_closed",
+        positionId: "pos-1",
+        closePrice: 50_500,
+        pnl: 5,
+        reason: "thesis_deteriorated (score=0.80)",
+      });
+      expect(details.reason).toBe("position_closed");
+      expect(details.closeReason).toBe("thesis_deteriorated (score=0.80)");
+    });
+
+    it("keeps exit details minimal when no setup context exists", () => {
+      const details = exitDetails(null, {
+        type: "sl_hit",
+        positionId: "pos-1",
+        closePrice: 49_000,
+        pnl: -100,
+      });
+      expect(details).toEqual({
+        positionId: "pos-1",
+        closePrice: 49_000,
+        pnl: -100,
+        reason: "sl_hit",
+      });
+    });
+  });
+
   it("transitions to EXITING on trail_stop_hit", () => {
     const ctx = makeCoinCtx({ state: "IN_POSITION", positionId: "pos-1" });
     const result = handleInPosition(

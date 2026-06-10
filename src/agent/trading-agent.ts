@@ -9,7 +9,7 @@
  * TradingAgent, getAgent, resetAgent re-exported for backward compatibility.
  */
 
-import type { ActiveSetup, ConfluenceGrade } from "../types.js";
+import type { ActiveSetup, ConfluenceGrade, SignalSide } from "../types.js";
 import type {
   AgentAction,
   AgentEvent,
@@ -314,25 +314,14 @@ export function handleInPosition(
     event.type === "trail_stop_hit" ||
     event.type === "position_closed"
   ) {
-    const setup = ctx.activeSetup;
     return {
       nextState: "EXITING",
       actions: [
-        journalAction("exit", ctx.coin, {
-          positionId: event.positionId,
-          closePrice: event.closePrice,
-          pnl: event.pnl,
-          reason: event.type,
-          ...(setup
-            ? {
-                setupId: setup.id,
-                interval: setup.interval,
-                side: setup.side,
-                confidence: setup.confidence,
-                pattern: setup.type,
-              }
-            : {}),
-        }),
+        journalAction(
+          "exit",
+          ctx.coin,
+          buildExitJournalDetails(event, ctx.activeSetup),
+        ),
       ],
     };
   }
@@ -513,6 +502,87 @@ function buildSignalJournalDetails(
   if (pattern !== undefined) base.pattern = pattern;
   if (extra?.replaced !== undefined) base.replaced = extra.replaced;
   return base;
+}
+
+/** Exit events that carry a close outcome (closePrice/pnl, optionally estimated). */
+type ExitEvent = Extract<
+  AgentEvent,
+  { type: "sl_hit" | "tp_hit" | "trail_stop_hit" | "position_closed" }
+>;
+
+/** Setup dimensions copied into exit journal details for the advisor learning loop. */
+const EXIT_PATTERN_DATA_KEYS = [
+  "regime",
+  "zoneOrigin",
+  "entryType",
+  "tradeStyle",
+] as const;
+
+/**
+ * Price-based R multiple of a closed trade. Risk unit = entry↔SL distance.
+ * Long: (close − entry) / (entry − sl); short: (entry − close) / (sl − entry).
+ * Pure — returns null when inputs are non-finite or risk distance is not positive.
+ */
+function computePriceBasedPnlR(
+  side: SignalSide,
+  entryPrice: number,
+  slPrice: number,
+  closePrice: number,
+): number | null {
+  if (
+    !Number.isFinite(entryPrice) ||
+    !Number.isFinite(slPrice) ||
+    !Number.isFinite(closePrice) ||
+    closePrice <= 0
+  ) {
+    return null;
+  }
+  const risk = side === "long" ? entryPrice - slPrice : slPrice - entryPrice;
+  if (risk <= 0) return null;
+  const move =
+    side === "long" ? closePrice - entryPrice : entryPrice - closePrice;
+  const pnlR = move / risk;
+  return Number.isFinite(pnlR) ? pnlR : null;
+}
+
+/**
+ * Exit journal payload — close outcome + setup dimensions (pnlR, regime,
+ * zone/entry/style) consumed by trade_outcome memories and the advisor.
+ * Pure — derives everything from the event and the active setup.
+ */
+function buildExitJournalDetails(
+  event: ExitEvent,
+  setup: ActiveSetup | null,
+): Record<string, unknown> {
+  const details: Record<string, unknown> = {
+    positionId: event.positionId,
+    closePrice: event.closePrice,
+    pnl: event.pnl,
+    reason: event.type,
+  };
+  if (event.type === "position_closed") details.closeReason = event.reason;
+  if (event.pnlEstimated === true) details.pnlEstimated = true;
+  if (!setup) return details;
+
+  details.setupId = setup.id;
+  details.interval = setup.interval;
+  details.side = setup.side;
+  details.confidence = setup.confidence;
+  details.pattern = setup.type;
+
+  const pnlR = computePriceBasedPnlR(
+    setup.side,
+    setup.entryPrice,
+    setup.slPrice,
+    event.closePrice,
+  );
+  if (pnlR !== null) details.pnlR = pnlR;
+
+  for (const key of EXIT_PATTERN_DATA_KEYS) {
+    const value = setup.patternData[key];
+    if (typeof value === "string" && value.length > 0) details[key] = value;
+  }
+  return details;
 }
 
 function journalAction(

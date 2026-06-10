@@ -27,7 +27,7 @@ export function generateInsights(
   snapshot: AdvisorSnapshot | null,
   cfg: AdvisorThresholds = ADVISOR,
 ): BucketInsight[] {
-  if (!snapshot || !snapshot.global) return [];
+  if (!snapshot?.global) return [];
   const globalWr = snapshot.global.smoothedWinRate;
 
   const qualifying: BucketInsight[] = [];
@@ -107,7 +107,10 @@ export async function runInsightJob(
     }
 
     if (written > 0) {
-      log.info("advisor", `Insight job: ${written} pattern_insight memories written`);
+      log.info(
+        "advisor",
+        `Insight job: ${written} pattern_insight memories written`,
+      );
     }
     await pruneMemories(MEMORY_RETENTION_DAYS);
     return written;

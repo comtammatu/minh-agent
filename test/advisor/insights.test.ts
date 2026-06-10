@@ -35,13 +35,17 @@ describe("generateInsights", () => {
     const losers = Array.from({ length: 15 }, () =>
       outcome({ regime: "SIDEWAYS", side: "short", pnlR: -1, pnl: -50 }),
     );
-    const insights = generateInsights(aggregateOutcomes([...winners, ...losers], NOW));
+    const insights = generateInsights(
+      aggregateOutcomes([...winners, ...losers], NOW),
+    );
     expect(insights.length).toBeGreaterThan(0);
     const keys = insights.map((i) => i.bucketKey);
     expect(keys).toContain("smc-sd|SIDEWAYS|short|1h");
     expect(keys).toContain("smc-sd|BULL|long|1h");
-    const losing = insights.find((i) => i.bucketKey === "smc-sd|SIDEWAYS|short|1h");
-    expect(losing && losing.winRateDelta).toBeLessThan(0);
+    const losing = insights.find(
+      (i) => i.bucketKey === "smc-sd|SIDEWAYS|short|1h",
+    );
+    expect(losing?.winRateDelta).toBeLessThan(0);
     expect(losing?.content).toContain("underperforms");
   });
 
@@ -67,11 +71,13 @@ describe("generateInsights", () => {
     const losers = Array.from({ length: 15 }, () =>
       outcome({ regime: "SIDEWAYS", side: "short", pnlR: -1, pnl: -50 }),
     );
-    const insights = generateInsights(aggregateOutcomes([...winners, ...losers], NOW));
+    const insights = generateInsights(
+      aggregateOutcomes([...winners, ...losers], NOW),
+    );
     for (let i = 1; i < insights.length; i++) {
-      expect(Math.abs(insights[i - 1]?.winRateDelta ?? 0)).toBeGreaterThanOrEqual(
-        Math.abs(insights[i]?.winRateDelta ?? 0),
-      );
+      expect(
+        Math.abs(insights[i - 1]?.winRateDelta ?? 0),
+      ).toBeGreaterThanOrEqual(Math.abs(insights[i]?.winRateDelta ?? 0));
     }
   });
 });

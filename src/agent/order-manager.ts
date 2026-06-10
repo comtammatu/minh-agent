@@ -507,6 +507,24 @@ export class OrderManager {
       );
     }
 
+    // Advisor dampen (learning loop v1): scale the risk-based size BEFORE the
+    // HL min-notional bump. Only finite multipliers in (0, 1) are honored —
+    // anything else (0, negative, ≥1, NaN, non-number) is ignored (fail-open).
+    const advisorMult = setup.patternData.advisorSizeMultiplier;
+    if (
+      size > 0 &&
+      typeof advisorMult === "number" &&
+      Number.isFinite(advisorMult) &&
+      advisorMult > 0 &&
+      advisorMult < 1
+    ) {
+      size *= advisorMult;
+      log.info(
+        "order-manager",
+        `Advisor dampen ×${advisorMult} on ${coin} entry → size ${size}`,
+      );
+    }
+
     // HL minimum notional only — no notional cap vs margin×maxLeverage (real-money + paper).
     if (entryPrice > 0 && size > 0) {
       const notional = size * entryPrice;
