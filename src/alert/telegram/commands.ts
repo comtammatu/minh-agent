@@ -13,8 +13,10 @@
  * /risk      — risk dashboard (PnL, CB, consecutive losses)
  * /closeall  — emergency close all (requires /confirm)
  * /confirm   — confirm pending /closeall or remote /operator action
+ * /advisor   — advisor mode, bucket stats, recent insights (async, hits DB)
  */
 
+import { getAdvisorCache } from "../../advisor/index.js";
 import { closeAllPositions } from "../../agent/close-all.js";
 import {
   getJournalEntries,
@@ -25,7 +27,8 @@ import { getPositionMonitor } from "../../agent/position-monitor.js";
 import { getHealthMonitor } from "../../agent/self-healing.js";
 import { getAgent } from "../../agent/trading-agent.js";
 import { getLiveMetrics } from "../../analytics/metrics-service.js";
-import { TELEGRAM_BOT } from "../../config.js";
+import { getAdvisorMode, TELEGRAM_BOT } from "../../config.js";
+import { queryMemories } from "../../memory/index.js";
 import {
   getDecisionTraceByPositionId,
   getDecisionTraceBySetupId,
@@ -1511,6 +1514,74 @@ async function reportHandler(): Promise<string> {
   }
 }
 
+// ─── /advisor ─────────────────────────────────────────────────────────────
+
+/** Top buckets (by trade count) shown in the /advisor reply. */
+const ADVISOR_TOP_BUCKET_COUNT = 8;
+/** Latest pattern_insight memories shown in the /advisor reply. */
+const ADVISOR_INSIGHT_COUNT = 5;
+
+async function advisorHandler(): Promise<string> {
+  const esc = escapeMarkdownV2;
+  try {
+    const mode = getAdvisorMode();
+    const snapshot = getAdvisorCache().getSnapshot();
+
+    const lines: string[] = [
+      `*Advisor*`,
+      ``,
+      `Mode: ${esc(mode.toUpperCase())}`,
+    ];
+
+    if (snapshot === null) {
+      lines.push(`Snapshot: not built yet`);
+    } else {
+      const ageMin = Math.floor((Date.now() - snapshot.builtAt) / 60_000);
+      lines.push(
+        `Snapshot: ${esc(String(snapshot.sampleSize))} outcomes \\| built ${esc(String(ageMin))}m ago`,
+      );
+
+      const topBuckets = [...snapshot.buckets.values()]
+        .sort((a, b) => b.trades - a.trades)
+        .slice(0, ADVISOR_TOP_BUCKET_COUNT);
+      if (topBuckets.length > 0) {
+        lines.push(``, `*Top Buckets:*`);
+        for (const bucket of topBuckets) {
+          const wr = esc((bucket.smoothedWinRate * 100).toFixed(0));
+          const rTxt =
+            bucket.avgR !== null ? ` R ${esc(bucket.avgR.toFixed(2))}` : "";
+          lines.push(
+            `  ${esc(bucket.key)}: ${esc(String(bucket.trades))}t WR ${wr}%${rTxt}`,
+          );
+        }
+      } else {
+        lines.push(``, `No bucket stats yet\\.`);
+      }
+    }
+
+    const insights = await queryMemories({
+      category: "pattern_insight",
+      limit: ADVISOR_INSIGHT_COUNT,
+    });
+    if (insights.length > 0) {
+      lines.push(``, `*Recent Insights:*`);
+      const latest = [...insights].sort(
+        (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+      );
+      for (const insight of latest) {
+        const day = insight.createdAt.toISOString().slice(0, 10);
+        lines.push(`  ${esc(day)} ${esc(insight.content)}`);
+      }
+    } else {
+      lines.push(``, `No insights yet\\.`);
+    }
+
+    return lines.join("\n");
+  } catch {
+    return `Failed to load advisor\\.`;
+  }
+}
+
 // ─── /menu (HTML body + inline keyboard in bot.ts) ───────────────────────
 
 function menuHandler(): string {
@@ -1776,6 +1847,11 @@ export function registerBuiltinCommands(): void {
     name: "report",
     description: "Daily report (PnL, patterns, coins)",
     handler: reportHandler,
+  });
+  registerCommand({
+    name: "advisor",
+    description: "Advisor stats (mode, buckets, insights)",
+    handler: advisorHandler,
   });
   registerCommand({
     name: "mode",

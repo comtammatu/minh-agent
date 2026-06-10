@@ -3,6 +3,36 @@
 Active backlog only. Historical review notes and superseded plans live in [docs/archive/plan/decisions.md](docs/archive/plan/decisions.md).
 Priority: **P0 (urgent safety), P1 (do next), P2 (soon), P3 (someday)**.
 
+## Advisor + Learning Loop (2026-06-10, branch feat/advisor-learning-loop)
+
+### [DONE 2026-06-10] Advisor + Learning Loop v1 — close the loop
+- Outcome signal fixed (position-monitor close paths estimated pnl/closePrice, was pnl:0 everywhere); exit journal carries pnlR + regime + patternData keys; one trade_outcome memory per close, tagged executionMode.
+- `src/advisor/`: pure bucket stats (Laplace smoothing, hierarchy fallback), risk-reduction-only verdicts (veto/dampen, never boost), in-memory cache, insight job writing `pattern_insight` memories; `pruneMemories` now actually scheduled.
+- Entry gate beside portfolio-risk filter; `ADVISOR_MODE=off|shadow|active` (default **shadow** — verdicts journaled as `advisor` events but not enforced). Surfaces: telegram `/advisor`, `GET /api/advisor`.
+- Contract: [docs/plan/task-contract-advisor-learning-loop-2026-06-10.md](docs/plan/task-contract-advisor-learning-loop-2026-06-10.md); decisions log: [docs/plan/implementation-notes-advisor-v1.md](docs/plan/implementation-notes-advisor-v1.md).
+- Resolves arch-refactor task-contract Q2 (advisor: NOW, deterministic v1, no LLM/secrets).
+
+### [P1] Advisor shadow→active promotion gate
+- Let shadow mode accumulate `advisor` journal events, then evaluate: would enforced vetoes have improved PF/expectancy? Promote `ADVISOR_MODE=active` only on positive evidence. Needs a small analysis script over trade_journal (eventType=advisor join exit outcomes by setupId).
+
+### [DONE 2026-06-10] Fix EXITING stranding on single-dispatch closes + thesis paper-tiger close
+- Close events (sl/tp/trail/position_closed) are completed-close notifications → `handleInPosition` now transitions straight to IDLE (PAUSED under global pause). EXITING is reserved for agent-initiated closes (`close_position` submitted, positionId retained, tick-retry intact).
+- `handleExiting` completes on any close event; tick safety net finishes EXITING when positionId is null (`exit_complete_no_position` journal) instead of stranding the coin until restart.
+- **Bigger bug found during the fix**: thesis `severe` closes never submitted an exchange close — the agent went flat + monitor untracked while the position stayed OPEN on the exchange (unmanaged + double-position risk on re-entry). `executeAction('close')` now routes monitor-initiated reasons to a real `close_position` via new `pm.setCloseCallback` → OrderManager; the agent stays IN_POSITION until reconcile confirms. Trail/reconcile reasons remain notifications.
+- Regression tests: reconcile single-dispatch close → IDLE + re-entry works; invalidation flow unchanged; PnL dedupe intact; close-action routing (thesis → onClose, no fake dispatch, stays tracked).
+
+### [DONE 2026-06-11] `positions` table has no writer → analytics now journal-derived
+- Decision: option (b) — closed trades derive from `trade_journal` exit rows (one per close post-stranding-fix); avoids permanent dual bookkeeping. Old `pattern_performance` matview had never worked anyway (joined on JSON keys the agent never wrote).
+- Migration 013 re-sources all three matviews from journal exits (COALESCE'd keys for CONCURRENTLY); pnl=0 / NULL-pnl rows excluded as signal-less (advisor isWin convention).
+- `handleExiting` exits now carry full setup context via `buildExitJournalDetails` (+ `grade`) — also fixes invalidation closes writing no `trade_outcome` memory (learning-loop gap).
+- `openPositionCount` from in-memory PositionMonitor; `positions` table now fully unused (cleanup migration is a future nicety).
+- Full rationale: [docs/plan/implementation-notes-advisor-v1.md](docs/plan/implementation-notes-advisor-v1.md).
+
+### [P2] Advisor follow-ons (deferred from v1 by design)
+- Backtest validation: advisor-gate injection into `src/backtest/engine.ts` + walk-forward gate before enabling active mode.
+- Mode-aware stats filter (paper vs live outcomes) once both exist in one DB.
+- Fill-based realized PnL (supersede `pnlEstimated` price-based estimates).
+
 ## Execution safety (from /autoplan 2026-05-19 — Phase 3 Eng Review)
 
 See [docs/plan/stack-decision-draft.md](docs/plan/stack-decision-draft.md) for full context.

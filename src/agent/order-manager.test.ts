@@ -129,11 +129,13 @@ mock.module("../execution/hl-exchange-service.js", () => ({
   }),
 }));
 
+import { DEFAULT_RISK_PERCENT, HL_MIN_ORDER_NOTIONAL_USD } from "../config.js";
 import type {
   ExchangePool,
   IExchangeService,
 } from "../execution/exchange-pool.js";
 import type { PlaceOrderParams } from "../execution/exchange-service.js";
+import type { ActiveSetup } from "../types.js";
 import {
   generateCloid,
   OrderManager,
@@ -170,6 +172,27 @@ function injectTriggers(
 
 function queueSqlResult(rows: Record<string, unknown>[]): void {
   mockSqlResponses.push(rows);
+}
+
+function makeActiveSetup(
+  patternData: Record<string, unknown> = {},
+): ActiveSetup {
+  return {
+    id: "BTC|1h|smc-sd|long",
+    coin: "BTC",
+    interval: "1h",
+    type: "smc-sd",
+    side: "long",
+    confidence: 0.8,
+    entryPrice: 50_000,
+    slPrice: 49_000,
+    tpPrice: 52_000,
+    patternData,
+    detectedAt: Date.now(),
+    detectedAtBar: 0,
+    expiresAtBar: 100,
+    exchange: "HL",
+  };
 }
 
 function makeOrder(overrides: Partial<Order> = {}): Order {
@@ -852,6 +875,67 @@ describe("OrderManager", () => {
         size: 0.5,
         reduceOnly: true,
       });
+    });
+  });
+
+  // ── Advisor size multiplier (learning loop v1) ───────────────────────
+
+  describe("placeOrder — advisorSizeMultiplier", () => {
+    it("applies a valid multiplier to the setup-specified size", async () => {
+      const order = await om.placeOrder(
+        makeActiveSetup({ positionSizeCoins: 0.2, advisorSizeMultiplier: 0.5 }),
+      );
+
+      expect(order?.size).toBeCloseTo(0.1, 10);
+    });
+
+    it("submits the dampened size to the exchange", async () => {
+      await om.placeOrder(
+        makeActiveSetup({ positionSizeCoins: 0.2, advisorSizeMultiplier: 0.5 }),
+      );
+
+      expect(mockPlaceOrderParams[0]?.size).toBeCloseTo(0.1, 10);
+    });
+
+    it("applies the multiplier to risk-computed size when positionSizeCoins is absent", async () => {
+      const order = await om.placeOrder(
+        makeActiveSetup({ advisorSizeMultiplier: 0.5 }),
+      );
+
+      // Mocked account value 10_000, stop distance 1_000 → base risk size.
+      const baseSize = (10_000 * DEFAULT_RISK_PERCENT) / 1_000;
+      expect(order?.size).toBeCloseTo(baseSize * 0.5, 10);
+    });
+
+    it("applies the multiplier BEFORE the HL min-notional bump", async () => {
+      // 0.0003 × $50k = $15 notional; dampened ×0.5 → $7.50 < $10 min → bump.
+      const order = await om.placeOrder(
+        makeActiveSetup({
+          positionSizeCoins: 0.0003,
+          advisorSizeMultiplier: 0.5,
+        }),
+      );
+
+      expect(order?.size).toBeCloseTo(HL_MIN_ORDER_NOTIONAL_USD / 50_000, 10);
+    });
+
+    it("ignores invalid multipliers (0, negative, >1, exactly 1, NaN, non-number)", async () => {
+      const invalid: unknown[] = [0, -0.5, 1.5, 1, Number.NaN, "0.5", null];
+      for (const advisorSizeMultiplier of invalid) {
+        const order = await om.placeOrder(
+          makeActiveSetup({ positionSizeCoins: 0.2, advisorSizeMultiplier }),
+        );
+
+        expect(order?.size).toBeCloseTo(0.2, 10);
+      }
+    });
+
+    it("size is unchanged when no multiplier is present", async () => {
+      const order = await om.placeOrder(
+        makeActiveSetup({ positionSizeCoins: 0.2 }),
+      );
+
+      expect(order?.size).toBeCloseTo(0.2, 10);
     });
   });
 

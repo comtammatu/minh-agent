@@ -229,16 +229,17 @@ describe("End-to-end integration", () => {
     });
     expect(getCoinState(agent, "BTC").state).toBe("IN_POSITION");
 
-    // IN_POSITION → EXITING (TP hit)
+    // IN_POSITION → IDLE (TP hit is a completed-close notification —
+    // EXITING is reserved for agent-initiated closes awaiting confirmation)
     agent.dispatch("BTC", {
       type: "tp_hit",
       positionId: "pos-btc-1",
       closePrice: 51500,
       pnl: 150,
     });
-    expect(getCoinState(agent, "BTC").state).toBe("EXITING");
+    expect(getCoinState(agent, "BTC").state).toBe("IDLE");
 
-    // EXITING → IDLE (position closed)
+    // A late reconcile confirmation in IDLE is a harmless no-op
     agent.dispatch("BTC", {
       type: "position_closed",
       positionId: "pos-btc-1",

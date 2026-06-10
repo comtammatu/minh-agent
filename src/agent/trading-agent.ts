@@ -9,7 +9,7 @@
  * TradingAgent, getAgent, resetAgent re-exported for backward compatibility.
  */
 
-import type { ActiveSetup, ConfluenceGrade } from "../types.js";
+import type { ActiveSetup, ConfluenceGrade, SignalSide } from "../types.js";
 import type {
   AgentAction,
   AgentEvent,
@@ -304,35 +304,28 @@ export function handleEntering(
 export function handleInPosition(
   ctx: CoinContext,
   event: AgentEvent,
-  _global: GlobalContext,
+  global: GlobalContext,
 ): TransitionResult {
   // R5: CB pauses NEW entries only. IN_POSITION keeps SL/TP on exchange.
 
+  // Close events are notifications of an ALREADY-completed close (reconcile
+  // detected the position gone, or an exchange trigger fired) — there is
+  // nothing to await, so transition straight to IDLE. EXITING is reserved for
+  // agent-initiated closes (close_position submitted, awaiting confirmation).
   if (
     event.type === "sl_hit" ||
     event.type === "tp_hit" ||
     event.type === "trail_stop_hit" ||
     event.type === "position_closed"
   ) {
-    const setup = ctx.activeSetup;
     return {
-      nextState: "EXITING",
+      nextState: global.globalPaused ? "PAUSED" : "IDLE",
       actions: [
-        journalAction("exit", ctx.coin, {
-          positionId: event.positionId,
-          closePrice: event.closePrice,
-          pnl: event.pnl,
-          reason: event.type,
-          ...(setup
-            ? {
-                setupId: setup.id,
-                interval: setup.interval,
-                side: setup.side,
-                confidence: setup.confidence,
-                pattern: setup.type,
-              }
-            : {}),
-        }),
+        journalAction(
+          "exit",
+          ctx.coin,
+          buildExitJournalDetails(event, ctx.activeSetup),
+        ),
       ],
     };
   }
@@ -381,29 +374,46 @@ export function handleExiting(
   event: AgentEvent,
   global: GlobalContext,
 ): TransitionResult {
-  if (event.type === "position_closed") {
-    const pnl = event.pnl;
-    const exitAction = journalAction("exit", ctx.coin, {
-      pnl,
-      reason: event.reason,
-      positionId: event.positionId,
-    });
-
-    if (global.globalPaused) {
-      return {
-        nextState: "PAUSED",
-        actions: [exitAction],
-      };
-    }
-
+  // Any close event completes the exit — position_closed from reconcile is
+  // the normal confirmation; sl/tp/trail arriving here mean an exchange
+  // trigger fired while our close was in flight (same terminal outcome).
+  // activeSetup is still set here (only cleared by close events / IDLE states),
+  // so invalidation-driven closes get full setup context in their exit row —
+  // analytics and trade_outcome memories depend on it.
+  if (
+    event.type === "position_closed" ||
+    event.type === "sl_hit" ||
+    event.type === "tp_hit" ||
+    event.type === "trail_stop_hit"
+  ) {
     return {
-      nextState: "IDLE",
-      actions: [exitAction],
+      nextState: global.globalPaused ? "PAUSED" : "IDLE",
+      actions: [
+        journalAction(
+          "exit",
+          ctx.coin,
+          buildExitJournalDetails(event, ctx.activeSetup),
+        ),
+      ],
     };
   }
 
-  // Tick: check if exit is taking too long (exchange issue) — retry close, don't lose position
-  if (event.type === "tick" && ctx.positionId) {
+  if (event.type === "tick") {
+    // Safety net: EXITING with no positionId has nothing left to confirm or
+    // retry (the close-event context update already nulled it) — finish the
+    // exit instead of stranding the coin until restart.
+    if (!ctx.positionId) {
+      return {
+        nextState: global.globalPaused ? "PAUSED" : "IDLE",
+        actions: [
+          journalAction("exit", ctx.coin, {
+            reason: "exit_complete_no_position",
+          }),
+        ],
+      };
+    }
+
+    // Exit taking too long (exchange issue) — retry close, don't lose position
     const age = Date.now() - ctx.stateEnteredAt;
     if (age > ORDER_TIMEOUT_MS) {
       return {
@@ -513,6 +523,88 @@ function buildSignalJournalDetails(
   if (pattern !== undefined) base.pattern = pattern;
   if (extra?.replaced !== undefined) base.replaced = extra.replaced;
   return base;
+}
+
+/** Exit events that carry a close outcome (closePrice/pnl, optionally estimated). */
+type ExitEvent = Extract<
+  AgentEvent,
+  { type: "sl_hit" | "tp_hit" | "trail_stop_hit" | "position_closed" }
+>;
+
+/** Setup dimensions copied into exit journal details for the advisor learning loop. */
+const EXIT_PATTERN_DATA_KEYS = [
+  "regime",
+  "zoneOrigin",
+  "entryType",
+  "tradeStyle",
+] as const;
+
+/**
+ * Price-based R multiple of a closed trade. Risk unit = entry↔SL distance.
+ * Long: (close − entry) / (entry − sl); short: (entry − close) / (sl − entry).
+ * Pure — returns null when inputs are non-finite or risk distance is not positive.
+ */
+function computePriceBasedPnlR(
+  side: SignalSide,
+  entryPrice: number,
+  slPrice: number,
+  closePrice: number,
+): number | null {
+  if (
+    !Number.isFinite(entryPrice) ||
+    !Number.isFinite(slPrice) ||
+    !Number.isFinite(closePrice) ||
+    closePrice <= 0
+  ) {
+    return null;
+  }
+  const risk = side === "long" ? entryPrice - slPrice : slPrice - entryPrice;
+  if (risk <= 0) return null;
+  const move =
+    side === "long" ? closePrice - entryPrice : entryPrice - closePrice;
+  const pnlR = move / risk;
+  return Number.isFinite(pnlR) ? pnlR : null;
+}
+
+/**
+ * Exit journal payload — close outcome + setup dimensions (pnlR, regime,
+ * zone/entry/style) consumed by trade_outcome memories and the advisor.
+ * Pure — derives everything from the event and the active setup.
+ */
+function buildExitJournalDetails(
+  event: ExitEvent,
+  setup: ActiveSetup | null,
+): Record<string, unknown> {
+  const details: Record<string, unknown> = {
+    positionId: event.positionId,
+    closePrice: event.closePrice,
+    pnl: event.pnl,
+    reason: event.type,
+  };
+  if (event.type === "position_closed") details.closeReason = event.reason;
+  if (event.pnlEstimated === true) details.pnlEstimated = true;
+  if (!setup) return details;
+
+  details.setupId = setup.id;
+  details.interval = setup.interval;
+  details.side = setup.side;
+  details.confidence = setup.confidence;
+  details.pattern = setup.type;
+  if (setup.confluenceGrade) details.grade = setup.confluenceGrade;
+
+  const pnlR = computePriceBasedPnlR(
+    setup.side,
+    setup.entryPrice,
+    setup.slPrice,
+    event.closePrice,
+  );
+  if (pnlR !== null) details.pnlR = pnlR;
+
+  for (const key of EXIT_PATTERN_DATA_KEYS) {
+    const value = setup.patternData[key];
+    if (typeof value === "string" && value.length > 0) details[key] = value;
+  }
+  return details;
 }
 
 function journalAction(

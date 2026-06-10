@@ -12,6 +12,7 @@
  *   7. Print ARMED + coin counts
  *   8. Start health monitor
  *   9. Wire agent: TradingAgent ↔ OrderManager ↔ PositionMonitor + InvalidationBridge
+ *      + advisor stats cache (refresh on close + interval, insight job; off when ADVISOR_MODE=off)
  *  10. Start coin refresh loop (1h interval)
  *  11. setInterval: STATUS line every 60s
  *  12. setInterval: staleness check every 30s
@@ -19,6 +20,7 @@
  */
 
 import { createWriteStream, type WriteStream } from "node:fs";
+import { getAdvisorCache, runInsightJob } from "../advisor/index.js";
 import { getInvalidationBridge } from "../agent/invalidation-bridge.js";
 import { handleJournalAction } from "../agent/journal.js";
 import { getOrderManager } from "../agent/order-manager.js";
@@ -38,6 +40,7 @@ import {
 import { getClosedTradeStatsForWallet } from "../analytics/metrics-repo.js";
 import { connectToAgent as connectMetrics } from "../analytics/metrics-service.js";
 import {
+  ADVISOR,
   BACKFILL_CANDLE_COUNT,
   BACKFILL_CANDLE_COUNTS,
   BACKFILL_REPLACEMENT_ROUNDS,
@@ -50,6 +53,7 @@ import {
   DMS_DEADLINE_MS,
   DMS_REFRESH_MS,
   getActiveExchange,
+  getAdvisorMode,
   getExecutionMode,
   HOT_CACHE_CAP_BARS,
   isBbWatchdogEnabled,
@@ -898,6 +902,13 @@ async function main(): Promise<void> {
     om.handleAction({ type: "partial_close", positionId, closePct, closeSize }),
   );
 
+  // PositionMonitor → OrderManager: monitor-initiated full closes (thesis)
+  // must submit a REAL reduce-only exchange close; the agent stays
+  // IN_POSITION until reconcile confirms the position is gone.
+  pm.setCloseCallback((positionId, reason) =>
+    om.handleAction({ type: "close_position", positionId, reason }),
+  );
+
   // Wire equity updates from PositionMonitor back into the agent for portfolio risk checks.
   pm.setEquityCallback((equity) => agent.setAccountEquity(equity));
 
@@ -910,6 +921,34 @@ async function main(): Promise<void> {
 
   // Wire metrics service: refresh matviews after each trade close
   connectMetrics(agent);
+
+  // Wire advisor (learning loop v1): inject the stats cache into the agent's
+  // pre-entry gate, refresh on trade close + every ADVISOR.refreshMs, and run
+  // the periodic insight job. Fail-open by design: the initial refresh is NOT
+  // awaited (boot is never delayed), refresh failures keep the previous
+  // snapshot, and a null/stale snapshot yields pass-through verdicts — the
+  // advisor can never block or crash the entry path.
+  // Wired BEFORE subscribeToPipeline so verdicts cover bootstrap setups too.
+  const advisorMode = getAdvisorMode();
+  if (advisorMode !== "off") {
+    const advisorCache = getAdvisorCache();
+    agent.setAdvisor(advisorCache, advisorMode);
+    void advisorCache.refresh();
+    activeIntervals.push(
+      setInterval(() => void advisorCache.refresh(), ADVISOR.refreshMs),
+    );
+    agent.onTradeClose(() => void advisorCache.refresh());
+    activeIntervals.push(
+      setInterval(
+        () => void runInsightJob(advisorCache.getSnapshot()),
+        ADVISOR.insightIntervalMs,
+      ),
+    );
+    log.info(
+      "startup",
+      `ADVSR | mode ${advisorMode} | stats refresh ${ADVISOR.refreshMs / 1000}s | insight job ${ADVISOR.insightIntervalMs / 1000}s`,
+    );
+  }
 
   // Telegram trade alerts (HTML) — fire-and-forget
   // MUST be wired BEFORE bootstrapPipelineFromStore so bootstrap signals reach Telegram.

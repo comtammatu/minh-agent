@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import type { AdvisorSnapshot } from "../advisor/index.js";
+import type { ScoredMemory } from "../memory/index.js";
 import type { TuiDataSources } from "../ui/tui.jsx";
 import type { DashboardServerState } from "./contracts.js";
 import { createDashboardFetchHandler } from "./handlers.js";
@@ -137,12 +139,15 @@ function createState(): DashboardServerState {
 describe("createDashboardFetchHandler", () => {
   let origExecutionMode: string | undefined;
   let origPaperTrade: string | undefined;
+  let origAdvisorMode: string | undefined;
 
   beforeEach(() => {
     origExecutionMode = process.env.EXECUTION_MODE;
     origPaperTrade = process.env.PAPER_TRADE;
+    origAdvisorMode = process.env.ADVISOR_MODE;
     delete process.env.EXECUTION_MODE;
     delete process.env.PAPER_TRADE;
+    delete process.env.ADVISOR_MODE;
   });
 
   afterEach(() => {
@@ -150,6 +155,8 @@ describe("createDashboardFetchHandler", () => {
     else process.env.EXECUTION_MODE = origExecutionMode;
     if (origPaperTrade === undefined) delete process.env.PAPER_TRADE;
     else process.env.PAPER_TRADE = origPaperTrade;
+    if (origAdvisorMode === undefined) delete process.env.ADVISOR_MODE;
+    else process.env.ADVISOR_MODE = origAdvisorMode;
   });
 
   const handler = createDashboardFetchHandler({
@@ -201,6 +208,131 @@ describe("createDashboardFetchHandler", () => {
     expect(response.status).toBe(200);
     expect(body.rows[0].eventType).toBe("exit");
     expect(body.rows[0].coin).toBe("BTC");
+  });
+
+  it("GET /api/advisor returns snapshot stats and insights", async () => {
+    const advisorSnapshot: AdvisorSnapshot = {
+      buckets: new Map([
+        [
+          "spring|BULL|long",
+          {
+            key: "spring|BULL|long",
+            trades: 12,
+            wins: 8,
+            losses: 4,
+            smoothedWinRate: 0.6429,
+            avgR: 0.8,
+          },
+        ],
+        [
+          "ob|long",
+          {
+            key: "ob|long",
+            trades: 20,
+            wins: 9,
+            losses: 11,
+            smoothedWinRate: 0.4545,
+            avgR: -0.1,
+          },
+        ],
+      ]),
+      global: {
+        key: "*",
+        trades: 32,
+        wins: 17,
+        losses: 15,
+        smoothedWinRate: 0.5294,
+        avgR: 0.24,
+      },
+      builtAt: 1_750_000_000_000,
+      sampleSize: 32,
+    };
+    const insightMemory: ScoredMemory = {
+      id: 7,
+      category: "pattern_insight",
+      coin: null,
+      timeframe: null,
+      pattern: "ob|long",
+      regime: null,
+      side: null,
+      pnlR: null,
+      confidence: null,
+      content:
+        "Bucket ob|long underperforms baseline: winRate 45% vs global 53%",
+      metadata: { bucketKey: "ob|long", trades: 20 },
+      importance: 0.7,
+      accessCount: 0,
+      createdAt: new Date("2026-06-09T00:00:00Z"),
+      lastAccessedAt: new Date("2026-06-09T00:00:00Z"),
+      score: 0.8,
+    };
+    const advisorHandler = createDashboardFetchHandler({
+      state: createState(),
+      getAdvisorSnapshot: () => advisorSnapshot,
+      readMemories: async () => [insightMemory],
+      distDir: "/tmp/does-not-matter",
+    });
+    const response = await advisorHandler(
+      new Request("http://localhost/api/advisor"),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.mode).toBe("shadow");
+    expect(body.builtAt).toBe(1_750_000_000_000);
+    expect(body.sampleSize).toBe(32);
+    // Sorted by trades desc
+    expect(body.buckets.map((b: { key: string }) => b.key)).toEqual([
+      "ob|long",
+      "spring|BULL|long",
+    ]);
+    expect(body.buckets[0]).toEqual({
+      key: "ob|long",
+      trades: 20,
+      wins: 9,
+      losses: 11,
+      smoothedWinRate: 0.4545,
+      avgR: -0.1,
+    });
+    expect(body.insights).toHaveLength(1);
+    expect(body.insights[0].content).toContain("underperforms");
+    expect(body.insights[0].createdAt).toBe("2026-06-09T00:00:00.000Z");
+    expect(body.insights[0].metadata.bucketKey).toBe("ob|long");
+  });
+
+  it("GET /api/advisor handles empty state before first refresh", async () => {
+    const advisorHandler = createDashboardFetchHandler({
+      state: createState(),
+      getAdvisorSnapshot: () => null,
+      readMemories: async () => [],
+      distDir: "/tmp/does-not-matter",
+    });
+    const response = await advisorHandler(
+      new Request("http://localhost/api/advisor"),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.mode).toBe("shadow");
+    expect(body.builtAt).toBeNull();
+    expect(body.sampleSize).toBe(0);
+    expect(body.buckets).toEqual([]);
+    expect(body.insights).toEqual([]);
+  });
+
+  it("GET /api/advisor fails open when the memory read throws", async () => {
+    const advisorHandler = createDashboardFetchHandler({
+      state: createState(),
+      getAdvisorSnapshot: () => null,
+      readMemories: async () => {
+        throw new Error("db down");
+      },
+      distDir: "/tmp/does-not-matter",
+    });
+    const response = await advisorHandler(
+      new Request("http://localhost/api/advisor"),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.insights).toEqual([]);
   });
 
   it("POST /api/operator/flatten requires confirm", async () => {

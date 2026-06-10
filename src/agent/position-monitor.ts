@@ -193,6 +193,87 @@ export function evaluatePosition(
   return actions;
 }
 
+// ─── Close PnL Estimation (advisor learning loop) ──────────────────────────
+
+/** Close reason prefix emitted for trailing-stop closes (matched in estimateClosePnl). */
+const TRAIL_STOP_REASON_PREFIX = "trail_stop_hit";
+
+/** Reconcile close reasons — the position is ALREADY gone on the exchange. */
+const EXCHANGE_CLOSED_REASON = "exchange_position_closed";
+const EXCHANGE_NOT_FOUND_REASON = "exchange_position_not_found";
+
+/** True when a close action is a notification of an already-completed close. */
+function isCompletedCloseReason(reason: string): boolean {
+  return (
+    reason === EXCHANGE_CLOSED_REASON || reason === EXCHANGE_NOT_FOUND_REASON
+  );
+}
+
+function isUsablePrice(value: number | null | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+/**
+ * Derive the mark price implied by an exchange position snapshot.
+ * HL/BB snapshots carry no mark-price field, but unrealizedPnl =
+ * (mark − entry) × signedSize, so mark = entry + unrealizedPnl / signedSize.
+ * Pure function — returns null when not derivable.
+ */
+export function markPriceFromSnapshot(
+  snap: ExchangePositionSnapshot,
+): number | null {
+  if (!isUsablePrice(snap.entryPrice)) return null;
+  if (!Number.isFinite(snap.size) || snap.size === 0) return null;
+  if (!Number.isFinite(snap.unrealizedPnl)) return null;
+  const mark = snap.entryPrice + snap.unrealizedPnl / snap.size;
+  return isUsablePrice(mark) ? mark : null;
+}
+
+/**
+ * Estimate close price + realized PnL for a position close. The close paths
+ * here (trail stop, thesis close, exchange reconciliation) have no fill data,
+ * so this is a best-effort price-based estimate:
+ *   1. trail/SL-related reason → current trailing stop (else SL price)
+ *   2. otherwise → last known mark price
+ *   3. fallback → entryPrice (pnl 0) when nothing better exists
+ * Pure function — no I/O. Dispatched events are tagged pnlEstimated: true.
+ */
+export function estimateClosePnl(
+  position: PositionState,
+  reason: string,
+  lastMarkPrice: number | null,
+): { closePrice: number; pnl: number } {
+  const entry = position.entryPrice;
+  const size = position.currentSize;
+  if (!isUsablePrice(entry) || !Number.isFinite(size) || size <= 0) {
+    return { closePrice: isUsablePrice(entry) ? entry : 0, pnl: 0 };
+  }
+
+  let closePrice: number | null = null;
+  if (reason.startsWith(TRAIL_STOP_REASON_PREFIX)) {
+    const trailStop = position.trailingState?.active
+      ? position.trailingState.currentStopPrice
+      : null;
+    if (isUsablePrice(trailStop)) {
+      closePrice = trailStop;
+    } else if (isUsablePrice(position.slPrice)) {
+      closePrice = position.slPrice;
+    }
+  }
+  if (closePrice === null && isUsablePrice(lastMarkPrice)) {
+    closePrice = lastMarkPrice;
+  }
+  if (closePrice === null) {
+    return { closePrice: entry, pnl: 0 };
+  }
+
+  const direction = position.side === "long" ? 1 : -1;
+  const pnl = (closePrice - entry) * size * direction;
+  return Number.isFinite(pnl)
+    ? { closePrice, pnl }
+    : { closePrice: entry, pnl: 0 };
+}
+
 /**
  * Reconcile tracked positions with exchange snapshots.
  * Returns actions for positions that disappeared (liquidation, external close).
@@ -213,9 +294,7 @@ export function reconcilePositions(
       actions.push({
         type: "close",
         positionId: pos.positionId,
-        reason: snap
-          ? "exchange_position_closed"
-          : "exchange_position_not_found",
+        reason: snap ? EXCHANGE_CLOSED_REASON : EXCHANGE_NOT_FOUND_REASON,
       });
     } else {
       // Position exists — check for size mismatch (external partial close)
@@ -258,12 +337,18 @@ export class PositionMonitor {
         closeSize: number,
       ) => Promise<void> | void)
     | null = null;
+  /** Callback to submit a full position close on exchange via OrderManager (monitor-initiated closes, e.g. thesis). */
+  private onClose:
+    | ((positionId: string, reason: string) => Promise<void> | void)
+    | null = null;
   /** Callback to update account equity on TradingAgent. */
   private onEquityUpdate: ((equity: number) => void) | null = null;
   /** Cached exchange position snapshots from last syncWithExchange (TUI reuse — avoids duplicate API calls). */
   private lastExchangeSnapshots: ExchangePositionSnapshot[] | null = null;
   /** Cached account state from last syncWithExchange (TUI reuse — avoids duplicate API calls). */
   private lastAccountState: AccountState | null = null;
+  /** Last known mark price per positionId — feeds close PnL estimates once a position disappears. */
+  private lastMarkPrices: Map<string, number> = new Map();
 
   /** Set the callback for dispatching events to the agent state machine. */
   setAgentDispatch(fn: (coin: string, event: AgentEvent) => void): void {
@@ -286,6 +371,13 @@ export class PositionMonitor {
     ) => Promise<void> | void,
   ): void {
     this.onPartialClose = fn;
+  }
+
+  /** Set the callback for monitor-initiated full closes via OrderManager. */
+  setCloseCallback(
+    fn: (positionId: string, reason: string) => Promise<void> | void,
+  ): void {
+    this.onClose = fn;
   }
 
   /** Set the callback for updating account equity used by portfolio risk checks. */
@@ -389,8 +481,14 @@ export class PositionMonitor {
         "position-monitor",
         `Stopped tracking: ${pos.coin} ${positionId}`,
       );
-      this.positions.delete(positionId);
+      this.untrack(positionId);
     }
+  }
+
+  /** Drop a position from all tracking maps (positions + mark-price cache). */
+  private untrack(positionId: string): void {
+    this.positions.delete(positionId);
+    this.lastMarkPrices.delete(positionId);
   }
 
   // ── Monitor Tick ──────────────────────────────────────────────────────
@@ -406,6 +504,11 @@ export class PositionMonitor {
   ): Promise<MonitorAction[]> {
     const pos = this.positions.get(positionId);
     if (!pos) return [{ type: "hold" }];
+
+    // Track last mark price — feeds close PnL estimates after the position disappears.
+    if (isUsablePrice(currentPrice)) {
+      this.lastMarkPrices.set(positionId, currentPrice);
+    }
 
     const actions = evaluatePosition(pos, currentPrice);
 
@@ -471,19 +574,42 @@ export class PositionMonitor {
           `Position close: ${pos.coin} reason=${action.reason}`,
         );
 
-        if (action.reason.startsWith("trail_stop_hit")) {
+        // Monitor-initiated closes (thesis, future rules): the position is
+        // still OPEN on the exchange — submit a real close via OrderManager
+        // and keep tracking; reconcile dispatches position_closed once the
+        // exchange confirms the position is gone. No agent dispatch here —
+        // the agent stays IN_POSITION until the close is real.
+        if (
+          !action.reason.startsWith(TRAIL_STOP_REASON_PREFIX) &&
+          !isCompletedCloseReason(action.reason)
+        ) {
+          await this.onClose?.(pos.positionId, action.reason);
+          break;
+        }
+
+        // Completed-close notifications: trail stop (exchange trigger fired)
+        // or reconcile (position already gone) — inform the agent with the
+        // PnL estimate.
+        const estimate = estimateClosePnl(
+          pos,
+          action.reason,
+          this.lastMarkPrices.get(pos.positionId) ?? null,
+        );
+        if (action.reason.startsWith(TRAIL_STOP_REASON_PREFIX)) {
           this.dispatchToAgent?.(pos.coin, {
             type: "trail_stop_hit",
             positionId: pos.positionId,
-            closePrice: 0,
-            pnl: 0,
+            closePrice: estimate.closePrice,
+            pnl: estimate.pnl,
+            pnlEstimated: true,
           });
         } else {
           this.dispatchToAgent?.(pos.coin, {
             type: "position_closed",
             positionId: pos.positionId,
-            closePrice: 0,
-            pnl: 0,
+            closePrice: estimate.closePrice,
+            pnl: estimate.pnl,
+            pnlEstimated: true,
             reason: action.reason,
           });
         }
@@ -587,14 +713,10 @@ export class PositionMonitor {
           for (const action of thesisActions) {
             await this.executeAction(pos, action);
             if (action.type === "close") {
-              // Position closed by thesis — dispatch to agent and stop further checks
-              this.dispatchToAgent?.(pos.coin, {
-                type: "position_closed",
-                closePrice: pos.entryPrice, // approximate — actual close may differ
-                pnl: 0,
-                reason: action.reason,
-              } as AgentEvent);
-              this.positions.delete(pos.positionId);
+              // Thesis close: executeAction submitted a REAL exchange close
+              // via onClose. The position stays tracked and the agent stays
+              // IN_POSITION until reconcile confirms the exchange position is
+              // gone (position_closed with the PnL estimate, then untrack).
               break;
             }
           }
@@ -612,6 +734,10 @@ export class PositionMonitor {
         return [];
       }
 
+      // Refresh last-known mark prices for positions still on the exchange —
+      // used to estimate close PnL when a position disappears in a later cycle.
+      this.updateMarkPrices(snapshots);
+
       const actions = reconcilePositions(this.positions, snapshots);
 
       for (const action of actions) {
@@ -620,7 +746,7 @@ export class PositionMonitor {
         if (pos) {
           await this.executeAction(pos, action);
           if (action.type === "close") {
-            this.positions.delete(pos.positionId);
+            this.untrack(pos.positionId);
           }
         }
       }
@@ -634,6 +760,18 @@ export class PositionMonitor {
       return actions;
     } finally {
       this.syncInProgress = false;
+    }
+  }
+
+  /** Refresh last-known mark prices from exchange snapshots (close PnL estimates). */
+  private updateMarkPrices(snapshots: ExchangePositionSnapshot[]): void {
+    for (const [, pos] of this.positions) {
+      const snap = snapshots.find((s) => s.coin === pos.coin && s.size !== 0);
+      if (!snap) continue;
+      const mark = markPriceFromSnapshot(snap);
+      if (mark !== null) {
+        this.lastMarkPrices.set(pos.positionId, mark);
+      }
     }
   }
 
@@ -677,6 +815,11 @@ export class PositionMonitor {
   /** Get all tracked positions. */
   getPositions(): Map<string, PositionState> {
     return new Map(this.positions);
+  }
+
+  /** Last known mark price for a position (close PnL estimates). Null when never seen. */
+  getLastMarkPrice(positionId: string): number | null {
+    return this.lastMarkPrices.get(positionId) ?? null;
   }
 
   /** Get position by coin. */

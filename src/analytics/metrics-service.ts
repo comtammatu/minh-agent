@@ -10,6 +10,7 @@
  *   - Subscribes to TradingAgent 'trade_closed' event via connectToAgent()
  */
 
+import { getPositionMonitor } from "../agent/position-monitor.js";
 import type { TradingAgent } from "../agent/trading-agent.js";
 import { SIMULATED_ACCOUNT } from "../config.js";
 import { getHLExchangeService as getExchangeService } from "../execution/hl-exchange-service.js";
@@ -17,7 +18,6 @@ import { log } from "../lib/logger.js";
 import { buildLiveMetrics } from "./metrics.js";
 import {
   getClosedTrades,
-  getOpenPositionCount,
   getPatternPerformance,
   refreshViews,
 } from "./metrics-repo.js";
@@ -50,11 +50,14 @@ export async function onTradeClose(coin: string, pnl: number): Promise<void> {
  * Build LiveMetrics from current DB state. Called by API endpoint.
  */
 export async function getLiveMetrics(): Promise<LiveMetrics> {
-  const [allTrades, patternRows, openPositionCount] = await Promise.all([
+  const [allTrades, patternRows] = await Promise.all([
     getClosedTrades(),
     getPatternPerformance(),
-    getOpenPositionCount(),
   ]);
+
+  // Live truth from the in-memory monitor — the positions table has no
+  // writer, so a DB count would always be 0.
+  const openPositionCount = getPositionMonitor().getPositions().size;
 
   const capital =
     getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT;

@@ -8,7 +8,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { PARTIAL_CLOSE, TRAILING_STOP } from "../config.js";
 import {
+  estimateClosePnl,
   evaluatePosition,
+  markPriceFromSnapshot,
   PositionMonitor,
   reconcilePositions,
   resetPositionMonitor,
@@ -289,6 +291,142 @@ describe("evaluatePosition", () => {
   });
 });
 
+// ─── Close PnL Estimation Tests ─────────────────────────────────────────────
+
+describe("estimateClosePnl", () => {
+  it("uses the trailing stop price for trail_stop_hit closes (long)", () => {
+    const pos = makePosition({
+      side: "long",
+      entryPrice: 100,
+      currentSize: 2,
+      trailingState: { active: true, highestPrice: 105, currentStopPrice: 103 },
+    });
+    const est = estimateClosePnl(pos, "trail_stop_hit @ 102.80", 102.5);
+    expect(est.closePrice).toBe(103);
+    expect(est.pnl).toBeCloseTo((103 - 100) * 2, 8); // +6
+  });
+
+  it("uses the trailing stop price for trail_stop_hit closes (short)", () => {
+    const pos = makePosition({
+      side: "short",
+      entryPrice: 100,
+      currentSize: 2,
+      slPrice: 105,
+      trailingState: { active: true, highestPrice: 95, currentStopPrice: 96 },
+    });
+    const est = estimateClosePnl(pos, "trail_stop_hit @ 96.20", null);
+    expect(est.closePrice).toBe(96);
+    expect(est.pnl).toBeCloseTo((100 - 96) * 2, 8); // +8 for short
+  });
+
+  it("falls back to slPrice for trail closes without an active trailing state", () => {
+    const pos = makePosition({
+      side: "long",
+      entryPrice: 100,
+      currentSize: 1,
+      slPrice: 95,
+      trailingState: null,
+    });
+    const est = estimateClosePnl(pos, "trail_stop_hit @ 94.90", null);
+    expect(est.closePrice).toBe(95);
+    expect(est.pnl).toBeCloseTo(-5, 8);
+  });
+
+  it("uses last known mark price for non-trail closes", () => {
+    const pos = makePosition({ side: "long", entryPrice: 100, currentSize: 1 });
+    const est = estimateClosePnl(pos, "exchange_position_closed", 104);
+    expect(est.closePrice).toBe(104);
+    expect(est.pnl).toBeCloseTo(4, 8);
+  });
+
+  it("applies the short-side sign to mark-price estimates", () => {
+    const pos = makePosition({
+      side: "short",
+      entryPrice: 100,
+      currentSize: 3,
+      slPrice: 105,
+    });
+    const est = estimateClosePnl(pos, "thesis_deteriorated (score=0.8)", 98);
+    expect(est.closePrice).toBe(98);
+    expect(est.pnl).toBeCloseTo((100 - 98) * 3, 8); // +6
+  });
+
+  it("falls back to entryPrice with pnl 0 when nothing better exists", () => {
+    const pos = makePosition({ side: "long", entryPrice: 100, currentSize: 1 });
+    const est = estimateClosePnl(pos, "exchange_position_not_found", null);
+    expect(est.closePrice).toBe(100);
+    expect(est.pnl).toBe(0);
+  });
+
+  it("ignores non-finite or non-positive mark prices", () => {
+    const pos = makePosition({ side: "long", entryPrice: 100, currentSize: 1 });
+    expect(
+      estimateClosePnl(pos, "exchange_position_closed", Number.NaN),
+    ).toEqual({ closePrice: 100, pnl: 0 });
+    expect(estimateClosePnl(pos, "exchange_position_closed", -5)).toEqual({
+      closePrice: 100,
+      pnl: 0,
+    });
+  });
+
+  it("returns pnl 0 when position fields are unusable", () => {
+    const noEntry = makePosition({ entryPrice: 0 });
+    expect(estimateClosePnl(noEntry, "exchange_position_closed", 104)).toEqual({
+      closePrice: 0,
+      pnl: 0,
+    });
+
+    const noSize = makePosition({ entryPrice: 100, currentSize: 0 });
+    expect(estimateClosePnl(noSize, "exchange_position_closed", 104)).toEqual({
+      closePrice: 100,
+      pnl: 0,
+    });
+  });
+});
+
+describe("markPriceFromSnapshot", () => {
+  it("derives mark from unrealizedPnl for longs", () => {
+    // long: upnl = (mark - entry) * size → mark = 100 + 10/2 = 105
+    const mark = markPriceFromSnapshot({
+      coin: "BTC",
+      size: 2,
+      entryPrice: 100,
+      unrealizedPnl: 10,
+      liquidationPrice: null,
+    });
+    expect(mark).toBeCloseTo(105, 8);
+  });
+
+  it("derives mark from unrealizedPnl for shorts (negative size)", () => {
+    // short: size -2, upnl +10 → mark = 100 + 10/(-2) = 95
+    const mark = markPriceFromSnapshot({
+      coin: "BTC",
+      size: -2,
+      entryPrice: 100,
+      unrealizedPnl: 10,
+      liquidationPrice: null,
+    });
+    expect(mark).toBeCloseTo(95, 8);
+  });
+
+  it("returns null for closed or malformed snapshots", () => {
+    const base = {
+      coin: "BTC",
+      size: 1,
+      entryPrice: 100,
+      unrealizedPnl: 0,
+      liquidationPrice: null,
+    };
+    expect(markPriceFromSnapshot({ ...base, size: 0 })).toBeNull();
+    expect(markPriceFromSnapshot({ ...base, entryPrice: 0 })).toBeNull();
+    expect(
+      markPriceFromSnapshot({ ...base, unrealizedPnl: Number.NaN }),
+    ).toBeNull();
+    // mark would be negative → unusable
+    expect(markPriceFromSnapshot({ ...base, unrealizedPnl: -200 })).toBeNull();
+  });
+});
+
 // ─── Reconcile Tests ────────────────────────────────────────────────────────
 
 describe("reconcilePositions", () => {
@@ -553,6 +691,80 @@ describe("PositionMonitor", () => {
       );
     });
 
+    it("dispatches estimated closePrice and pnl on trail stop close", async () => {
+      let event: Record<string, unknown> | null = null;
+      pm.setAgentDispatch((_coin, e) => {
+        event = e as unknown as Record<string, unknown>;
+      });
+
+      pm.openPosition({
+        positionId: "pos-1",
+        coin: "BTC",
+        side: "long",
+        entryPrice: 100,
+        size: 1.0,
+        slPrice: 95,
+        tpPrice: 110,
+        entryOrderId: "ord-1",
+        leverage: 10,
+      });
+      const pos = pm.getPosition("pos-1")!;
+      const stopPrice = 103 * (1 - TRAILING_STOP.trailPct); // 101.97
+      pos.trailingState = {
+        active: true,
+        highestPrice: 103,
+        currentStopPrice: stopPrice,
+      };
+
+      await pm.monitorPosition("pos-1", 101.5);
+
+      expect(event).not.toBeNull();
+      expect(event!.type).toBe("trail_stop_hit");
+      expect(event!.closePrice).toBeCloseTo(stopPrice, 8);
+      expect(event!.pnl).toBeCloseTo(stopPrice - 100, 8); // size 1.0 long
+      expect(event!.pnlEstimated).toBe(true);
+    });
+
+    it("tracks last mark price from monitor ticks", async () => {
+      pm.openPosition({
+        positionId: "pos-1",
+        coin: "BTC",
+        side: "long",
+        entryPrice: 100,
+        size: 1.0,
+        slPrice: 95,
+        tpPrice: 110,
+        entryOrderId: "ord-1",
+        leverage: 10,
+      });
+
+      expect(pm.getLastMarkPrice("pos-1")).toBeNull();
+      await pm.monitorPosition("pos-1", 101.2);
+      expect(pm.getLastMarkPrice("pos-1")).toBe(101.2);
+
+      // Invalid prices must not clobber the last known mark
+      await pm.monitorPosition("pos-1", 0);
+      expect(pm.getLastMarkPrice("pos-1")).toBe(101.2);
+    });
+
+    it("clears mark-price tracking when the position is untracked", async () => {
+      pm.openPosition({
+        positionId: "pos-1",
+        coin: "BTC",
+        side: "long",
+        entryPrice: 100,
+        size: 1.0,
+        slPrice: 95,
+        tpPrice: 110,
+        entryOrderId: "ord-1",
+        leverage: 10,
+      });
+      await pm.monitorPosition("pos-1", 101.2);
+
+      pm.closePositionTracking("pos-1");
+      expect(pm.getLastMarkPrice("pos-1")).toBeNull();
+    });
+
     it("records partial close in partialClosesFired", async () => {
       pm.openPosition({
         positionId: "pos-1",
@@ -640,5 +852,126 @@ describe("PositionMonitor", () => {
       expect(pm.isSyncRunning()).toBe(true);
       pm.stopSync();
     });
+  });
+});
+
+// ── Close-action routing (EXITING stranding + thesis paper-tiger fix) ────────
+
+/** Test-only access to the private executeAction (no `any` — typed cast). */
+type ExecutesActions = {
+  executeAction(pos: PositionState, action: MonitorAction): Promise<void>;
+};
+
+describe("PositionMonitor — close-action routing", () => {
+  let pm: PositionMonitor;
+  let dispatched: Array<{ coin: string; event: Record<string, unknown> }>;
+  let closeRequests: Array<{ positionId: string; reason: string }>;
+
+  beforeEach(() => {
+    resetPositionMonitor();
+    pm = new PositionMonitor();
+    dispatched = [];
+    closeRequests = [];
+    pm.setAgentDispatch((coin, event) => {
+      dispatched.push({
+        coin,
+        event: event as unknown as Record<string, unknown>,
+      });
+    });
+    pm.setCloseCallback((positionId, reason) => {
+      closeRequests.push({ positionId, reason });
+    });
+  });
+
+  afterEach(() => {
+    pm.stopSync();
+    resetPositionMonitor();
+  });
+
+  function trackPosition(): PositionState {
+    return pm.openPosition({
+      positionId: "pos-1",
+      coin: "BTC",
+      side: "long",
+      entryPrice: 100,
+      size: 1.0,
+      slPrice: 95,
+      tpPrice: 110,
+      entryOrderId: "ord-1",
+      leverage: 10,
+    });
+  }
+
+  async function runClose(reason: string): Promise<void> {
+    const pos = pm.getPosition("pos-1");
+    expect(pos).not.toBeNull();
+    await (pm as unknown as ExecutesActions).executeAction(
+      pos as PositionState,
+      { type: "close", positionId: "pos-1", reason },
+    );
+  }
+
+  it("thesis close submits a REAL close via onClose — no agent dispatch, stays tracked", async () => {
+    trackPosition();
+
+    await runClose("thesis_deteriorated (score=0.85) — 1h:BEAR/short");
+
+    expect(closeRequests).toHaveLength(1);
+    expect(closeRequests[0]?.positionId).toBe("pos-1");
+    expect(closeRequests[0]?.reason).toContain("thesis_deteriorated");
+    // The agent must stay IN_POSITION until the exchange confirms — no fake
+    // position_closed notification.
+    expect(dispatched).toHaveLength(0);
+    // Still tracked: reconcile confirms (and untracks) once actually gone.
+    expect(pm.getPosition("pos-1")).not.toBeNull();
+  });
+
+  it("reconcile close dispatches position_closed notification — no onClose", async () => {
+    trackPosition();
+
+    await runClose("exchange_position_closed");
+
+    expect(closeRequests).toHaveLength(0);
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0]?.event.type).toBe("position_closed");
+    expect(dispatched[0]?.event.pnlEstimated).toBe(true);
+    expect(dispatched[0]?.event.reason).toBe("exchange_position_closed");
+  });
+
+  it("exchange_position_not_found also routes as a notification", async () => {
+    trackPosition();
+
+    await runClose("exchange_position_not_found");
+
+    expect(closeRequests).toHaveLength(0);
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0]?.event.type).toBe("position_closed");
+  });
+
+  it("trail close dispatches trail_stop_hit notification — no onClose", async () => {
+    trackPosition();
+
+    await runClose("trail_stop_hit @ 101.97 (trail=101.97)");
+
+    expect(closeRequests).toHaveLength(0);
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0]?.event.type).toBe("trail_stop_hit");
+  });
+
+  it("thesis close without a wired onClose callback is a safe no-op", async () => {
+    resetPositionMonitor();
+    pm = new PositionMonitor();
+    pm.setAgentDispatch((coin, event) => {
+      dispatched.push({
+        coin,
+        event: event as unknown as Record<string, unknown>,
+      });
+    });
+    trackPosition();
+
+    await runClose("thesis_deteriorated (score=0.9)");
+
+    expect(dispatched).toHaveLength(0);
+    expect(pm.getPosition("pos-1")).not.toBeNull();
   });
 });

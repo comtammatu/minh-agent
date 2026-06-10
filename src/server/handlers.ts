@@ -1,12 +1,16 @@
 import path from "node:path";
+import type { AdvisorSnapshot } from "../advisor/index.js";
+import { getAdvisorCache } from "../advisor/index.js";
 import { getJournalEntries } from "../agent/journal.js";
 import type { JournalEntry, JournalEventType } from "../agent/types.js";
 import { getLiveMetrics } from "../analytics/metrics-service.js";
 import type { LiveMetrics } from "../analytics/types.js";
-import { getExecutionMode, isPaperMode } from "../config.js";
+import { getAdvisorMode, getExecutionMode, isPaperMode } from "../config.js";
 import { log } from "../lib/logger.js";
+import { queryMemories } from "../memory/index.js";
 import type {
   DashboardAccountSnapshot,
+  DashboardAdvisorResponse,
   DashboardJournalRow,
   DashboardPositionRow,
   DashboardServerState,
@@ -29,6 +33,8 @@ const DASHBOARD_DIST_DIR = path.resolve(
   "dashboard",
   "dist",
 );
+/** Latest pattern_insight memories returned by GET /api/advisor. */
+const ADVISOR_INSIGHT_LIMIT = 5;
 const JOURNAL_EVENTS: JournalEventType[] = [
   "signal",
   "enter",
@@ -40,6 +46,7 @@ const JOURNAL_EVENTS: JournalEventType[] = [
   "resume",
   "error",
   "operator",
+  "advisor",
 ];
 
 type AccountStateLike = {
@@ -54,6 +61,8 @@ export interface DashboardFetchHandlerOptions {
   state: DashboardServerState;
   getSummaryMetrics?: () => Promise<LiveMetrics>;
   readJournal?: typeof getJournalEntries;
+  getAdvisorSnapshot?: () => AdvisorSnapshot | null;
+  readMemories?: typeof queryMemories;
   distDir?: string;
   operatorActions?: OperatorActionDeps;
 }
@@ -297,6 +306,9 @@ export function createDashboardFetchHandler(
 ) {
   const readJournal = options.readJournal ?? getJournalEntries;
   const getSummaryMetrics = options.getSummaryMetrics ?? getLiveMetrics;
+  const getAdvisorSnapshot =
+    options.getAdvisorSnapshot ?? (() => getAdvisorCache().getSnapshot());
+  const readMemories = options.readMemories ?? queryMemories;
   const distDir = options.distDir ?? DASHBOARD_DIST_DIR;
   const operatorActions = options.operatorActions ?? createOperatorActionDeps();
 
@@ -369,6 +381,41 @@ export function createDashboardFetchHandler(
         };
         const rows = await readJournal(filter);
         return json({ rows: serializeJournal(rows) });
+      }
+
+      if (pathname === "/api/advisor") {
+        const snapshot = getAdvisorSnapshot();
+        // Fail-open: insight read failure must not take down the advisor surface.
+        const insights = await readMemories({
+          category: "pattern_insight",
+          limit: ADVISOR_INSIGHT_LIMIT,
+        }).catch(() => []);
+        const buckets = snapshot
+          ? [...snapshot.buckets.values()]
+              .sort((a, b) => b.trades - a.trades)
+              .map((bucket) => ({
+                key: bucket.key,
+                trades: bucket.trades,
+                wins: bucket.wins,
+                losses: bucket.losses,
+                smoothedWinRate: bucket.smoothedWinRate,
+                avgR: bucket.avgR,
+              }))
+          : [];
+        const advisor: DashboardAdvisorResponse = {
+          mode: getAdvisorMode(),
+          builtAt: snapshot?.builtAt ?? null,
+          sampleSize: snapshot?.sampleSize ?? 0,
+          buckets,
+          insights: [...insights]
+            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+            .map((memory) => ({
+              content: memory.content,
+              createdAt: memory.createdAt.toISOString(),
+              metadata: memory.metadata,
+            })),
+        };
+        return json(advisor);
       }
 
       if (pathname === "/api/operator/flatten") {
