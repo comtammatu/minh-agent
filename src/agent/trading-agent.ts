@@ -377,21 +377,24 @@ export function handleExiting(
   // Any close event completes the exit — position_closed from reconcile is
   // the normal confirmation; sl/tp/trail arriving here mean an exchange
   // trigger fired while our close was in flight (same terminal outcome).
+  // activeSetup is still set here (only cleared by close events / IDLE states),
+  // so invalidation-driven closes get full setup context in their exit row —
+  // analytics and trade_outcome memories depend on it.
   if (
     event.type === "position_closed" ||
     event.type === "sl_hit" ||
     event.type === "tp_hit" ||
     event.type === "trail_stop_hit"
   ) {
-    const exitAction = journalAction("exit", ctx.coin, {
-      pnl: event.pnl,
-      reason: event.type === "position_closed" ? event.reason : event.type,
-      positionId: event.positionId,
-    });
-
     return {
       nextState: global.globalPaused ? "PAUSED" : "IDLE",
-      actions: [exitAction],
+      actions: [
+        journalAction(
+          "exit",
+          ctx.coin,
+          buildExitJournalDetails(event, ctx.activeSetup),
+        ),
+      ],
     };
   }
 
@@ -587,6 +590,7 @@ function buildExitJournalDetails(
   details.side = setup.side;
   details.confidence = setup.confidence;
   details.pattern = setup.type;
+  if (setup.confluenceGrade) details.grade = setup.confluenceGrade;
 
   const pnlR = computePriceBasedPnlR(
     setup.side,

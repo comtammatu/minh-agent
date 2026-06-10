@@ -312,7 +312,12 @@ export function formatAlert(
       const pnl = details.pnl != null ? Number(details.pnl) : 0;
       const pnlStr = pnl >= 0 ? `+${pnl.toFixed(2)}` : pnl.toFixed(2);
       const emoji = pnl >= 0 ? "✅" : "❌";
-      const reason = details.reason as string | undefined;
+      // closeReason carries the granular cause for position_closed exits
+      // (e.g. exchange_position_closed, thesis_deteriorated); reason is the
+      // event type. Prefer the granular one.
+      const reason = (details.closeReason ?? details.reason) as
+        | string
+        | undefined;
       const balance = formatAccountBalanceUsdc();
       const text = [
         `${emoji} <b>POSITION CLOSED</b>`,

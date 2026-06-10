@@ -5,10 +5,11 @@
 
 // ─── Closed Trade Row (from DB) ─────────────────────────────────────────────
 
-/** Minimal closed position data needed for live metrics. */
+/** Minimal closed trade data (journal exit rows) needed for live metrics. */
 export interface ClosedTradeRow {
   coin: string;
-  side: "long" | "short";
+  /** null when the exit row was journaled without setup context (e.g. crash-recovered positions). */
+  side: "long" | "short" | null;
   realizedPnl: number;
   closedAt: Date;
 }

@@ -21,8 +21,12 @@ Priority: **P0 (urgent safety), P1 (do next), P2 (soon), P3 (someday)**.
 - **Bigger bug found during the fix**: thesis `severe` closes never submitted an exchange close — the agent went flat + monitor untracked while the position stayed OPEN on the exchange (unmanaged + double-position risk on re-entry). `executeAction('close')` now routes monitor-initiated reasons to a real `close_position` via new `pm.setCloseCallback` → OrderManager; the agent stays IN_POSITION until reconcile confirms. Trail/reconcile reasons remain notifications.
 - Regression tests: reconcile single-dispatch close → IDLE + re-entry works; invalidation flow unchanged; PnL dedupe intact; close-action routing (thesis → onClose, no fake dispatch, stays tracked).
 
-### [P2] `positions` table has no writer (pre-existing)
-- Analytics live metrics read an empty table. Journal/memory outcome path now works; the analytics path needs a positions-row writer at open/close (or metrics should read trade_journal instead).
+### [DONE 2026-06-11] `positions` table has no writer → analytics now journal-derived
+- Decision: option (b) — closed trades derive from `trade_journal` exit rows (one per close post-stranding-fix); avoids permanent dual bookkeeping. Old `pattern_performance` matview had never worked anyway (joined on JSON keys the agent never wrote).
+- Migration 013 re-sources all three matviews from journal exits (COALESCE'd keys for CONCURRENTLY); pnl=0 / NULL-pnl rows excluded as signal-less (advisor isWin convention).
+- `handleExiting` exits now carry full setup context via `buildExitJournalDetails` (+ `grade`) — also fixes invalidation closes writing no `trade_outcome` memory (learning-loop gap).
+- `openPositionCount` from in-memory PositionMonitor; `positions` table now fully unused (cleanup migration is a future nicety).
+- Full rationale: [docs/plan/implementation-notes-advisor-v1.md](docs/plan/implementation-notes-advisor-v1.md).
 
 ### [P2] Advisor follow-ons (deferred from v1 by design)
 - Backtest validation: advisor-gate injection into `src/backtest/engine.ts` + walk-forward gate before enabling active mode.

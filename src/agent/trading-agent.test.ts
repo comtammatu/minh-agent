@@ -696,6 +696,73 @@ describe("handleExiting", () => {
     expect(journal).toMatchObject({ eventType: "exit" });
   });
 
+  it("exit journal carries full setup context when activeSetup is retained (invalidation closes)", () => {
+    // setup_invalidated keeps activeSetup while EXITING — the completion
+    // exit row must carry setupId/pattern/grade/side so analytics and
+    // trade_outcome memories cover invalidation-driven closes too.
+    const setup = makeSetup({
+      id: "BTC|1h|smc-sd|long",
+      confluenceGrade: "A",
+    });
+    const ctx = makeCoinCtx({
+      state: "EXITING",
+      positionId: "pos-1",
+      activeSetup: setup,
+    });
+    const result = handleExiting(
+      ctx,
+      {
+        type: "position_closed",
+        positionId: "pos-1",
+        closePrice: 49000,
+        pnl: -110,
+        pnlEstimated: true,
+        reason: "exchange_position_closed",
+      },
+      makeGlobal(),
+    );
+
+    const journal = result.actions.find((a) => a.type === "log_journal");
+    expect(journal).toMatchObject({
+      eventType: "exit",
+      details: {
+        setupId: "BTC|1h|smc-sd|long",
+        pattern: "smc-sd",
+        grade: "A",
+        side: "long",
+        pnl: -110,
+        closeReason: "exchange_position_closed",
+        pnlEstimated: true,
+      },
+    });
+  });
+
+  it("exit journal stays minimal without activeSetup (crash-recovered positions)", () => {
+    const ctx = makeCoinCtx({
+      state: "EXITING",
+      positionId: "pos-1",
+      activeSetup: null,
+    });
+    const result = handleExiting(
+      ctx,
+      {
+        type: "position_closed",
+        positionId: "pos-1",
+        closePrice: 49000,
+        pnl: -110,
+        reason: "exchange_position_closed",
+      },
+      makeGlobal(),
+    );
+
+    const journal = result.actions.find(
+      (a): a is Extract<typeof a, { type: "log_journal" }> =>
+        a.type === "log_journal",
+    );
+    expect(journal?.details.pnl).toBe(-110);
+    expect(journal?.details.setupId).toBeUndefined();
+  });
+
   it("safety net: tick with null positionId finishes the exit (stranding regression)", () => {
     // EXITING + null positionId = close already confirmed, nothing to retry.
     // Pre-fix this stranded the coin until restart.

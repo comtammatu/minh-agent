@@ -76,6 +76,41 @@ Decisions made during implementation that the contract didn't fully specify.
 3. **`positions` table has no writer** — analytics live metrics read an empty
    table. The journal/memory outcome path is now fixed; the analytics path
    still needs a positions-row writer.
+   → FIXED 2026-06-11 (follow-up session): see "Journal-derived analytics" below.
+
+## Journal-derived analytics (follow-up session, 2026-06-11)
+
+**Decision: option (b) — analytics derive from trade_journal exit rows.**
+Option (a) (write positions rows at open/close) was rejected because it
+creates permanent dual bookkeeping (positions table vs journal vs in-memory
+monitor state) and every present and future close path would have to remember
+the write — the exact failure mode that left the table empty. After the
+EXITING-stranding fix, every position close produces exactly ONE exit journal
+row carrying pnl/side/pattern/grade/setupId, making the journal the canonical
+closed-trade record. The old pattern_performance matview had also never
+worked: it joined on JSON keys the agent never wrote
+(`position_id`/`pattern_type`/`signal_grade` vs `positionId`/`pattern`/`grade`).
+
+- **Migration 013** re-creates daily_performance, pattern_performance, and
+  pnl_hourly over journal exits. Keys are COALESCE'd to 'unknown' so the
+  unique indexes needed by REFRESH CONCURRENTLY never see NULLs.
+- **Signal-less row convention** (aligned with the advisor's isWin rule):
+  exit rows with NULL pnl are audit-only (safety net, crash recovery); pnl=0
+  rows (legacy pre-estimate data, estimate-fallback closes) are excluded from
+  trade metrics. Tradeoff: true breakeven closes are also excluded — rare and
+  statistically irrelevant vs poisoning win rates with legacy zero rows.
+- **handleExiting enrichment**: completion exits now use
+  buildExitJournalDetails, so invalidation-driven closes carry full setup
+  context — which ALSO closes a learning-loop gap: those closes previously
+  wrote no trade_outcome memory (no setupId). Builder gained `grade`
+  (confluenceGrade) for the pattern matview.
+- **openPositionCount** now comes from the in-memory PositionMonitor (live
+  truth) instead of the dead table; `getOpenPositionCount` removed.
+- **`reason` semantics**: exit rows use reason=event type and
+  closeReason=granular cause (both handler paths now identical); the telegram
+  exit alert prefers closeReason.
+- **positions table left in place** (migrations are append-only) but nothing
+  reads or writes it anymore; candidates for a cleanup migration later.
 
 ## EXITING stranding fix (follow-up session, 2026-06-10)
 

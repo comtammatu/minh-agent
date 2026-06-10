@@ -1,11 +1,19 @@
 /**
  * Metrics Repository — DB queries for analytics engine.
  *
- * Sprint 3 S5: Reads closed positions + pattern matview, refreshes matviews.
- * Lives in src/analytics/ (I/O boundary).
+ * Closed trades are derived from trade_journal exit rows — the positions
+ * table never had a writer, so it (and anything built on it) was always
+ * empty. Post advisor + EXITING-stranding fixes, every position close
+ * produces exactly ONE exit row carrying pnl/side/pattern/grade, making the
+ * journal the canonical closed-trade record (see migration 013 +
+ * docs/plan/implementation-notes-advisor-v1.md).
+ *
+ * Row convention (matches the advisor's isWin signal-less rule): exit rows
+ * with NULL pnl are audit-only; pnl = 0 rows are signal-less (legacy
+ * pre-estimate data, estimate-fallback closes) — both excluded from metrics.
  *
  * Design:
- *   - All reads are simple queries against positions + matviews.
+ *   - All reads are simple queries against trade_journal + matviews.
  *   - refreshViews() refreshes all analytics matviews CONCURRENTLY.
  *   - Called by MetricsEngine on trade close + periodic fallback.
  */
@@ -59,47 +67,46 @@ async function ensureAnalyticsMatviewsPopulated(): Promise<void> {
 // ─── Read: Closed Trades ─────────────────────────────────────────────────────
 
 /**
- * Load all closed positions, chronologically ordered (oldest first).
- * Optional `since` filter for windowed queries.
+ * Load all closed trades from trade_journal exit rows, chronologically
+ * ordered (oldest first). Optional `since` filter for windowed queries.
+ * `side` is null for rows journaled without setup context (e.g. closes of
+ * crash-recovered positions).
  */
 export async function getClosedTrades(since?: Date): Promise<ClosedTradeRow[]> {
   type Row = {
     coin: string;
-    side: string;
+    side: string | null;
     realized_pnl: number;
     closed_at: Date;
   };
 
   const rows = since
     ? await sql<Row[]>`
-        SELECT coin, side, realized_pnl, closed_at
-        FROM positions
-        WHERE status = 'closed' AND closed_at IS NOT NULL AND closed_at >= ${since}
-        ORDER BY closed_at ASC
+        SELECT coin, details->>'side' AS side,
+          (details->>'pnl')::double precision AS realized_pnl, ts AS closed_at
+        FROM trade_journal
+        WHERE event_type = 'exit' AND coin IS NOT NULL
+          AND details->>'pnl' IS NOT NULL
+          AND (details->>'pnl')::double precision != 0
+          AND ts >= ${since}
+        ORDER BY ts ASC
       `
     : await sql<Row[]>`
-        SELECT coin, side, realized_pnl, closed_at
-        FROM positions
-        WHERE status = 'closed' AND closed_at IS NOT NULL
-        ORDER BY closed_at ASC
+        SELECT coin, details->>'side' AS side,
+          (details->>'pnl')::double precision AS realized_pnl, ts AS closed_at
+        FROM trade_journal
+        WHERE event_type = 'exit' AND coin IS NOT NULL
+          AND details->>'pnl' IS NOT NULL
+          AND (details->>'pnl')::double precision != 0
+        ORDER BY ts ASC
       `;
 
   return rows.map((r) => ({
     coin: r.coin,
-    side: r.side as "long" | "short",
+    side: r.side === "long" || r.side === "short" ? r.side : null,
     realizedPnl: r.realized_pnl,
     closedAt: r.closed_at,
   }));
-}
-
-/**
- * Count currently open positions.
- */
-export async function getOpenPositionCount(): Promise<number> {
-  const rows = await sql<{ cnt: string }[]>`
-    SELECT COUNT(*) AS cnt FROM positions WHERE status IN ('open', 'closing')
-  `;
-  return Number(rows[0]?.cnt ?? 0);
 }
 
 /** Closed trades aggregated for the canonical runtime wallet (for the live TUI account panel). */
@@ -113,11 +120,14 @@ export async function getClosedTradeStatsForWallet(): Promise<
 > {
   type Row = { wins: string; losses: string; trade_count: string };
   const rows = await sql<Row[]>`
-    SELECT COUNT(*) FILTER (WHERE realized_pnl > 0)::int AS wins,
-      COUNT(*) FILTER (WHERE realized_pnl < 0)::int AS losses,
+    SELECT
+      COUNT(*) FILTER (WHERE (details->>'pnl')::double precision > 0)::int AS wins,
+      COUNT(*) FILTER (WHERE (details->>'pnl')::double precision < 0)::int AS losses,
       COUNT(*)::int AS trade_count
-    FROM positions
-    WHERE status = 'closed' AND closed_at IS NOT NULL
+    FROM trade_journal
+    WHERE event_type = 'exit'
+      AND details->>'pnl' IS NOT NULL
+      AND (details->>'pnl')::double precision != 0
   `;
   return rows.map((r) => ({
     walletLabel: "smc-sd",
