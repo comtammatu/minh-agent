@@ -3,6 +3,29 @@
 Active backlog only. Historical review notes and superseded plans live in [docs/archive/plan/decisions.md](docs/archive/plan/decisions.md).
 Priority: **P0 (urgent safety), P1 (do next), P2 (soon), P3 (someday)**.
 
+## Advisor + Learning Loop (2026-06-10, branch feat/advisor-learning-loop)
+
+### [DONE 2026-06-10] Advisor + Learning Loop v1 — close the loop
+- Outcome signal fixed (position-monitor close paths estimated pnl/closePrice, was pnl:0 everywhere); exit journal carries pnlR + regime + patternData keys; one trade_outcome memory per close, tagged executionMode.
+- `src/advisor/`: pure bucket stats (Laplace smoothing, hierarchy fallback), risk-reduction-only verdicts (veto/dampen, never boost), in-memory cache, insight job writing `pattern_insight` memories; `pruneMemories` now actually scheduled.
+- Entry gate beside portfolio-risk filter; `ADVISOR_MODE=off|shadow|active` (default **shadow** — verdicts journaled as `advisor` events but not enforced). Surfaces: telegram `/advisor`, `GET /api/advisor`.
+- Contract: [docs/plan/task-contract-advisor-learning-loop-2026-06-10.md](docs/plan/task-contract-advisor-learning-loop-2026-06-10.md); decisions log: [docs/plan/implementation-notes-advisor-v1.md](docs/plan/implementation-notes-advisor-v1.md).
+- Resolves arch-refactor task-contract Q2 (advisor: NOW, deterministic v1, no LLM/secrets).
+
+### [P1] Advisor shadow→active promotion gate
+- Let shadow mode accumulate `advisor` journal events, then evaluate: would enforced vetoes have improved PF/expectancy? Promote `ADVISOR_MODE=active` only on positive evidence. Needs a small analysis script over trade_journal (eventType=advisor join exit outcomes by setupId).
+
+### [P1] Fix EXITING stranding on single-dispatch closes (pre-existing, surfaced by advisor work)
+- Reconcile-detected and trail-stop closes dispatch `position_closed` once → coin transitions IN_POSITION→EXITING and never reaches IDLE (tick-retry needs positionId, already nulled). Coin stops trading until restart. Fix in handleExiting/tick or dispatch a completion event from the monitor.
+
+### [P2] `positions` table has no writer (pre-existing)
+- Analytics live metrics read an empty table. Journal/memory outcome path now works; the analytics path needs a positions-row writer at open/close (or metrics should read trade_journal instead).
+
+### [P2] Advisor follow-ons (deferred from v1 by design)
+- Backtest validation: advisor-gate injection into `src/backtest/engine.ts` + walk-forward gate before enabling active mode.
+- Mode-aware stats filter (paper vs live outcomes) once both exist in one DB.
+- Fill-based realized PnL (supersede `pnlEstimated` price-based estimates).
+
 ## Execution safety (from /autoplan 2026-05-19 — Phase 3 Eng Review)
 
 See [docs/plan/stack-decision-draft.md](docs/plan/stack-decision-draft.md) for full context.
