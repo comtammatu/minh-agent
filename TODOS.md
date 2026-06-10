@@ -15,8 +15,11 @@ Priority: **P0 (urgent safety), P1 (do next), P2 (soon), P3 (someday)**.
 ### [P1] Advisor shadow→active promotion gate
 - Let shadow mode accumulate `advisor` journal events, then evaluate: would enforced vetoes have improved PF/expectancy? Promote `ADVISOR_MODE=active` only on positive evidence. Needs a small analysis script over trade_journal (eventType=advisor join exit outcomes by setupId).
 
-### [P1] Fix EXITING stranding on single-dispatch closes (pre-existing, surfaced by advisor work)
-- Reconcile-detected and trail-stop closes dispatch `position_closed` once → coin transitions IN_POSITION→EXITING and never reaches IDLE (tick-retry needs positionId, already nulled). Coin stops trading until restart. Fix in handleExiting/tick or dispatch a completion event from the monitor.
+### [DONE 2026-06-10] Fix EXITING stranding on single-dispatch closes + thesis paper-tiger close
+- Close events (sl/tp/trail/position_closed) are completed-close notifications → `handleInPosition` now transitions straight to IDLE (PAUSED under global pause). EXITING is reserved for agent-initiated closes (`close_position` submitted, positionId retained, tick-retry intact).
+- `handleExiting` completes on any close event; tick safety net finishes EXITING when positionId is null (`exit_complete_no_position` journal) instead of stranding the coin until restart.
+- **Bigger bug found during the fix**: thesis `severe` closes never submitted an exchange close — the agent went flat + monitor untracked while the position stayed OPEN on the exchange (unmanaged + double-position risk on re-entry). `executeAction('close')` now routes monitor-initiated reasons to a real `close_position` via new `pm.setCloseCallback` → OrderManager; the agent stays IN_POSITION until reconcile confirms. Trail/reconcile reasons remain notifications.
+- Regression tests: reconcile single-dispatch close → IDLE + re-entry works; invalidation flow unchanged; PnL dedupe intact; close-action routing (thesis → onClose, no fake dispatch, stays tracked).
 
 ### [P2] `positions` table has no writer (pre-existing)
 - Analytics live metrics read an empty table. Journal/memory outcome path now works; the analytics path needs a positions-row writer at open/close (or metrics should read trade_journal instead).

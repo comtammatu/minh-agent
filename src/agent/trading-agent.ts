@@ -304,10 +304,14 @@ export function handleEntering(
 export function handleInPosition(
   ctx: CoinContext,
   event: AgentEvent,
-  _global: GlobalContext,
+  global: GlobalContext,
 ): TransitionResult {
   // R5: CB pauses NEW entries only. IN_POSITION keeps SL/TP on exchange.
 
+  // Close events are notifications of an ALREADY-completed close (reconcile
+  // detected the position gone, or an exchange trigger fired) — there is
+  // nothing to await, so transition straight to IDLE. EXITING is reserved for
+  // agent-initiated closes (close_position submitted, awaiting confirmation).
   if (
     event.type === "sl_hit" ||
     event.type === "tp_hit" ||
@@ -315,7 +319,7 @@ export function handleInPosition(
     event.type === "position_closed"
   ) {
     return {
-      nextState: "EXITING",
+      nextState: global.globalPaused ? "PAUSED" : "IDLE",
       actions: [
         journalAction(
           "exit",
@@ -370,29 +374,43 @@ export function handleExiting(
   event: AgentEvent,
   global: GlobalContext,
 ): TransitionResult {
-  if (event.type === "position_closed") {
-    const pnl = event.pnl;
+  // Any close event completes the exit — position_closed from reconcile is
+  // the normal confirmation; sl/tp/trail arriving here mean an exchange
+  // trigger fired while our close was in flight (same terminal outcome).
+  if (
+    event.type === "position_closed" ||
+    event.type === "sl_hit" ||
+    event.type === "tp_hit" ||
+    event.type === "trail_stop_hit"
+  ) {
     const exitAction = journalAction("exit", ctx.coin, {
-      pnl,
-      reason: event.reason,
+      pnl: event.pnl,
+      reason: event.type === "position_closed" ? event.reason : event.type,
       positionId: event.positionId,
     });
 
-    if (global.globalPaused) {
-      return {
-        nextState: "PAUSED",
-        actions: [exitAction],
-      };
-    }
-
     return {
-      nextState: "IDLE",
+      nextState: global.globalPaused ? "PAUSED" : "IDLE",
       actions: [exitAction],
     };
   }
 
-  // Tick: check if exit is taking too long (exchange issue) — retry close, don't lose position
-  if (event.type === "tick" && ctx.positionId) {
+  if (event.type === "tick") {
+    // Safety net: EXITING with no positionId has nothing left to confirm or
+    // retry (the close-event context update already nulled it) — finish the
+    // exit instead of stranding the coin until restart.
+    if (!ctx.positionId) {
+      return {
+        nextState: global.globalPaused ? "PAUSED" : "IDLE",
+        actions: [
+          journalAction("exit", ctx.coin, {
+            reason: "exit_complete_no_position",
+          }),
+        ],
+      };
+    }
+
+    // Exit taking too long (exchange issue) — retry close, don't lose position
     const age = Date.now() - ctx.stateEnteredAt;
     if (age > ORDER_TIMEOUT_MS) {
       return {

@@ -854,3 +854,124 @@ describe("PositionMonitor", () => {
     });
   });
 });
+
+// ── Close-action routing (EXITING stranding + thesis paper-tiger fix) ────────
+
+/** Test-only access to the private executeAction (no `any` — typed cast). */
+type ExecutesActions = {
+  executeAction(pos: PositionState, action: MonitorAction): Promise<void>;
+};
+
+describe("PositionMonitor — close-action routing", () => {
+  let pm: PositionMonitor;
+  let dispatched: Array<{ coin: string; event: Record<string, unknown> }>;
+  let closeRequests: Array<{ positionId: string; reason: string }>;
+
+  beforeEach(() => {
+    resetPositionMonitor();
+    pm = new PositionMonitor();
+    dispatched = [];
+    closeRequests = [];
+    pm.setAgentDispatch((coin, event) => {
+      dispatched.push({
+        coin,
+        event: event as unknown as Record<string, unknown>,
+      });
+    });
+    pm.setCloseCallback((positionId, reason) => {
+      closeRequests.push({ positionId, reason });
+    });
+  });
+
+  afterEach(() => {
+    pm.stopSync();
+    resetPositionMonitor();
+  });
+
+  function trackPosition(): PositionState {
+    return pm.openPosition({
+      positionId: "pos-1",
+      coin: "BTC",
+      side: "long",
+      entryPrice: 100,
+      size: 1.0,
+      slPrice: 95,
+      tpPrice: 110,
+      entryOrderId: "ord-1",
+      leverage: 10,
+    });
+  }
+
+  async function runClose(reason: string): Promise<void> {
+    const pos = pm.getPosition("pos-1");
+    expect(pos).not.toBeNull();
+    await (pm as unknown as ExecutesActions).executeAction(
+      pos as PositionState,
+      { type: "close", positionId: "pos-1", reason },
+    );
+  }
+
+  it("thesis close submits a REAL close via onClose — no agent dispatch, stays tracked", async () => {
+    trackPosition();
+
+    await runClose("thesis_deteriorated (score=0.85) — 1h:BEAR/short");
+
+    expect(closeRequests).toHaveLength(1);
+    expect(closeRequests[0]?.positionId).toBe("pos-1");
+    expect(closeRequests[0]?.reason).toContain("thesis_deteriorated");
+    // The agent must stay IN_POSITION until the exchange confirms — no fake
+    // position_closed notification.
+    expect(dispatched).toHaveLength(0);
+    // Still tracked: reconcile confirms (and untracks) once actually gone.
+    expect(pm.getPosition("pos-1")).not.toBeNull();
+  });
+
+  it("reconcile close dispatches position_closed notification — no onClose", async () => {
+    trackPosition();
+
+    await runClose("exchange_position_closed");
+
+    expect(closeRequests).toHaveLength(0);
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0]?.event.type).toBe("position_closed");
+    expect(dispatched[0]?.event.pnlEstimated).toBe(true);
+    expect(dispatched[0]?.event.reason).toBe("exchange_position_closed");
+  });
+
+  it("exchange_position_not_found also routes as a notification", async () => {
+    trackPosition();
+
+    await runClose("exchange_position_not_found");
+
+    expect(closeRequests).toHaveLength(0);
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0]?.event.type).toBe("position_closed");
+  });
+
+  it("trail close dispatches trail_stop_hit notification — no onClose", async () => {
+    trackPosition();
+
+    await runClose("trail_stop_hit @ 101.97 (trail=101.97)");
+
+    expect(closeRequests).toHaveLength(0);
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0]?.event.type).toBe("trail_stop_hit");
+  });
+
+  it("thesis close without a wired onClose callback is a safe no-op", async () => {
+    resetPositionMonitor();
+    pm = new PositionMonitor();
+    pm.setAgentDispatch((coin, event) => {
+      dispatched.push({
+        coin,
+        event: event as unknown as Record<string, unknown>,
+      });
+    });
+    trackPosition();
+
+    await runClose("thesis_deteriorated (score=0.9)");
+
+    expect(dispatched).toHaveLength(0);
+    expect(pm.getPosition("pos-1")).not.toBeNull();
+  });
+});

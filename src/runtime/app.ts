@@ -902,6 +902,13 @@ async function main(): Promise<void> {
     om.handleAction({ type: "partial_close", positionId, closePct, closeSize }),
   );
 
+  // PositionMonitor → OrderManager: monitor-initiated full closes (thesis)
+  // must submit a REAL reduce-only exchange close; the agent stays
+  // IN_POSITION until reconcile confirms the position is gone.
+  pm.setCloseCallback((positionId, reason) =>
+    om.handleAction({ type: "close_position", positionId, reason }),
+  );
+
   // Wire equity updates from PositionMonitor back into the agent for portfolio risk checks.
   pm.setEquityCallback((equity) => agent.setAccountEquity(equity));
 

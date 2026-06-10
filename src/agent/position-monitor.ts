@@ -198,6 +198,17 @@ export function evaluatePosition(
 /** Close reason prefix emitted for trailing-stop closes (matched in estimateClosePnl). */
 const TRAIL_STOP_REASON_PREFIX = "trail_stop_hit";
 
+/** Reconcile close reasons — the position is ALREADY gone on the exchange. */
+const EXCHANGE_CLOSED_REASON = "exchange_position_closed";
+const EXCHANGE_NOT_FOUND_REASON = "exchange_position_not_found";
+
+/** True when a close action is a notification of an already-completed close. */
+function isCompletedCloseReason(reason: string): boolean {
+  return (
+    reason === EXCHANGE_CLOSED_REASON || reason === EXCHANGE_NOT_FOUND_REASON
+  );
+}
+
 function isUsablePrice(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
@@ -283,9 +294,7 @@ export function reconcilePositions(
       actions.push({
         type: "close",
         positionId: pos.positionId,
-        reason: snap
-          ? "exchange_position_closed"
-          : "exchange_position_not_found",
+        reason: snap ? EXCHANGE_CLOSED_REASON : EXCHANGE_NOT_FOUND_REASON,
       });
     } else {
       // Position exists — check for size mismatch (external partial close)
@@ -328,6 +337,10 @@ export class PositionMonitor {
         closeSize: number,
       ) => Promise<void> | void)
     | null = null;
+  /** Callback to submit a full position close on exchange via OrderManager (monitor-initiated closes, e.g. thesis). */
+  private onClose:
+    | ((positionId: string, reason: string) => Promise<void> | void)
+    | null = null;
   /** Callback to update account equity on TradingAgent. */
   private onEquityUpdate: ((equity: number) => void) | null = null;
   /** Cached exchange position snapshots from last syncWithExchange (TUI reuse — avoids duplicate API calls). */
@@ -358,6 +371,13 @@ export class PositionMonitor {
     ) => Promise<void> | void,
   ): void {
     this.onPartialClose = fn;
+  }
+
+  /** Set the callback for monitor-initiated full closes via OrderManager. */
+  setCloseCallback(
+    fn: (positionId: string, reason: string) => Promise<void> | void,
+  ): void {
+    this.onClose = fn;
   }
 
   /** Set the callback for updating account equity used by portfolio risk checks. */
@@ -554,6 +574,22 @@ export class PositionMonitor {
           `Position close: ${pos.coin} reason=${action.reason}`,
         );
 
+        // Monitor-initiated closes (thesis, future rules): the position is
+        // still OPEN on the exchange — submit a real close via OrderManager
+        // and keep tracking; reconcile dispatches position_closed once the
+        // exchange confirms the position is gone. No agent dispatch here —
+        // the agent stays IN_POSITION until the close is real.
+        if (
+          !action.reason.startsWith(TRAIL_STOP_REASON_PREFIX) &&
+          !isCompletedCloseReason(action.reason)
+        ) {
+          await this.onClose?.(pos.positionId, action.reason);
+          break;
+        }
+
+        // Completed-close notifications: trail stop (exchange trigger fired)
+        // or reconcile (position already gone) — inform the agent with the
+        // PnL estimate.
         const estimate = estimateClosePnl(
           pos,
           action.reason,
@@ -677,25 +713,10 @@ export class PositionMonitor {
           for (const action of thesisActions) {
             await this.executeAction(pos, action);
             if (action.type === "close") {
-              // Position closed by thesis. executeAction already dispatched the
-              // estimate-carrying close (IN_POSITION → EXITING); this second
-              // dispatch only completes EXITING → IDLE, so it carries pnl 0 —
-              // the estimate already reached recordPnl + the exit journal via
-              // the first dispatch, and daily summaries sum every exit row.
-              const estimate = estimateClosePnl(
-                pos,
-                action.reason,
-                this.lastMarkPrices.get(pos.positionId) ?? null,
-              );
-              this.dispatchToAgent?.(pos.coin, {
-                type: "position_closed",
-                positionId: pos.positionId,
-                closePrice: estimate.closePrice,
-                pnl: 0,
-                pnlEstimated: true,
-                reason: action.reason,
-              });
-              this.untrack(pos.positionId);
+              // Thesis close: executeAction submitted a REAL exchange close
+              // via onClose. The position stays tracked and the agent stays
+              // IN_POSITION until reconcile confirms the exchange position is
+              // gone (position_closed with the PnL estimate, then untrack).
               break;
             }
           }

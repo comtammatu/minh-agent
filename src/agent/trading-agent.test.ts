@@ -318,7 +318,9 @@ describe("handleEntering", () => {
 });
 
 describe("handleInPosition", () => {
-  it("transitions to EXITING on sl_hit", () => {
+  // Close events are completed-close notifications → straight to IDLE.
+  // EXITING is reserved for agent-initiated closes awaiting confirmation.
+  it("transitions to IDLE on sl_hit (close already completed on exchange)", () => {
     const ctx = makeCoinCtx({ state: "IN_POSITION", positionId: "pos-1" });
     const result = handleInPosition(
       ctx,
@@ -330,10 +332,10 @@ describe("handleInPosition", () => {
       },
       makeGlobal(),
     );
-    expect(result.nextState).toBe("EXITING");
+    expect(result.nextState).toBe("IDLE");
   });
 
-  it("transitions to EXITING on tp_hit", () => {
+  it("transitions to IDLE on tp_hit (close already completed on exchange)", () => {
     const ctx = makeCoinCtx({ state: "IN_POSITION", positionId: "pos-1" });
     const result = handleInPosition(
       ctx,
@@ -345,7 +347,40 @@ describe("handleInPosition", () => {
       },
       makeGlobal(),
     );
+    expect(result.nextState).toBe("IDLE");
+  });
+
+  it("transitions to PAUSED on close events while globally paused", () => {
+    const ctx = makeCoinCtx({ state: "IN_POSITION", positionId: "pos-1" });
+    const result = handleInPosition(
+      ctx,
+      {
+        type: "position_closed",
+        positionId: "pos-1",
+        closePrice: 49000,
+        pnl: -100,
+        reason: "exchange_position_closed",
+      },
+      makeGlobal({ globalPaused: true, globalPauseReason: "circuit_break" }),
+    );
+    expect(result.nextState).toBe("PAUSED");
+    const journal = result.actions.find((a) => a.type === "log_journal");
+    expect(journal).toMatchObject({ eventType: "exit" });
+  });
+
+  it("still transitions to EXITING with close_position on setup_invalidated", () => {
+    const ctx = makeCoinCtx({ state: "IN_POSITION", positionId: "pos-1" });
+    const result = handleInPosition(
+      ctx,
+      {
+        type: "setup_invalidated",
+        setupId: "BTC|1h|smc-sd|long",
+        reason: "zone_broken",
+      },
+      makeGlobal(),
+    );
     expect(result.nextState).toBe("EXITING");
+    expect(result.actions.some((a) => a.type === "close_position")).toBe(true);
   });
 
   it("includes setup context on exit journal actions when available", () => {
@@ -533,7 +568,7 @@ describe("handleInPosition", () => {
     });
   });
 
-  it("transitions to EXITING on trail_stop_hit", () => {
+  it("transitions to IDLE on trail_stop_hit (exchange trigger fired)", () => {
     const ctx = makeCoinCtx({ state: "IN_POSITION", positionId: "pos-1" });
     const result = handleInPosition(
       ctx,
@@ -545,7 +580,7 @@ describe("handleInPosition", () => {
       },
       makeGlobal(),
     );
-    expect(result.nextState).toBe("EXITING");
+    expect(result.nextState).toBe("IDLE");
   });
 
   it("closes position on setup_invalidated", () => {
@@ -640,6 +675,63 @@ describe("handleExiting", () => {
       makeGlobal(),
     );
     expect(result.nextState).toBe("IDLE");
+  });
+
+  it("completes on trigger events arriving mid-exit (sl/tp/trail)", () => {
+    // An exchange trigger firing while our close is in flight is the same
+    // terminal outcome — must not strand the coin in EXITING.
+    const ctx = makeCoinCtx({ state: "EXITING", positionId: "pos-1" });
+    const result = handleExiting(
+      ctx,
+      {
+        type: "trail_stop_hit",
+        positionId: "pos-1",
+        closePrice: 50500,
+        pnl: 50,
+      },
+      makeGlobal(),
+    );
+    expect(result.nextState).toBe("IDLE");
+    const journal = result.actions.find((a) => a.type === "log_journal");
+    expect(journal).toMatchObject({ eventType: "exit" });
+  });
+
+  it("safety net: tick with null positionId finishes the exit (stranding regression)", () => {
+    // EXITING + null positionId = close already confirmed, nothing to retry.
+    // Pre-fix this stranded the coin until restart.
+    const ctx = makeCoinCtx({
+      state: "EXITING",
+      positionId: null,
+      stateEnteredAt: Date.now(),
+    });
+    const result = handleExiting(ctx, { type: "tick" }, makeGlobal());
+    expect(result.nextState).toBe("IDLE");
+    const journal = result.actions.find((a) => a.type === "log_journal");
+    expect(journal).toMatchObject({
+      eventType: "exit",
+      details: { reason: "exit_complete_no_position" },
+    });
+  });
+
+  it("safety net respects global pause (→ PAUSED, not IDLE)", () => {
+    const ctx = makeCoinCtx({ state: "EXITING", positionId: null });
+    const result = handleExiting(
+      ctx,
+      { type: "tick" },
+      makeGlobal({ globalPaused: true }),
+    );
+    expect(result.nextState).toBe("PAUSED");
+  });
+
+  it("tick with positionId and young age stays EXITING (close still in flight)", () => {
+    const ctx = makeCoinCtx({
+      state: "EXITING",
+      positionId: "pos-1",
+      stateEnteredAt: Date.now(),
+    });
+    const result = handleExiting(ctx, { type: "tick" }, makeGlobal());
+    expect(result.nextState).toBe("EXITING");
+    expect(result.actions).toHaveLength(0);
   });
 
   it("transitions to IDLE on loss (CB checks moved to orchestrator S11)", () => {
@@ -766,7 +858,7 @@ describe("TradingAgent", () => {
     expect(agent.getCoinState("BTC")).toBe("ENTERING");
   });
 
-  it("full lifecycle: IDLE → ENTERING → IN_POSITION → EXITING → IDLE", () => {
+  it("full lifecycle (notification close): IDLE → ENTERING → IN_POSITION → IDLE", () => {
     const setup = makeSetup({ confluenceGrade: "B" });
 
     // IDLE → ENTERING (place_order emitted)
@@ -782,22 +874,43 @@ describe("TradingAgent", () => {
     });
     expect(agent.getCoinState("BTC")).toBe("IN_POSITION");
 
-    // IN_POSITION → EXITING
+    // IN_POSITION → IDLE — tp_hit is a completed-close notification
     agent.dispatch("BTC", {
       type: "tp_hit",
       positionId: "pos-1",
       closePrice: 52000,
       pnl: 200,
     });
+    expect(agent.getCoinState("BTC")).toBe("IDLE");
+  });
+
+  it("full lifecycle (agent-initiated close): IN_POSITION → EXITING → IDLE", () => {
+    const setup = makeSetup({ confluenceGrade: "B" });
+
+    agent.dispatch("BTC", { type: "setup_detected", setup });
+    agent.dispatch("BTC", {
+      type: "order_filled",
+      orderId: "ord-1",
+      fillPrice: 50100,
+      positionId: "pos-1",
+    });
+    expect(agent.getCoinState("BTC")).toBe("IN_POSITION");
+
+    // IN_POSITION → EXITING (close_position submitted, awaiting confirmation)
+    agent.dispatch("BTC", {
+      type: "setup_invalidated",
+      setupId: setup.id,
+      reason: "zone_broken",
+    });
     expect(agent.getCoinState("BTC")).toBe("EXITING");
 
-    // EXITING → IDLE
+    // EXITING → IDLE (reconcile confirms the close)
     agent.dispatch("BTC", {
       type: "position_closed",
       positionId: "pos-1",
-      closePrice: 52000,
-      pnl: 200,
-      reason: "tp",
+      closePrice: 49000,
+      pnl: -110,
+      reason: "exchange_position_closed",
     });
     expect(agent.getCoinState("BTC")).toBe("IDLE");
   });

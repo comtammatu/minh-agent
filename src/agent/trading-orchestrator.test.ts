@@ -301,7 +301,7 @@ describe("TradingAgent — close-event PnL dedupe", () => {
   it("records PnL exactly once for a double-dispatched close (thesis path)", () => {
     enterPosition("BTC");
 
-    // First close event (IN_POSITION → EXITING) carries the estimate.
+    // First close event (IN_POSITION → IDLE) carries the estimate.
     agent.dispatch("BTC", {
       type: "position_closed",
       positionId: "pos-1",
@@ -309,7 +309,7 @@ describe("TradingAgent — close-event PnL dedupe", () => {
       pnl: -100,
       reason: "thesis_deteriorated",
     });
-    // Completion event (EXITING → IDLE) — same close, must not double-count.
+    // Late duplicate (e.g. reconcile confirmation) — must not double-count.
     agent.dispatch("BTC", {
       type: "position_closed",
       positionId: "pos-1",
@@ -334,5 +334,95 @@ describe("TradingAgent — close-event PnL dedupe", () => {
     });
 
     expect(agent.getGlobal().dailyPnl).toBe(80);
+  });
+});
+
+// ── EXITING stranding regression ─────────────────────────────────────────────
+
+describe("TradingAgent — EXITING stranding regression", () => {
+  let agent: TradingAgent;
+
+  beforeEach(() => {
+    resetAgent();
+    agent = new TradingAgent();
+  });
+
+  function enterPosition(coin: string): void {
+    agent.dispatch(coin, { type: "setup_detected", setup: makeSetup() });
+    agent.dispatch(coin, {
+      type: "order_filled",
+      orderId: "ord-1",
+      fillPrice: 50000,
+      positionId: "pos-1",
+    });
+    expect(agent.getCoinState(coin)).toBe("IN_POSITION");
+  }
+
+  it("reconcile-detected close (single dispatch) returns the coin to IDLE and it can re-enter", () => {
+    enterPosition("BTC");
+
+    // Reconcile detects the position vanished (external close / liquidation):
+    // exactly ONE position_closed — pre-fix this stranded the coin in EXITING.
+    agent.dispatch("BTC", {
+      type: "position_closed",
+      positionId: "pos-1",
+      closePrice: 48000,
+      pnl: -200,
+      reason: "exchange_position_closed",
+    });
+
+    expect(agent.getCoinState("BTC")).toBe("IDLE");
+
+    // The coin must be able to trade again without a process restart.
+    agent.dispatch("BTC", { type: "setup_detected", setup: makeSetup() });
+    expect(agent.getCoinState("BTC")).toBe("ENTERING");
+  });
+
+  it("agent-initiated close still passes through EXITING with retry capability", () => {
+    enterPosition("ETH");
+
+    agent.dispatch("ETH", {
+      type: "setup_invalidated",
+      setupId: "BTC|1h|smc-sd|long",
+      reason: "zone_broken",
+    });
+    expect(agent.getCoinState("ETH")).toBe("EXITING");
+    // positionId retained so the tick-retry path can re-close on timeout.
+    expect(agent.getCoinContext("ETH")?.positionId).toBe("pos-1");
+
+    agent.dispatch("ETH", {
+      type: "position_closed",
+      positionId: "pos-1",
+      closePrice: 49500,
+      pnl: -50,
+      reason: "exchange_position_closed",
+    });
+    expect(agent.getCoinState("ETH")).toBe("IDLE");
+  });
+
+  it("EXITING with null positionId recovers via tick safety net", () => {
+    enterPosition("SOL");
+
+    // Force the residue scenario: invalidation puts the coin in EXITING,
+    // then a trigger event nulls positionId without completing the state.
+    agent.dispatch("SOL", {
+      type: "setup_invalidated",
+      setupId: "BTC|1h|smc-sd|long",
+      reason: "zone_broken",
+    });
+    expect(agent.getCoinState("SOL")).toBe("EXITING");
+    agent.dispatch("SOL", {
+      type: "sl_hit",
+      positionId: "pos-1",
+      closePrice: 49000,
+      pnl: -100,
+    });
+
+    // sl_hit completes the exit directly now; if any path still leaves
+    // EXITING with a null positionId, the tick net must finish the exit.
+    if (agent.getCoinState("SOL") === "EXITING") {
+      agent.dispatch("SOL", { type: "tick" });
+    }
+    expect(agent.getCoinState("SOL")).toBe("IDLE");
   });
 });

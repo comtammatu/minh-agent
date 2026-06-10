@@ -68,9 +68,38 @@ Decisions made during implementation that the contract didn't fully specify.
    `recordPnl` runs twice (dailyPnl double-count, consecutiveLosses +2 per
    thesis loss). Was invisible while pnl was always 0; now conservative-biased
    (CB trips earlier). Fix: positionId-level dedupe in recordPnl/applyEventContext.
+   → FIXED 2026-06-10 (review pass): positionId guard in applyEventContext.
 2. **Reconcile-close strands EXITING**: a reconcile-detected close dispatches
    `position_closed` once; the coin transitions IN_POSITION→EXITING and nothing
    moves it to IDLE (tick-retry needs positionId, which was nulled).
+   → FIXED 2026-06-10 (follow-up session): see "EXITING stranding fix" below.
 3. **`positions` table has no writer** — analytics live metrics read an empty
    table. The journal/memory outcome path is now fixed; the analytics path
    still needs a positions-row writer.
+
+## EXITING stranding fix (follow-up session, 2026-06-10)
+
+- **Semantics clarified**: close events (sl/tp/trail/position_closed) are
+  notifications of an ALREADY-completed close → `handleInPosition` goes
+  straight to IDLE (PAUSED under global pause). EXITING now means exactly one
+  thing: agent-initiated close in flight (`close_position` submitted,
+  positionId retained for tick-retry). The thesis double-dispatch workaround
+  was removed.
+- **handleExiting hardened**: any close event completes the exit (a trigger
+  firing mid-close is the same terminal outcome); tick with null positionId
+  finishes via `exit_complete_no_position` journal instead of stranding.
+- **Thesis paper-tiger close discovered + fixed**: thesisToActions 'severe'
+  emitted a `close` MonitorAction, but executeAction only dispatched a fake
+  `position_closed` to the agent — NOBODY submitted an exchange close. The
+  position stayed open (unmanaged) while the agent went flat → double-position
+  risk on re-entry. Now: monitor-initiated close reasons route to
+  `onClose` (new `setCloseCallback`, wired in app.ts to
+  `om.handleAction({type:'close_position'})`); the agent stays IN_POSITION and
+  reconcile confirms with the PnL estimate once the exchange shows the
+  position gone. Trail (`trail_stop_hit…`) and reconcile
+  (`exchange_position_closed/not_found`) reasons remain pure notifications.
+- **Repeat-submit pacing**: if the thesis close doesn't fill before the next
+  thesis check, the cooldown (entry TF × cooldownMultiplier) paces re-submits;
+  reduce-only orders cannot over-close. Accepted noise.
+- **Late/duplicate close events in IDLE** are harmless: handleIdle ignores
+  them and the applyEventContext positionId guard skips PnL recording.
