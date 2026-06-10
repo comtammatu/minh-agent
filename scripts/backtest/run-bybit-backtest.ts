@@ -1,32 +1,38 @@
 /**
  * Bybit Backtest Runner — fetch candles from Bybit REST → run backtest engine.
  *
- * Usage: bun run src/backtest/run-bybit-backtest.ts [smc-sd]
+ * Usage: bun run scripts/backtest/run-bybit-backtest.ts [smc-sd]
  * Legacy alias `all` is accepted and maps to `smc-sd`.
  *
  * No PostgreSQL required — all data fetched directly into memory.
  * Uses fetchBybitCandlesBatched from feed/bybit/bybit-rest.ts.
  */
 
+import { runBacktest } from "../../src/backtest/engine.js";
+import {
+  formatExpectancyReport,
+  formatMetricsSummary,
+} from "../../src/backtest/report.js";
+import type {
+  BacktestConfig,
+  StrategyType,
+  WalkForwardConfig,
+} from "../../src/backtest/types.js";
+import {
+  formatGateReport,
+  walkForward,
+} from "../../src/backtest/walk-forward.js";
 import {
   BACKTEST_SLIPPAGE_PCT,
   HTF_MAP,
   WF_STEP_MS,
   WF_TEST_WINDOW_MS,
   WF_TRAIN_WINDOW_MS,
-} from "../config.js";
-import { fetchBybitCandlesBatched } from "../feed/bybit/bybit-rest.js";
-import { log } from "../lib/logger.js";
-import { formatPipelineStats } from "../strategy/diagnostics.js";
-import type { Candle, CandleInterval } from "../types.js";
-import { runBacktest } from "./engine.js";
-import { formatExpectancyReport, formatMetricsSummary } from "./report.js";
-import type {
-  BacktestConfig,
-  StrategyType,
-  WalkForwardConfig,
-} from "./types.js";
-import { formatGateReport, walkForward } from "./walk-forward.js";
+} from "../../src/config.js";
+import { fetchBybitCandlesBatched } from "../../src/feed/bybit/bybit-rest.js";
+import { log } from "../../src/lib/logger.js";
+import { formatPipelineStats } from "../../src/strategy/diagnostics.js";
+import type { Candle, CandleInterval } from "../../src/types.js";
 
 // ─── Configuration ─────────────────────────────────────────────────────────
 
@@ -188,7 +194,9 @@ async function fetchAllCandles(
 }
 
 /** Print trade details table. */
-function printTradeDetails(trades: import("./types.js").BacktestTrade[]): void {
+function printTradeDetails(
+  trades: import("../../src/backtest/types.js").BacktestTrade[],
+): void {
   if (trades.length === 0) return;
 
   console.log(`\n=== TRADE DETAIL (${trades.length} trades) ===`);

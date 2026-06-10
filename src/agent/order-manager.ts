@@ -147,6 +147,7 @@ export async function submitToExchange(
   svc?: IExchangeService,
   slPrice?: number,
   tpPrice?: number,
+  reduceOnly = false,
 ): Promise<ExchangeOrderResult> {
   try {
     const exchange = svc ?? getExchangeService();
@@ -156,7 +157,7 @@ export async function submitToExchange(
       type,
       price,
       size,
-      reduceOnly: false,
+      reduceOnly,
       cloid,
       ...(slPrice !== undefined ? { slPrice } : {}),
       ...(tpPrice !== undefined ? { tpPrice } : {}),
@@ -388,6 +389,8 @@ export class OrderManager {
   /** Callback to dispatch events back to TradingAgent. */
   private dispatchToAgent: ((coin: string, event: AgentEvent) => void) | null =
     null;
+  /** Callback to pause all new entries after critical execution safety failures. */
+  private pauseAllNewEntries: ((reason: string) => void) | null = null;
   /** Callback to register position with PositionMonitor on fill. */
   private onPositionOpen:
     | ((params: {
@@ -420,6 +423,11 @@ export class OrderManager {
   /** Set the callback for dispatching events to the agent state machine. */
   setAgentDispatch(fn: (coin: string, event: AgentEvent) => void): void {
     this.dispatchToAgent = fn;
+  }
+
+  /** Set callback for global entry pause on critical execution safety failures. */
+  setGlobalPauseCallback(fn: (reason: string) => void): void {
+    this.pauseAllNewEntries = fn;
   }
 
   /** Set callback to register positions with PositionMonitor on order fill. */
@@ -855,7 +863,55 @@ export class OrderManager {
     }
     triggers.push(tpTrigger);
 
+    const failedProtectiveOrders = [
+      ...(slResult.success ? [] : ["sl"]),
+      ...(tpResult.success ? [] : ["tp"]),
+    ];
+    if (failedProtectiveOrders.length > 0) {
+      await this.handleProtectiveOrderFailure(
+        entryOrder,
+        triggers,
+        failedProtectiveOrders,
+        svc,
+      );
+      return;
+    }
+
     this.triggerOrders.set(entryOrder.id, triggers);
+  }
+
+  private async handleProtectiveOrderFailure(
+    entryOrder: Order,
+    triggers: TriggerOrder[],
+    failedProtectiveOrders: string[],
+    svc: IExchangeService,
+  ): Promise<void> {
+    const reason = `protective_order_failed:${failedProtectiveOrders.join(",")}`;
+    if (this.pauseAllNewEntries) {
+      this.pauseAllNewEntries(reason);
+    } else {
+      this.dispatchToAgent?.(entryOrder.coin, { type: "pause", reason });
+    }
+
+    await logJournalEntry("error", entryOrder.coin, {
+      severity: "critical",
+      kind: "protective_order_failed",
+      orderId: entryOrder.id,
+      positionId: entryOrder.positionId,
+      failedProtectiveOrders,
+      action: "pause_and_reduce_only_close",
+    });
+
+    for (const trigger of triggers) {
+      if (trigger.exchangeOrderId) {
+        await cancelOnExchange(trigger.exchangeOrderId, trigger.coin, svc);
+      }
+    }
+    this.triggerOrders.delete(entryOrder.id);
+
+    const closeSize =
+      entryOrder.fillSize > 0 ? entryOrder.fillSize : entryOrder.size;
+    await this.submitReduceOnlyClose(entryOrder, closeSize);
   }
 
   /**
@@ -1374,6 +1430,13 @@ export class OrderManager {
         // S7 (PositionMonitor) handles close. OrderManager places the close order.
         await this.closePosition(action.positionId, action.reason);
         break;
+      case "partial_close":
+        await this.partialClosePosition(
+          action.positionId,
+          action.closePct,
+          action.closeSize,
+        );
+        break;
       case "update_stop":
         // Find the entry order for this position, update its SL trigger
         await this.updateStopForPosition(
@@ -1382,7 +1445,7 @@ export class OrderManager {
         );
         break;
       default:
-        // Other actions (watch, log_journal, partial_close, none) not handled here
+        // Other actions (watch, log_journal, none) not handled here
         break;
     }
   }
@@ -1421,11 +1484,69 @@ export class OrderManager {
       this.triggerOrders.delete(entryOrder.id);
     }
 
-    // Place close order (opposite side) — use entry fillPrice as reference (HL needs a valid price even for market orders)
-    const closeSide: "long" | "short" =
-      entryOrder.side === "long" ? "short" : "long";
     const closeSize =
       entryOrder.fillSize > 0 ? entryOrder.fillSize : entryOrder.size;
+    await this.submitReduceOnlyClose(entryOrder, closeSize);
+
+    log.info(
+      "order-manager",
+      `Position close submitted: ${entryOrder.coin} reason=${reason}`,
+    );
+  }
+
+  private async partialClosePosition(
+    positionId: string,
+    closePct: number,
+    requestedCloseSize?: number,
+  ): Promise<void> {
+    if (!Number.isFinite(closePct) || closePct <= 0 || closePct > 1) {
+      log.warn(
+        "order-manager",
+        `Partial close skipped for ${positionId}: invalid closePct=${closePct}`,
+      );
+      return;
+    }
+
+    const entryOrder = this.findOrderByPositionContext(positionId);
+    if (!entryOrder) {
+      log.warn(
+        "order-manager",
+        `No entry order found for partial close position ${positionId}`,
+      );
+      return;
+    }
+
+    const baseSize =
+      entryOrder.fillSize > 0 ? entryOrder.fillSize : entryOrder.size;
+    const closeSize =
+      requestedCloseSize !== undefined &&
+      Number.isFinite(requestedCloseSize) &&
+      requestedCloseSize > 0
+        ? Math.min(requestedCloseSize, baseSize)
+        : baseSize * closePct;
+    await this.submitReduceOnlyClose(entryOrder, closeSize);
+
+    log.info(
+      "order-manager",
+      `Partial close submitted: ${entryOrder.coin} ${(closePct * 100).toFixed(0)}% size=${closeSize}`,
+    );
+  }
+
+  private async submitReduceOnlyClose(
+    entryOrder: Order,
+    closeSize: number,
+  ): Promise<void> {
+    if (!Number.isFinite(closeSize) || closeSize <= 0) {
+      log.warn(
+        "order-manager",
+        `Reduce-only close skipped for ${entryOrder.coin}: invalid size=${closeSize}`,
+      );
+      return;
+    }
+
+    const svc = this.getExchange(entryOrder.exchange as ExchangeId);
+    const closeSide: "long" | "short" =
+      entryOrder.side === "long" ? "short" : "long";
     const refPrice = entryOrder.fillPrice ?? entryOrder.price;
     const cloid = generateCloid();
     const closeRef = computeMarketRefPrice(
@@ -1433,7 +1554,7 @@ export class OrderManager {
       closeSide,
       refPrice,
     );
-    await submitToExchange(
+    const result = await submitToExchange(
       entryOrder.coin,
       closeSide,
       "market",
@@ -1441,12 +1562,24 @@ export class OrderManager {
       closeSize,
       cloid,
       svc,
+      undefined,
+      undefined,
+      true,
     );
 
-    log.info(
-      "order-manager",
-      `Position close submitted: ${entryOrder.coin} reason=${reason}`,
-    );
+    if (!result.success) {
+      log.error(
+        "order-manager",
+        `Reduce-only close failed: ${entryOrder.coin} ${result.error}`,
+      );
+      await logJournalEntry("error", entryOrder.coin, {
+        kind: "reduce_only_close_failed",
+        positionId: entryOrder.positionId,
+        orderId: entryOrder.id,
+        closeSize,
+        error: result.error,
+      });
+    }
   }
 
   /** Update SL trigger for a position (trail stop). */

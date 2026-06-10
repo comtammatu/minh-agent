@@ -11,9 +11,9 @@
 
 `minh-agent` is a single-process Bun trading engine that boots the database, selects coins, hydrates candle state, backfills missing history, wires one concrete `smc-sd` setup pipeline, then routes emitted setups into an execution agent and operator surfaces. `src/index.ts` is now a thin process entrypoint; long-lived orchestration lives in `src/runtime/app.ts`.
 
-The browser dashboard ships in this branch (`dashboard/` + `src/server/`) and is wired into the runtime alongside the TUI and Telegram surfaces. `src/memory/` is a new trade-memory foundation (storage + scored retrieval, commit ef441e6) that is not yet wired into the live runtime — treat it as a feature flag turned off, not as live code.
+The browser dashboard ships in this branch (`dashboard/` + `src/server/`) and is wired into the runtime alongside the TUI and Telegram surfaces. `src/memory/` is a trade-memory foundation (storage + scored retrieval, commit ef441e6): journal `exit` events with numeric `pnl` create `trade_outcome` memories. There is no live advisor module or advisor-driven trading path on this branch.
 
-The codebase is dense rather than wide. The generated import graph covers ~142 TS/TSX files under `src/` (as of 2026-06; older oracle reported 118) and 472+ internal edges, with `types.ts`, `config.ts`, and `lib/logger.ts` acting as the dominant hubs (`docs/archive/oracle-data/analysis-summary.md:5`, `docs/archive/oracle-data/analysis-summary.md:23`). That makes contract files and shared operational helpers the highest-blast-radius edit points even though most business logic lives deeper in `strategy/`, `agent/`, `feed/`, and `backtest/`.
+The codebase is dense rather than wide. An archived generated import-graph summary identified `types.ts`, `config.ts`, and `lib/logger.ts` as the dominant hubs (`docs/archive/oracle-data/analysis-summary.md:5`, `docs/archive/oracle-data/analysis-summary.md:23`). That makes contract files and shared operational helpers the highest-blast-radius edit points even though most business logic lives deeper in `strategy/`, `agent/`, `feed`, and `backtest`.
 
 ## Architecture map
 
@@ -104,11 +104,11 @@ The system is intentionally edge-driven. Exchange and Telegram I/O live in `src/
 | `src/agent/types.ts` | Execution state contracts | breaks agent, order manager, monitor, and UI together |
 | `src/backtest/types.ts` | Research and replay contracts | breaks optimization and backtest orchestration together |
 
-The hub ranking comes from the generated import graph, not from name heuristics (`docs/archive/oracle-data/analysis-summary.md:23`).
+The hub ranking comes from the archived generated import-graph summary, not from name heuristics (`docs/archive/oracle-data/analysis-summary.md:23`).
 
 ## Change priorities
 
-1. Guard `config.ts` edits with backtest and live-path review. It is the second-largest hub and also stores the strategy thresholds that shape both production and replay behavior (`docs/archive/oracle-data/analysis-summary.md:23`, `src/config.ts:25`, `src/config.ts:34`).
+1. Guard `config.ts` edits with backtest and live-path review. It is a major hub and stores the strategy thresholds that shape both production and replay behavior (`docs/archive/oracle-data/analysis-summary.md:23`, `src/config.ts:25`, `src/config.ts:34`).
 2. Treat `src/runtime/` as an orchestration boundary, not a dumping ground. Runtime sequencing, lifecycle recovery, TUI wiring, Telegram boot, and exchange bootstrap belong there.
 3. Keep order and position reconciliation conservative. `PositionMonitor.syncWithExchange()` explicitly skips reconciliation on API failure to avoid false closes, which is safer than stale-but-authoritative assumptions (`src/agent/position-monitor.ts:511`, `src/agent/position-monitor.ts:514`).
 4. Preserve the production/backtest reuse contract. Strategy changes that bypass `onCandleTick()` or `pipelineEmitter` create instant model drift between live mode and replay mode (`src/strategy/orchestrator.ts`, `src/backtest/engine.ts`).

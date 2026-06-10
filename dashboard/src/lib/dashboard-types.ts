@@ -18,6 +18,7 @@ export interface DashboardSnapshotResponse {
   };
   mode: {
     exchange: "HL" | "BB";
+    executionMode: "paper" | "live";
     paperTrade: boolean;
   };
   operator: {

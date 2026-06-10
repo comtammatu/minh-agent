@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import type { CloseAllResult } from "../agent/close-all.js";
 import {
   createOperatorActionDeps,
   handleOperatorFlatten,
@@ -6,12 +7,23 @@ import {
   handleOperatorResume,
 } from "./operator-actions.js";
 
+function flatResult(overrides: Partial<CloseAllResult> = {}): CloseAllResult {
+  return {
+    cancelled: 0,
+    closed: 0,
+    verifiedFlat: true,
+    remainingPositions: 0,
+    remainingOrders: 0,
+    ...overrides,
+  };
+}
+
 describe("operator-actions", () => {
   it("flatten rejects missing confirm", async () => {
     const result = await handleOperatorFlatten(
       {},
       createOperatorActionDeps({
-        flatten: async () => ({ cancelled: 0, closed: 0 }),
+        flatten: async () => flatResult(),
         pause: () => {},
         resume: () => {},
         logAudit: async () => {},
@@ -28,7 +40,7 @@ describe("operator-actions", () => {
     const result = await handleOperatorFlatten(
       { confirm: true, reason: "panic" },
       createOperatorActionDeps({
-        flatten: async () => ({ cancelled: 2, closed: 1 }),
+        flatten: async () => flatResult({ cancelled: 2, closed: 1 }),
         pause: () => {},
         resume: () => {},
         logAudit: async (action, _target, status) => {
@@ -36,7 +48,14 @@ describe("operator-actions", () => {
         },
       }),
     );
-    expect(result).toEqual({ ok: true, cancelled: 2, closed: 1 });
+    expect(result).toEqual({
+      ok: true,
+      cancelled: 2,
+      closed: 1,
+      verifiedFlat: true,
+      remainingPositions: 0,
+      remainingOrders: 0,
+    });
     expect(audits).toEqual([{ action: "flatten", status: "submitted" }]);
   });
 
@@ -45,7 +64,7 @@ describe("operator-actions", () => {
     const result = await handleOperatorPause(
       { confirm: true, reason: "manual halt" },
       createOperatorActionDeps({
-        flatten: async () => ({ cancelled: 0, closed: 0 }),
+        flatten: async () => flatResult(),
         pause: (reason) => {
           pausedReason = reason;
         },
@@ -65,7 +84,7 @@ describe("operator-actions", () => {
     const result = await handleOperatorResume(
       {},
       createOperatorActionDeps({
-        flatten: async () => ({ cancelled: 0, closed: 0 }),
+        flatten: async () => flatResult(),
         pause: () => {},
         resume: () => {},
         logAudit: async () => {},
@@ -82,7 +101,7 @@ describe("operator-actions", () => {
     const result = await handleOperatorResume(
       { confirm: true },
       createOperatorActionDeps({
-        flatten: async () => ({ cancelled: 0, closed: 0 }),
+        flatten: async () => flatResult(),
         pause: () => {},
         resume: () => {
           resumed = true;

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { TuiDataSources } from "../ui/tui.jsx";
 import type { DashboardServerState } from "./contracts.js";
 import { createDashboardFetchHandler } from "./handlers.js";
@@ -135,6 +135,23 @@ function createState(): DashboardServerState {
 }
 
 describe("createDashboardFetchHandler", () => {
+  let origExecutionMode: string | undefined;
+  let origPaperTrade: string | undefined;
+
+  beforeEach(() => {
+    origExecutionMode = process.env.EXECUTION_MODE;
+    origPaperTrade = process.env.PAPER_TRADE;
+    delete process.env.EXECUTION_MODE;
+    delete process.env.PAPER_TRADE;
+  });
+
+  afterEach(() => {
+    if (origExecutionMode === undefined) delete process.env.EXECUTION_MODE;
+    else process.env.EXECUTION_MODE = origExecutionMode;
+    if (origPaperTrade === undefined) delete process.env.PAPER_TRADE;
+    else process.env.PAPER_TRADE = origPaperTrade;
+  });
+
   const handler = createDashboardFetchHandler({
     state: createState(),
     getSummaryMetrics: async () => ({
@@ -169,6 +186,7 @@ describe("createDashboardFetchHandler", () => {
     expect(response.status).toBe(200);
     expect(body.bootstrap.phase).toBe("warming_up");
     expect(body.positions).toHaveLength(1);
+    expect(body.mode.executionMode).toBe("paper");
     expect(body.mode.paperTrade).toBe(true);
     expect(body.operator.globalPaused).toBe(false);
   });
@@ -213,7 +231,13 @@ describe("createDashboardFetchHandler", () => {
       }),
       readJournal: async () => [],
       operatorActions: {
-        flatten: async () => ({ cancelled: 1, closed: 2 }),
+        flatten: async () => ({
+          cancelled: 1,
+          closed: 2,
+          verifiedFlat: true,
+          remainingPositions: 0,
+          remainingOrders: 0,
+        }),
         pause: () => {},
         resume: () => {},
         logAudit: async () => {},
@@ -228,7 +252,14 @@ describe("createDashboardFetchHandler", () => {
     );
     const body = await response.json();
     expect(response.status).toBe(200);
-    expect(body).toEqual({ ok: true, cancelled: 1, closed: 2 });
+    expect(body).toEqual({
+      ok: true,
+      cancelled: 1,
+      closed: 2,
+      verifiedFlat: true,
+      remainingPositions: 0,
+      remainingOrders: 0,
+    });
   });
 
   it("POST /api/operator/resume requires confirm", async () => {
@@ -256,7 +287,13 @@ describe("createDashboardFetchHandler", () => {
       }),
       readJournal: async () => [],
       operatorActions: {
-        flatten: async () => ({ cancelled: 0, closed: 0 }),
+        flatten: async () => ({
+          cancelled: 0,
+          closed: 0,
+          verifiedFlat: true,
+          remainingPositions: 0,
+          remainingOrders: 0,
+        }),
         pause: () => {},
         resume: () => {
           resumed = true;

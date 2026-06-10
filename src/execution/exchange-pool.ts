@@ -14,10 +14,16 @@
 import { BybitExchangeService } from "./bybit-exchange-service.js";
 import type { IExchangeService } from "./exchange-service.js";
 import { ExchangeService, getExchangeService } from "./exchange-service.js";
+import { PaperExchangeService } from "./paper-exchange-service.js";
 
 export type { IExchangeService } from "./exchange-service.js";
 
-import { getActiveExchange, SIMULATED_ACCOUNT } from "../config.js";
+import {
+  getActiveExchange,
+  getExecutionMode,
+  isPaperMode,
+  SIMULATED_ACCOUNT,
+} from "../config.js";
 import { log } from "../lib/logger.js";
 import type { ExchangeId } from "../types.js";
 
@@ -46,7 +52,13 @@ export class ExchangePool {
     this.activeExchange = getActiveExchange();
     log.info("exchange-pool", `Active exchange: ${this.activeExchange}`);
 
-    if (this.activeExchange === "BB") {
+    const executionMode = getExecutionMode();
+    if (executionMode === "paper") {
+      log.info("exchange-pool", "Paper execution mode");
+      const svc = new PaperExchangeService(this.activeExchange);
+      await svc.init();
+      this.shared = svc;
+    } else if (this.activeExchange === "BB") {
       log.info("exchange-pool", "Bybit single-wallet mode");
       const svc = new BybitExchangeService();
       await svc.init();
@@ -137,6 +149,7 @@ export function getCachedAccountValue(): number {
     const svc = getExchangePool().get();
     return svc.getCachedAccountValue() || SIMULATED_ACCOUNT;
   } catch {
+    if (isPaperMode()) return SIMULATED_ACCOUNT;
     return getExchangeService().getCachedAccountValue() || SIMULATED_ACCOUNT;
   }
 }

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
-import type { CloseAllDeps } from "./close-all.js";
+import type { CloseAllDeps, CloseAllVerification } from "./close-all.js";
 import { closeAllPositions } from "./close-all.js";
+import type { AgentAction } from "./types.js";
 
 // ─── Test state ─────────────────────────────────────────────────────────────
 
@@ -22,13 +23,13 @@ function makeDeps(): CloseAllDeps {
       getOrders: () => new Map(mockOrders),
       cancelOrder: async (id: string, _reason: string) => {
         cancelledIds.push(id);
+        mockOrders.delete(id);
       },
-      handleAction: async (action: {
-        type: string;
-        positionId: string;
-        reason: string;
-      }) => {
-        closedPositionIds.push(action.positionId);
+      handleAction: async (action: AgentAction) => {
+        if (action.type === "close_position") {
+          closedPositionIds.push(action.positionId);
+          mockPositions.delete(action.positionId);
+        }
       },
     },
     pm: { getPositions: () => new Map(mockPositions) },
@@ -56,6 +57,7 @@ describe("closeAllPositions", () => {
 
     const result = await closeAllPositions("emergency", makeDeps());
     expect(result.cancelled).toBe(2);
+    expect(result.remainingOrders).toBe(0);
     expect(cancelledIds).toContain("ord-1");
     expect(cancelledIds).toContain("ord-2");
     expect(cancelledIds).not.toContain("ord-3");
@@ -67,6 +69,7 @@ describe("closeAllPositions", () => {
 
     const result = await closeAllPositions("emergency", makeDeps());
     expect(result.closed).toBe(2);
+    expect(result.remainingPositions).toBe(0);
     expect(closedPositionIds).toContain("pos-1");
     expect(closedPositionIds).toContain("pos-2");
   });
@@ -75,6 +78,9 @@ describe("closeAllPositions", () => {
     const result = await closeAllPositions("nothing to do", makeDeps());
     expect(result.cancelled).toBe(0);
     expect(result.closed).toBe(0);
+    expect(result.remainingPositions).toBe(0);
+    expect(result.remainingOrders).toBe(0);
+    expect(result.verifiedFlat).toBe(false);
   });
 
   it("handles both orders and positions together", async () => {
@@ -84,6 +90,29 @@ describe("closeAllPositions", () => {
     const result = await closeAllPositions("full emergency", makeDeps());
     expect(result.cancelled).toBe(1);
     expect(result.closed).toBe(1);
+    expect(result.remainingPositions).toBe(0);
+    expect(result.remainingOrders).toBe(0);
     expect(pausedWith).toBe("full emergency");
+  });
+
+  it("marks verifiedFlat true when verification confirms no exchange exposure", async () => {
+    mockOrders.set("ord-1", { id: "ord-1", status: "pending" });
+    mockPositions.set("pos-1", { positionId: "pos-1", coin: "SOL" });
+    const deps = makeDeps();
+    deps.verifyFlat = async (): Promise<CloseAllVerification> => ({
+      remainingPositions: 0,
+      remainingOrders: 0,
+      exchangeVerified: true,
+    });
+
+    const result = await closeAllPositions("verified emergency", deps);
+
+    expect(result).toMatchObject({
+      cancelled: 1,
+      closed: 1,
+      remainingPositions: 0,
+      remainingOrders: 0,
+      verifiedFlat: true,
+    });
   });
 });

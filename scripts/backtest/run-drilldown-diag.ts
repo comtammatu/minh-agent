@@ -5,38 +5,54 @@
  * detailed stage-by-stage counters showing where the 4H→15m→5m
  * cascade drops to zero.
  *
- * Usage: bun run src/backtest/run-drilldown-diag.ts [coins]
+ * Usage: bun run scripts/backtest/run-drilldown-diag.ts [coins]
  *   coins: comma-separated (default: BTC,ETH,SOL,AVAX,LINK,ARB,APT,BNB,DOT,ATOM)
  */
 
+import { runBacktest } from "../../src/backtest/engine.js";
+import { computeMetrics } from "../../src/backtest/metrics.js";
+import { inferScanMode, runTrial } from "../../src/backtest/optimize.js";
+import type {
+  BacktestConfig,
+  BacktestTrade,
+  WalkForwardConfig,
+} from "../../src/backtest/types.js";
+import { walkForward } from "../../src/backtest/walk-forward.js";
 import {
   BACKTEST_SLIPPAGE_PCT,
   HTF_MAP,
   WF_STEP_MS,
   WF_TEST_WINDOW_MS,
   WF_TRAIN_WINDOW_MS,
-} from "../config.js";
-import { fetchBybitCandlesBatched } from "../feed/bybit/bybit-rest.js";
-import { log } from "../lib/logger.js";
+} from "../../src/config.js";
+import { fetchBybitCandlesBatched } from "../../src/feed/bybit/bybit-rest.js";
+import { log } from "../../src/lib/logger.js";
 import {
   getDrilldownDiagnostics,
   resetDrilldownDiagnostics,
-} from "../strategy/strategies/smc-sd/index.js";
-import type { Candle, CandleInterval } from "../types.js";
-import { runBacktest } from "./engine.js";
-import { computeMetrics } from "./metrics.js";
-import { inferScanMode, runTrial } from "./optimize.js";
-import type {
-  BacktestConfig,
-  BacktestTrade,
-  WalkForwardConfig,
-} from "./types.js";
-import { walkForward } from "./walk-forward.js";
+} from "../../src/strategy/strategies/smc-sd/index.js";
+import type { Candle, CandleInterval } from "../../src/types.js";
 
 const TIMEFRAMES: CandleInterval[] = ["5m", "15m", "1h", "4h"];
 
 /** Top-3 liquidity tier for 1h_same_tf vs universe comparison (diagnostic only). */
 const TOP3_COINS = new Set(["BTC", "ETH", "SOL"]);
+
+function confidenceSummary(trades: BacktestTrade[]): string {
+  const values = trades
+    .map((trade) => trade.confidence)
+    .filter((value): value is number => typeof value === "number");
+  if (values.length === 0) return "n/a";
+  const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return `avg=${avg.toFixed(3)} min=${Math.min(...values).toFixed(3)} max=${Math.max(...values).toFixed(3)} n=${values.length}`;
+}
+
+function printConfidenceSplit(label: string, trades: BacktestTrade[]): void {
+  const wins = trades.filter((trade) => trade.pnl > 0);
+  const losses = trades.filter((trade) => trade.pnl <= 0);
+  console.log(`  Confidence ${label} wins:  ${confidenceSummary(wins)}`);
+  console.log(`  Confidence ${label} losses: ${confidenceSummary(losses)}`);
+}
 
 const CANDLE_COUNTS: Record<CandleInterval, number> = {
   "1m": 500,
@@ -350,6 +366,7 @@ async function main() {
   console.log(`  Net PnL:     $${rawMetrics.netPnl.toFixed(2)}`);
   console.log(`  Expectancy:  $${rawMetrics.expectancy.toFixed(2)}`);
   console.log(`  Elapsed:     ${rawElapsed}s`);
+  printConfidenceSplit("raw 5m", rawTrades);
 
   if (rawTrades.length > 0 && rawTrades.length < 20) {
     console.log("\n── INDIVIDUAL TRADES ──");
@@ -403,6 +420,7 @@ async function main() {
   console.log(`  Max DD:      ${(raw1hMetrics.maxDrawdown * 100).toFixed(1)}%`);
   console.log(`  Net PnL:     $${raw1hMetrics.netPnl.toFixed(2)}`);
   console.log(`  Elapsed:     ${raw1hElapsed}s`);
+  printConfidenceSplit("raw 1h", raw1hTrades);
 
   console.log("\n── RAW 1H per-coin (quality tiers: heuristic) ──");
   const rawCoinRows = computeCoinStats(raw1hTrades, baseConfig.initialCapital);

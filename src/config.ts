@@ -165,17 +165,34 @@ export const STATUS_INTERVAL_MS = 60_000;
 export const DMS_DEADLINE_MS = 6 * 60 * 60 * 1000;
 export const DMS_REFRESH_MS = 4 * 60 * 60 * 1000;
 
+export type ExecutionMode = "paper" | "live";
+
 /**
- * Paper-trade mode flag. Defaults to true (safe) — set PAPER_TRADE=false in env
- * to enable real-money execution paths (e.g. arming the HL dead-man-switch).
+ * Execution mode flag. Defaults to paper (safe).
+ *
+ * EXECUTION_MODE is the canonical input. PAPER_TRADE is retained only as a
+ * legacy alias: PAPER_TRADE=false maps to live when EXECUTION_MODE is unset.
  */
+export function getExecutionMode(): ExecutionMode {
+  const rawMode = process.env.EXECUTION_MODE?.trim();
+  if (rawMode === "paper" || rawMode === "live") return rawMode;
+  if (rawMode) return "paper";
+  return process.env.PAPER_TRADE === "false" ? "live" : "paper";
+}
+
+/** Paper execution is the safe default. */
 export function isPaperMode(): boolean {
-  return process.env.PAPER_TRADE !== "false";
+  return getExecutionMode() === "paper";
+}
+
+/** Live execution enables private exchange services and real order APIs. */
+export function isLiveMode(): boolean {
+  return getExecutionMode() === "live";
 }
 
 /**
  * Whether the HL dead-man-switch should be armed for this process.
- * Active only when ACTIVE_EXCHANGE=HL AND PAPER_TRADE=false.
+ * Active only when ACTIVE_EXCHANGE=HL AND EXECUTION_MODE=live.
  */
 export function isDmsEnabled(): boolean {
   return tryGetActiveExchange() === "HL" && !isPaperMode();
@@ -222,7 +239,7 @@ function parseHeartbeatEnv(name: string, fallback: number): number {
 
 /**
  * Whether the BB heartbeat watchdog should be active for this process.
- * Active only when ACTIVE_EXCHANGE=BB AND PAPER_TRADE=false.
+ * Active only when ACTIVE_EXCHANGE=BB AND EXECUTION_MODE=live.
  *
  * Symmetric with {@link isDmsEnabled} for HL — gates the writer in the main
  * process and the loop in the watchdog script identically.
@@ -1176,9 +1193,33 @@ function parsePortEnv(name: string, fallback: number): number {
   return parsed;
 }
 
+function parseHostEnv(name: string, fallback: string): string {
+  const raw = process.env[name]?.trim();
+  return raw && raw.length > 0 ? raw : fallback;
+}
+
+function isLocalDashboardHost(host: string): boolean {
+  return (
+    host === "127.0.0.1" ||
+    host === "localhost" ||
+    host === "::1" ||
+    host === "[::1]"
+  );
+}
+
+export function assertDashboardBindingAllowed(host: string): void {
+  if (isLocalDashboardHost(host)) return;
+  const remoteEnabled = process.env.DASHBOARD_REMOTE_ENABLED === "true";
+  const authToken = process.env.DASHBOARD_AUTH_TOKEN?.trim();
+  if (remoteEnabled && authToken) return;
+  throw new Error(
+    `Refusing dashboard bind to non-localhost host "${host}". Set DASHBOARD_REMOTE_ENABLED=true and DASHBOARD_AUTH_TOKEN to expose it remotely.`,
+  );
+}
+
 /** Local browser dashboard configuration (localhost-only). */
 export const DASHBOARD = {
-  host: "127.0.0.1",
+  host: parseHostEnv("DASHBOARD_HOST", "127.0.0.1"),
   port: parsePortEnv("DASHBOARD_PORT", 3030),
 } as const;
 

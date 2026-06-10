@@ -5,13 +5,12 @@
  * reporting p50/p95/p99 and throughput across multiple runs.
  *
  * Usage:
- *   bun run src/backtest/run-pipeline-benchmark.ts
- *   bun run src/backtest/run-pipeline-benchmark.ts --coins BTC,ETH,SOL --tfs 5m,15m,1h,4h --bars 1500 --warmup 2 --runs 9 --trim 0.01 --save
+ *   bun run scripts/backtest/run-pipeline-benchmark.ts
+ *   bun run scripts/backtest/run-pipeline-benchmark.ts --coins BTC,ETH,SOL --tfs 5m,15m,1h,4h --bars 1500 --warmup 2 --runs 9 --trim 0.01 --save
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import type { CandleInterval } from "../types.js";
 import {
   buildReplayEvents,
   generateSyntheticCandles,
@@ -20,7 +19,8 @@ import {
   type ReplayEvent,
   summarizeLatency,
   trimOutliers,
-} from "./pipeline-benchmark.js";
+} from "../../src/backtest/pipeline-benchmark.js";
+import type { CandleInterval } from "../../src/types.js";
 
 process.env.LOG_LEVEL ??= "ERROR";
 
@@ -69,9 +69,9 @@ async function main(): Promise<void> {
     { clearSetupGeneratorState, resetSetupGenerator },
     { clearStore, clearOnPersist },
   ] = await Promise.all([
-    import("../strategy/orchestrator.js"),
-    import("../strategy/engine.js"),
-    import("../feed/store.js"),
+    import("../../src/strategy/orchestrator.js"),
+    import("../../src/strategy/engine.js"),
+    import("../../src/feed/store.js"),
   ]);
 
   resetSetupGenerator();

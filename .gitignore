@@ -16,3 +16,7 @@ results/pipeline-benchmark-*.json
 dashboard/dist/
 dashboard/public/charting_library/
 dashboard/public/datafeeds/
+docs/archive/external/hyperliquid-docs-llms-full.txt
+docs/archive/oracle-data/*.json
+docs/archive/graph.html
+.codex/agents/

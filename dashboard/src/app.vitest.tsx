@@ -3,7 +3,7 @@ import { App } from "@/app";
 
 const SNAPSHOT_PAYLOAD = {
   bootstrap: { phase: "ready", trackedCoins: ["BTC", "ETH"] },
-  mode: { exchange: "HL", paperTrade: true },
+  mode: { exchange: "HL", executionMode: "paper", paperTrade: true },
   operator: { globalPaused: false, pauseReason: null },
   health: {
     overall: "ok",

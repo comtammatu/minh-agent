@@ -1,10 +1,9 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": [
-    "src/index.ts",
     "src/**/*.test.ts",
     "test/**/*.ts",
-    "dashboard/src/main.tsx"
+    "dashboard/src/**/*.vitest.tsx"
   ],
   "project": [
     "src/**/*.ts",
@@ -13,11 +12,5 @@
     "dashboard/src/**/*.tsx"
   ],
   "ignore": ["scripts/**", "docs/**", ".claude/**"],
-  "ignoreDependencies": [
-    "vite",
-    "@vitejs/plugin-react",
-    "vitest",
-    "@testing-library/*",
-    "jsdom"
-  ]
+  "ignoreDependencies": ["@testing-library/*", "tailwindcss"]
 }

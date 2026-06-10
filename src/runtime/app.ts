@@ -20,6 +20,7 @@
 
 import { createWriteStream, type WriteStream } from "node:fs";
 import { getInvalidationBridge } from "../agent/invalidation-bridge.js";
+import { handleJournalAction } from "../agent/journal.js";
 import { getOrderManager } from "../agent/order-manager.js";
 import {
   getPositionMonitor,
@@ -49,6 +50,7 @@ import {
   DMS_DEADLINE_MS,
   DMS_REFRESH_MS,
   getActiveExchange,
+  getExecutionMode,
   HOT_CACHE_CAP_BARS,
   isBbWatchdogEnabled,
   isDmsEnabled,
@@ -726,9 +728,12 @@ async function main(): Promise<void> {
     const addrShort = `${acctAddr.slice(0, 6)}…${acctAddr.slice(-4)}`;
 
     const exchangeName = activeExchange === "BB" ? "Bybit" : "Hyperliquid";
+    const executionMode = getExecutionMode();
     log.info(
       "startup",
-      `MODE  | LIVE TRADING — real orders on ${exchangeName}`,
+      executionMode === "paper"
+        ? `MODE  | PAPER EXECUTION — simulated fills, no private ${exchangeName} orders`
+        : `MODE  | LIVE TRADING — real orders on ${exchangeName}`,
     );
     log.info(
       "startup",
@@ -853,7 +858,16 @@ async function main(): Promise<void> {
   // MUST be wired BEFORE subscribeToPipeline + bootstrapPipelineFromStore so that
   // place_order actions emitted during bootstrap are handled (not lost).
   agent.onAction((action) => om.handleAction(action));
+  agent.onAction((action) =>
+    handleJournalAction(
+      action,
+      action.type === "log_journal"
+        ? agent.getCoinState(action.coin)
+        : undefined,
+    ),
+  );
   om.setAgentDispatch((coin, event) => agent.dispatch(coin, event));
+  om.setGlobalPauseCallback((reason) => agent.pauseAll(reason));
 
   // OrderManager → PositionMonitor: register position on fill (enables TUI display + trail stop)
   om.setPositionOpenCallback((params) => pm.openPosition(params));
@@ -876,6 +890,12 @@ async function main(): Promise<void> {
   // PositionMonitor → OrderManager: trail stop SL updates go directly to exchange
   pm.setUpdateStopCallback((parentOrderId, newSlPrice) =>
     om.modifySLPrice(parentOrderId, newSlPrice),
+  );
+
+  // PositionMonitor → OrderManager: partial closes must submit reduce-only
+  // exchange closes before local size is reduced.
+  pm.setPartialCloseCallback((positionId, closePct, closeSize) =>
+    om.handleAction({ type: "partial_close", positionId, closePct, closeSize }),
   );
 
   // Wire equity updates from PositionMonitor back into the agent for portfolio risk checks.

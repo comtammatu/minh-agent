@@ -14,15 +14,14 @@ As of `2026-06-04`, this branch implements:
 - Full-screen Ink TUI and Telegram operator commands
 - Backtest, optimization, walk-forward, and pipeline benchmark tooling
 - `dashboard/` Algo Trading Terminal (Vite + React + shadcn/ui) on `localhost:3030` with vital strip, Overview/Market/Journal pages (HTTP polling, no SSE)
-- `src/advisor/` optional LLM advisor stub (not wired to live runtime — see `src/advisor/index.ts`)
-- `src/memory/` trade memory foundation (structured PG + FTS + scoring; not yet wired to live runtime — see CLAUDE.md)
+- `src/memory/` trade memory foundation (structured PG + FTS + scoring; journal `exit` events with numeric `pnl` now write `trade_outcome`; no autonomous advisor decisions)
 - Dead-man's switch (HL native + BB watchdog), DMS policy tests
 
 This branch does **not** contain:
 
-- A fully wired LLM advisor (only the optional `src/advisor/` stub; historical plans in `docs/archive/plan/sprint-5.md` etc.)
+- A live LLM advisor module; historical advisor plans remain in `docs/archive/plan/sprint-5.md` and related roadmap docs.
 
-Several sprint docs in `docs/archive/` still describe planned or superseded systems (e.g. full embeddings/RAG, ict-smc rename) for roadmap or historical context. Treat active root docs (`README.md`, `TODOS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `docs/DESIGN.md`, `docs/CODEBASE_MAP.md`) + `.claude/rules/` as the source of truth. `src/memory/` is foundation-only (unwired).
+Several sprint docs in `docs/archive/` still describe planned or superseded systems (e.g. full embeddings/RAG, ict-smc rename) for roadmap or historical context. Treat active root docs (`README.md`, `TODOS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `docs/DESIGN.md`, `docs/CODEBASE_MAP.md`) + `.claude/rules/` as the source of truth. `src/memory/` is foundation-only storage/retrieval; the only live wiring is journal `exit` events with numeric `pnl` creating `trade_outcome` memories, not advisor-driven trading.
 
 ## Quick Start
 
@@ -36,7 +35,7 @@ bun run src/index.ts
 
 Recommended first run:
 
-- keep `PAPER_TRADE=true`
+- keep `EXECUTION_MODE=paper`
 - use `ACTIVE_EXCHANGE=HL` unless you are validating Bybit-specific behavior
 - configure Telegram only if you want remote operator commands
 

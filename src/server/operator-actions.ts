@@ -13,6 +13,9 @@ export interface OperatorFlattenResponse {
   ok: true;
   cancelled: number;
   closed: number;
+  verifiedFlat: boolean;
+  remainingPositions: number;
+  remainingOrders: number;
 }
 
 export interface OperatorPauseResponse {

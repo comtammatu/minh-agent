@@ -1,32 +1,35 @@
 /**
  * Hyperliquid Comprehensive Backtest — 15 coins × 4 TFs × ~3 months.
  *
- * Usage: bun run src/backtest/run-hl-backtest.ts [smc-sd]
+ * Usage: bun run scripts/backtest/run-hl-backtest.ts [smc-sd]
  * Legacy alias `all` is accepted and maps to `smc-sd`.
  *
  * Mirrors the Bybit runner but uses HL REST feed.
  * No PostgreSQL required — all data fetched directly into memory.
  */
 
+import { runBacktest } from "../../src/backtest/engine.js";
+import {
+  formatExpectancyReport,
+  formatMetricsSummary,
+} from "../../src/backtest/report.js";
+import type {
+  BacktestConfig,
+  StrategyType,
+  WalkForwardConfig,
+} from "../../src/backtest/types.js";
+import { walkForward } from "../../src/backtest/walk-forward.js";
 import {
   BACKTEST_SLIPPAGE_PCT,
   HTF_MAP,
   WF_STEP_MS,
   WF_TEST_WINDOW_MS,
   WF_TRAIN_WINDOW_MS,
-} from "../config.js";
-import { fetchCandlesBatched } from "../feed/rest.js";
-import { log } from "../lib/logger.js";
-import { formatPipelineStats } from "../strategy/diagnostics.js";
-import type { Candle, CandleInterval } from "../types.js";
-import { runBacktest } from "./engine.js";
-import { formatExpectancyReport, formatMetricsSummary } from "./report.js";
-import type {
-  BacktestConfig,
-  StrategyType,
-  WalkForwardConfig,
-} from "./types.js";
-import { walkForward } from "./walk-forward.js";
+} from "../../src/config.js";
+import { fetchCandlesBatched } from "../../src/feed/rest.js";
+import { log } from "../../src/lib/logger.js";
+import { formatPipelineStats } from "../../src/strategy/diagnostics.js";
+import type { Candle, CandleInterval } from "../../src/types.js";
 
 // ─── Configuration ─────────────────────────────────────────────────────────
 
@@ -129,7 +132,9 @@ async function fetchAllCandles(
   return result;
 }
 
-function printTradeDetails(trades: import("./types.js").BacktestTrade[]): void {
+function printTradeDetails(
+  trades: import("../../src/backtest/types.js").BacktestTrade[],
+): void {
   if (trades.length === 0) return;
 
   console.log(`\n=== TRADE DETAIL (${trades.length} trades) ===`);

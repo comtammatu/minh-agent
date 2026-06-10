@@ -8,6 +8,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { SIMULATED_ACCOUNT } from "../src/config.js";
 
 // ── Mock setup ───────────────────────────────────────────────────────────────
 
@@ -70,6 +71,7 @@ import {
   resetExchangePool,
 } from "../src/execution/exchange-pool.js";
 import { resetExchangeService } from "../src/execution/exchange-service.js";
+import { PaperExchangeService } from "../src/execution/paper-exchange-service.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -79,18 +81,46 @@ const SHARED_PK =
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 describe("ExchangePool", () => {
+  let origActiveExchange: string | undefined;
+  let origExecutionMode: string | undefined;
+  let origPaperTrade: string | undefined;
+  let origPrivateKey: string | undefined;
+  let origAccountAddress: string | undefined;
+  let origBybitApiKey: string | undefined;
+  let origBybitApiSecret: string | undefined;
+
   beforeEach(() => {
+    origActiveExchange = process.env.ACTIVE_EXCHANGE;
+    origExecutionMode = process.env.EXECUTION_MODE;
+    origPaperTrade = process.env.PAPER_TRADE;
+    origPrivateKey = process.env.PRIVATE_KEY;
+    origAccountAddress = process.env.ACCOUNT_ADDRESS;
+    origBybitApiKey = process.env.BYBIT_API_KEY;
+    origBybitApiSecret = process.env.BYBIT_API_SECRET;
     resetExchangePool();
     resetExchangeService();
     process.env.PRIVATE_KEY = SHARED_PK;
     delete process.env.ACCOUNT_ADDRESS;
     process.env.ACTIVE_EXCHANGE = "HL";
+    process.env.EXECUTION_MODE = "live";
+    delete process.env.PAPER_TRADE;
   });
 
   afterEach(() => {
-    delete process.env.PRIVATE_KEY;
-    delete process.env.ACCOUNT_ADDRESS;
-    delete process.env.ACTIVE_EXCHANGE;
+    if (origActiveExchange === undefined) delete process.env.ACTIVE_EXCHANGE;
+    else process.env.ACTIVE_EXCHANGE = origActiveExchange;
+    if (origExecutionMode === undefined) delete process.env.EXECUTION_MODE;
+    else process.env.EXECUTION_MODE = origExecutionMode;
+    if (origPaperTrade === undefined) delete process.env.PAPER_TRADE;
+    else process.env.PAPER_TRADE = origPaperTrade;
+    if (origPrivateKey === undefined) delete process.env.PRIVATE_KEY;
+    else process.env.PRIVATE_KEY = origPrivateKey;
+    if (origAccountAddress === undefined) delete process.env.ACCOUNT_ADDRESS;
+    else process.env.ACCOUNT_ADDRESS = origAccountAddress;
+    if (origBybitApiKey === undefined) delete process.env.BYBIT_API_KEY;
+    else process.env.BYBIT_API_KEY = origBybitApiKey;
+    if (origBybitApiSecret === undefined) delete process.env.BYBIT_API_SECRET;
+    else process.env.BYBIT_API_SECRET = origBybitApiSecret;
   });
 
   describe("single-wallet mode (HL)", () => {
@@ -149,6 +179,40 @@ describe("ExchangePool", () => {
       await pool.init();
       await pool.init(); // second call should be no-op
       expect(pool.getShared()).toBeTruthy();
+    });
+  });
+
+  describe("paper execution mode", () => {
+    it("initializes HL paper without a private key", async () => {
+      process.env.ACTIVE_EXCHANGE = "HL";
+      process.env.EXECUTION_MODE = "paper";
+      delete process.env.PRIVATE_KEY;
+
+      const pool = new ExchangePool();
+      await pool.init();
+
+      const svc = pool.getShared();
+      expect(svc).toBeInstanceOf(PaperExchangeService);
+      expect(svc.exchangeId).toBe("HL");
+      expect(svc.getWalletAddress()).toBe("paper");
+      expect(svc.getCachedAccountValue()).toBe(SIMULATED_ACCOUNT);
+    });
+
+    it("initializes BB paper without Bybit credentials", async () => {
+      process.env.ACTIVE_EXCHANGE = "BB";
+      process.env.EXECUTION_MODE = "paper";
+      delete process.env.PRIVATE_KEY;
+      delete process.env.BYBIT_API_KEY;
+      delete process.env.BYBIT_API_SECRET;
+
+      const pool = new ExchangePool();
+      await pool.init();
+
+      const svc = pool.getShared();
+      expect(svc).toBeInstanceOf(PaperExchangeService);
+      expect(svc.exchangeId).toBe("BB");
+      expect(await svc.getPositions()).toEqual([]);
+      expect(await svc.getOpenOrders()).toEqual([]);
     });
   });
 

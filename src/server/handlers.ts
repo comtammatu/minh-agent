@@ -3,7 +3,7 @@ import { getJournalEntries } from "../agent/journal.js";
 import type { JournalEntry, JournalEventType } from "../agent/types.js";
 import { getLiveMetrics } from "../analytics/metrics-service.js";
 import type { LiveMetrics } from "../analytics/types.js";
-import { isPaperMode } from "../config.js";
+import { getExecutionMode, isPaperMode } from "../config.js";
 import { log } from "../lib/logger.js";
 import type {
   DashboardAccountSnapshot,
@@ -329,6 +329,7 @@ export function createDashboardFetchHandler(
           },
           mode: {
             exchange: options.state.activeExchange,
+            executionMode: getExecutionMode(),
             paperTrade: isPaperMode(),
           },
           operator: {

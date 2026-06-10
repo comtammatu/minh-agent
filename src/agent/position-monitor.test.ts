@@ -578,6 +578,39 @@ describe("PositionMonitor", () => {
       expect(pos.slPrice).toBe(95);
     });
 
+    it("submits partial close callback before reducing local size", async () => {
+      const submitted: Array<{
+        positionId: string;
+        closePct: number;
+        closeSize: number;
+      }> = [];
+      pm.setPartialCloseCallback((positionId, closePct, closeSize) => {
+        submitted.push({ positionId, closePct, closeSize });
+      });
+      pm.openPosition({
+        positionId: "pos-1",
+        coin: "BTC",
+        side: "long",
+        entryPrice: 100,
+        size: 1.0,
+        slPrice: 95,
+        tpPrice: 110,
+        entryOrderId: "ord-1",
+        leverage: 10,
+      });
+
+      await pm.monitorPosition("pos-1", 108);
+
+      expect(submitted).toEqual([
+        {
+          positionId: "pos-1",
+          closePct: PARTIAL_CLOSE.firstClosePct,
+          closeSize: 0.5,
+        },
+      ]);
+      expect(pm.getPosition("pos-1")?.currentSize).toBeCloseTo(0.5, 2);
+    });
+
     it("returns hold for unknown position", async () => {
       const actions = await pm.monitorPosition("unknown", 100);
       expect(actions).toHaveLength(1);

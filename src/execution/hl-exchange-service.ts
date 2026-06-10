@@ -1,4 +1,3 @@
-// @ts-nocheck -- temporary for CI (S4 format exposed 'response possibly undefined' in HL REST/WS recovery paths); mirrors bybit handling, full guards later. Must be the very first line before any comment or code for tsc to honor it.
 /**
  * HLExchangeService — Hyperliquid-specific exchange service implementation.
  *
@@ -60,8 +59,6 @@ import { acquire } from "../feed/rate-limiter.js";
 import { info } from "../feed/rest.js";
 import { log } from "../lib/logger.js";
 import { is503, isRetryableExchangeError, withRetry } from "../lib/retry.js";
-
-// @ts-nocheck -- temporary for CI (S4 format exposed 'response possibly undefined' in HL REST/WS recovery paths); mirrors bybit handling, full guards later.
 
 function getExchangeStatusError(status: unknown): string | null {
   if (
@@ -235,6 +232,14 @@ export class HLExchangeService {
     }
   }
 
+  private requireExchange(): ExchangeClient {
+    this.ensureInit();
+    if (!this.exchange) {
+      throw new Error("HL exchange client not initialized");
+    }
+    return this.exchange;
+  }
+
   /** Get signing wallet address (agent wallet in agent mode, main wallet otherwise). */
   getWalletAddress(): string {
     return this.walletAddress;
@@ -296,7 +301,7 @@ export class HLExchangeService {
         : Math.max(1, Math.ceil(leverage));
     try {
       await acquire();
-      await this.exchange?.updateLeverage({
+      await this.requireExchange().updateLeverage({
         asset: assetId,
         isCross: true,
         leverage: lev,
@@ -375,7 +380,7 @@ export class HLExchangeService {
     const retryResult = await withRetry(
       async () => {
         await acquire();
-        const response = await this.exchange?.order({
+        const response = await this.requireExchange().order({
           orders: [
             {
               a: assetId,
@@ -509,7 +514,7 @@ export class HLExchangeService {
     const retryResult = await withRetry(
       async () => {
         await acquire();
-        const response = await this.exchange?.order({
+        const response = await this.requireExchange().order({
           orders: [
             {
               a: assetId,
@@ -610,7 +615,7 @@ export class HLExchangeService {
     const retryResult = await withRetry(
       async () => {
         await acquire();
-        const response = await this.exchange?.cancel({
+        const response = await this.requireExchange().cancel({
           cancels: [{ a: assetId, o: oid }],
         });
         const status: unknown = response.response.data.statuses[0];
@@ -700,8 +705,8 @@ export class HLExchangeService {
         await acquire();
         const response =
           timestampMs !== undefined
-            ? await this.exchange?.scheduleCancel({ time: timestampMs })
-            : await this.exchange?.scheduleCancel({});
+            ? await this.requireExchange().scheduleCancel({ time: timestampMs })
+            : await this.requireExchange().scheduleCancel({});
         if (response.status === "ok") {
           return {
             success: true as const,
@@ -772,7 +777,7 @@ export class HLExchangeService {
     const retryResult = await withRetry(
       async () => {
         await acquire();
-        const response = await this.exchange?.cancelByCloid({
+        const response = await this.requireExchange().cancelByCloid({
           cancels: [{ asset: assetId, cloid: cloid as `0x${string}` }],
         });
         const status: unknown = response.response.data.statuses[0];
@@ -882,7 +887,7 @@ export class HLExchangeService {
     const retryResult = await withRetry(
       async () => {
         await acquire();
-        await this.exchange?.modify({
+        await this.requireExchange().modify({
           oid,
           order: {
             a: assetId,

@@ -6,7 +6,7 @@ The agent layer is a state-machine orchestrator, not a stateless order router. `
 
 `PositionMonitor` owns the reconciliation loop and trailing-stop logic. The pure helpers decide trailing updates, partial closes, and missing-position detection, while `syncWithExchange()` handles account-equity refresh, fill sync, snapshot polling, and action execution (`src/agent/position-monitor.ts:98`, `src/agent/position-monitor.ts:186`, `src/agent/position-monitor.ts:434`, `src/agent/position-monitor.ts:457`, `src/agent/position-monitor.ts:498`, `src/agent/position-monitor.ts:519`). The critical operational safeguard is that `queryExchangePositions()` returns `null` on API failure and the monitor skips reconciliation for that cycle instead of assuming positions vanished (`src/agent/position-monitor.ts:58`, `src/agent/position-monitor.ts:84`, `src/agent/position-monitor.ts:514`).
 
-The exchange boundary is normalized through `IExchangeService` and a single-wallet `ExchangePool`. The pool chooses Bybit or Hyperliquid once at init, caches the active exchange, and returns one shared service instance for the whole process. That keeps exchange routing simple, but it also means exposure management lives above the exchange layer and must stay correct in the agent.
+The exchange boundary is normalized through `IExchangeService` and a single-wallet `ExchangePool`. The pool chooses Bybit or Hyperliquid once at init, caches the active exchange, and returns one shared service instance for the whole process. In `EXECUTION_MODE=paper`, the pool uses `PaperExchangeService`: no private key, no Bybit secret, no exchange order API, and immediate simulated fills at the submitted price. That keeps exchange routing simple, but it also means exposure management lives above the exchange layer and must stay correct in the agent.
 
 ## Failure modes and recovery
 
@@ -14,7 +14,7 @@ Duplicate or stuck entries are handled defensively. `TradingAgent.onSetup()` ign
 
 Exchange-mode mismatches are treated as real errors. Bybit live mode requires an initialized `ExchangePool`, while Hyperliquid retains a singleton fallback for pre-init scripts and tests (`src/execution/exchange-pool.ts:124`, `src/agent/position-monitor.ts:63`, `src/agent/position-monitor.ts:486`). This is a sensible compromise because Bybit paths appear less compatible with implicit fallback behavior.
 
-The biggest operational risk is still partial failure after an entry order exists. The system mitigates that by syncing submitted entry fills before reconciliation, restoring open positions from exchange snapshots at boot, and wiring callbacks before pipeline bootstrap so no early actions are dropped.
+The biggest operational risk is partial failure after an entry order exists. The system mitigates that by syncing submitted entry fills before reconciliation, restoring open positions from exchange snapshots at boot, wiring callbacks before pipeline bootstrap so no early actions are dropped, and fail-safe closing the affected position if protective SL/TP placement fails after an entry fill.
 
 ## Blast radius and safe change plan
 

@@ -1,5 +1,5 @@
 /**
- * Memory types — structured trade memory for advisor context.
+ * Memory types — structured trade memory for operator/research context.
  *
  * Sprint 6: Structured-first approach. No embeddings, no vector search.
  * Trading data has known dimensions (coin, TF, pattern, regime, side, PnL).

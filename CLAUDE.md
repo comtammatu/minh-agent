@@ -2,9 +2,9 @@
 
 Exchange-aware Bun trading runtime for Hyperliquid and Bybit.
 
-Live process = market data ingest → PostgreSQL + in-memory store → single `smc-sd` setup engine → trading agent → shared exchange execution → TUI + Telegram + browser dashboard.
+Live process = market data ingest → PostgreSQL + in-memory store → single `smc-sd` setup engine → trading agent → shared exchange execution → journal/memory foundation → TUI + Telegram + browser dashboard.
 
-`src/memory/` is a foundation (storage + scored retrieval) — not yet wired into the live runtime. `src/advisor/` is not part of this branch.
+`src/memory/` is a foundation (storage + scored retrieval) and receives closed-trade `trade_outcome` memories from journal `exit` events. There is no live `src/advisor/` module on this branch.
 
 ## Commands
 
@@ -53,7 +53,7 @@ Runtime: Bun · DB: PostgreSQL/TimescaleDB · UI: Ink TUI + Vite/React dashboard
 | `src/alert/telegram/` | Bot, commands, alert formatting |
 | `src/ui/` | Ink TUI dashboard, account/position views, sound |
 | `src/server/` | Bun HTTP server for the browser dashboard |
-| `src/memory/` | Trade memory foundation (not yet wired into live runtime) |
+| `src/memory/` | Trade memory foundation; journal exit outcomes write `trade_outcome` |
 | `src/lib/` | Cross-cutting helpers (`retry.ts`, `logger.ts`) |
 | `src/backtest/` | Replay engine, simulator, optimization, reporting, benchmarks |
 | `dashboard/` | React + Vite browser dashboard, served via `src/server/` |
@@ -84,7 +84,7 @@ Runtime: Bun · DB: PostgreSQL/TimescaleDB · UI: Ink TUI + Vite/React dashboard
 - **Strategy pipeline is pure, agent is not.** `strategy/` emits setups. `agent/` and `execution/` own side effects, retries, reconciliation, and state transitions.
 - **Coin selection is dynamic** (HL: top native perps + optional HIP-3; BB: own ranked list). Coins with active setups are intentionally not dropped mid-lifecycle.
 - **Candle persistence is hybrid** — hot window in memory, historical continuity in PG. Runtime loads from PG first, then gap-fills via REST.
-- **Paper mode is the safe default.** `.env.example` sets `PAPER_TRADE=true`. Live mode requires valid exchange credentials and should not be assumed.
+- **Paper mode is the safe default.** `.env.example` sets `EXECUTION_MODE=paper`. `PAPER_TRADE=false` is only a legacy alias when `EXECUTION_MODE` is unset. Live mode requires valid exchange credentials and should not be assumed.
 
 ## Rules (per-topic single source of truth)
 

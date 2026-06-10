@@ -12,7 +12,7 @@
 - Strategy runtime collapsed to one canonical engine path in `src/strategy/engine.ts`.
 - Agent / execution runtime keyed by `coin` only (no `strategyId` dimension).
 - Browser dashboard (`dashboard/` + `src/server/`) is wired into the runtime alongside the TUI and Telegram surfaces.
-- `src/memory/` is a trade-memory foundation (storage + scored retrieval, commit `ef441e6`) and is **not yet wired into the live runtime** — treat as feature-flagged off.
+- `src/memory/` is a trade-memory foundation (storage + scored retrieval, commit `ef441e6`). Journal `exit` events with numeric `pnl` now create `trade_outcome` memories. There is no live `src/advisor/` module on this branch.
 
 ### Docs hierarchy
 
@@ -22,7 +22,7 @@
 
 ### Research / diagnostics pointers
 
-- `bun run src/backtest/run-drilldown-diag.ts [coins]`
-- `bun run src/backtest/run-wf-universe-compare.ts [baseline] [subset]`
+- `bun run scripts/backtest/run-drilldown-diag.ts [coins]`
+- `bun run scripts/backtest/run-wf-universe-compare.ts [baseline] [subset]`
 - `bun run src/backtest/optimize.ts [trials] [coins]`
 - Historical decision log: `docs/archive/plan/decisions.md`

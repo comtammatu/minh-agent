@@ -1,7 +1,7 @@
 /**
  * Parameter optimizer — random search over PARAM_SCHEMA, evaluated via walk-forward.
  *
- * Usage: bun run src/backtest/optimize.ts [numTrials] [coins]
+ * Usage: bun run src/backtest/optimize.ts [numTrials] [coins] [--mode all|5m-only]
  *   numTrials: number of random parameter sets to evaluate (default: 200)
  *   coins:     comma-separated coin list (default: BTC,ETH,SOL)
  *
@@ -77,6 +77,16 @@ export interface HoldoutResult extends TrialResult {
   holdoutTradesByMode?: Record<string, number>;
 }
 
+export type OptimizerMode = "all" | "5m-only";
+
+export interface OptimizerCliArgs {
+  numTrials: number;
+  coins: string[];
+  mode: OptimizerMode;
+  timeframes: CandleInterval[];
+  disabledScanModes: string[];
+}
+
 /** Infer scan mode label from candle interval (used for breakdown reporting). */
 export function inferScanMode(interval: CandleInterval): string {
   if (interval === "15m") return "15m_drilldown";
@@ -90,6 +100,7 @@ export interface OptimizeRunResult {
   runId: string;
   coins: string[];
   numTrials: number;
+  mode: OptimizerMode;
   totalDurationMs: number;
   trials: TrialResult[];
   topN: HoldoutResult[];
@@ -458,6 +469,11 @@ async function writeTrialsToDB(
 // ─── Data Fetch ───────────────────────────────────────────────────────────
 
 const TIMEFRAMES: CandleInterval[] = ["5m", "15m", "1h", "4h"];
+const FIVE_MIN_ONLY_DISABLED_SCAN_MODES = [
+  "1h_same_tf",
+  "15m_drilldown",
+  "4h_poi",
+];
 
 const CANDLE_COUNTS: Record<CandleInterval, number> = {
   "1m": 500,
@@ -477,6 +493,50 @@ function computeExtraHTFs(tfs: CandleInterval[]): CandleInterval[] {
     if (htf !== tf && !set.has(htf)) extras.add(htf);
   }
   return [...extras];
+}
+
+export function parseOptimizerArgs(argv: string[]): OptimizerCliArgs {
+  const positional: string[] = [];
+  let mode: OptimizerMode = "all";
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--mode") {
+      const value = argv[i + 1];
+      if (value !== "all" && value !== "5m-only") {
+        throw new Error(`Unsupported optimizer mode: ${value ?? "(missing)"}`);
+      }
+      mode = value;
+      i++;
+      continue;
+    }
+    if (arg?.startsWith("--mode=")) {
+      const value = arg.slice("--mode=".length);
+      if (value !== "all" && value !== "5m-only") {
+        throw new Error(`Unsupported optimizer mode: ${value}`);
+      }
+      mode = value;
+      continue;
+    }
+    if (arg) positional.push(arg);
+  }
+
+  const numTrials = parseInt(positional[0] ?? "200", 10);
+  const coins = positional[1]?.split(",").filter(Boolean) ?? [
+    "BTC",
+    "ETH",
+    "SOL",
+  ];
+  const timeframes: CandleInterval[] = mode === "5m-only" ? ["5m"] : TIMEFRAMES;
+
+  return {
+    numTrials,
+    coins,
+    mode,
+    timeframes,
+    disabledScanModes:
+      mode === "5m-only" ? FIVE_MIN_ONLY_DISABLED_SCAN_MODES : [],
+  };
 }
 
 async function fetchAllCandles(
@@ -518,8 +578,8 @@ async function fetchAllCandles(
 // ─── Main ─────────────────────────────────────────────────────────────────
 
 async function main() {
-  const numTrials = parseInt(process.argv[2] ?? "200", 10);
-  const coins = process.argv[3]?.split(",") ?? ["BTC", "ETH", "SOL"];
+  const cli = parseOptimizerArgs(process.argv.slice(2));
+  const { numTrials, coins, mode, timeframes, disabledScanModes } = cli;
   const finalTopNCount = Math.min(10, Math.ceil(numTrials * 0.05));
   const candidateCount = Math.max(
     finalTopNCount,
@@ -538,14 +598,15 @@ async function main() {
   console.log(`  Run ID: ${runId}`);
   console.log(`  Coins: ${coins.join(", ")}`);
   console.log(`  Trials: ${numTrials}`);
+  console.log(`  Mode: ${mode}`);
   console.log(`  Holdout candidates: ${candidateCount}`);
   console.log(`  Final Top-N: ${finalTopNCount}`);
   console.log("=".repeat(60));
 
   // Step 1: Fetch candles
   log.info("optimizer", "Fetching candles from Bybit...");
-  const extraHTFs = computeExtraHTFs(TIMEFRAMES);
-  const allCandles = await fetchAllCandles(coins, TIMEFRAMES, extraHTFs);
+  const extraHTFs = computeExtraHTFs(timeframes);
+  const allCandles = await fetchAllCandles(coins, timeframes, extraHTFs);
 
   let totalCandles = 0;
   for (const [, series] of allCandles) totalCandles += series.length;
@@ -554,7 +615,7 @@ async function main() {
     process.exit(1);
   }
   // Warn if any coin failed to fetch — silent degradation guard
-  const expectedSeries = coins.length * (TIMEFRAMES.length + extraHTFs.length);
+  const expectedSeries = coins.length * (timeframes.length + extraHTFs.length);
   if (allCandles.size < expectedSeries) {
     log.warn(
       "optimizer",
@@ -583,11 +644,12 @@ async function main() {
   const BYBIT_COMMISSION_PCT = 0.00055;
   const baseConfig: BacktestConfig = {
     coins,
-    timeframes: TIMEFRAMES,
+    timeframes,
     initialCapital: 10_000,
     slippagePct: BACKTEST_SLIPPAGE_PCT,
     commissionPct: BYBIT_COMMISSION_PCT,
     strategy: "smc-sd",
+    ...(disabledScanModes.length > 0 ? { disabledScanModes } : {}),
   };
 
   const wfConfig: WalkForwardConfig = {
@@ -650,6 +712,7 @@ async function main() {
     runId,
     coins,
     numTrials,
+    mode,
     totalDurationMs: totalDuration,
     trials,
     topN: holdoutTopN,

@@ -5,47 +5,47 @@
  * to walk-forward OOS. Does NOT optimize parameters.
  *
  * Default runs:
- *   A) Baseline 10-coin universe (same list as run-drilldown-diag.ts)
+ *   A) Baseline 10-coin universe (same list as scripts/backtest/run-drilldown-diag.ts)
  *   B) Subset: BTC, ETH, SOL only (Tier-1 liquidity — matches Top-3 in raw reports)
  *
  * Usage:
- *   bun run src/backtest/run-wf-universe-compare.ts [baselineCoins] [subsetCoins]
+ *   bun run scripts/backtest/run-wf-universe-compare.ts [baselineCoins] [subsetCoins]
  *
  * Env:
  *   WF_COMPARE_EXTENDED_HISTORY=1 — longer 1h/4h/5m/15m pulls (more WF coverage).
  *   WF_COMPARE_STRATEGY_PARAMS='{"SMC_MIN_RR":2}' — JSON overrides (else config defaults).
  *
  * Examples:
- *   bun run src/backtest/run-wf-universe-compare.ts
- *   WF_COMPARE_EXTENDED_HISTORY=1 bun run src/backtest/run-wf-universe-compare.ts
- *   bun run src/backtest/run-wf-universe-compare.ts \
+ *   bun run scripts/backtest/run-wf-universe-compare.ts
+ *   WF_COMPARE_EXTENDED_HISTORY=1 bun run scripts/backtest/run-wf-universe-compare.ts
+ *   bun run scripts/backtest/run-wf-universe-compare.ts \
  *     BTC,ETH,SOL,AVAX,LINK,ARB,APT,BNB,DOT,ATOM \
  *     BTC,ETH,SOL,AVAX,LINK,BNB
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { inferScanMode } from "../../src/backtest/optimize.js";
+import type {
+  BacktestConfig,
+  StrategyParams,
+  WalkForwardConfig,
+} from "../../src/backtest/types.js";
+import { walkForward } from "../../src/backtest/walk-forward.js";
 import {
   BACKTEST_SLIPPAGE_PCT,
   HTF_MAP,
   WF_STEP_MS,
   WF_TEST_WINDOW_MS,
   WF_TRAIN_WINDOW_MS,
-} from "../config.js";
-import { fetchBybitCandlesBatched } from "../feed/bybit/bybit-rest.js";
-import { log } from "../lib/logger.js";
-import type { Candle, CandleInterval } from "../types.js";
-import { inferScanMode } from "./optimize.js";
-import type {
-  BacktestConfig,
-  StrategyParams,
-  WalkForwardConfig,
-} from "./types.js";
-import { walkForward } from "./walk-forward.js";
+} from "../../src/config.js";
+import { fetchBybitCandlesBatched } from "../../src/feed/bybit/bybit-rest.js";
+import { log } from "../../src/lib/logger.js";
+import type { Candle, CandleInterval } from "../../src/types.js";
 
 const TIMEFRAMES: CandleInterval[] = ["5m", "15m", "1h", "4h"];
 
-/** Same default 10-coin set as run-drilldown-diag.ts */
+/** Same default 10-coin set as scripts/backtest/run-drilldown-diag.ts */
 export const WF_COMPARE_BASELINE_10 = [
   "BTC",
   "ETH",
@@ -72,7 +72,7 @@ export const WF_COMPARE_SUBSET_MID6 = [
   "BNB",
 ] as const;
 
-/** Default: matches run-drilldown-diag.ts (enough 5m/15m for cascade + 5k HTF). */
+/** Default: matches scripts/backtest/run-drilldown-diag.ts (enough 5m/15m for cascade + 5k HTF). */
 const CANDLE_COUNTS_DEFAULT: Record<CandleInterval, number> = {
   "1m": 500,
   "5m": 8_640,

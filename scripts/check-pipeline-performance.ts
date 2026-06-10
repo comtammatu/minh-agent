@@ -57,7 +57,7 @@ async function main(): Promise<void> {
 
   const args = [
     "run",
-    "src/backtest/run-pipeline-benchmark.ts",
+    "scripts/backtest/run-pipeline-benchmark.ts",
     "--coins",
     PIPELINE_BENCH_CI_COINS.join(","),
     "--tfs",

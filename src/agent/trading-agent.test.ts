@@ -348,6 +348,45 @@ describe("handleInPosition", () => {
     expect(result.nextState).toBe("EXITING");
   });
 
+  it("includes setup context on exit journal actions when available", () => {
+    const setup = makeSetup({
+      id: "BTC|5m|smc-sd|long",
+      interval: "5m",
+      confidence: 0.82,
+    });
+    const ctx = makeCoinCtx({
+      state: "IN_POSITION",
+      positionId: "pos-1",
+      activeSetup: setup,
+    });
+    const result = handleInPosition(
+      ctx,
+      {
+        type: "tp_hit",
+        positionId: "pos-1",
+        closePrice: 52_000,
+        pnl: 200,
+      },
+      makeGlobal(),
+    );
+
+    const journalAction = result.actions.find(
+      (action) => action.type === "log_journal",
+    );
+    expect(journalAction).toMatchObject({
+      type: "log_journal",
+      eventType: "exit",
+      coin: "BTC",
+      details: {
+        setupId: "BTC|5m|smc-sd|long",
+        interval: "5m",
+        side: "long",
+        confidence: 0.82,
+        pattern: "smc-sd",
+      },
+    });
+  });
+
   it("transitions to EXITING on trail_stop_hit", () => {
     const ctx = makeCoinCtx({ state: "IN_POSITION", positionId: "pos-1" });
     const result = handleInPosition(

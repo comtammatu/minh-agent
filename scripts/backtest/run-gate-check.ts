@@ -1,7 +1,7 @@
 /**
  * Expectancy Gate Check — run walk-forward validation on real data.
  *
- * Usage: bun run src/backtest/run-gate-check.ts
+ * Usage: bun run scripts/backtest/run-gate-check.ts
  *
  * Steps:
  *   1. Download historical candles (if not already in PG)
@@ -14,26 +14,32 @@
  */
 
 import {
+  BacktestDataManager,
+  computeHTFIntervals,
+  computeHTFWarmupMs,
+} from "../../src/backtest/data-manager.js";
+import { runBacktest } from "../../src/backtest/engine.js";
+import {
+  formatExpectancyReport,
+  formatMetricsSummary,
+} from "../../src/backtest/report.js";
+import type {
+  BacktestConfig,
+  WalkForwardConfig,
+} from "../../src/backtest/types.js";
+import { walkForward } from "../../src/backtest/walk-forward.js";
+import {
   BACKTEST_COMMISSION_PCT,
   BACKTEST_SLIPPAGE_PCT,
   WF_STEP_MS,
   WF_TEST_WINDOW_MS,
   WF_TRAIN_WINDOW_MS,
-} from "../config.js";
-import { sql } from "../db/connection.js";
-import { runMigrations } from "../db/migrate.js";
-import { log } from "../lib/logger.js";
-import { formatPipelineStats } from "../strategy/diagnostics.js";
-import type { CandleInterval } from "../types.js";
-import {
-  BacktestDataManager,
-  computeHTFIntervals,
-  computeHTFWarmupMs,
-} from "./data-manager.js";
-import { runBacktest } from "./engine.js";
-import { formatExpectancyReport, formatMetricsSummary } from "./report.js";
-import type { BacktestConfig, WalkForwardConfig } from "./types.js";
-import { walkForward } from "./walk-forward.js";
+} from "../../src/config.js";
+import { sql } from "../../src/db/connection.js";
+import { runMigrations } from "../../src/db/migrate.js";
+import { log } from "../../src/lib/logger.js";
+import { formatPipelineStats } from "../../src/strategy/diagnostics.js";
+import type { CandleInterval } from "../../src/types.js";
 
 // ─── Configuration ─────────────────────────────────────────────────────────
 

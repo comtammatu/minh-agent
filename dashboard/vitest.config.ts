@@ -17,6 +17,6 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: path.resolve(rootDir, "./src/vitest.setup.ts"),
     globals: true,
-    include: ["src/**/*.browser.tsx"],
+    include: ["src/**/*.vitest.tsx"],
   },
 });

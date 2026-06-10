@@ -84,7 +84,12 @@ export type AgentAction =
   | { type: "cancel_order"; orderId: string; reason: string }
   | { type: "close_position"; positionId: string; reason: string }
   | { type: "update_stop"; positionId: string; newStopPrice: number }
-  | { type: "partial_close"; positionId: string; closePct: number }
+  | {
+      type: "partial_close";
+      positionId: string;
+      closePct: number;
+      closeSize?: number;
+    }
   | {
       type: "log_journal";
       eventType: string;

@@ -6,6 +6,7 @@
  */
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
+import type { NewTradeMemory } from "../memory/types.js";
 
 // ── DB Mock ─────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,8 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 let allSqlCalls: Array<{ strings: string[]; values: unknown[] }> = [];
 let sqlMockResult: unknown[] = [];
 let sqlShouldThrow = false;
+let memoryInsertCalls: NewTradeMemory[] = [];
+let memoryShouldThrow = false;
 
 /** Get all interpolated values across all sql calls in a test. */
 function allInterpolatedValues(): unknown[] {
@@ -57,6 +60,15 @@ mock.module("../lib/logger.js", () => ({
   },
 }));
 
+mock.module("../memory/index.js", () => ({
+  insertMemory: (mem: NewTradeMemory) => {
+    memoryInsertCalls.push(mem);
+    return memoryShouldThrow
+      ? Promise.reject(new Error("memory insert failed"))
+      : Promise.resolve(1);
+  },
+}));
+
 import {
   getDailySummary,
   getJournalEntries,
@@ -71,6 +83,8 @@ beforeEach(() => {
   allSqlCalls = [];
   sqlMockResult = [];
   sqlShouldThrow = false;
+  memoryInsertCalls = [];
+  memoryShouldThrow = false;
 });
 
 // ── logJournalEntry ─────────────────────────────────────────────────────────
@@ -115,6 +129,66 @@ describe("logJournalEntry", () => {
     // Should NOT throw — errors are caught internally
     await logJournalEntry("exit", "ETH", { pnl: 42.5 }, "EXITING");
     // No exception = pass
+  });
+
+  it("stores exit journal events with numeric pnl as trade_outcome memory", async () => {
+    await logJournalEntry(
+      "exit",
+      "BTC",
+      {
+        pnl: 125,
+        realizedPnlR: 1.25,
+        side: "long",
+        interval: "5m",
+        setupId: "BTC|5m|smc-sd|long",
+        pattern: "smc-sd",
+        positionId: "pos-1",
+        reason: "tp_hit",
+        confidence: 0.82,
+        regime: "BULL",
+        thesisSnapshot: { displacement: true },
+      },
+      "EXITING",
+    );
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(memoryInsertCalls).toHaveLength(1);
+    expect(memoryInsertCalls[0]).toMatchObject({
+      category: "trade_outcome",
+      coin: "BTC",
+      timeframe: "5m",
+      pattern: "smc-sd",
+      regime: "BULL",
+      side: "long",
+      pnlR: 1.25,
+      confidence: 0.82,
+    });
+    expect(memoryInsertCalls[0]?.content).toContain("Closed BTC long");
+    expect(memoryInsertCalls[0]?.metadata).toMatchObject({
+      eventType: "exit",
+      coin: "BTC",
+      pnl: 125,
+      pnlR: 1.25,
+      setupId: "BTC|5m|smc-sd|long",
+      positionId: "pos-1",
+      exitReason: "tp_hit",
+      thesisSnapshot: { displacement: true },
+    });
+  });
+
+  it("does not store exit memory when pnl is missing", async () => {
+    await logJournalEntry("exit", "BTC", { reason: "tp_hit" }, "EXITING");
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(memoryInsertCalls).toHaveLength(0);
+  });
+
+  it("does not throw when fire-and-forget memory insert fails", async () => {
+    memoryShouldThrow = true;
+    await logJournalEntry("exit", "BTC", { pnl: 12 }, "EXITING");
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(memoryInsertCalls).toHaveLength(1);
   });
 });
 

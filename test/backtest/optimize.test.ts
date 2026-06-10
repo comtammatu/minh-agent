@@ -14,6 +14,7 @@ import {
   formatConsoleTable,
   generateTrials,
   type HoldoutResult,
+  parseOptimizerArgs,
   runTrial,
   scoreOosCandidate,
   selectTopN,
@@ -123,6 +124,26 @@ const wfConfig: WalkForwardConfig = {
 // ─── Tests ────────────────────────────────────────────────────────────────
 
 describe("optimize", () => {
+  test("parseOptimizerArgs keeps positional defaults", () => {
+    const parsed = parseOptimizerArgs(["50", "BTC,ETH"]);
+    expect(parsed.numTrials).toBe(50);
+    expect(parsed.coins).toEqual(["BTC", "ETH"]);
+    expect(parsed.mode).toBe("all");
+    expect(parsed.timeframes).toEqual(["5m", "15m", "1h", "4h"]);
+    expect(parsed.disabledScanModes).toEqual([]);
+  });
+
+  test("parseOptimizerArgs supports 5m-only mode", () => {
+    const parsed = parseOptimizerArgs(["50", "BTC,ETH", "--mode=5m-only"]);
+    expect(parsed.mode).toBe("5m-only");
+    expect(parsed.timeframes).toEqual(["5m"]);
+    expect(parsed.disabledScanModes).toEqual([
+      "1h_same_tf",
+      "15m_drilldown",
+      "4h_poi",
+    ]);
+  });
+
   // Test 1: generateTrials produces correct number of param sets
   test("generateTrials produces correct count", () => {
     const trials = generateTrials(PARAM_SCHEMA, 50);

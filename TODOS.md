@@ -92,7 +92,7 @@ Planning note:
 
 **Status:** DIAGNOSED 2026-04-12. Root cause: 5m FVG-only entry requirement (8,703 kills), CHoCH gate (1,293 kills), short TTL (907 expirations). See `docs/archive/plan/decisions.md` "Drilldown Cascade Diagnostic Results".
 
-**Diagnostic tool:** `src/backtest/run-drilldown-diag.ts`
+**Diagnostic tool:** `scripts/backtest/run-drilldown-diag.ts`
 
 ### [DONE] Fix Drilldown 5m Entry Bottleneck — F1-F4 applied 2026-04-12
 

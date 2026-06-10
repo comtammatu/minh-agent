@@ -77,6 +77,7 @@ export interface BacktestTrade {
   side: SignalSide;
   patternType: PatternType;
   confluenceGrade: ConfluenceGrade | null;
+  confidence?: number;
 
   entryPrice: number;
   exitPrice: number; // weighted average across all partial closes

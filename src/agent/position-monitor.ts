@@ -250,6 +250,14 @@ export class PositionMonitor {
   private onUpdateStop:
     | ((parentOrderId: string, newSlPrice: number) => void)
     | null = null;
+  /** Callback to submit partial close on exchange via OrderManager. */
+  private onPartialClose:
+    | ((
+        positionId: string,
+        closePct: number,
+        closeSize: number,
+      ) => Promise<void> | void)
+    | null = null;
   /** Callback to update account equity on TradingAgent. */
   private onEquityUpdate: ((equity: number) => void) | null = null;
   /** Cached exchange position snapshots from last syncWithExchange (TUI reuse — avoids duplicate API calls). */
@@ -267,6 +275,17 @@ export class PositionMonitor {
     fn: (parentOrderId: string, newSlPrice: number) => void,
   ): void {
     this.onUpdateStop = fn;
+  }
+
+  /** Set the callback for reduce-only partial closes via OrderManager. */
+  setPartialCloseCallback(
+    fn: (
+      positionId: string,
+      closePct: number,
+      closeSize: number,
+    ) => Promise<void> | void,
+  ): void {
+    this.onPartialClose = fn;
   }
 
   /** Set the callback for updating account equity used by portfolio risk checks. */
@@ -432,10 +451,12 @@ export class PositionMonitor {
           pos.partialClosesFired.push(levelIdx);
         }
         const closeSize = pos.currentSize * action.closePct;
+        await this.onPartialClose?.(pos.positionId, action.closePct, closeSize);
         pos.currentSize -= closeSize;
         if (action.newSlPrice != null) {
           // null and undefined both excluded
           pos.slPrice = action.newSlPrice;
+          this.onUpdateStop?.(pos.entryOrderId, action.newSlPrice);
         }
         log.info(
           "position-monitor",

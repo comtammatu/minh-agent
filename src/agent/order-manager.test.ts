@@ -17,7 +17,10 @@ mock.module("../db/connection.js", () => {
     return Promise.resolve(next ?? []);
   };
   return {
-    sql: Object.assign(sqlTag, { end: () => Promise.resolve() }),
+    sql: Object.assign(sqlTag, {
+      end: () => Promise.resolve(),
+      json: (value: unknown) => value,
+    }),
   };
 });
 
@@ -25,13 +28,15 @@ mock.module("../db/connection.js", () => {
 let mockOrderSuccess = true;
 let mockCancelSuccess = true;
 let mockTriggerSuccess = true;
+let mockPlaceOrderParams: PlaceOrderParams[] = [];
 
 mock.module("../execution/hl-exchange-service.js", () => ({
   getHLExchangeService: () => ({
     getCachedAccountValue: () => 10_000,
     setLeverage: () => Promise.resolve(),
-    placeOrder: () =>
-      Promise.resolve(
+    placeOrder: (params: PlaceOrderParams) => {
+      mockPlaceOrderParams.push(params);
+      return Promise.resolve(
         mockOrderSuccess
           ? {
               success: true,
@@ -49,7 +54,8 @@ mock.module("../execution/hl-exchange-service.js", () => ({
               status: null,
               error: "Mock rejection",
             },
-      ),
+      );
+    },
     placeTrigger: () =>
       Promise.resolve(
         mockTriggerSuccess
@@ -67,7 +73,7 @@ mock.module("../execution/hl-exchange-service.js", () => ({
               avgPx: null,
               totalSz: null,
               status: null,
-              error: "Mock trigger fail",
+              error: "minimum mock trigger fail",
             },
       ),
     cancelByOid: () =>
@@ -127,6 +133,7 @@ import type {
   ExchangePool,
   IExchangeService,
 } from "../execution/exchange-pool.js";
+import type { PlaceOrderParams } from "../execution/exchange-service.js";
 import {
   generateCloid,
   OrderManager,
@@ -220,6 +227,7 @@ describe("OrderManager", () => {
     mockOrderSuccess = true;
     mockCancelSuccess = true;
     mockTriggerSuccess = true;
+    mockPlaceOrderParams = [];
     mockSqlResponses = [];
     om = new OrderManager();
     dispatchedEvents = [];
@@ -532,6 +540,35 @@ describe("OrderManager", () => {
       expect(dispatchedEvents).toHaveLength(1); // still dispatches fill
     });
 
+    it("pauses and submits reduce-only close when protective trigger placement fails", async () => {
+      let pausedReason: string | null = null;
+      om.setGlobalPauseCallback((reason) => {
+        pausedReason = reason;
+      });
+      mockTriggerSuccess = false;
+      const order = makeOrder({
+        status: "submitted",
+        coin: "BTC",
+        side: "long",
+        slPrice: 49_000,
+        tpPrice: 52_000,
+      });
+      injectOrder(om, order);
+
+      await om.onOrderFilled(order.id, 50_000, 0.1);
+
+      expect(pausedReason).toBe("protective_order_failed:sl,tp");
+      expect(mockPlaceOrderParams.at(-1)).toMatchObject({
+        coin: "BTC",
+        side: "short",
+        type: "market",
+        size: 0.1,
+        reduceOnly: true,
+      });
+      expect(om.getTriggerOrders(order.id)).toHaveLength(0);
+      mockTriggerSuccess = true;
+    });
+
     it("is no-op for unknown order", async () => {
       await om.onOrderFilled("unknown-id", 50000, 0.1);
       expect(dispatchedEvents).toHaveLength(0);
@@ -787,6 +824,33 @@ describe("OrderManager", () => {
         eventType: "test",
         coin: "BTC",
         details: {},
+      });
+    });
+
+    it("submits reduce-only market order for partial_close actions", async () => {
+      const order = makeOrder({
+        status: "filled",
+        side: "long",
+        fillPrice: 50_000,
+        fillSize: 2,
+        size: 2,
+        positionId: "pos-1",
+      });
+      injectOrder(om, order);
+
+      await om.handleAction({
+        type: "partial_close",
+        positionId: "pos-1",
+        closePct: 0.25,
+        closeSize: 0.5,
+      });
+
+      expect(mockPlaceOrderParams.at(-1)).toMatchObject({
+        coin: "BTC",
+        side: "short",
+        type: "market",
+        size: 0.5,
+        reduceOnly: true,
       });
     });
   });

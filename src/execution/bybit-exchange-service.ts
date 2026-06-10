@@ -1,4 +1,3 @@
-// @ts-nocheck -- temporary for CI (S4 format + strictNull surfaced 20+ 'resp possibly undefined' in Bybit I/O recovery/edge paths after optional client/responses); full audit+guards in follow-up. See task contract. (must be first line)
 /**
  * BybitExchangeService — Bybit linear perp implementation of IExchangeService.
  *
@@ -238,6 +237,14 @@ export class BybitExchangeService {
     }
   }
 
+  private requireClient(): RestClientV5 {
+    this.ensureInit();
+    if (!this.client) {
+      throw new Error("Bybit client not initialized");
+    }
+    return this.client;
+  }
+
   /** Normalize coin name to Bybit linear symbol. */
   private toSymbol(coin: string): string {
     return `${coin}USDT`;
@@ -291,7 +298,7 @@ export class BybitExchangeService {
       bbParams.sizeUsd > 0
     ) {
       try {
-        const tickerResp = await this.client?.getTickers({
+        const tickerResp = await this.requireClient().getTickers({
           category: "linear",
           symbol,
         });
@@ -399,7 +406,7 @@ export class BybitExchangeService {
 
     try {
       await acquireExec();
-      const resp = await this.client?.submitOrder(submitParams);
+      const resp = await this.requireClient().submitOrder(submitParams);
 
       if (resp.retCode !== 0) {
         const errMsg = resp.retMsg ?? `Bybit error code ${resp.retCode}`;
@@ -477,7 +484,7 @@ export class BybitExchangeService {
     for (let i = 0; i < maxAttempts; i++) {
       if (i > 0) await new Promise((r) => setTimeout(r, intervalMs));
       try {
-        const resp = await this.client?.getHistoricOrders({
+        const resp = await this.requireClient().getHistoricOrders({
           category: "linear",
           symbol,
           orderId,
@@ -521,7 +528,7 @@ export class BybitExchangeService {
 
     try {
       await acquireExec();
-      const resp = await this.client?.cancelOrder({
+      const resp = await this.requireClient().cancelOrder({
         category: "linear",
         symbol,
         orderId,
@@ -576,7 +583,7 @@ export class BybitExchangeService {
 
     try {
       await acquireExec();
-      const resp = await this.client?.cancelOrder({
+      const resp = await this.requireClient().cancelOrder({
         category: "linear",
         symbol,
         orderLinkId: cloid,
@@ -631,7 +638,7 @@ export class BybitExchangeService {
       | APIResponseV3WithTime<CategoryCursorListV5<PositionV5[]>>
       | undefined;
     try {
-      resp = await this.client?.getPositionInfo({
+      resp = await this.requireClient().getPositionInfo({
         category: "linear",
         settleCoin: "USDT",
       });
@@ -707,7 +714,7 @@ export class BybitExchangeService {
 
     try {
       await acquireExec();
-      const resp = await this.client?.getActiveOrders({
+      const resp = await this.requireClient().getActiveOrders({
         category: "linear",
         settleCoin: "USDT",
       });
@@ -762,7 +769,7 @@ export class BybitExchangeService {
     this.ensureInit();
 
     try {
-      const resp = await this.client?.getWalletBalance({
+      const resp = await this.requireClient().getWalletBalance({
         accountType: "UNIFIED",
       });
 
@@ -854,7 +861,7 @@ export class BybitExchangeService {
 
     try {
       await acquireExec();
-      const resp = await this.client?.cancelAllOrders({
+      const resp = await this.requireClient().cancelAllOrders({
         category: "linear",
         settleCoin: "USDT",
       });
@@ -910,7 +917,7 @@ export class BybitExchangeService {
 
     const symbol = this.toSymbol(coin);
     try {
-      const resp = await this.client?.getRiskLimit({
+      const resp = await this.requireClient().getRiskLimit({
         category: "linear",
         symbol,
       });
@@ -981,7 +988,7 @@ export class BybitExchangeService {
 
     try {
       await acquireExec();
-      const resp = await this.client?.setLeverage({
+      const resp = await this.requireClient().setLeverage({
         category: "linear",
         symbol,
         buyLeverage: String(lev),
@@ -1091,7 +1098,7 @@ export class BybitExchangeService {
       };
 
       await acquireExec();
-      const resp = await this.client?.setTradingStop(setParams);
+      const resp = await this.requireClient().setTradingStop(setParams);
 
       if (resp.retCode !== 0) {
         const errMsg =
@@ -1203,7 +1210,7 @@ export class BybitExchangeService {
   }): Promise<{ avgPx: number; totalSz: number; isFilled?: boolean } | null> {
     const symbol = this.toSymbol(params.coin);
     try {
-      const resp = await this.client?.getHistoricOrders({
+      const resp = await this.requireClient().getHistoricOrders({
         category: "linear",
         symbol,
         ...(params.orderLinkId ? { orderLinkId: params.orderLinkId } : {}),

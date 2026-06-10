@@ -7,9 +7,8 @@ This directory holds documentation that is still useful for rationale, experimen
 - `plan/` — sprint plans, decision logs, and superseded implementation roadmaps
 - `spec/` — older architecture and future-system design docs
 - `ref/` — reference material captured during earlier design passes
-- `external/` — vendor or external documentation snapshots kept for offline lookup
-- `oracle-data/` — generated static-analysis artifacts used during earlier codebase mapping
-- `graph.html` — generated import graph viewer
+- `external/` — pointers for vendor or external documentation snapshots; large generated copies are fetched on demand
+- `oracle-data/` — summarized static-analysis history from earlier codebase mapping; raw generated JSON is not tracked
 
 ## Usage
 

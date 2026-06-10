@@ -5,13 +5,27 @@
  * Lives in agent/ because it orchestrates I/O (OrderManager + PositionMonitor).
  */
 
+import { getExchangePool } from "../execution/exchange-pool.js";
 import { getOrderManager } from "./order-manager.js";
-import { getPositionMonitor } from "./position-monitor.js";
+import {
+  getPositionMonitor,
+  queryExchangePositions,
+} from "./position-monitor.js";
 import { getAgent } from "./trading-agent.js";
+import type { AgentAction } from "./types.js";
 
 export interface CloseAllResult {
   cancelled: number;
   closed: number;
+  verifiedFlat: boolean;
+  remainingPositions: number;
+  remainingOrders: number;
+}
+
+export interface CloseAllVerification {
+  remainingPositions: number;
+  remainingOrders: number;
+  exchangeVerified: boolean;
 }
 
 /** Injectable deps for testing without mock.module (avoids global mock leaks). */
@@ -20,13 +34,73 @@ export interface CloseAllDeps {
   om: {
     getOrders(): Map<string, { id: string; status: string }>;
     cancelOrder(id: string, reason: string): Promise<void>;
-    handleAction(action: {
-      type: string;
-      positionId: string;
-      reason: string;
-    }): Promise<void>;
+    handleAction(action: AgentAction): Promise<void>;
   };
   pm: { getPositions(): Map<string, { positionId: string; coin: string }> };
+  verifyFlat?: () => Promise<CloseAllVerification>;
+}
+
+function countLocalOpenOrders(
+  orders: Map<string, { id: string; status: string }>,
+): number {
+  let count = 0;
+  for (const [, order] of orders) {
+    if (order.status === "pending" || order.status === "submitted") {
+      count++;
+    }
+  }
+  return count;
+}
+
+function localVerification(
+  om: CloseAllDeps["om"],
+  pm: CloseAllDeps["pm"],
+): CloseAllVerification {
+  return {
+    remainingPositions: pm.getPositions().size,
+    remainingOrders: countLocalOpenOrders(om.getOrders()),
+    exchangeVerified: false,
+  };
+}
+
+async function exchangeVerification(
+  om: CloseAllDeps["om"],
+  pm: CloseAllDeps["pm"],
+): Promise<CloseAllVerification> {
+  let exchangeVerified = true;
+  let remainingPositions = 0;
+  let remainingOrders = 0;
+
+  const positions = await queryExchangePositions();
+  if (positions === null) {
+    exchangeVerified = false;
+    remainingPositions = pm.getPositions().size;
+  } else {
+    remainingPositions = positions.filter(
+      (pos) => Math.abs(pos.size) > 0,
+    ).length;
+  }
+
+  try {
+    const pool = getExchangePool();
+    if (!pool.isInitialized()) {
+      exchangeVerified = false;
+      remainingOrders = countLocalOpenOrders(om.getOrders());
+    } else {
+      const orders = await pool.getShared().getOpenOrders();
+      if (orders === null) {
+        exchangeVerified = false;
+        remainingOrders = countLocalOpenOrders(om.getOrders());
+      } else {
+        remainingOrders = orders.length;
+      }
+    }
+  } catch {
+    exchangeVerified = false;
+    remainingOrders = countLocalOpenOrders(om.getOrders());
+  }
+
+  return { remainingPositions, remainingOrders, exchangeVerified };
 }
 
 /**
@@ -69,5 +143,20 @@ export async function closeAllPositions(
     closed++;
   }
 
-  return { cancelled, closed };
+  const verification = deps?.verifyFlat
+    ? await deps.verifyFlat()
+    : deps
+      ? localVerification(om, pm)
+      : await exchangeVerification(om, pm);
+
+  return {
+    cancelled,
+    closed,
+    verifiedFlat:
+      verification.exchangeVerified &&
+      verification.remainingPositions === 0 &&
+      verification.remainingOrders === 0,
+    remainingPositions: verification.remainingPositions,
+    remainingOrders: verification.remainingOrders,
+  };
 }

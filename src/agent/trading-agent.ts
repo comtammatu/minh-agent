@@ -314,6 +314,7 @@ export function handleInPosition(
     event.type === "trail_stop_hit" ||
     event.type === "position_closed"
   ) {
+    const setup = ctx.activeSetup;
     return {
       nextState: "EXITING",
       actions: [
@@ -322,6 +323,15 @@ export function handleInPosition(
           closePrice: event.closePrice,
           pnl: event.pnl,
           reason: event.type,
+          ...(setup
+            ? {
+                setupId: setup.id,
+                interval: setup.interval,
+                side: setup.side,
+                confidence: setup.confidence,
+                pattern: setup.type,
+              }
+            : {}),
         }),
       ],
     };

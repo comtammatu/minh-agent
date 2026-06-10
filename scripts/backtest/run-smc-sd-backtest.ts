@@ -1,19 +1,19 @@
 /**
  * SMC+SD Quick Backtest — P0+P1 validation.
  *
- * Usage: bun run src/backtest/run-smc-sd-backtest.ts
+ * Usage: bun run scripts/backtest/run-smc-sd-backtest.ts
  *
  * Fetches real HL data (BTC/ETH/SOL, 1h+4h, 1000 candles each),
  * runs smc-sd strategy through the backtest engine, prints metrics.
  * No PostgreSQL required.
  */
 
-import { fetchCandlesBatched } from "../feed/rest.js";
-import { log } from "../lib/logger.js";
-import type { Candle, CandleInterval } from "../types.js";
-import { runBacktest } from "./engine.js";
-import { formatMetricsSummary } from "./report.js";
-import type { BacktestConfig } from "./types.js";
+import { runBacktest } from "../../src/backtest/engine.js";
+import { formatMetricsSummary } from "../../src/backtest/report.js";
+import type { BacktestConfig } from "../../src/backtest/types.js";
+import { fetchCandlesBatched } from "../../src/feed/rest.js";
+import { log } from "../../src/lib/logger.js";
+import type { Candle, CandleInterval } from "../../src/types.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 

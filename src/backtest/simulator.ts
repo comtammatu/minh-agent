@@ -521,6 +521,7 @@ export class TradeSimulator {
       side: pos.side,
       patternType: pos.setup.type,
       confluenceGrade: pos.setup.confluenceGrade ?? null,
+      confidence: pos.setup.confidence,
       entryPrice: pos.entryPrice,
       exitPrice: fillExitPrice,
       slPrice: pos.slPrice,

@@ -1,5 +1,6 @@
 import type { JournalEntry } from "../agent/types.js";
 import type { LiveMetrics } from "../analytics/types.js";
+import type { ExecutionMode } from "../config.js";
 import type { StatusSnapshot } from "../strategy/index.js";
 import type { ActiveSetup, CandleInterval, ExchangeId } from "../types.js";
 import type { LiveWalletStats } from "../ui/live-account-stats.js";
@@ -15,6 +16,7 @@ export interface DashboardServerState {
 
 export interface DashboardMode {
   exchange: ExchangeId;
+  executionMode: ExecutionMode;
   paperTrade: boolean;
 }
 

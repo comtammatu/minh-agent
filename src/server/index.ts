@@ -1,5 +1,5 @@
 import type { Server } from "bun";
-import { DASHBOARD } from "../config.js";
+import { assertDashboardBindingAllowed, DASHBOARD } from "../config.js";
 import { log } from "../lib/logger.js";
 import type { DashboardServerState } from "./contracts.js";
 import { createDashboardFetchHandler } from "./handlers.js";
@@ -8,6 +8,7 @@ let dashboardServer: Server<undefined> | null = null;
 
 export function startDashboardServer(state: DashboardServerState): void {
   if (dashboardServer !== null) return;
+  assertDashboardBindingAllowed(DASHBOARD.host);
 
   dashboardServer = Bun.serve({
     hostname: DASHBOARD.host,
