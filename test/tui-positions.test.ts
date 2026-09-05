@@ -41,7 +41,7 @@ describe("mergeExchangeAndTrackedForTui", () => {
     ];
     const out = mergeExchangeAndTrackedForTui(new Map(), exchange);
     expect(out.size).toBe(1);
-    const row = out.get("hl:smc-sd:BTC");
+    const row = out.get("hl:minh:BTC");
     expect(row?.exchangeOnly).toBe(true);
     expect(row?.currentSize).toBe(0.05);
   });

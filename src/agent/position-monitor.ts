@@ -22,7 +22,10 @@ import {
   TRAIL_UPDATE_THRESHOLD,
   tryGetActiveExchange,
 } from "../config.js";
-import { getExchangePool } from "../execution/exchange-pool.js";
+import {
+  getExecution,
+  isExecutionInitialized,
+} from "../app/execution.js";
 import type { AccountState } from "../execution/exchange-service.js";
 import { getHLExchangeService as getExchangeService } from "../execution/hl-exchange-service.js";
 import { log } from "../lib/logger.js";
@@ -66,21 +69,15 @@ export async function queryExchangePositions(): Promise<
   ExchangePositionSnapshot[] | null
 > {
   try {
-    const pool = getExchangePool();
-    if (!pool.isInitialized()) {
-      if (isBybitLiveMode()) {
-        throw new Error(
-          "PositionMonitor: ExchangePool must be initialized in BB live mode (HL fallback blocked)",
-        );
-      }
-      return await getExchangeService().getPositions();
+    if (isExecutionInitialized()) {
+      return await getExecution().getPositions();
     }
-
-    // Single shared account: one position query.
-    if (!pool.isMultiWallet()) {
-      return await pool.getShared().getPositions();
+    if (isBybitLiveMode()) {
+      throw new Error(
+        "PositionMonitor: execution must be initialized in BB live mode (HL fallback blocked)",
+      );
     }
-    return await pool.getShared().getPositions();
+    return await getExchangeService().getPositions();
   } catch (err) {
     log.error(
       "position-monitor",
@@ -667,15 +664,14 @@ export class PositionMonitor {
     try {
       // Update account equity for portfolio risk checks (even with 0 positions)
       try {
-        const pool = getExchangePool();
-        if (pool.isInitialized()) {
-          const st = await pool.getShared().getAccountState();
+        if (isExecutionInitialized()) {
+          const st = await getExecution().getAccountState();
           this.lastAccountState = st;
           this.onEquityUpdate?.(st.effectiveBalance);
         } else {
           if (isBybitLiveMode()) {
             throw new Error(
-              "PositionMonitor: ExchangePool must be initialized in BB live mode (HL fallback blocked)",
+              "PositionMonitor: execution must be initialized in BB live mode (HL fallback blocked)",
             );
           }
           const accountState = await getExchangeService().getAccountState();

@@ -1,4 +1,12 @@
 # Minh Trading Rules (Cursor)
-See CLAUDE.md + .claude/README.md + .claude/environment/cursor-cloud.md + .claude/rules/* for canonical.
 
-This file is a thin pointer for Cursor indexing / rules.
+Thin pointer. Canonical sources:
+
+- [CLAUDE.md](../../CLAUDE.md)
+- [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md) — pipeline, market data, capabilities
+- [docs/FEATURES.md](../../docs/FEATURES.md)
+- [docs/WORKFLOW.md](../../docs/WORKFLOW.md)
+- [docs/DESIGN.md](../../docs/DESIGN.md) — Current vs Proposed UI/API
+- [.claude/rules/](../../.claude/rules/)
+
+Review: `.cursor/skills/minh-review/SKILL.md`

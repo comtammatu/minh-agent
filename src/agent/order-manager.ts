@@ -1,21 +1,5 @@
 /**
- * Order Lifecycle Manager (Sprint 2 S6).
- *
- * Responsibilities:
- *   - Place entry orders (market/limit) with idempotency (cloid)
- *   - Track order status: pending → submitted → filled/rejected/cancelled
- *   - R9: After entry fill → place SL (trigger-market) + TP (trigger-limit) on exchange
- *   - Cancel unfilled orders (timeout, invalidation)
- *   - Persist all state transitions to `orders` table
- *   - Bidirectional bridge: listens to TradingAgent actions, dispatches events back
- *
- * Design:
- *   - 1 position per coin (confirmed constraint — multi-position DCA deferred)
- *   - Exchange calls stubbed as `submitToExchange()` / `cancelOnExchange()` (wired S10)
- *   - cloid = 128-bit hex string, generated per order, prevents double-submit
- *   - DB is source of truth for order state; exchange is queried for reconciliation
- *
- * I/O boundary — this module talks to DB and (future) exchange.
+ * Order lifecycle manager — entry/exit orders, reconciliation, exchange I/O.
  */
 
 import { randomUUID } from "node:crypto";
@@ -37,12 +21,9 @@ import {
   tryGetActiveExchange,
 } from "../config.js";
 import { sql } from "../db/connection.js";
-import type {
-  ExchangePool,
-  IExchangeService,
-} from "../execution/exchange-pool.js";
 import {
   getExchangeService,
+  type IExchangeService,
   type OrderResult,
   type UpdatePositionStopParams,
 } from "../execution/exchange-service.js";
@@ -409,8 +390,8 @@ export class OrderManager {
   /** Tracks entry interval per order (for thesis capture at fill time). */
   private orderIntervals: Map<string, import("../types.js").CandleInterval> =
     new Map();
-  /** Shared exchange routing pool for the active runtime. */
-  private exchangePool: ExchangePool | null = null;
+  /** Shared execution service for the active runtime. */
+  private execution: IExchangeService | null = null;
   /** Guard concurrent reconciliation sweeps. */
   private reconcileInProgress = false;
   /** Last successful reconciliation timestamp (ms). */
@@ -448,9 +429,9 @@ export class OrderManager {
     this.onPositionOpen = fn;
   }
 
-  /** Set the shared exchange pool used by the runtime. */
-  setExchangePool(pool: ExchangePool): void {
-    this.exchangePool = pool;
+  /** Bind the process-wide execution service. */
+  setExecutionService(svc: IExchangeService): void {
+    this.execution = svc;
   }
 
   /**
@@ -459,12 +440,12 @@ export class OrderManager {
    * BB live mode must never silently route to HL singleton.
    */
   private getExchange(exchange?: ExchangeId): IExchangeService {
-    if (this.exchangePool?.isInitialized()) {
-      return this.exchangePool.get(exchange);
+    if (this.execution) {
+      return this.execution;
     }
     if (isBybitLiveMode()) {
       throw new Error(
-        "OrderManager: ExchangePool must be initialized in BB live mode (HL fallback blocked)",
+        "OrderManager: execution must be initialized in BB live mode (HL fallback blocked)",
       );
     }
     return getExchangeService();

@@ -27,9 +27,9 @@ import {
   SIGNAL_TIMEFRAMES,
   TIMEFRAMES,
 } from "../src/config.js";
-import { BybitFeed } from "../src/feed/bybit/bybit-feed.js";
+import { BybitFeed } from "../src/feed/bb/bybit-feed.js";
 import type { IExchangeFeed } from "../src/feed/exchange-feed.js";
-import { HLFeed } from "../src/feed/hl-feed.js";
+import { HLFeed } from "../src/feed/hl/hl-feed.js";
 import {
   appendCandle,
   candleCount,
@@ -395,7 +395,7 @@ async function startLiveComparison(
     // Also copy to default prefix for layered HTF
     appendCandle(coin, interval, candle, "HL");
 
-    // Run smc-sd directly (pure, no store dependency beyond passed candles)
+    // Run minh directly (pure, no store dependency beyond passed candles)
     const planWindow =
       getSetupGeneratorWindowRequirements().planningBars[interval] ??
       PLANNING_WINDOW_BARS[interval];
@@ -430,7 +430,7 @@ async function startLiveComparison(
           entry.hl.signal.confidence - entry.bb.signal.confidence;
         const sideMatch = entry.hl.signal.side === entry.bb.signal.side;
         console.log(
-          `[${now()}] ⚡ LIVE MATCH | ${coin} ${interval} smc-sd | ` +
+          `[${now()}] ⚡ LIVE MATCH | ${coin} ${interval} minh | ` +
             `side: ${sideMatch ? "✅ same" : `❌ HL=${entry.hl.signal.side} BB=${entry.bb.signal.side}`} | ` +
             `entry: HL=$${fmt(entry.hl.signal.entryPrice)} BB=$${fmt(entry.bb.signal.entryPrice)} (Δ${fmt(diff)}%) | ` +
             `conf: HL=${fmt(entry.hl.signal.confidence)} BB=${fmt(entry.bb.signal.confidence)} (Δ${fmt(confDiff, 3)})`,
@@ -440,7 +440,7 @@ async function startLiveComparison(
         // Print solo signal
         const tag = exchangeId === "HL" ? "HL-only" : "BB-only";
         console.log(
-          `[${now()}] ⚡ LIVE ${tag} | ${coin} ${interval} smc-sd ${signal.side} | ` +
+          `[${now()}] ⚡ LIVE ${tag} | ${coin} ${interval} minh ${signal.side} | ` +
             `entry=$${fmt(signal.entryPrice)} conf=${fmt(signal.confidence)}`,
         );
       }
@@ -548,7 +548,7 @@ function printSignalReport(matches: SignalMatch[]): void {
       const bb = m.bbSignal?.signal;
       if (!hl || !bb) continue;
       console.log(
-        `  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${"smc-sd".padEnd(8)} ${hl.side.padEnd(6)} ` +
+        `  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${"minh".padEnd(8)} ${hl.side.padEnd(6)} ` +
           `${(`$${fmt(hl.entryPrice)}`).padStart(12)} ${(`$${fmt(bb.entryPrice)}`).padStart(12)} ` +
           `${fmt(m.entryDiffPct!, 4).padStart(9)} ${fmt(hl.confidence, 2).padStart(8)} ` +
           `${fmt(bb.confidence, 2).padStart(8)} ${(m.confDelta! >= 0 ? "+" : "") + fmt(m.confDelta!, 3)}`.padStart(
@@ -565,7 +565,7 @@ function printSignalReport(matches: SignalMatch[]): void {
       const s = m.hlSignal?.signal;
       if (!s) continue;
       console.log(
-        `  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${"smc-sd".padEnd(8)} ${s.side.padEnd(6)} entry=$${fmt(s.entryPrice)} conf=${fmt(s.confidence)}`,
+        `  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${"minh".padEnd(8)} ${s.side.padEnd(6)} entry=$${fmt(s.entryPrice)} conf=${fmt(s.confidence)}`,
       );
     }
   }
@@ -577,7 +577,7 @@ function printSignalReport(matches: SignalMatch[]): void {
       const s = m.bbSignal?.signal;
       if (!s) continue;
       console.log(
-        `  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${"smc-sd".padEnd(8)} ${s.side.padEnd(6)} entry=$${fmt(s.entryPrice)} conf=${fmt(s.confidence)}`,
+        `  ${m.coin.padEnd(8)} ${m.interval.padEnd(5)} ${"minh".padEnd(8)} ${s.side.padEnd(6)} entry=$${fmt(s.entryPrice)} conf=${fmt(s.confidence)}`,
       );
     }
   }

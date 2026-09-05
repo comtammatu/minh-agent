@@ -29,7 +29,7 @@ function getClient(): SubscriptionClient {
   return wsClient;
 }
 
-/** Get shared WS client — used by trades.ts and orderbook.ts feeds. */
+/** Get shared WS client — used by orderbook.ts (and other HL WS feeds). */
 export function getWsClient(): SubscriptionClient {
   return getClient();
 }

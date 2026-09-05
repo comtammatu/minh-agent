@@ -15,10 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import type {
-  ExchangePool,
-  IExchangeService,
-} from "../../src/execution/exchange-pool.js";
+import type { IExchangeService } from "../../src/execution/exchange-service.js";
 
 // ── DB mock (OrderManager) ───────────────────────────────────────────────────
 
@@ -469,10 +466,7 @@ describe("execution boundary contract — OrderManager lifecycle", () => {
       updatePositionStop: mock(() => Promise.resolve(makeOrderResult(true))),
     } as unknown as IExchangeService;
 
-    om.setExchangePool({
-      isInitialized: () => true,
-      get: () => hlSvc,
-    } as unknown as ExchangePool);
+    om.setExecutionService(hlSvc);
 
     await om.modifySLPrice(order.id, 49500);
 
@@ -507,10 +501,7 @@ describe("execution boundary contract — OrderManager lifecycle", () => {
       getMaxLeverage: () => 100,
     } as unknown as IExchangeService;
 
-    om.setExchangePool({
-      isInitialized: () => true,
-      get: () => bbSvc,
-    } as unknown as ExchangePool);
+    om.setExecutionService(bbSvc);
 
     const order = makeOrder({ exchange: "BB" });
     injectOrder(om, order);
@@ -548,14 +539,10 @@ describe("execution boundary contract — reconcileWithExchange", () => {
     process.env.PAPER_TRADE = "true";
     const getOpenOrders = mock(() => Promise.resolve([]));
 
-    om.setExchangePool({
-      isInitialized: () => true,
-      get: () =>
-        ({
+    om.setExecutionService({
           exchangeId: "HL",
           getOpenOrders,
-        }) as unknown as IExchangeService,
-    } as unknown as ExchangePool);
+        } as unknown as IExchangeService);
 
     await om.reconcileWithExchange(new Map());
 
@@ -584,17 +571,13 @@ describe("execution boundary contract — reconcileWithExchange", () => {
       ]),
     );
 
-    om.setExchangePool({
-      isInitialized: () => true,
-      get: () =>
-        ({
+    om.setExecutionService({
           exchangeId: "HL",
           getOpenOrders,
           cancelByOid,
           cancelByCloid: mock(() => Promise.resolve(makeOrderResult(true))),
           cancelByOrderId: mock(() => Promise.resolve(makeOrderResult(true))),
-        }) as unknown as IExchangeService,
-    } as unknown as ExchangePool);
+        } as unknown as IExchangeService);
 
     await om.reconcileWithExchange(new Map());
 
@@ -624,17 +607,13 @@ describe("execution boundary contract — reconcileWithExchange", () => {
       ]),
     );
 
-    om.setExchangePool({
-      isInitialized: () => true,
-      get: () =>
-        ({
+    om.setExecutionService({
           exchangeId: "HL",
           getOpenOrders,
           cancelByOid,
           cancelByCloid: mock(() => Promise.resolve(makeOrderResult(true))),
           cancelByOrderId: mock(() => Promise.resolve(makeOrderResult(true))),
-        }) as unknown as IExchangeService,
-    } as unknown as ExchangePool);
+        } as unknown as IExchangeService);
 
     injectOrder(om, order);
 
@@ -648,15 +627,11 @@ describe("execution boundary contract — reconcileWithExchange", () => {
     const cancelByOid = mock(() => Promise.resolve(makeOrderResult(true)));
     const getOpenOrders = mock(() => Promise.resolve(null));
 
-    om.setExchangePool({
-      isInitialized: () => true,
-      get: () =>
-        ({
+    om.setExecutionService({
           exchangeId: "HL",
           getOpenOrders,
           cancelByOid,
-        }) as unknown as IExchangeService,
-    } as unknown as ExchangePool);
+        } as unknown as IExchangeService);
 
     mockSqlResponses.push([]);
 

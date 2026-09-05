@@ -1,5 +1,13 @@
 # Agents
 
-Single source of truth for agent / AI assistant instructions lives in [CLAUDE.md](CLAUDE.md).
+Single source of truth for agent instructions: [CLAUDE.md](CLAUDE.md).
 
-This file exists so tools that look for `AGENTS.md` (Codex, Cursor, etc.) get routed to the same canonical instructions instead of drifting against a separate copy.
+Orient on this project’s pipeline (not generic bot templates):
+
+1. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — mechanism, market data, quant path, can/cannot
+2. [docs/FEATURES.md](docs/FEATURES.md) — what ships
+3. [docs/WORKFLOW.md](docs/WORKFLOW.md) — local serverless + session protocol
+4. [docs/DESIGN.md](docs/DESIGN.md) — UI/schema/API (Current vs Proposed)
+5. [.claude/rules/](.claude/rules/) — path-scoped domain rules
+
+This file exists so tools that look for `AGENTS.md` route here instead of drifting.

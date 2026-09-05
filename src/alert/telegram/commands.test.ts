@@ -157,7 +157,7 @@ mock.module("../../analytics/metrics-service.js", () => ({
 }));
 
 const mockDecisionTrace = {
-  traceId: "smc-sd:BTC|1h|setup|1710",
+  traceId: "minh:BTC|1h|setup|1710",
   coin: "BTC",
   interval: "1h" as const,
   exchange: "HL" as const,
@@ -206,7 +206,7 @@ const mockDecisionTrace = {
     action: "trail_sl" as const,
     confidence: 0.74,
     summary: "Stop updated to 4200.00.",
-    setupId: "smc-sd:BTC|1h|smc-sd",
+    setupId: "minh:BTC|1h|minh",
     positionId: "pos-1",
   },
 };
@@ -303,7 +303,7 @@ function defaultMockAdvisorSnapshot(): MockAdvisorSnapshot {
           trades: 12,
           wins: 8,
           losses: 4,
-          smoothedWinRate: 0.6429,
+          smoothedWinRate: 0.75,
           avgR: 0.8,
         },
       ],
@@ -314,7 +314,7 @@ function defaultMockAdvisorSnapshot(): MockAdvisorSnapshot {
           trades: 20,
           wins: 9,
           losses: 11,
-          smoothedWinRate: 0.4545,
+          smoothedWinRate: 0.25,
           avgR: -0.1,
         },
       ],
@@ -339,16 +339,6 @@ mock.module("../../advisor/index.js", () => ({
   getAdvisorCache: () => ({
     getSnapshot: () => mockAdvisorSnapshot,
   }),
-}));
-
-let mockInsightMemories: Array<{
-  content: string;
-  createdAt: Date;
-  metadata: Record<string, unknown>;
-}> = [];
-
-mock.module("../../memory/index.js", () => ({
-  queryMemories: async () => mockInsightMemories,
 }));
 
 mock.module("./briefing-refresh-stats.js", () => ({
@@ -922,7 +912,7 @@ describe("/trace command", () => {
     const cmd = findCommand("trace")!;
     const reply = await cmd.handler("btc", 0);
     expect(reply).toContain("BTC");
-    expect(reply).toContain("smc\\-sd");
+    expect(reply).toContain("minh");
     expect(reply).toContain("🧭 *Trace Focus*");
     expect(reply).toContain("Target: BTC.");
     expect(reply).toContain("Attention: BTC 1h TRAIL\\_SL.");
@@ -934,7 +924,7 @@ describe("/trace command", () => {
       `setup ${mockDecisionTrace.outcome.setupId}`,
       0,
     );
-    expect(reply).toContain("smc\\-sd:BTC\\|1h\\|smc\\-sd");
+    expect(reply).toContain("minh:BTC\\|1h\\|minh");
     expect(reply).toContain("pos\\-1");
   });
 
@@ -1279,8 +1269,7 @@ describe("/closeall + /confirm commands", () => {
     const confirmCmd = findCommand("confirm")!;
     const reply = await confirmCmd.handler("", CHAT_ID);
     expect(reply).toContain("Close\\-all executed");
-    expect(reply).toContain("Cancelled orders: 2");
-    expect(reply).toContain("Closed positions: 1");
+    expect(reply).toContain("paused");
   });
 
   it("/confirm from different chatId is rejected", async () => {
@@ -1382,20 +1371,6 @@ describe("/advisor command", () => {
     origAdvisorMode = process.env.ADVISOR_MODE;
     delete process.env.ADVISOR_MODE;
     mockAdvisorSnapshot = defaultMockAdvisorSnapshot();
-    mockInsightMemories = [
-      {
-        content:
-          "Bucket ob|long underperforms baseline: winRate 45% vs global 53%",
-        createdAt: new Date("2026-06-09T00:00:00Z"),
-        metadata: { bucketKey: "ob|long" },
-      },
-      {
-        content:
-          "Bucket spring|BULL|long outperforms baseline: winRate 64% vs global 53%",
-        createdAt: new Date("2026-06-10T00:00:00Z"),
-        metadata: { bucketKey: "spring|BULL|long" },
-      },
-    ];
   });
 
   afterEach(() => {
@@ -1414,13 +1389,12 @@ describe("/advisor command", () => {
     expect(reply.indexOf("ob\\|long")).toBeLessThan(
       reply.indexOf("spring\\|BULL\\|long"),
     );
-    expect(reply).toContain("20t WR 45%");
-    expect(reply).toContain("12t WR 64%");
+    expect(reply).toContain("20t WR 25%");
+    expect(reply).toContain("12t WR 75%");
     expect(reply).toContain("R 0\\.80");
-    expect(reply).toContain("Recent Insights");
-    // Insights newest-first
-    expect(reply.indexOf("outperforms")).toBeLessThan(
-      reply.indexOf("underperforms"),
+    expect(reply).toContain("Insights:");
+    expect(reply.indexOf("underperforms")).toBeLessThan(
+      reply.indexOf("outperforms"),
     );
   });
 
@@ -1433,7 +1407,6 @@ describe("/advisor command", () => {
 
   it("handles missing snapshot and no insights", async () => {
     mockAdvisorSnapshot = null;
-    mockInsightMemories = [];
     const cmd = findCommand("advisor")!;
     const reply = await cmd.handler("", 0);
     expect(reply).toContain("not built yet");
@@ -1448,7 +1421,6 @@ describe("/advisor command", () => {
       builtAt: Date.now(),
       sampleSize: 0,
     };
-    mockInsightMemories = [];
     const cmd = findCommand("advisor")!;
     const reply = await cmd.handler("", 0);
     expect(reply).toContain("0 outcomes");

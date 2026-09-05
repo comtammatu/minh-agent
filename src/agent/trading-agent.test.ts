@@ -25,7 +25,7 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
     id: "BTC|1h|order-block|long",
     coin: "BTC",
     interval: "1h",
-    type: "smc-sd",
+    type: "minh",
     side: "long",
     confidence: 0.75,
     entryPrice: 50000,
@@ -374,7 +374,7 @@ describe("handleInPosition", () => {
       ctx,
       {
         type: "setup_invalidated",
-        setupId: "BTC|1h|smc-sd|long",
+        setupId: "BTC|1h|minh|long",
         reason: "zone_broken",
       },
       makeGlobal(),
@@ -385,7 +385,7 @@ describe("handleInPosition", () => {
 
   it("includes setup context on exit journal actions when available", () => {
     const setup = makeSetup({
-      id: "BTC|5m|smc-sd|long",
+      id: "BTC|5m|minh|long",
       interval: "5m",
       confidence: 0.82,
     });
@@ -413,11 +413,11 @@ describe("handleInPosition", () => {
       eventType: "exit",
       coin: "BTC",
       details: {
-        setupId: "BTC|5m|smc-sd|long",
+        setupId: "BTC|5m|minh|long",
         interval: "5m",
         side: "long",
         confidence: 0.82,
-        pattern: "smc-sd",
+        pattern: "minh",
       },
     });
   });
@@ -701,7 +701,7 @@ describe("handleExiting", () => {
     // exit row must carry setupId/pattern/grade/side so analytics and
     // trade_outcome memories cover invalidation-driven closes too.
     const setup = makeSetup({
-      id: "BTC|1h|smc-sd|long",
+      id: "BTC|1h|minh|long",
       confluenceGrade: "A",
     });
     const ctx = makeCoinCtx({
@@ -726,8 +726,8 @@ describe("handleExiting", () => {
     expect(journal).toMatchObject({
       eventType: "exit",
       details: {
-        setupId: "BTC|1h|smc-sd|long",
-        pattern: "smc-sd",
+        setupId: "BTC|1h|minh|long",
+        pattern: "minh",
         grade: "A",
         side: "long",
         pnl: -110,
@@ -1379,7 +1379,7 @@ describe("TradingAgent — correlation guard", () => {
     const coinsMap = (agent as unknown as { coins: Map<string, CoinContext> })
       .coins;
     coinsMap.set(
-      "STX:smc-sd",
+      "STX:minh",
       makeCoinCtx({ state: "ENTERING", coin: "STX", pendingOrderId: "o2" }),
     );
 

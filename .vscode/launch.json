@@ -2,10 +2,13 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "dashboard",
+      "name": "Minh runtime",
+      "type": "node",
+      "request": "launch",
       "runtimeExecutable": "bun",
-      "runtimeArgs": ["run", "dashboard:dev"],
-      "port": 5173
+      "runtimeArgs": ["run", "src/index.ts"],
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env"
     }
   ]
 }

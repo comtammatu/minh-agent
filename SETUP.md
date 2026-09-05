@@ -1,21 +1,22 @@
 # Setup Guide — Minh (明)
 
-Current runtime is a single Bun process with:
-- one active exchange per process (`HL` or `BB`)
-- a PostgreSQL/TimescaleDB backing store
-- an Ink TUI for local operations
-- a Bun HTTP server (`src/server/`) that serves the browser dashboard (`dashboard/`) on `localhost:3030`
-- optional Telegram alerts/commands
+Single Bun process with:
+- one active exchange (`HL` or `BB`)
+- PostgreSQL/TimescaleDB
+- Ink TUI (Body)
+- optional Telegram (Voice)
+
+Canonical local loop: [docs/WORKFLOW.md](docs/WORKFLOW.md). Pipeline: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Features: [docs/FEATURES.md](docs/FEATURES.md).
 
 ## Prerequisites
 
 | Tool | Version | Notes |
 |---|---|---|
-| Bun | >= 1.x | Required runtime and test runner |
-| Docker Compose | recent | Used for local PostgreSQL/TimescaleDB |
-| Git | any recent | Clone + workflow |
+| Bun | >= 1.3.14 | Runtime + tests |
+| Docker Compose | recent | Local TimescaleDB |
+| Git | recent | Clone + workflow |
 
-## 1. Install dependencies
+## 1. Install
 
 ```bash
 git clone <repo-url> minh-agent
@@ -23,49 +24,43 @@ cd minh-agent
 bun install
 ```
 
-## 2. Start PostgreSQL/TimescaleDB
+## 2. Database
 
 ```bash
 docker-compose up -d
 docker-compose ps
 ```
 
-Expected container:
-- `minh-timescaledb`
+Container: `minh-timescaledb` — user `minh` / password `minh_dev` / db `minh` / port `5432`.
 
-Default local DB settings from `docker-compose.yml`:
-- user: `minh`
-- password: `minh_dev`
-- database: `minh`
-- port: `5432`
+Migrations run on process start via `runMigrations()`.
 
-Migrations run automatically on process start via `runMigrations()`.
-
-## 3. Configure environment
+## 3. Environment
 
 ```bash
 cp .env.example .env
 ```
 
-Minimum `.env` for safe local startup:
+Minimum safe `.env`:
 
 ```env
 DATABASE_URL=postgres://minh:minh_dev@localhost:5432/minh
 LOG_LEVEL=INFO
 ACTIVE_EXCHANGE=HL
-PAPER_TRADE=true
+EXECUTION_MODE=paper
+# ADVISOR_MODE=shadow
 ```
 
-### Exchange credentials
+### Live credentials (only when `EXECUTION_MODE=live`)
 
-Hyperliquid live mode:
+Hyperliquid:
 
 ```env
 PRIVATE_KEY=0x...
 ACCOUNT_ADDRESS=0x...
 ```
 
-Bybit live mode:
+Bybit:
 
 ```env
 ACTIVE_EXCHANGE=BB
@@ -73,166 +68,77 @@ BYBIT_API_KEY=...
 BYBIT_API_SECRET=...
 ```
 
-Optional operator surface:
-
-```env
-TELEGRAM_BOT_TOKEN=...
-TELEGRAM_CHAT_ID=...
-```
+Optional Telegram: `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`.
 
 Notes:
-- `.env.example` defaults to `PAPER_TRADE=true`. Keep it that way until you explicitly want live trading
-- `ACTIVE_EXCHANGE` is process-wide. One process runs one exchange
+- Prefer `EXECUTION_MODE` over legacy `PAPER_TRADE`
+- `ACTIVE_EXCHANGE` is process-wide
 
-## 4. Verify the repo before first run
+## 4. Verify
 
 ```bash
 bun run typecheck
 bun run test:run
 ```
 
-If DB-related tests fail, check that Docker is up and the DB is healthy.
-
-## 5. Optional performance gate
-
-```bash
-ACTIVE_EXCHANGE=HL bun run bench:pipeline:ci
-```
-
-Use this before changing hot-path strategy or pipeline code.
-
-## 6. Start the runtime
+## 5. Start
 
 ```bash
 bun run start
-```
-
-Equivalent:
-
-```bash
-bun run src/index.ts
+# alias: bun run dev
 ```
 
 ## Startup sequence
 
-`src/index.ts` is now a thin entrypoint. Long-lived orchestration lives in `src/runtime/app.ts`, which currently boots in this order:
+`src/index.ts` → `src/app/boot.ts` → `src/runtime/app.ts`:
 
-1. choose active exchange and build coin selector
-2. run DB migrations
-3. fetch ranked coins
-4. subscribe websocket feeds first
-5. start the TUI immediately
-6. load persisted candles from PostgreSQL into memory
-7. gap-fill/backfill with REST
-8. enable PG write-through for live candles
-9. start funding/OI polling
-10. initialize exchange pool
-11. wire agent, order manager, position monitor, invalidation bridge
-12. start Telegram bot if configured
-13. bootstrap pipeline from store and enter steady-state loops
+1. wire Greenfield ports (feed, exchange, crashGuard, operator)
+2. choose exchange + coin selector
+3. DB migrations
+4. ranked coins
+5. websocket subscribe
+6. start Ink TUI (Body)
+7. load PG candles → memory
+8. REST gap-fill/backfill
+9. PG write-through
+10. funding/OI polling
+11. exchange pool + CrashGuard (DMS)
+12. agent / orders / positions / invalidation bridge
+13. advisor (if not off)
+14. Telegram Voice if configured
+15. pipeline bootstrap → steady state
 
-This order matters. Do not "clean up" the boot sequence casually.
+Do not casually reorder this.
 
-## What you should see
+## Healthy signals
 
-Healthy startup usually includes:
-- `COINS | ...`
-- `ARMED | ...`
-- exchange/account mode summary
-- TUI visible in the terminal
+- `COINS | …`, `ARMED | …`
+- Ink TUI visible in terminal
+- `STATUS` every ~60s; `SETUP` on detections
 
-The current branch starts both an Ink terminal dashboard AND a browser dashboard at `http://localhost:3030`. In the TUI you should see:
-- backfill progress while candles are loading
-- account, scanner, system, positions, and watchlist panels after warmup
-- positions and setup state refreshing roughly once per second
+Telegram (if configured): `/help`, `/status`, `/positions`, `/risk`, `/advisor`
 
-The browser dashboard provides a richer read-only view (Overview / Market / Journal pages) with HTTP polling updates (1s snapshot / 5s journal).
-
-### Logs
-
-Watch for:
-- `ARMED` status = required timeframes loaded and pipeline active
-- `STATUS` line every 60s = system alive
-- `SETUP` logs = trade setups detected
-- `WARNING` with staleness = data feed issues
-
-### Telegram bot
-
-If `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are configured, the bot should respond to commands like:
-- `/help`
-- `/status`
-- `/positions`
-- `/risk`
-
-## Quick reference
+## Commands
 
 | Command | Purpose |
 |---|---|
-| `bun run start` | Start live runtime |
-| `bun run test:run` | Run full test suite once |
-| `bun run typecheck` | Strict TS validation |
-| `bun test` | Watch-mode tests |
+| `bun run start` / `dev` | Full runtime |
+| `bun run test:run` | Full tests |
+| `bun run typecheck` | Strict TS 7.x |
 | `docker-compose up -d` | Start DB |
-| `docker-compose down` | Stop DB |
-| `docker-compose logs -f` | Tail DB logs |
-
-## Exchange notes
-
-### Hyperliquid
-
-- REST is weight-limited, so bootstrap/backfill goes through the repo rate limiter
-- WS provides real-time updates, not full historical recovery
-- Agent wallet signs orders; main account address is used for account info queries
-
-### Bybit
-
-- Current runtime uses one shared Bybit exchange service per process
-- TUI price display uses the latest 1m candle close as the mark-price proxy in BB mode
-- On shutdown in live BB mode, the runtime attempts cancel-all for open orders
 
 ## Troubleshooting
 
-### DB won't come up
+**DB down:** `docker-compose ps` / `docker-compose logs -f`
 
-```bash
-lsof -i :5432
-docker-compose ps
-docker-compose logs -f
-```
+**No coins:** network / exchange / credentials
 
-### Startup stops with no tracked coins
+**Stale TUI:** backfill still running, or feed staleness later
 
-- Coin selection returned an empty ranked list
-- Check network access, exchange availability, and exchange-specific credentials where relevant
+**Live bootstrap fails:** HL paper can continue without wallet; BB live bootstrap failure is fatal
 
-### TUI opens but data looks stale
-
-- Backfill may still be running
-- Later in runtime, stale-feed warnings point to feed/orderbook connectivity rather than the UI itself
-
-### Live mode account bootstrap fails
-
-- For `HL`, paper mode can continue without wallet bootstrap
-- For `BB`, exchange bootstrap failure is treated as fatal at startup
-
-### Telegram commands do nothing
-
-- Confirm both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set
-- The bot is optional; the runtime still works without it
+**Telegram silent:** both token and chat id required; bot is optional
 
 ## Repo map
 
-- `src/index.ts` — thin runtime entrypoint
-- `src/runtime/` — lifecycle orchestration
-- `src/feed/` — HL/BB feeds, coin selection, in-memory store
-- `src/strategy/` — pure setup generation and orchestration layer
-- `src/agent/` — stateful trading logic and reconciliation
-- `src/execution/` — exchange adapters and shared wallet pool
-- `src/db/` — persistence and migrations
-- `src/ui/` — terminal dashboard
-- `src/server/` — Bun HTTP server for the browser dashboard
-- `src/memory/` — trade memory foundation (not yet wired into live runtime)
-- `dashboard/` — Vite + React browser dashboard served via `src/server/`
-- `src/backtest/` — replay, simulator, optimization, reports
-
-For the full layout and architecture map, see [CLAUDE.md](CLAUDE.md) and [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md). For historical architecture details and older roadmap context, see `docs/archive/spec/architecture.md`.
+See [CLAUDE.md](CLAUDE.md) and [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md).

@@ -6,7 +6,7 @@ import type {
   Signal,
   StrategyContext,
 } from "../types.js";
-import { SmcSdStrategy } from "./strategies/smc-sd/index.js";
+import { MinhStrategy } from "./minh/index.js";
 
 // ── Window Requirements ────────────────────────────────────────────────────
 
@@ -41,7 +41,7 @@ export interface SetupGenerator {
   clearState(): void;
 }
 
-let setupGenerator: SetupGenerator = new SmcSdStrategy();
+let setupGenerator: SetupGenerator = new MinhStrategy();
 
 function legacyWindowRequirements(): WindowRequirements {
   return {
@@ -85,11 +85,11 @@ export function clearSetupGeneratorState(): void {
 }
 
 export function resetSetupGenerator(): void {
-  setupGenerator = new SmcSdStrategy();
+  setupGenerator = new MinhStrategy();
 }
 
 export function setSetupGeneratorForTests(
   generator: SetupGenerator | null,
 ): void {
-  setupGenerator = generator ?? new SmcSdStrategy();
+  setupGenerator = generator ?? new MinhStrategy();
 }

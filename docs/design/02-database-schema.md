@@ -10,7 +10,7 @@ PostgreSQL + TimescaleDB. Schema is owned by migrations under [src/db/migrations
 - **Primary keys**:
   - UUID (`gen_random_uuid()`) for entities with no natural key (orders, positions, backtest_runs).
   - Composite `(coin, interval, t)` for `candles` (timestamp-keyed hot data).
-  - `BIGSERIAL` or `SERIAL` for append-only logs (trade_journal, optimization_trials, trade_memory).
+  - `BIGSERIAL` or `SERIAL` for append-only logs (trade_journal, optimization_trials).
 - **Timestamps**: always `TIMESTAMPTZ`. Never `TIMESTAMP` (no timezone). Default `NOW()`.
 - **Booleans not used.** Use `TEXT` with `CHECK` constraint for state enums (`'open' | 'closing' | 'closed'`).
 - **Money / prices**: `DOUBLE PRECISION`. No `NUMERIC` — performance over financial precision is acceptable because exchange-reported values are also floats.
@@ -31,7 +31,6 @@ PostgreSQL + TimescaleDB. Schema is owned by migrations under [src/db/migrations
 | `backtest_trades` | per-run trades | `BIGSERIAL` | ❌ | FK → `backtest_runs.id` cascade |
 | `backtest_equity` | equity curve | `(run_id, ts)` | ✅ on `ts` | FK cascade |
 | `optimization_trials` | optimizer results | `SERIAL` | ❌ | JSONB `params`, TEXT[] `coins` |
-| `trade_memory` | structured memory | `SERIAL` | ❌ | TSVECTOR `search_vec` with GIN index |
 | `schema_migrations` | migration ledger | `version TEXT` | ❌ | Set by `src/db/migrate.ts` |
 
 ### Materialized views
@@ -180,10 +179,6 @@ Standard FK cascade. `backtest_equity` is a hypertable keyed by `ts` for efficie
 
 `coins TEXT[]` is the Postgres array type — query with `ANY(coins) = 'BTC'`. `oos_*` columns are the out-of-sample metrics; `holdout_*` are the held-out validation set.
 
-### `trade_memory` (migration 012)
-
-Plain PG. **No `pgvector`, no embeddings.** Retrieval uses structured filters (`category`, `coin`, `pattern`, `regime`) plus FTS via `search_vec` GIN index. See [project_dashboard_design_2026_05.md](../../.claude) and [src/memory/](../../src/memory/) for the foundation library.
-
 ---
 
 ## JSONB shape contracts
@@ -216,13 +211,6 @@ Snapshot of `BacktestMetrics`. Includes the top-level numeric metrics (denormali
 ### `optimization_trials.params`
 
 `StrategyParams` shape — the actual parameter vector under test. Adding a param to the optimizer means adding a key here; old rows lack the key, queries must `COALESCE`.
-
-### `trade_memory.metadata`
-
-Open shape — varies by `category`. Conventions:
-- `trade_outcome`: `{ entry_price, exit_price, holding_bars, exit_reason }`
-- `pattern_insight`: `{ pattern, regime, sample_size }`
-- `error_lesson`: `{ error_class, mitigation }`
 
 ---
 

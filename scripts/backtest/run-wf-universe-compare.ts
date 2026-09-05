@@ -13,7 +13,7 @@
  *
  * Env:
  *   WF_COMPARE_EXTENDED_HISTORY=1 — longer 1h/4h/5m/15m pulls (more WF coverage).
- *   WF_COMPARE_STRATEGY_PARAMS='{"SMC_MIN_RR":2}' — JSON overrides (else config defaults).
+ *   WF_COMPARE_STRATEGY_PARAMS='{"MINH_MIN_RR":2}' — JSON overrides (else config defaults).
  *
  * Examples:
  *   bun run scripts/backtest/run-wf-universe-compare.ts
@@ -39,7 +39,7 @@ import {
   WF_TEST_WINDOW_MS,
   WF_TRAIN_WINDOW_MS,
 } from "../../src/config.js";
-import { fetchBybitCandlesBatched } from "../../src/feed/bybit/bybit-rest.js";
+import { fetchBybitCandlesBatched } from "../../src/feed/bb/bybit-rest.js";
 import { log } from "../../src/lib/logger.js";
 import type { Candle, CandleInterval } from "../../src/types.js";
 
@@ -206,7 +206,7 @@ function runWfOnce(
     initialCapital: 10_000,
     slippagePct: BACKTEST_SLIPPAGE_PCT,
     commissionPct: BYBIT_COMMISSION_PCT,
-    strategy: "smc-sd",
+    strategy: "minh",
     strategyParams,
   };
 

@@ -1,8 +1,8 @@
 /**
  * Hyperliquid Comprehensive Backtest — 15 coins × 4 TFs × ~3 months.
  *
- * Usage: bun run scripts/backtest/run-hl-backtest.ts [smc-sd]
- * Legacy alias `all` is accepted and maps to `smc-sd`.
+ * Usage: bun run scripts/backtest/run-hl-backtest.ts
+ * (Single strategy path: minh. Legacy args `minh` / `all` are ignored.)
  *
  * Mirrors the Bybit runner but uses HL REST feed.
  * No PostgreSQL required — all data fetched directly into memory.
@@ -317,13 +317,13 @@ function runStrategyBacktest(
 }
 
 function normalizeStrategyArg(raw: string | undefined): StrategyType {
-  const value = raw?.trim().toLowerCase() ?? "smc-sd";
-  if (value === "smc-sd" || value === "all") return "smc-sd";
+  const value = raw?.trim().toLowerCase() ?? "minh";
+  if (value === "minh" || value === "all") return "minh";
   log.warn(
     "hl-backtest",
-    `Unsupported strategy "${value}" - using canonical setup engine smc-sd`,
+    `Unsupported strategy "${value}" - using canonical setup engine minh`,
   );
-  return "smc-sd";
+  return "minh";
 }
 
 // ─── Main ──────────────────────────────────────────────────────────────────

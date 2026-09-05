@@ -28,7 +28,7 @@ export interface LiveWalletStats {
 }
 
 export function normalizeWalletLabel(raw: string | undefined): string {
-  return raw ?? "smc-sd";
+  return raw ?? "minh";
 }
 
 /** Build TUI stats from DB rows; emits one canonical wallet row. */

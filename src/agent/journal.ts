@@ -1,136 +1,16 @@
 /**
- * Trade Journal — persists every agent decision to PostgreSQL.
- *
- * S9: Audit trail for signal/enter/exit/skip/invalidate/circuit_break/error events.
- *
- * Design:
- *   - log() is fire-and-forget: errors are caught + logged, never bubble up.
- *   - getEntries() and dailySummary() are read queries for API/dashboard.
- *   - Wired to TradingAgent.onAction() — every log_journal action gets persisted.
+ * Trade Journal — persists agent decisions to PostgreSQL.
  */
-
 import type { JSONValue } from "postgres";
-import { getExecutionMode } from "../config.js";
 import { sql } from "../db/connection.js";
 import { log } from "../lib/logger.js";
-import { insertMemory } from "../memory/index.js";
-import type {
-  CandleInterval,
-  ExchangeId,
-  MarketRegime,
-  SignalSide,
-} from "../types.js";
+import type { ExchangeId } from "../types.js";
 import type {
   AgentAction,
   DailySummary,
   JournalEntry,
   JournalFilter,
 } from "./types.js";
-
-const CANDLE_INTERVALS: readonly CandleInterval[] = [
-  "1m",
-  "5m",
-  "15m",
-  "1h",
-  "4h",
-  "1d",
-];
-const MARKET_REGIMES: readonly MarketRegime[] = [
-  "BULL",
-  "BEAR",
-  "SIDEWAYS",
-  "VOLATILE",
-];
-const SIGNAL_SIDES: readonly SignalSide[] = ["long", "short"];
-const BASE_EXIT_MEMORY_IMPORTANCE = 0.5;
-const HIGH_R_EXIT_IMPORTANCE = 0.9;
-
-function numericValue(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function stringValue(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-function candleIntervalValue(value: unknown): CandleInterval | null {
-  return typeof value === "string" &&
-    CANDLE_INTERVALS.includes(value as CandleInterval)
-    ? (value as CandleInterval)
-    : null;
-}
-
-function marketRegimeValue(value: unknown): MarketRegime | null {
-  return typeof value === "string" &&
-    MARKET_REGIMES.includes(value as MarketRegime)
-    ? (value as MarketRegime)
-    : null;
-}
-
-function signalSideValue(value: unknown): SignalSide | null {
-  return typeof value === "string" && SIGNAL_SIDES.includes(value as SignalSide)
-    ? (value as SignalSide)
-    : null;
-}
-
-function exitMemoryImportance(pnl: number, pnlR: number | null): number {
-  if (pnlR !== null) {
-    return Math.min(HIGH_R_EXIT_IMPORTANCE, Math.abs(pnlR) / 5);
-  }
-  return pnl === 0 ? BASE_EXIT_MEMORY_IMPORTANCE : 0.6;
-}
-
-function maybeWriteExitMemory(
-  eventType: string,
-  coin: string | null,
-  details: Record<string, unknown>,
-): void {
-  const pnl = numericValue(details.pnl);
-  if (eventType !== "exit" || pnl === null) return;
-
-  // Dedupe: a position close can journal 'exit' twice (IN_POSITION handler with
-  // setup context, then the EXITING audit re-journal without it). Only the
-  // setupId-carrying entry writes a memory — exactly one trade_outcome per close.
-  const setupId = stringValue(details.setupId);
-  if (setupId === null) return;
-
-  const pnlR = numericValue(details.pnlR) ?? numericValue(details.realizedPnlR);
-  const side = signalSideValue(details.side);
-  const timeframe = candleIntervalValue(details.interval ?? details.timeframe);
-  const regime = marketRegimeValue(details.regime);
-  const confidence = numericValue(details.confidence);
-  const exitReason = stringValue(details.reason ?? details.exitReason);
-  const pattern = stringValue(details.pattern ?? details.type);
-  const sideText = side ? ` ${side}` : "";
-  const reasonText = exitReason ? ` via ${exitReason}` : "";
-  const rText = pnlR !== null ? ` (${pnlR}R)` : "";
-
-  insertMemory({
-    category: "trade_outcome",
-    coin,
-    timeframe,
-    pattern,
-    regime,
-    side,
-    pnlR,
-    confidence,
-    content: `Closed ${coin ?? "unknown"}${sideText} pnl=${pnl}${rText}${reasonText}`,
-    metadata: {
-      eventType,
-      coin,
-      ...details,
-      pnl,
-      setupId,
-      // Paper/live outcomes must stay distinguishable in the learning loop.
-      executionMode: getExecutionMode(),
-      ...(pnlR !== null ? { pnlR } : {}),
-      ...(exitReason ? { exitReason } : {}),
-      ...(confidence !== null ? { confidence } : {}),
-      ...(regime ? { regime } : {}),
-    },
-    importance: exitMemoryImportance(pnl, pnlR),
-  }).catch(() => {});
-}
 
 // ─── Write ──────────────────────────────────────────────────────────────────
 
@@ -150,7 +30,6 @@ export async function logJournalEntry(
       VALUES (${eventType}, ${coin}, ${sql.json(details as JSONValue)}, ${agentState ?? null}, ${exchange})
     `;
 
-    maybeWriteExitMemory(eventType, coin, details);
   } catch (err) {
     log.error(
       "journal",

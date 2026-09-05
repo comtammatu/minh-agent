@@ -1,16 +1,20 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": [
+    "src/index.ts",
     "src/**/*.test.ts",
     "test/**/*.ts",
-    "dashboard/src/**/*.vitest.tsx"
+    "scripts/bb-watchdog.ts",
+    "scripts/check-pipeline-performance.ts",
+    "scripts/backtest/run-pipeline-benchmark.ts"
   ],
   "project": [
     "src/**/*.ts",
     "src/**/*.tsx",
-    "dashboard/src/**/*.ts",
-    "dashboard/src/**/*.tsx"
+    "scripts/bb-watchdog.ts",
+    "scripts/check-pipeline-performance.ts",
+    "scripts/backtest/run-pipeline-benchmark.ts"
   ],
-  "ignore": ["scripts/**", "docs/**", ".claude/**"],
-  "ignoreDependencies": ["@testing-library/*", "tailwindcss"]
+  "ignore": ["docs/**", ".claude/**", "scripts/compare-exchanges.ts", "scripts/backtest/run-*-backtest.ts"],
+  "ignoreDependencies": []
 }

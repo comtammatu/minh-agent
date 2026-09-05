@@ -1,8 +1,5 @@
 import type { CandleInterval, ExchangeId } from "./types.js";
 
-/** Fallback coins if fetchTopCoins fails at startup (should not normally be used). */
-export const FALLBACK_COINS = ["BTC", "ETH", "SOL", "HYPE", "TAO"] as const;
-
 /** Number of top coins by OI to track (after volume filter). */
 export const TOP_COINS_LIMIT = 20;
 
@@ -50,7 +47,7 @@ export const REGIME_MULTIPLIERS = {
 // Five distinct policies governing how many candles each subsystem uses.
 // S1: values are behavior-preserving (match legacy constants). S2+ will diverge.
 //
-// See: memory/project_window_policy_spec.md for full design rationale.
+// See docs/ARCHITECTURE.md for window policy rationale.
 
 /** Bars to load from PG/REST at startup (total target per coin|TF). */
 export const BOOTSTRAP_LOAD_BARS: Record<CandleInterval, number> = {
@@ -74,7 +71,7 @@ export const HOT_CACHE_CAP_BARS: Record<CandleInterval, number> = {
 
 /** Bars strategy is allowed to see per live scan tick (planning depth).
  *  Fallback if engine's windowRequirements().planningBars doesn't declare a TF.
- *  smc-sd declares: 5m=500, 15m=1000, 1h=1000, 4h=2000 (overrides these). */
+ *  minh declares: 5m=500, 15m=1000, 1h=1000, 4h=2000 (overrides these). */
 export const PLANNING_WINDOW_BARS: Record<CandleInterval, number> = {
   "1m": 200,
   "5m": 500,
@@ -85,7 +82,7 @@ export const PLANNING_WINDOW_BARS: Record<CandleInterval, number> = {
 };
 
 /** Bars to replay through onCandleTick at bootstrap to rebuild multi-stage state.
- *  Matches smc-sd windowRequirements().replayBars for full state rebuild.
+ *  Matches minh windowRequirements().replayBars for full state rebuild.
  *  1m/1d = 0: 1m has no signal path, 1d is preseed-only (no replay needed). */
 export const STATE_REPLAY_BARS: Record<CandleInterval, number> = {
   "1m": 0,
@@ -155,9 +152,6 @@ export const STALENESS_THRESHOLD_MS = 60_000;
 // Staleness watchdog checks every N ms
 export const STALENESS_CHECK_INTERVAL_MS = 30_000;
 
-// Status line printed every N ms
-export const STATUS_INTERVAL_MS = 60_000;
-
 // ── Dead-man-switch (HL native scheduleCancel) ────────────────────────────
 // HL caps schedule operations at 10/day per address. 6h deadline / 4h refresh
 // → ~6 ops/day, comfortably under the cap. Crash window: orders are auto-cancelled
@@ -183,11 +177,6 @@ export function getExecutionMode(): ExecutionMode {
 /** Paper execution is the safe default. */
 export function isPaperMode(): boolean {
   return getExecutionMode() === "paper";
-}
-
-/** Live execution enables private exchange services and real order APIs. */
-export function isLiveMode(): boolean {
-  return getExecutionMode() === "live";
 }
 
 /**
@@ -255,9 +244,6 @@ export const ZONE_BUFFER_ATR_MULT = 0.3;
 // Tuned from 0.3→0.5: original too tight (wick hunt), 0.8 too wide (killed R:R).
 export const SL_WICK_ATR_MULT = 0.5;
 
-// Volume profile lookback window for confirm layer
-export const VP_LOOKBACK = 100;
-
 // Volume profile bins — computed as priceRange / numBins
 export const VP_BINS = 50;
 
@@ -266,84 +252,84 @@ export const VP_VALUE_AREA_PCT = 0.7;
 
 // Pattern TTL in bars (how long a setup stays active before expiring)
 export const PATTERN_TTL_BARS: Record<string, number> = {
-  "smc-sd": 12,
+  "minh": 12,
 };
 
 // ─── SMC+S&D Zone Bounce Strategy ────────────────────────────────────────────
 
 /** How many bars back to look for a BOS/CHoCH to establish direction. */
-export const SMC_BREAK_LOOKBACK = 20;
+export const MINH_BREAK_LOOKBACK = 20;
 
-/** Timeframes to skip for SMC-SD strategy.
+/** Timeframes to skip for minh strategy.
  * 5m re-enabled: TP now targets 1h structure (context.htfCandles via HTF_MAP['5m']='1h')
  * instead of 4h. 5m SL (0.5 ATR) + 1h TP (1-3%) = R:R 2-6x, WR target 35-40%.
  * Previous failure: tight 5m SL + distant 4h TP required WR >90% — unachievable. */
-export const SMC_SD_SKIP_INTERVALS: ReadonlyArray<string> = [];
+export const MINH_SKIP_INTERVALS: ReadonlyArray<string> = [];
 
-/** Coins to skip for SMC-SD strategy (configurable per-exchange blacklist).
+/** Coins to skip for minh strategy (configurable per-exchange blacklist).
  * Empty by default — configure based on backtest results per exchange.
  * Historical underperformers (0% WR on HL P2b): DOGE, LINK, AVAX.
  * Reason: high-noise meme/DeFi coins with erratic wicks defeat zone-bounce logic. */
-export const SMC_COIN_BLACKLIST: ReadonlyArray<string> = [];
+export const MINH_COIN_BLACKLIST: ReadonlyArray<string> = [];
 
 /** Minimum bars between signals on same coin/interval (dedup).
  * Reduced from 15 to 8: was too restrictive, missing valid re-entries at zones. */
-export const SMC_DEDUP_BARS = 8;
+export const MINH_DEDUP_BARS = 8;
 
 /** ATR multiplier for structural price comparison tolerance (cross-exchange robustness). */
-export const SMC_PRICE_TOLERANCE_ATR_MULT = 0.02;
+export const MINH_PRICE_TOLERANCE_ATR_MULT = 0.02;
 
 /** Minimum candle body/range ratio for valid bounce (reject doji/indecision candles).
  * Reduced from 0.3 to 0.25: allow pin bars with slightly smaller bodies. */
-export const SMC_MIN_BODY_RATIO = 0.25;
+export const MINH_MIN_BODY_RATIO = 0.25;
 
 /** Minimum zone strength score to qualify for bounce detection.
  * Raised 0.35→0.50: raw demand/supply zones with strength 0.35-0.49 had high
  * false-break rate (formed from 1-2 pivots, untested). 0.50 filters single-test
  * zones while breaker blocks (0.85) and inversion FVGs (0.75) still qualify. */
-export const SMC_MIN_ZONE_STRENGTH = 0.5;
+export const MINH_MIN_ZONE_STRENGTH = 0.5;
 
 /** Minimum reward:risk ratio — skip trades with R:R below this.
  * Kept at 2.0 (P1): wider SL (1.0 ATR from P0) already raised effective quality.
  * 2.3 combined with neutral 0.80 killed 95% of signals — too aggressive.
  * 2.0R with 45% WR = profitable. Quality comes from regime+HTF filters, not R:R floor. */
-export const SMC_MIN_RR = 2.0;
+export const MINH_MIN_RR = 2.0;
 
 // ─── ICT Model Enhancements ─────────────────────────────────────────────────
 
 /** Enable HTF structure alignment check (ICT top-down analysis).
  * SOFT mode: HTF alignment adds confidence bonus, opposing HTF still blocks.
  * Hard reject only when HTF opposes with >0.6 confidence. */
-export const SMC_ICT_HTF_ALIGNMENT = true;
+export const MINH_ICT_HTF_ALIGNMENT = true;
 
 /** Enable OTE (Optimal Trade Entry) zone filter.
  * SOFT: OTE adds confidence bonus, does NOT reject non-OTE entries.
  * Backtest showed strict OTE filter kills too many valid entries. */
-export const SMC_ICT_OTE_FILTER = true;
+export const MINH_ICT_OTE_FILTER = true;
 
 /** Minimum displacement body/ATR ratio for bounce confirmation.
  * Lowered from 0.5 to 0.3: crypto wicks often have smaller bodies.
  * Displacement is a BONUS, not a requirement — standard wick entries still work. */
-export const SMC_ICT_DISPLACEMENT_BODY_ATR = 0.3;
+export const MINH_ICT_DISPLACEMENT_BODY_ATR = 0.3;
 
 /** Require liquidity sweep for through-zone entries (ICT stop hunt model).
  * Disabled: through-zone alone is a strong signal. Sweep is a bonus.
  * Was killing 50%+ of through-zone entries. */
-export const SMC_ICT_REQUIRE_SWEEP_FOR_THROUGH = false;
+export const MINH_ICT_REQUIRE_SWEEP_FOR_THROUGH = false;
 
 /** Confidence bonus for HTF-aligned trades. */
-export const SMC_ICT_HTF_ALIGNED_BONUS = 0.1;
+export const MINH_ICT_HTF_ALIGNED_BONUS = 0.1;
 
 /** Confidence penalty when HTF bias opposes signal direction (P1).
  * Targets counter-HTF longs in bear: 0.65 - 0.10 = 0.55 × 0.75 = 0.4125 → BLOCKED.
  * Symmetric: also penalizes shorts in strong bull HTF bias. */
-export const SMC_ICT_HTF_COUNTER_PENALTY = 0.1;
+export const MINH_ICT_HTF_COUNTER_PENALTY = 0.1;
 
 /** Confidence bonus for OTE zone entries. */
-export const SMC_ICT_OTE_BONUS = 0.08;
+export const MINH_ICT_OTE_BONUS = 0.08;
 
 /** Confidence bonus for liquidity pool proximity (BSL/SSL near TP). */
-export const SMC_ICT_LIQUIDITY_POOL_TP_BONUS = 0.05;
+export const MINH_ICT_LIQUIDITY_POOL_TP_BONUS = 0.05;
 
 // ─── ICT Crypto Killzones ────────────────────────────────────────────────────
 // Adapted from ICT forex killzones to 24/7 crypto markets.
@@ -351,7 +337,7 @@ export const SMC_ICT_LIQUIDITY_POOL_TP_BONUS = 0.05;
 // Trading OUTSIDE killzones has lower volume = more fakeouts.
 
 /** Enable killzone time filter. When true, signals outside killzones get confidence penalty. */
-export const SMC_ICT_KILLZONE_ENABLED = true;
+export const MINH_ICT_KILLZONE_ENABLED = true;
 
 /** Killzone definitions: [startHourUTC, endHourUTC].
  * Crypto adaption of ICT sessions:
@@ -359,7 +345,7 @@ export const SMC_ICT_KILLZONE_ENABLED = true;
  * - London open: first real move (smart money enters)
  * - US open / London-US overlap: highest volume, strongest moves
  * - Asian close / pre-London: often sets the day's high or low */
-export const SMC_ICT_KILLZONES: ReadonlyArray<{
+export const MINH_ICT_KILLZONES: ReadonlyArray<{
   name: string;
   startUTC: number;
   endUTC: number;
@@ -373,55 +359,49 @@ export const SMC_ICT_KILLZONES: ReadonlyArray<{
 
 /** Confidence penalty for signals OUTSIDE any killzone.
  * Reduced from 0.08→0.04: was blocking all 15m signals when combined with HTF penalty. */
-export const SMC_ICT_KILLZONE_PENALTY = 0.04;
+export const MINH_ICT_KILLZONE_PENALTY = 0.04;
 
 // ─── ICT Breaker Block + Inversion FVG ──────────────────────────────────────
 
 /** Enable Breaker Block detection (OB broken → flips to opposition zone). */
-export const SMC_ICT_BREAKER_BLOCK_ENABLED = true;
+export const MINH_ICT_BREAKER_BLOCK_ENABLED = true;
 
 /** Confidence bonus when price reacts at a Breaker Block (strong level). */
-export const SMC_ICT_BREAKER_BLOCK_BONUS = 0.08;
+export const MINH_ICT_BREAKER_BLOCK_BONUS = 0.08;
 
 /** Enable Inversion FVG (FVG completely filled → flips type, becomes new zone). */
-export const SMC_ICT_INVERSION_FVG_ENABLED = true;
+export const MINH_ICT_INVERSION_FVG_ENABLED = true;
 
 /** Confidence bonus when price reacts at an Inversion FVG. */
-export const SMC_ICT_INVERSION_FVG_BONUS = 0.06;
+export const MINH_ICT_INVERSION_FVG_BONUS = 0.06;
 
 // ─── ICT Multi-TF Drill-Down (4h → 15m) ────────────────────────────────────
 
 /** POI time-to-live in ms. 80 hours = 20 × 4h bars. */
-export const SMC_HTF_POI_TTL_MS = 80 * 3_600_000;
+export const MINH_HTF_POI_TTL_MS = 80 * 3_600_000;
 
 /** 15m bars to look back for confirming CHoCH/BOS at POI. */
-export const SMC_LTF_CHOCH_LOOKBACK = 5;
+export const MINH_LTF_CHOCH_LOOKBACK = 5;
 
 /** Bars after CHoCH to look for entry FVG. */
-export const SMC_LTF_ENTRY_FVG_LOOKBACK = 3;
-
-/** Min R:R for drill-down entries (higher floor — wide 4h TP expected). */
-export const SMC_DRILLDOWN_MIN_RR = 3.0;
-
-/** ATR buffer for 15m structure stop (tighter than 1h's 0.7). */
-export const SMC_DRILLDOWN_SL_ATR_BUFFER = 0.5;
+export const MINH_LTF_ENTRY_FVG_LOOKBACK = 3;
 
 /** Base confidence for drill-down signals (HTF alignment guaranteed). */
-export const SMC_DRILLDOWN_CONFIDENCE_BASE = 0.7;
+export const MINH_DRILLDOWN_CONFIDENCE_BASE = 0.7;
 
 /** Bonus if 15m confirmation is CHoCH (reversal > continuation). */
-export const SMC_DRILLDOWN_CHOCH_BONUS = 0.1;
+export const MINH_DRILLDOWN_CHOCH_BONUS = 0.1;
 
 /** Max POIs stored per coin to prevent memory growth. */
-export const SMC_DRILLDOWN_MAX_POIS = 10;
+export const MINH_DRILLDOWN_MAX_POIS = 10;
 
 /** Confirmed POI TTL in ms. Raised 1h→1.5h: 15m CHoCH can happen near bar end,
  * giving only 30-45min for 5m FVG to appear — too short. 1.5h = 18 bars on 5m.
  * Conservative increase (was 4h → 96% SL rate, so not reverting far). */
-export const SMC_CONFIRMED_POI_TTL_MS = 4 * 3_600_000;
+export const MINH_CONFIRMED_POI_TTL_MS = 4 * 3_600_000;
 
 /** Max confirmed POIs per coin. */
-export const SMC_CONFIRMED_POI_MAX = 5;
+export const MINH_CONFIRMED_POI_MAX = 5;
 
 // ─── 4h Swing Signals ────────────────────────────────────────────────────────
 // 4h previously only registered HTF POIs without emitting signals.
@@ -429,16 +409,16 @@ export const SMC_CONFIRMED_POI_MAX = 5;
 // SL is wider (1.0 ATR) and TP uses 4h structure swing targets.
 
 /** Enable 4h same-TF swing signal emission at zone bounce. */
-export const SMC_4H_SWING_ENABLED = true;
+export const MINH_4H_SWING_ENABLED = true;
 
 /** ATR buffer for 4h swing stop — wider than scalp to absorb daily noise. */
-export const SMC_4H_SWING_SL_ATR_BUFFER = 1.0;
+export const MINH_4H_SWING_SL_ATR_BUFFER = 1.0;
 
 /** Min R:R for 4h swing entries. */
-export const SMC_4H_SWING_MIN_RR = 2.0;
+export const MINH_4H_SWING_MIN_RR = 2.0;
 
 /** Base confidence for 4h swing signals (fresh 4h BOS/CHoCH + zone bounce). */
-export const SMC_4H_SWING_CONFIDENCE_BASE = 0.68;
+export const MINH_4H_SWING_CONFIDENCE_BASE = 0.68;
 
 // ─── 15m Scalp Signals ───────────────────────────────────────────────────────
 // 15m previously only confirmed 4h POIs (no signal output).
@@ -446,46 +426,46 @@ export const SMC_4H_SWING_CONFIDENCE_BASE = 0.68;
 // tighter entry than waiting for 5m FVG. TP: 15m structure targets (~1-3%).
 
 /** Enable 15m scalp signal when CHoCH confirmed at 4h HTF POI. */
-export const SMC_15M_SCALP_ENABLED = true;
+export const MINH_15M_SCALP_ENABLED = true;
 
 /** ATR buffer for 15m scalp stop (15m swing structure). */
-export const SMC_15M_SCALP_SL_ATR_BUFFER = 0.5;
+export const MINH_15M_SCALP_SL_ATR_BUFFER = 0.5;
 
 /** Min R:R for 15m scalp entries. */
-export const SMC_15M_SCALP_MIN_RR = 2.0;
+export const MINH_15M_SCALP_MIN_RR = 2.0;
 
 /** Base confidence for 15m scalp (4h POI + 15m CHoCH = dual TF confirmation). */
-export const SMC_15M_SCALP_CONFIDENCE_BASE = 0.68;
+export const MINH_15M_SCALP_CONFIDENCE_BASE = 0.68;
 
 // ─── ICT 5m Micro-Entry ─────────────────────────────────────────────────────
 
 /** 5m bars to look for FVG entry after confirmed POI. */
-export const SMC_5M_FVG_LOOKBACK = 10;
+export const MINH_5M_FVG_LOOKBACK = 10;
 
 /** ATR buffer for 5m swing stop.
  * Raised 0.3→0.5: 0.3 ATR on BTC ≈ $150 buffer — crypto wick noise + spread
  * (~$15) meant SL was hunted on normal retest before real move. 0.5 gives
  * enough room; min R:R adjusted down accordingly. */
-export const SMC_5M_SL_ATR_BUFFER = 0.5;
+export const MINH_5M_SL_ATR_BUFFER = 0.5;
 
 /** Min R:R for 5m micro-entry. Reduced 3.5→2.5: TP now targets 1h structure
  * (context.htfCandles), not 4h. 5m SL (0.5 ATR) + 1h TP (1-3%) = R:R 2-6x.
  * Original 3.5 was calibrated for 4h TP (~5-20%) which required WR >90%. */
-export const SMC_5M_MIN_RR = 2.5;
+export const MINH_5M_MIN_RR = 2.5;
 
 /** Base confidence for 5m micro-entry (HTF + LTF confirmed = highest confidence). */
-export const SMC_5M_CONFIDENCE_BASE = 0.75;
+export const MINH_5M_CONFIDENCE_BASE = 0.75;
 
 /** Minimum SL distance % for 5m micro-entry.
  * SL < 0.4% on 5m is pure noise — crypto spread (~0.05%) + normal 5m wick (~0.2%)
  * means SL is hit before any directional move. Reject ultra-tight stops. */
-export const SMC_5M_MIN_SL_PCT = 0.004;
+export const MINH_5M_MIN_SL_PCT = 0.004;
 
 /** Require 15m CHoCH confirmation for 5m micro-entry.
  * 5m FVG alone at 4h POI has ~22% WR. Adding 15m CHoCH requirement ensures
  * lower-timeframe structure has shifted before micro-entry. The confirmedPOI
  * already has ltfBreakKind from the 15m scan — use it as a hard gate. */
-export const SMC_5M_REQUIRE_15M_CHOCH = false;
+export const MINH_5M_REQUIRE_15M_CHOCH = false;
 
 // ─── ICT AMD (Power of Three) ───────────────────────────────────────────────
 
@@ -493,16 +473,16 @@ export const SMC_5M_REQUIRE_15M_CHOCH = false;
  * DISABLED: 21% WR on backtest — Judas detection too loose for crypto 24/7.
  * Needs: tighter range criteria, volume confirmation, stricter reversal check.
  * Re-enable after tuning with longer dataset. */
-export const SMC_AMD_ENABLED = false;
+export const MINH_AMD_ENABLED = false;
 
 /** Accumulation session: Asia (crypto adaptation).
  * Range builds during low-volume Asia hours. */
-export const SMC_AMD_ACCUMULATION_START_UTC = 0;
-export const SMC_AMD_ACCUMULATION_END_UTC = 7;
+export const MINH_AMD_ACCUMULATION_START_UTC = 0;
+export const MINH_AMD_ACCUMULATION_END_UTC = 7;
 
 /** Manipulation windows: session opens where Judas Swings occur.
  * Each window: [startHourUTC, endHourUTC, name]. */
-export const SMC_AMD_MANIPULATION_WINDOWS: ReadonlyArray<{
+export const MINH_AMD_MANIPULATION_WINDOWS: ReadonlyArray<{
   start: number;
   end: number;
   name: string;
@@ -512,22 +492,22 @@ export const SMC_AMD_MANIPULATION_WINDOWS: ReadonlyArray<{
 ] as const;
 
 /** Min R:R for AMD entries (tight SL after Judas reversal). */
-export const SMC_AMD_MIN_RR = 2.5;
+export const MINH_AMD_MIN_RR = 2.5;
 
 /** Base confidence for AMD entries (Judas confirmed = high probability). */
-export const SMC_AMD_CONFIDENCE_BASE = 0.72;
+export const MINH_AMD_CONFIDENCE_BASE = 0.72;
 
 /** Confidence bonus for Judas Swing detection. */
-export const SMC_AMD_JUDAS_BONUS = 0.1;
+export const MINH_AMD_JUDAS_BONUS = 0.1;
 
 /** ATR buffer for SL beyond Judas sweep wick. */
-export const SMC_AMD_SL_ATR_BUFFER = 0.3;
+export const MINH_AMD_SL_ATR_BUFFER = 0.3;
 
 /** AMD runs on 15m candles (enough resolution to detect Judas + entry). */
-export const SMC_AMD_INTERVAL: CandleInterval = "15m";
+export const MINH_AMD_INTERVAL: CandleInterval = "15m";
 
 /** Min bars in accumulation range (too few = unreliable range). */
-export const SMC_AMD_MIN_RANGE_BARS = 5;
+export const MINH_AMD_MIN_RANGE_BARS = 5;
 
 // ─── P2: Liquidation Cascade Filter ─────────────────────────────────────────
 // Perp liquidation cascades produce sharp wicks + huge volume that look like
@@ -535,27 +515,27 @@ export const SMC_AMD_MIN_RANGE_BARS = 5;
 
 /** Volume ratio threshold above which a candle is considered a potential cascade.
  * 3.0 = volume is 3× the 20-bar average — extreme spike, not normal absorption. */
-export const SMC_LIQUIDATION_VOLUME_RATIO = 3.0;
+export const MINH_LIQUIDATION_VOLUME_RATIO = 3.0;
 
 /** Wick-to-ATR ratio threshold. If intra-candle range > N × ATR, likely cascade.
  * 3.0 ATR wick on a single bar = abnormal in normal markets, common in liquidations. */
-export const SMC_LIQUIDATION_WICK_ATR_MULT = 3.0;
+export const MINH_LIQUIDATION_WICK_ATR_MULT = 3.0;
 
 /** Confidence multiplier applied when cascade detected. 0.4 = heavy discount;
  * not 0.0 (sometimes cascade creates valid entry after the flush completes). */
-export const SMC_LIQUIDATION_CONFIDENCE_MULT = 0.4;
+export const MINH_LIQUIDATION_CONFIDENCE_MULT = 0.4;
 
 // ─── scan1hSameTF Quality Filters (Eng Review 2026-04-12) ──────────────────
 /** BOS confidence penalty — BOS is continuation, lower conviction than CHoCH reversal. */
-export const SMC_1H_BOS_PENALTY = 0.15;
+export const MINH_1H_BOS_PENALTY = 0.15;
 /** Minimum volume ratio (vs 20-bar avg) to accept 1H signal. Below = low-conviction noise. */
-export const SMC_1H_MIN_VOLUME_RATIO = 0.7;
+export const MINH_1H_MIN_VOLUME_RATIO = 0.7;
 /** Minimum ADX for 1H signal. Raised 18→20: trending filter was too loose. */
-export const SMC_1H_MIN_ADX = 20;
+export const MINH_1H_MIN_ADX = 20;
 /** Core coin allowlist for 1H same-TF mode.
  * Walk-forward OOS shows edge concentration on top-tier liquidity coins.
  * Empty array disables this gate. */
-export const SMC_1H_ALLOWED_COINS = ["BTC", "ETH", "SOL"] as const;
+export const MINH_1H_ALLOWED_COINS = ["BTC", "ETH", "SOL"] as const;
 
 // ─── P2: Weekend Volume Filter ───────────────────────────────────────────────
 // Crypto volume Fri-Sun = 30-50% of weekday. Low-volume BOS/CHoCH has higher
@@ -563,11 +543,11 @@ export const SMC_1H_ALLOWED_COINS = ["BTC", "ETH", "SOL"] as const;
 
 /** Volume ratio below which weekend candles are considered low-volume.
  * 0.6 = current volume is 60% below the 20-bar average → suspicious. */
-export const SMC_WEEKEND_VOLUME_RATIO_THRESHOLD = 0.6;
+export const MINH_WEEKEND_VOLUME_RATIO_THRESHOLD = 0.6;
 
 /** Confidence multiplier on low-volume weekend bars. 0.7 = 30% penalty.
  * Not 0.0 — genuine setups can still form on weekends, just less reliable. */
-export const SMC_WEEKEND_CONFIDENCE_MULT = 0.7;
+export const MINH_WEEKEND_CONFIDENCE_MULT = 0.7;
 
 // ─── Layered Pipeline Config ─────────────────────────────────────────────────
 
@@ -647,9 +627,6 @@ export const FUNDING_POLL_INTERVAL_MS = 60_000;
 
 /** Store last N hours of funding rates. */
 export const FUNDING_HISTORY_HOURS = 24;
-
-/** Aggregate trades into delta buckets every N ms. */
-export const DELTA_AGGREGATE_INTERVAL_MS = 1_000;
 
 /** Cap L2 book at top N levels each side. */
 export const BOOK_DEPTH_LEVELS = 20;
@@ -846,26 +823,7 @@ export const DB_IDLE_TIMEOUT_S = 30;
 /** Connection attempt timeout (seconds). */
 export const DB_CONNECT_TIMEOUT_S = 10;
 
-// ─── Memory (Sprint 6) ───────────────────────────────────────────────────────
-
-/** Recency decay half-life in days. After this many days, recency weight halves. */
-export const MEMORY_DECAY_HALF_LIFE_DAYS = 7;
-
-/** Scoring weights for memory retrieval: recency + importance + FTS relevance. */
-export const MEMORY_WEIGHTS = {
-  recency: 0.4,
-  importance: 0.35,
-  relevance: 0.25,
-} as const;
-
-/** Auto-prune memories older than this with low access + low importance. */
-export const MEMORY_RETENTION_DAYS = 90;
-
-// ─── Advisor (learning loop v1) ──────────────────────────────────────────────
-// Deterministic per-bucket outcome stats consulted pre-entry. The advisor can
-// only reduce risk (veto / dampen size) — it never boosts size or rescues
-// low-grade setups. See docs/plan/task-contract-advisor-learning-loop-2026-06-10.md
-
+// ─── Advisor ─────────────────────────────────────────────────────────────────
 export type AdvisorMode = "off" | "shadow" | "active";
 
 /**
@@ -898,7 +856,6 @@ export const ADVISOR = {
   /** Cache snapshots older than this are considered stale → advisor passes through. */
   staleAfterMs: 30 * 60 * 1000,
   /** Insight job cadence (ms) — writes pattern_insight memories + prunes. */
-  insightIntervalMs: 12 * 60 * 60 * 1000,
   /** A bucket must deviate from the global win rate by ≥ this to earn an insight. */
   insightMinWinRateDelta: 0.15,
 } as const;
@@ -913,14 +870,6 @@ export const WS_RECONNECT_MAX_MS = 30_000;
 
 /** Backoff multiplier per failed attempt. */
 export const WS_RECONNECT_BACKOFF = 2;
-
-/** Zone distance → position sizing + minimum R:R. */
-export const ZONE_RISK = {
-  near: { maxDistance: 0.02, minRR: 1.5 }, // < 2%
-  medium: { maxDistance: 0.05, minRR: 2.0 }, // 2–5%
-  far: { maxDistance: 0.08, minRR: 3.0 }, // 5–8%
-  skip: { maxDistance: 0.1 }, // > 10% → skip
-} as const;
 
 // ─── Exit Strategy (Section 12) ─────────────────────────────────────────────
 
@@ -1060,9 +1009,6 @@ export const TRAIL_ACTIVATION_R = 0.5;
 
 // ─── Backtest (Sprint 3A) ──────────────────────────────────────────────────
 
-/** Max months of history allowed for browser-triggered backtest (OOM guard). */
-export const MAX_BACKTEST_MONTHS = 6;
-
 /** Bars between async yield points in browser backtest (keep event loop responsive). */
 export const BACKTEST_CHUNK_SIZE = 100;
 
@@ -1118,7 +1064,7 @@ export const WF_MIN_WINDOW_CONSISTENCY = 0.5;
 // ─── Canonical Strategy ─────────────────────────────────────────────────────
 
 /** Runtime is single-strategy; this label is metadata only, not a routing key. */
-export const CANONICAL_STRATEGY_ID = "smc-sd" as const;
+export const CANONICAL_STRATEGY_ID = "minh" as const;
 
 // ─── Portfolio Risk (Sprint 4.5 S6) ─────────────────────────────────────────
 
@@ -1234,36 +1180,6 @@ function parsePortEnv(name: string, fallback: number): number {
   }
   return parsed;
 }
-
-function parseHostEnv(name: string, fallback: string): string {
-  const raw = process.env[name]?.trim();
-  return raw && raw.length > 0 ? raw : fallback;
-}
-
-function isLocalDashboardHost(host: string): boolean {
-  return (
-    host === "127.0.0.1" ||
-    host === "localhost" ||
-    host === "::1" ||
-    host === "[::1]"
-  );
-}
-
-export function assertDashboardBindingAllowed(host: string): void {
-  if (isLocalDashboardHost(host)) return;
-  const remoteEnabled = process.env.DASHBOARD_REMOTE_ENABLED === "true";
-  const authToken = process.env.DASHBOARD_AUTH_TOKEN?.trim();
-  if (remoteEnabled && authToken) return;
-  throw new Error(
-    `Refusing dashboard bind to non-localhost host "${host}". Set DASHBOARD_REMOTE_ENABLED=true and DASHBOARD_AUTH_TOKEN to expose it remotely.`,
-  );
-}
-
-/** Local browser dashboard configuration (localhost-only). */
-export const DASHBOARD = {
-  host: parseHostEnv("DASHBOARD_HOST", "127.0.0.1"),
-  port: parsePortEnv("DASHBOARD_PORT", 3030),
-} as const;
 
 // ── Multi-exchange ─────────────────────────────────────────────────────────
 
@@ -1404,8 +1320,8 @@ export const BYBIT_BACKFILL_CONCURRENCY = 3;
  * Each field maps to a StrategyParams key with min/max/step bounds.
  * Optimizer generates random values within these bounds, steps optional.
  * Params: MIN_CONFIDENCE, REGIME_MULT_COUNTER, REGIME_MULT_NEUTRAL,
- *   SMC_DRILLDOWN_CONFIDENCE_BASE (15m scan base), SL_WICK_ATR_MULT,
- *   SMC_MIN_RR, SMC_1H_CONFIDENCE_BASE (1h scan base). */
+ *   MINH_DRILLDOWN_CONFIDENCE_BASE (15m scan base), SL_WICK_ATR_MULT,
+ *   MINH_MIN_RR, MINH_1H_CONFIDENCE_BASE (1h scan base). */
 export const PARAM_SCHEMA = {
   MIN_CONFIDENCE: { min: 0.4, max: 0.8, step: 0.05, type: "float" as const },
   REGIME_MULT_COUNTER: {
@@ -1420,15 +1336,15 @@ export const PARAM_SCHEMA = {
     step: 0.05,
     type: "float" as const,
   },
-  SMC_DRILLDOWN_CONFIDENCE_BASE: {
+  MINH_DRILLDOWN_CONFIDENCE_BASE: {
     min: 0.5,
     max: 0.8,
     step: 0.05,
     type: "float" as const,
   },
   SL_WICK_ATR_MULT: { min: 0.3, max: 1.0, step: 0.1, type: "float" as const },
-  SMC_MIN_RR: { min: 1.5, max: 4.0, step: 0.5, type: "float" as const },
-  SMC_1H_CONFIDENCE_BASE: {
+  MINH_MIN_RR: { min: 1.5, max: 4.0, step: 0.5, type: "float" as const },
+  MINH_1H_CONFIDENCE_BASE: {
     min: 0.5,
     max: 0.75,
     step: 0.05,

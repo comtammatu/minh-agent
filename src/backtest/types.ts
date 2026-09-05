@@ -15,7 +15,7 @@ import type {
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
-export type StrategyType = "smc-sd";
+export type StrategyType = "minh";
 export type ExitMode = "multi" | "single";
 
 /** Per-trial strategy parameter overrides for optimizer.
@@ -25,11 +25,11 @@ export interface StrategyParams {
   MIN_CONFIDENCE?: number;
   REGIME_MULT_COUNTER?: number;
   REGIME_MULT_NEUTRAL?: number;
-  SMC_DRILLDOWN_CONFIDENCE_BASE?: number;
+  MINH_DRILLDOWN_CONFIDENCE_BASE?: number;
   SL_WICK_ATR_MULT?: number;
-  SMC_MIN_RR?: number;
+  MINH_MIN_RR?: number;
   /** Confidence base for scan1hSameTF (1H BOS/CHoCH same-TF entries). Default 0.65. */
-  SMC_1H_CONFIDENCE_BASE?: number;
+  MINH_1H_CONFIDENCE_BASE?: number;
 }
 
 export interface BacktestConfig {
@@ -43,7 +43,7 @@ export interface BacktestConfig {
   slippagePct: number;
   /** Commission as fraction per trade (0.0003 = 0.03%). Applied to entry + exit. */
   commissionPct: number;
-  /** Strategy to use. Default 'smc-sd' (ICT Smart Money Concepts). */
+  /** Strategy to use. Default 'minh' (ICT Smart Money Concepts). */
   strategy?: StrategyType;
   /** Exit mode. 'multi' = TP1/TP2/trailing partials (default). 'single' = one SL + one TP, 100% close. */
   exitMode?: ExitMode;

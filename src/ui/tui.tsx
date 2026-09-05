@@ -1,5 +1,5 @@
 /**
- * Terminal UI (TUI) — Full-screen trading terminal dashboard using ink.
+ * Terminal UI (Body) — full-screen Ink monitor for Minh Presence.
  *
  * Layout:
  *   ┌─ Header Bar ──────────────────────────────────────────────┐
@@ -91,7 +91,7 @@ let backfillDoneListeners: Array<() => void> = [];
 let inkInstance: ReturnType<typeof render> | null = null;
 let _backfillDone = false;
 
-/** Call from index.ts when backfill completes → TUI transitions to dashboard. */
+/** Call when backfill completes → TUI transitions from warming to live monitor. */
 export function setBackfillDone(): void {
   _backfillDone = true;
   for (const l of backfillDoneListeners) l();
@@ -1960,7 +1960,7 @@ function App({ sources }: { sources: TuiDataSources }) {
     );
   }
 
-  // ── Normal dashboard ──
+  // ── Live monitor (post-backfill) ──
   return (
     <Box flexDirection="column" height={termRows} overflow="hidden">
       <HeaderBar snapshot={snapshot} coinCount={trackedCoins.length} />
@@ -2028,7 +2028,7 @@ function App({ sources }: { sources: TuiDataSources }) {
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 /**
- * Start the TUI dashboard.
+ * Start the Ink Body (TUI monitor).
  * Call after all agent components are initialized.
  */
 export function startTui(sources: TuiDataSources): void {

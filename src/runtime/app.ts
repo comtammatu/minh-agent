@@ -1,26 +1,25 @@
 /**
  * Minh (明) — runtime bootstrap.
  *
- * Startup sequence:
- *   0. Run DB migrations
- *   1. CoinSelector: fetch top coins from HL by OI
- *   2. WS subscribe all coins FIRST (capture real-time immediately)
- *   3. Load candles from PG → memory
- *   4. Gap-fill + REST backfill (batched, skips coin/TFs already sufficient)
- *   5. Wire PG write-through for live WS candles
- *   6. Start funding + OI polling
- *   7. Print ARMED + coin counts
- *   8. Start health monitor
- *   9. Wire agent: TradingAgent ↔ OrderManager ↔ PositionMonitor + InvalidationBridge
- *      + advisor stats cache (refresh on close + interval, insight job; off when ADVISOR_MODE=off)
- *  10. Start coin refresh loop (1h interval)
- *  11. setInterval: STATUS line every 60s
- *  12. setInterval: staleness check every 30s
+ * Startup sequence (must match docs/ARCHITECTURE.md §1):
+ *   1. Validate window policies; run DB migrations
+ *   2. Coin selection (+ HL probe / replace); fail if empty
+ *   3. WS subscribe first (bootstrap buffer — live ticks not lost)
+ *   4. Start TUI Body (bootstrap / warming UI)
+ *   5. PG load candles → memory
+ *   6. REST gap-fill / backfill; replace zero-ready coins (bounded rounds)
+ *   7. Bootstrap replay from store → flush WS buffer into onCandleTick
+ *   8. Mark backfill done; enable PG write-through for live candles
+ *   9. Funding / OI polling (exchange-specific)
+ *  10. Reset setup generator; init execution; arm DMS / BB heartbeat if live
+ *  11. Wire agent ↔ OrderManager ↔ PositionMonitor ↔ InvalidationBridge; restore
+ *  12. Wire advisor (if not off), metrics, Telegram; then subscribe agent to pipeline
+ *  13. Materialize / bootstrap setups; start coin refresh + staleness watchdog
  *  SIGINT/SIGTERM: stop sync → cancel open Bybit orders (live) → close WS → close DB → exit
  */
 
-import { createWriteStream, type WriteStream } from "node:fs";
-import { getAdvisorCache, runInsightJob } from "../advisor/index.js";
+
+import { getAdvisorCache } from "../advisor/index.js";
 import { getInvalidationBridge } from "../agent/invalidation-bridge.js";
 import { handleJournalAction } from "../agent/journal.js";
 import { getOrderManager } from "../agent/order-manager.js";
@@ -36,7 +35,7 @@ import {
   sendTelegramAlert,
   startBot,
   stopBot,
-} from "../alert/telegram/index.js";
+} from "../presence/voice.js";
 import { getClosedTradeStatsForWallet } from "../analytics/metrics-repo.js";
 import { connectToAgent as connectMetrics } from "../analytics/metrics-service.js";
 import {
@@ -79,7 +78,11 @@ import {
 } from "../db/candle-repo.js";
 import { closeDb, sql } from "../db/connection.js";
 import { runMigrations } from "../db/migrate.js";
-import { getExchangePool } from "../execution/exchange-pool.js";
+import {
+  getExecution,
+  initExecution,
+  isExecutionInitialized,
+} from "../app/execution.js";
 import type { AccountState } from "../execution/exchange-service.js";
 import {
   addOiCoin,
@@ -88,22 +91,18 @@ import {
   startOiFeed,
   stopOiFeed,
 } from "../feed/asset-ctx.js";
-import { makeBybitFetchRankedFn } from "../feed/bybit/bybit-coin-selector.js";
-import { BybitFeed } from "../feed/bybit/bybit-feed.js";
+import { wirePorts, type WiredPorts } from "../app/wire.js";
+import type { FeedPort } from "../ports/feed.js";
+import { makeBybitFetchRankedFn } from "../feed/bb/bybit-coin-selector.js";
 import {
   getBybitFundingRate,
   loadBybitFundingRates,
-} from "../feed/bybit/bybit-rest.js";
+} from "../feed/bb/bybit-rest.js";
 import {
   closeAllBybitTicker,
   subscribeBybitTicker,
   unsubscribeBybitTicker,
-} from "../feed/bybit/bybit-ticker.js";
-import {
-  closeAllBybitTrades,
-  subscribeBybitTrades,
-  unsubscribeBybitTrades,
-} from "../feed/bybit/bybit-trades.js";
+} from "../feed/bb/bybit-ticker.js";
 import type { CoinSelector, RefreshResult } from "../feed/coin-selector.js";
 import { createCoinSelector } from "../feed/coin-selector.js";
 import type { IExchangeFeed } from "../feed/exchange-feed.js";
@@ -113,7 +112,6 @@ import {
   startFundingPolling,
   stopFundingPolling,
 } from "../feed/funding.js";
-import { HLFeed } from "../feed/hl-feed.js";
 import {
   checkBookStaleness,
   subscribeOrderBook,
@@ -128,11 +126,8 @@ import {
   setCandles,
   setOnPersist,
 } from "../feed/store.js";
-import { subscribeTrades, unsubscribeTrades } from "../feed/trades.js";
 import { getSubscriptionCount, unsubscribeCandles } from "../feed/ws.js";
-import { clearTuiSink, log, setTuiSink } from "../lib/logger.js";
-import type { DashboardBootstrapPhase } from "../server/contracts.js";
-import { startDashboardServer, stopDashboardServer } from "../server/index.js";
+import { clearTuiSink, log } from "../lib/logger.js";
 import { resetSetupGenerator } from "../strategy/engine.js";
 import {
   bootstrapPipelineFromStore,
@@ -155,9 +150,20 @@ import {
   startTui,
   stopTui,
   type TuiDataSources,
-} from "../ui/tui.jsx";
+} from "../presence/body.js";
 import { mergeExchangeAndTrackedForTui } from "../ui/tui-positions.js";
 import { startHeartbeatWriter } from "./heartbeat.js";
+
+function feedPortAsExchangeFeed(port: FeedPort): IExchangeFeed {
+  return {
+    exchangeId: port.exchange,
+    backfill: (coins, onCandles, isLoaded) =>
+      port.backfill(coins, onCandles, isLoaded),
+    subscribe: (coins, onCandle) => port.subscribeCandles(coins, onCandle),
+    closeAll: () => port.close(),
+    checkStaleness: () => port.checkStaleness(),
+  };
+}
 
 // ── Banner (logged inside main() before TUI starts) ────────────────────────
 
@@ -166,6 +172,7 @@ import { startHeartbeatWriter } from "./heartbeat.js";
 // Initialised inside main() after exchange selection.
 // Module-level so coin lifecycle helpers can reference it without prop-drilling.
 let feed: IExchangeFeed;
+let wiredPorts: WiredPorts | null = null;
 
 type ShutdownSafeExchange = {
   cancelAllOpenOrders?: () => Promise<{
@@ -173,10 +180,6 @@ type ShutdownSafeExchange = {
     error: string | null;
   }>;
 };
-
-// ── TUI log file sink — captures all log output while TUI runs ───────────────
-let tuiLogStream: WriteStream | null = null;
-let dashboardBootstrapPhase: DashboardBootstrapPhase = "warming_up";
 
 // ── Bootstrap WS buffer ────────────────────────────────────────────────────
 // During bootstrap replay, WS candles are buffered instead of going through
@@ -203,14 +206,14 @@ function onCandleTickBuffered(
 
 // ── Coin Lifecycle Helpers ──────────────────────────────────────────────────
 
-/** Subscribe all WS feeds for a coin (candles × TFs + trades + orderbook). */
+/** Subscribe all WS feeds for a coin (candles × TFs + L2 book / BB ticker). */
 async function subscribeCoin(coin: string): Promise<void> {
   await feed.subscribe([coin], onCandleTickBuffered);
   if (getActiveExchange() === "HL") {
-    await subscribeTrades(coin);
+    // L2 book used by OrderManager / HL execution for sizing & mid; not strategy confluence.
     await subscribeOrderBook(coin);
   } else if (getActiveExchange() === "BB") {
-    subscribeBybitTrades(coin);
+    // Ticker fills funding / OI / 1-level book stores for BB.
     subscribeBybitTicker(coin);
   }
 }
@@ -227,12 +230,10 @@ async function backfillCoin(coin: string): Promise<number> {
 async function unsubscribeCoin(coin: string): Promise<void> {
   await unsubscribeCandles(coin);
   if (getActiveExchange() === "HL") {
-    await unsubscribeTrades(coin);
     await unsubscribeOrderBook(coin);
     removeFundingCoin(coin);
     removeOiCoin(coin);
   } else if (getActiveExchange() === "BB") {
-    unsubscribeBybitTrades(coin);
     unsubscribeBybitTicker(coin);
   }
   clearCoinData(coin);
@@ -336,10 +337,7 @@ function aggregateAccountStatesForTui(
 
 async function refreshLiveAccountStatesForTui(): Promise<void> {
   try {
-    const pool = getExchangePool();
-    if (!pool.isInitialized()) return;
-
-    // Single shared account: leave cache null so Account panel uses the shared account state directly.
+    if (!isExecutionInitialized()) return;
     liveAccountStatesCache = null;
   } catch {
     // Keep previous cache on HL errors
@@ -360,8 +358,12 @@ async function refreshLiveTuiCaches(): Promise<void> {
 
 async function main(): Promise<void> {
   const activeExchange = getActiveExchange();
-  feed = activeExchange === "HL" ? new HLFeed() : new BybitFeed();
-  dashboardBootstrapPhase = "warming_up";
+  wiredPorts = wirePorts();
+  feed = feedPortAsExchangeFeed(wiredPorts.feed);
+  log.info(
+    "startup",
+    `PORTS | ${activeExchange} feed + exchange wired via wirePorts()`,
+  );
 
   // Initialize selector with exchange-aware fetch function and top-coin limit.
   // BB: dynamic fetch from Bybit tickers API (top 50 by OI), no HIP-3.
@@ -465,7 +467,7 @@ async function main(): Promise<void> {
     await subscribeCoin(coin);
   }
 
-  // 2b. Start TUI immediately — shows backfill progress (transitions to dashboard when done)
+  // 2b. Start TUI Body immediately — shows backfill progress until ready
   const tuiSources: TuiDataSources = {
     getAgentSnapshot: () => ({
       global: {
@@ -524,23 +526,7 @@ async function main(): Promise<void> {
     getLiveWalletStats: () => liveWalletStatsCache,
     getLiveAccountStates: () => liveAccountStatesCache,
   };
-  tuiLogStream = createWriteStream("./minh.log", { flags: "a" });
-  setTuiSink((msg) => {
-    tuiLogStream?.write(`${msg}\n`);
-  });
   startTui(tuiSources);
-  try {
-    startDashboardServer({
-      activeExchange,
-      getBootstrapPhase: () => dashboardBootstrapPhase,
-      sources: tuiSources,
-    });
-  } catch (err) {
-    log.warn(
-      "dashboard",
-      `Dashboard startup failed (non-fatal): ${err instanceof Error ? err.message : err}`,
-    );
-  }
 
   // 3. Load candles from PG → memory
   const pgTimestamps = await getAllLastTimestamps();
@@ -663,10 +649,9 @@ async function main(): Promise<void> {
     log.info("startup", `WS buffer flushed: ${buffered.length} candles`);
   }
 
-  // 4e. Signal TUI: backfill complete → transition to dashboard
+  // 4e. Signal TUI: backfill complete → transition to live monitor
   //     NOTE: materialize current setups happens later (step 9b) after agent subscribes to pipeline.
   setBackfillDone();
-  dashboardBootstrapPhase = "ready";
 
   // 5. Wire PG write-through for live WS candles (R14: sync write-through)
   //    Wired AFTER backfill so startup uses efficient bulk operations, not per-candle upserts
@@ -713,13 +698,13 @@ async function main(): Promise<void> {
 
   // 7b. Single concrete setup generator
   resetSetupGenerator();
-  log.info("startup", "STRAT | canonical single-strategy scanner: smc-sd");
+  log.info("startup", "STRAT | canonical single-strategy scanner: minh");
 
-  // 7c. Init ExchangePool (single shared exchange wallet/service per process)
-  const pool = getExchangePool();
+  // 7c. Init execution service (single shared wallet per process)
+  let executionReady = false;
   try {
-    await pool.init();
-    const svc = pool.getShared();
+    const svc = await initExecution();
+    executionReady = true;
     const account = await svc.getAccountState();
     let positions: ExchangePositionSnapshot[] = [];
     try {
@@ -766,9 +751,9 @@ async function main(): Promise<void> {
         : typeof err === "object"
           ? JSON.stringify(err)
           : String(err);
-    if (!pool.isInitialized()) {
-      log.error("startup", `FATAL | Exchange pool init failed: ${msg}`);
-      throw new StartupFatalError(`Exchange pool init failed: ${msg}`);
+    if (!executionReady) {
+      log.error("startup", `FATAL | Execution init failed: ${msg}`);
+      throw new StartupFatalError(`Execution init failed: ${msg}`);
     }
     // Pool initialized but account query failed — non-fatal, continue with degraded state.
     // Common on Bybit Demo Trading when account has no balance yet.
@@ -793,53 +778,48 @@ async function main(): Promise<void> {
     );
   }
 
-  // 7e. Arm HL dead-man-switch (live HL only). If the bot freezes/crashes,
-  //     the exchange auto-cancels all open orders DMS_DEADLINE_MS after the
-  //     last refresh. Refresh cadence chosen to stay under HL's 10/day cap.
-  if (isDmsEnabled() && pool.isInitialized()) {
-    const svc = pool.getShared();
-    if (typeof svc.scheduleCancel === "function") {
-      let lastArmOk = false;
-      const armDms = async (): Promise<void> => {
-        try {
-          const result = await svc.scheduleCancel?.(
-            Date.now() + DMS_DEADLINE_MS,
-          );
-          lastArmOk = result?.success ?? false;
-          if (result && !result.success) {
-            log.error("dms", `DMS arm failed: ${result.error}`);
-          }
-        } catch (err) {
-          lastArmOk = false;
-          log.error(
-            "dms",
-            `DMS arm exception: ${err instanceof Error ? err.message : err}`,
-          );
+  // 7e. Arm HL dead-man-switch via CrashGuard port (live HL only).
+  if (isDmsEnabled() && executionReady && wiredPorts) {
+    const guard = wiredPorts.crashGuard;
+    const armDms = async (): Promise<void> => {
+      try {
+        await guard.arm();
+        if (guard.status() === "degraded") {
+          log.error("dms", "DMS arm failed — crash guard degraded");
         }
-      };
-      const startArm = (): void => {
-        dmsArmInFlight = armDms();
-      };
-      startArm();
-      await dmsArmInFlight;
-      if (lastArmOk) {
-        log.info(
-          "startup",
-          `DMS   | armed | deadline ${DMS_DEADLINE_MS / 1000}s | refresh ${DMS_REFRESH_MS / 1000}s`,
-        );
-      } else {
-        log.warn(
-          "startup",
-          `DMS   | initial arm failed — will retry on next refresh tick (${DMS_REFRESH_MS / 1000}s)`,
+      } catch (err) {
+        log.error(
+          "dms",
+          `DMS arm exception: ${err instanceof Error ? err.message : err}`,
         );
       }
-      activeIntervals.push(setInterval(startArm, DMS_REFRESH_MS));
+    };
+    const startArm = (): void => {
+      dmsArmInFlight = armDms();
+    };
+    startArm();
+    await dmsArmInFlight;
+    if (guard.status() === "armed") {
+      log.info(
+        "startup",
+        `DMS   | armed | deadline ${DMS_DEADLINE_MS / 1000}s | refresh ${DMS_REFRESH_MS / 1000}s`,
+      );
     } else {
       log.warn(
         "startup",
-        "DMS   | HL service missing scheduleCancel — not armed",
+        `DMS   | initial arm failed — will retry on next refresh tick (${DMS_REFRESH_MS / 1000}s)`,
       );
     }
+    activeIntervals.push(
+      setInterval(() => {
+        dmsArmInFlight = guard.refresh();
+      }, DMS_REFRESH_MS),
+    );
+  } else if (isDmsEnabled() && executionReady) {
+    log.warn(
+      "startup",
+      "DMS   | CrashGuard port unavailable — not armed",
+    );
   }
 
   // 8. Start health monitor periodic check (S13: Self-Healing)
@@ -851,8 +831,8 @@ async function main(): Promise<void> {
   const pm = getPositionMonitor();
   const bridge = getInvalidationBridge();
 
-  if (pool.isInitialized()) {
-    om.setExchangePool(pool);
+  if (executionReady) {
+    om.setExecutionService(getExecution());
   }
 
   // Load active orders from DB (crash recovery R1)
@@ -922,12 +902,8 @@ async function main(): Promise<void> {
   // Wire metrics service: refresh matviews after each trade close
   connectMetrics(agent);
 
-  // Wire advisor (learning loop v1): inject the stats cache into the agent's
-  // pre-entry gate, refresh on trade close + every ADVISOR.refreshMs, and run
-  // the periodic insight job. Fail-open by design: the initial refresh is NOT
-  // awaited (boot is never delayed), refresh failures keep the previous
-  // snapshot, and a null/stale snapshot yields pass-through verdicts — the
-  // advisor can never block or crash the entry path.
+  // Wire advisor: inject stats cache into pre-entry gate and refresh on trade
+  // close + periodic interval. Fail-open by design.
   // Wired BEFORE subscribeToPipeline so verdicts cover bootstrap setups too.
   const advisorMode = getAdvisorMode();
   if (advisorMode !== "off") {
@@ -938,15 +914,9 @@ async function main(): Promise<void> {
       setInterval(() => void advisorCache.refresh(), ADVISOR.refreshMs),
     );
     agent.onTradeClose(() => void advisorCache.refresh());
-    activeIntervals.push(
-      setInterval(
-        () => void runInsightJob(advisorCache.getSnapshot()),
-        ADVISOR.insightIntervalMs,
-      ),
-    );
     log.info(
       "startup",
-      `ADVSR | mode ${advisorMode} | stats refresh ${ADVISOR.refreshMs / 1000}s | insight job ${ADVISOR.insightIntervalMs / 1000}s`,
+      `ADVSR | mode ${advisorMode} | stats refresh ${ADVISOR.refreshMs / 1000}s`,
     );
   }
 
@@ -981,7 +951,7 @@ async function main(): Promise<void> {
 
   log.info(
     "agent",
-    "Agent wired: smc-sd + exchange pool + order manager + position monitor + invalidation bridge + Telegram bot",
+    "Agent wired: minh + execution + order manager + position monitor + invalidation bridge + Telegram bot",
   );
 
   // 10. Start coin refresh loop
@@ -998,8 +968,7 @@ async function main(): Promise<void> {
   tuiSources.getAccountState = async () => {
     try {
       if (liveAccountStatesCache && liveAccountStatesCache.size > 0) {
-        const p = getExchangePool();
-        if (!p.isInitialized()) return null;
+        if (!isExecutionInitialized()) return null;
         return aggregateAccountStatesForTui(liveAccountStatesCache);
       }
       // Reuse cached state from position-monitor's syncWithExchange — avoids duplicate API calls.
@@ -1032,11 +1001,7 @@ async function main(): Promise<void> {
 async function cleanup(
   reason: "reconnect" | "shutdown" = "reconnect",
 ): Promise<void> {
-  dashboardBootstrapPhase = "warming_up";
-  stopDashboardServer();
   clearTuiSink();
-  tuiLogStream?.end();
-  tuiLogStream = null;
   stopTui();
   selector.stopRefreshLoop();
   getPositionMonitor().stopSync();
@@ -1047,8 +1012,6 @@ async function cleanup(
   await stopOiFeed();
   await feed.closeAll();
   if (getActiveExchange() === "HL" && reason === "shutdown" && isDmsEnabled()) {
-    // Wait for any in-flight arm to settle before clearing; otherwise a late
-    // refresh response could re-schedule the cancel after our clear lands.
     if (dmsArmInFlight) {
       try {
         await dmsArmInFlight;
@@ -1058,20 +1021,11 @@ async function cleanup(
       dmsArmInFlight = null;
     }
     try {
-      const pool = getExchangePool();
-      if (pool.isInitialized()) {
-        const svc = pool.getShared();
-        if (typeof svc.scheduleCancel === "function") {
-          const result = await svc.scheduleCancel(undefined);
-          if (!result.success) {
-            log.error("shutdown", `DMS clear failed: ${result.error}`);
-          }
-        }
-      }
+      await wiredPorts?.crashGuard.disarm();
     } catch (err) {
       log.error(
         "shutdown",
-        `DMS clear exception: ${err instanceof Error ? err.message : err}`,
+        `DMS disarm exception: ${err instanceof Error ? err.message : err}`,
       );
     }
   }
@@ -1093,9 +1047,8 @@ async function cleanup(
     }
     if (reason === "shutdown") {
       try {
-        const pool = getExchangePool();
-        if (pool.isInitialized()) {
-          const svc = pool.getShared() as ShutdownSafeExchange;
+        if (isExecutionInitialized()) {
+          const svc = getExecution() as ShutdownSafeExchange;
           if (typeof svc.cancelAllOpenOrders === "function") {
             const result = await svc.cancelAllOpenOrders();
             if (!result.success) {
@@ -1113,7 +1066,6 @@ async function cleanup(
         );
       }
     }
-    closeAllBybitTrades();
     closeAllBybitTicker();
   }
   resetSetupGenerator();

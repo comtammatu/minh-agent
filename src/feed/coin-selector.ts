@@ -18,7 +18,7 @@ import {
   TOP_COINS_LIMIT,
 } from "../config.js";
 import { log } from "../lib/logger.js";
-import { fetchMetaAndAssetCtxs } from "./perp-info.js";
+import { fetchMetaAndAssetCtxs } from "./hl-info.js";
 import { acquire } from "./rate-limiter.js";
 import { info } from "./rest.js";
 
@@ -98,7 +98,7 @@ interface AssetCtx {
 
 /**
  * Fetch HIP-3 coins from configured DEXes, ranked by OI descending.
- * Uses raw fetch (SDK doesn't support the `dex` parameter on metaAndAssetCtxs).
+ * Uses raw fetch for dex-scoped HIP-3 calls via hl-info.ts.
  * Returns full ranked list across all configured DEXes.
  */
 export async function fetchHip3RankedCoins(

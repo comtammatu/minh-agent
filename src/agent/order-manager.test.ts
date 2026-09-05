@@ -130,10 +130,7 @@ mock.module("../execution/hl-exchange-service.js", () => ({
 }));
 
 import { DEFAULT_RISK_PERCENT, HL_MIN_ORDER_NOTIONAL_USD } from "../config.js";
-import type {
-  ExchangePool,
-  IExchangeService,
-} from "../execution/exchange-pool.js";
+import type { IExchangeService } from "../execution/exchange-service.js";
 import type { PlaceOrderParams } from "../execution/exchange-service.js";
 import type { ActiveSetup } from "../types.js";
 import {
@@ -178,10 +175,10 @@ function makeActiveSetup(
   patternData: Record<string, unknown> = {},
 ): ActiveSetup {
   return {
-    id: "BTC|1h|smc-sd|long",
+    id: "BTC|1h|minh|long",
     coin: "BTC",
     interval: "1h",
-    type: "smc-sd",
+    type: "minh",
     side: "long",
     confidence: 0.8,
     entryPrice: 50_000,
@@ -367,11 +364,7 @@ describe("OrderManager", () => {
         getFillAggregateByCloid,
         getFillAggregateByOrderId,
       } as unknown as IExchangeService;
-      const fakePool = {
-        isInitialized: () => true,
-        get: () => bbSvc,
-      } as unknown as ExchangePool;
-      om.setExchangePool(fakePool);
+      om.setExecutionService(bbSvc);
 
       await om.syncSubmittedEntryFills();
 
@@ -405,11 +398,7 @@ describe("OrderManager", () => {
         getFillAggregateByCloid,
         getFillAggregateByOrderId,
       } as unknown as IExchangeService;
-      const fakePool = {
-        isInitialized: () => true,
-        get: () => bbSvc,
-      } as unknown as ExchangePool;
-      om.setExchangePool(fakePool);
+      om.setExecutionService(bbSvc);
 
       await om.syncSubmittedEntryFills();
 
@@ -734,11 +723,7 @@ describe("OrderManager", () => {
         modifyTrigger,
         updatePositionStop,
       } as unknown as IExchangeService;
-      const fakePool = {
-        isInitialized: () => true,
-        get: () => bbSvc,
-      } as unknown as ExchangePool;
-      om.setExchangePool(fakePool);
+      om.setExecutionService(bbSvc);
 
       await om.modifySLPrice(order.id, 49500);
 
@@ -805,11 +790,7 @@ describe("OrderManager", () => {
         modifyTrigger,
         updatePositionStop,
       } as unknown as IExchangeService;
-      const fakePool = {
-        isInitialized: () => true,
-        get: () => hlSvc,
-      } as unknown as ExchangePool;
-      om.setExchangePool(fakePool);
+      om.setExecutionService(hlSvc);
 
       await om.modifySLPrice(order.id, 49500);
 

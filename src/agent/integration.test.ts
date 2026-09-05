@@ -119,7 +119,7 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
     detectedAt: Date.now(),
     detectedAtBar: 0,
     expiresAtBar: 100,
-    type: "smc-sd",
+    type: "minh",
     side: "long",
     confidence: 0.85,
     entryPrice: 50000,
@@ -329,7 +329,7 @@ describe("End-to-end integration", () => {
       coin: "ETH",
       id: "ETH|15m|fvg|short",
       side: "short",
-      type: "smc-sd",
+      type: "minh",
     });
 
     pipelineEmitter.emit("setup", btcSetup);

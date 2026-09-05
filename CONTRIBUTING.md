@@ -1,79 +1,62 @@
 # Contributing
 
-This project optimizes for deterministic behavior, low-latency scans, and safe execution boundaries.
+Deterministic behavior, low-latency scans, safe execution boundaries.
 
-## Before You Change Code
+## Before you change code
 
-1. Read [CLAUDE.md](CLAUDE.md) — agent instructions, constraints, and pointers to per-topic rule files in `.claude/rules/`
-2. Read [README.md](README.md) and [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md) for the current architecture; use [docs/archive/plan/decisions.md](docs/archive/plan/decisions.md) only for historical rationale
-3. Keep pure logic inside `src/indicators/` and `src/strategy/`
-4. Keep I/O at the edges: `src/feed/`, execution services, and `src/index.ts`
+1. [CLAUDE.md](CLAUDE.md) — constraints + rule pointers
+2. [docs/FEATURES.md](docs/FEATURES.md) + [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — what ships + how the pipeline works
+3. [docs/WORKFLOW.md](docs/WORKFLOW.md) — local loop + Task Contract
+4. [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md) / [docs/DESIGN.md](docs/DESIGN.md) — map + UI/schema/API
+5. Keep pure logic in `src/indicators/` and pure `src/strategy/` helpers
+6. Keep I/O at edges: `feed/`, `execution/`, `runtime/`, `presence/`, `alert/`
 
-## Local Workflow
+## Local workflow
 
 ```bash
 bun install
+docker-compose up -d
 bun run typecheck
-bun test --run
-ACTIVE_EXCHANGE=HL bun run bench:pipeline:ci
+bun run test:run
+ACTIVE_EXCHANGE=HL bun run bench:pipeline:ci   # strategy hot path
+bun run start                                  # or: bun run dev
 ```
 
-Use `ACTIVE_EXCHANGE=HL` for benchmark validation unless you are intentionally working on Bybit-specific behavior.
+## Quality gates
 
-## Quality Gates
-
-Every non-trivial change should satisfy all of these:
-
-1. `bun run test:run` passes (includes dashboard)
-2. `bun run typecheck` passes
-3. `bun run lint` passes (or only justified biome warnings; run `bun run lint:fix` for auto)
-4. `bun run deadcode` passes (or documented knip false positives)
-5. `ACTIVE_EXCHANGE=HL bun run bench:pipeline:ci` passes when touching strategy, indicators, cache, config, or CI budget code
-6. No new `any` without a justification comment
+1. `bun run test:run` passes
+2. `bun run typecheck` passes (TypeScript 7.x, strict)
+3. `bun run lint` — clean or justified biome baseline
+4. `bun run deadcode` — clean or documented knip FPs
+5. `bench:pipeline:ci` when touching strategy / indicators / cache / config / CI budget
+6. No new `any` without justification comment
 7. No new magic numbers outside `src/config.ts`
-8. No side effects inside pure indicator/strategy helpers
+8. No side effects in pure indicator/strategy helpers
 
-## Typecheck Scope
+Details: [.claude/rules/quality-gates.md](.claude/rules/quality-gates.md).
 
-- `bun run typecheck` uses [`tsconfig.typecheck.json`](tsconfig.typecheck.json).
-- It intentionally locks `src/**` runtime modules and excludes `test/**` plus `src/**/*.test.ts`.
-- Tests are still mandatory and are enforced separately via `bun test --run`.
-- Rationale: we want strict compiler guarantees on production code without turning fixture-heavy test files into the main source of CI noise.
+## Typecheck scope
 
-## Performance Gate Policy
+- `bun run typecheck` → `tsconfig.typecheck.json` (locks `src/**`, excludes most tests)
+- Tests enforced via `bun test --run` / `test:run`
+- TypeScript **7.x** pinned in `devDependencies`
 
-- CI uses GitHub-hosted runners, not a developer laptop baseline.
-- `p95` is intentionally strict.
-- `p99` has more headroom because hosted runners show higher tail-latency variance.
-- If you need to update the benchmark baseline or budget, record the reason in [docs/archive/plan/decisions.md](docs/archive/plan/decisions.md).
+## Performance gate
 
-## Config Discipline
+- CI uses GitHub-hosted runners; `p95` strict, `p99` has headroom
+- Budget changes → record rationale in `docs/archive/plan/decisions.md`
 
-- Prefer removing stale env vars over keeping “just in case” examples.
-- This repo currently uses:
-  - one active exchange per process
-  - one shared wallet/account per process
-- If docs or `.env.example` still mention removed multi-wallet flow, treat that as cleanup work.
+## Config discipline
 
-## Execution/Risk Notes
+- Prefer removing stale env vars
+- One active exchange + one shared wallet per process
+- `EXECUTION_MODE=paper|live` is canonical; `PAPER_TRADE` is legacy alias only
 
-- Hyperliquid has a native dead man's switch.
-- Bybit does not. Current runtime surfaces that limitation explicitly on shutdown in live mode.
-- Do not assume Bybit has equivalent safety semantics to Hyperliquid.
+## Execution / risk
 
-## Good PR Scope
+- HL has native dead man's switch; BB uses external heartbeat watchdog
+- Do not assume Bybit matches HL safety semantics
 
-Good changes are:
+## Good PR scope
 
-- one architectural cleanup with tests
-- one CI or tooling cleanup with verification
-- one strategy/indicator improvement with benchmark evidence
-
-Avoid bundling:
-
-- large refactors
-- strategy logic changes
-- CI budget changes
-- execution/risk changes
-
-in the same PR unless they are inseparable.
+One cleanup **or** one strategy change **or** one tooling change — not all three unless inseparable.

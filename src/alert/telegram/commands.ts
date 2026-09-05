@@ -12,12 +12,14 @@
  * /resume    — mutates agent state (resumeAll)
  * /risk      — risk dashboard (PnL, CB, consecutive losses)
  * /closeall  — emergency close all (requires /confirm)
- * /confirm   — confirm pending /closeall or remote /operator action
+ * /confirm   — confirm pending /closeall, Case Gate entry, or /operator action
  * /advisor   — advisor mode, bucket stats, recent insights (async, hits DB)
  */
 
 import { getAdvisorCache } from "../../advisor/index.js";
-import { closeAllPositions } from "../../agent/close-all.js";
+import { createOperatorPort } from "../../presence/operator-facade.js";
+import { listPendingGates } from "../../presence/gate.js";
+
 import {
   getJournalEntries,
   logOperatorAuditEntry,
@@ -28,7 +30,7 @@ import { getHealthMonitor } from "../../agent/self-healing.js";
 import { getAgent } from "../../agent/trading-agent.js";
 import { getLiveMetrics } from "../../analytics/metrics-service.js";
 import { getAdvisorMode, TELEGRAM_BOT } from "../../config.js";
-import { queryMemories } from "../../memory/index.js";
+import { generateInsights } from "../../advisor/insights.js";
 import {
   getDecisionTraceByPositionId,
   getDecisionTraceBySetupId,
@@ -393,9 +395,9 @@ function pauseHandler(args: string): string {
       return `${esc(coin)} paused for ${esc(label)}`;
     }
 
-    // Global pause (original behavior)
+    // Global pause (Presence Voice → OperatorPort)
     const reason = args.trim() || "manual via Telegram";
-    agent.pauseAll(reason);
+    void createOperatorPort().execute({ type: "pause", reason });
     return `Agent paused: ${esc(reason)}`;
   } catch {
     return `Agent not initialized\\.`;
@@ -406,7 +408,7 @@ function pauseHandler(args: string): string {
 
 function resumeHandler(): string {
   try {
-    getAgent().resumeAll();
+    void createOperatorPort().execute({ type: "resume" });
     return `Agent resumed\\.`;
   } catch {
     return `Agent not initialized\\.`;
@@ -1338,31 +1340,50 @@ async function confirmHandler(_args: string, chatId: number): Promise<string> {
   }
 
   const pendingCloseAll = getPendingCloseAll(chatId);
-  if (!pendingCloseAll) {
-    return `No pending /closeall to confirm\\.`;
-  }
+  if (pendingCloseAll) {
+    const elapsed = (Date.now() - pendingCloseAll.requestedAt) / 1000;
+    if (elapsed >= timeoutSec) {
+      pendingCloseAllByChat.delete(chatId);
+      return `Confirmation expired\\. Send /closeall again\\.`;
+    }
 
-  // Check timeout
-  const elapsed = (Date.now() - pendingCloseAll.requestedAt) / 1000;
-  if (elapsed >= timeoutSec) {
     pendingCloseAllByChat.delete(chatId);
-    return `Confirmation expired\\. Send /closeall again\\.`;
+    try {
+      const op = await createOperatorPort().execute({
+        type: "flatten",
+        reason: "emergency close-all via Telegram",
+        confirm: true,
+      });
+      if (!op.ok) {
+        return `Close\\-all failed: ${esc(op.detail ?? "unknown")}`;
+      }
+      return [`*Close\\-all executed*`, `Agent is now paused\\.`].join("\n");
+    } catch {
+      return `Close\\-all failed\\. Check logs\\.`;
+    }
   }
 
-  // Execute
-  pendingCloseAllByChat.delete(chatId);
-  try {
-    const result = await closeAllPositions("emergency close-all via Telegram");
-    return [
-      `*Close\\-all executed*`,
-      `Cancelled orders: ${esc(String(result.cancelled))}`,
-      `Closed positions: ${esc(String(result.closed))}`,
-      `Agent is now paused\\.`,
-    ].join("\n");
-  } catch {
-    return `Close\\-all failed\\. Check logs\\.`;
+  const pendingCaseGates = listPendingGates();
+  if (pendingCaseGates.length > 0) {
+    const gate = pendingCaseGates[0]!;
+    const result = getAgent().confirmCaseGateEntry(gate.caseId);
+    if (result === "approved") {
+      return [
+        `*Case gate approved*`,
+        `${esc(gate.coin)} ${esc(gate.grade ?? "?")} entry submitted\\.`,
+      ].join("\n");
+    }
+    if (result === "expired") {
+      return `Case gate expired for ${esc(gate.coin)}\\.`;
+    }
+    return `Case gate not found or already handled\\.`;
   }
+
+  return `No pending action to confirm\\.`;
 }
+
+// NOTE: detailed cancel/close counts remain in journal/operator audit via OperatorPort.
+
 
 // ─── /report ──────────────────────────────────────────────────────────────
 
@@ -1518,7 +1539,7 @@ async function reportHandler(): Promise<string> {
 
 /** Top buckets (by trade count) shown in the /advisor reply. */
 const ADVISOR_TOP_BUCKET_COUNT = 8;
-/** Latest pattern_insight memories shown in the /advisor reply. */
+/** Top insights shown in the /advisor reply. */
 const ADVISOR_INSIGHT_COUNT = 5;
 
 async function advisorHandler(): Promise<string> {
@@ -1559,18 +1580,11 @@ async function advisorHandler(): Promise<string> {
       }
     }
 
-    const insights = await queryMemories({
-      category: "pattern_insight",
-      limit: ADVISOR_INSIGHT_COUNT,
-    });
+    const insights = generateInsights(snapshot).slice(0, ADVISOR_INSIGHT_COUNT);
     if (insights.length > 0) {
-      lines.push(``, `*Recent Insights:*`);
-      const latest = [...insights].sort(
-        (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
-      );
-      for (const insight of latest) {
-        const day = insight.createdAt.toISOString().slice(0, 10);
-        lines.push(`  ${esc(day)} ${esc(insight.content)}`);
+      lines.push(``, `*Insights:*`);
+      for (const insight of insights) {
+        lines.push(`  ${esc(insight.content)}`);
       }
     } else {
       lines.push(``, `No insights yet\\.`);

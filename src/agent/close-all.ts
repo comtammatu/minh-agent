@@ -5,7 +5,7 @@
  * Lives in agent/ because it orchestrates I/O (OrderManager + PositionMonitor).
  */
 
-import { getExchangePool } from "../execution/exchange-pool.js";
+import { getExecution, isExecutionInitialized } from "../app/execution.js";
 import { getOrderManager } from "./order-manager.js";
 import {
   getPositionMonitor,
@@ -82,12 +82,11 @@ async function exchangeVerification(
   }
 
   try {
-    const pool = getExchangePool();
-    if (!pool.isInitialized()) {
+    if (!isExecutionInitialized()) {
       exchangeVerified = false;
       remainingOrders = countLocalOpenOrders(om.getOrders());
     } else {
-      const orders = await pool.getShared().getOpenOrders();
+      const orders = await getExecution().getOpenOrders();
       if (orders === null) {
         exchangeVerified = false;
         remainingOrders = countLocalOpenOrders(om.getOrders());

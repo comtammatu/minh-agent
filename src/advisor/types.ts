@@ -10,7 +10,7 @@ import type { CandleInterval, MarketRegime, SignalSide } from "../types.js";
 
 // ─── Outcome rows (input to aggregation) ─────────────────────────────────────
 
-/** One closed-trade outcome, as read from trade_memory. */
+/** One closed-trade outcome, as read from trade_journal. */
 export interface OutcomeRow {
   pattern: string;
   regime: MarketRegime | null;

@@ -6,7 +6,6 @@
  */
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import type { NewTradeMemory } from "../memory/types.js";
 
 // ── DB Mock ─────────────────────────────────────────────────────────────────
 
@@ -18,8 +17,6 @@ import type { NewTradeMemory } from "../memory/types.js";
 let allSqlCalls: Array<{ strings: string[]; values: unknown[] }> = [];
 let sqlMockResult: unknown[] = [];
 let sqlShouldThrow = false;
-let memoryInsertCalls: NewTradeMemory[] = [];
-let memoryShouldThrow = false;
 
 /** Get all interpolated values across all sql calls in a test. */
 function allInterpolatedValues(): unknown[] {
@@ -60,15 +57,6 @@ mock.module("../lib/logger.js", () => ({
   },
 }));
 
-mock.module("../memory/index.js", () => ({
-  insertMemory: (mem: NewTradeMemory) => {
-    memoryInsertCalls.push(mem);
-    return memoryShouldThrow
-      ? Promise.reject(new Error("memory insert failed"))
-      : Promise.resolve(1);
-  },
-}));
-
 import {
   getDailySummary,
   getJournalEntries,
@@ -83,8 +71,6 @@ beforeEach(() => {
   allSqlCalls = [];
   sqlMockResult = [];
   sqlShouldThrow = false;
-  memoryInsertCalls = [];
-  memoryShouldThrow = false;
 });
 
 // ── logJournalEntry ─────────────────────────────────────────────────────────
@@ -129,144 +115,6 @@ describe("logJournalEntry", () => {
     // Should NOT throw — errors are caught internally
     await logJournalEntry("exit", "ETH", { pnl: 42.5 }, "EXITING");
     // No exception = pass
-  });
-
-  it("stores exit journal events with numeric pnl as trade_outcome memory", async () => {
-    await logJournalEntry(
-      "exit",
-      "BTC",
-      {
-        pnl: 125,
-        realizedPnlR: 1.25,
-        side: "long",
-        interval: "5m",
-        setupId: "BTC|5m|smc-sd|long",
-        pattern: "smc-sd",
-        positionId: "pos-1",
-        reason: "tp_hit",
-        confidence: 0.82,
-        regime: "BULL",
-        thesisSnapshot: { displacement: true },
-      },
-      "EXITING",
-    );
-    await new Promise((r) => setTimeout(r, 10));
-
-    expect(memoryInsertCalls).toHaveLength(1);
-    expect(memoryInsertCalls[0]).toMatchObject({
-      category: "trade_outcome",
-      coin: "BTC",
-      timeframe: "5m",
-      pattern: "smc-sd",
-      regime: "BULL",
-      side: "long",
-      pnlR: 1.25,
-      confidence: 0.82,
-    });
-    expect(memoryInsertCalls[0]?.content).toContain("Closed BTC long");
-    expect(memoryInsertCalls[0]?.metadata).toMatchObject({
-      eventType: "exit",
-      coin: "BTC",
-      pnl: 125,
-      pnlR: 1.25,
-      setupId: "BTC|5m|smc-sd|long",
-      positionId: "pos-1",
-      exitReason: "tp_hit",
-      executionMode: "paper", // EXECUTION_MODE unset in tests → paper default
-      thesisSnapshot: { displacement: true },
-    });
-  });
-
-  it("does not store exit memory when pnl is missing", async () => {
-    await logJournalEntry(
-      "exit",
-      "BTC",
-      { setupId: "BTC|5m|smc-sd|long", reason: "tp_hit" },
-      "EXITING",
-    );
-    await new Promise((r) => setTimeout(r, 10));
-
-    expect(memoryInsertCalls).toHaveLength(0);
-  });
-
-  it("does not store exit memory when setupId is missing (EXITING audit re-journal)", async () => {
-    // handleExiting re-journals the close without setup context — audit row
-    // only, no trade_outcome memory (dedupe rule).
-    await logJournalEntry(
-      "exit",
-      "BTC",
-      { pnl: -50, reason: "thesis_deteriorated", positionId: "pos-1" },
-      "EXITING",
-    );
-    await new Promise((r) => setTimeout(r, 10));
-
-    expect(anyQueryContains("INSERT INTO trade_journal")).toBe(true);
-    expect(memoryInsertCalls).toHaveLength(0);
-  });
-
-  it("writes exactly one trade_outcome memory per position close (dedupe)", async () => {
-    // 1st exit: handleInPosition path — carries setupId → writes memory.
-    await logJournalEntry(
-      "exit",
-      "BTC",
-      {
-        pnl: 80,
-        setupId: "BTC|5m|smc-sd|long",
-        side: "long",
-        reason: "position_closed",
-        positionId: "pos-1",
-      },
-      "IN_POSITION",
-    );
-    // 2nd exit: handleExiting audit re-journal — same close, no setupId.
-    await logJournalEntry(
-      "exit",
-      "BTC",
-      { pnl: 80, reason: "exchange_position_closed", positionId: "pos-1" },
-      "EXITING",
-    );
-    await new Promise((r) => setTimeout(r, 10));
-
-    expect(memoryInsertCalls).toHaveLength(1);
-    expect(memoryInsertCalls[0]?.metadata).toMatchObject({
-      setupId: "BTC|5m|smc-sd|long",
-      pnl: 80,
-    });
-  });
-
-  it("tags exit memories with the live execution mode", async () => {
-    const prev = process.env.EXECUTION_MODE;
-    process.env.EXECUTION_MODE = "live";
-    try {
-      await logJournalEntry(
-        "exit",
-        "BTC",
-        { pnl: 10, setupId: "BTC|5m|smc-sd|long" },
-        "EXITING",
-      );
-      await new Promise((r) => setTimeout(r, 10));
-
-      expect(memoryInsertCalls).toHaveLength(1);
-      expect(memoryInsertCalls[0]?.metadata).toMatchObject({
-        executionMode: "live",
-      });
-    } finally {
-      if (prev === undefined) delete process.env.EXECUTION_MODE;
-      else process.env.EXECUTION_MODE = prev;
-    }
-  });
-
-  it("does not throw when fire-and-forget memory insert fails", async () => {
-    memoryShouldThrow = true;
-    await logJournalEntry(
-      "exit",
-      "BTC",
-      { pnl: 12, setupId: "BTC|5m|smc-sd|long" },
-      "EXITING",
-    );
-    await new Promise((r) => setTimeout(r, 10));
-
-    expect(memoryInsertCalls).toHaveLength(1);
   });
 });
 

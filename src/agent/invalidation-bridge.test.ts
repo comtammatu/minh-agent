@@ -23,7 +23,7 @@ function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
     id: "BTC|1h|order-block|long",
     coin: "BTC",
     interval: "1h",
-    type: "smc-sd",
+    type: "minh",
     side: "long",
     confidence: 0.75,
     entryPrice: 50000,
@@ -48,8 +48,8 @@ describe("parseCoinFromSetupId", () => {
   });
 
   it("extracts coin from legacy strategy-prefixed setup ids", () => {
-    expect(parseCoinFromSetupId("smc-sd:BTC|1h|smc-sd")).toBe("BTC");
-    expect(parseCoinFromSetupId("alpha:ETH|15m|smc-sd")).toBe("ETH");
+    expect(parseCoinFromSetupId("minh:BTC|1h|minh")).toBe("BTC");
+    expect(parseCoinFromSetupId("alpha:ETH|15m|minh")).toBe("ETH");
   });
 
   it("returns null for invalid setup ids", () => {

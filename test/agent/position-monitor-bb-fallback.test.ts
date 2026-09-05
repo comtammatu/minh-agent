@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 
 let hlFallbackFactoryCalls = 0;
 let hlGetPositionsCalls = 0;
@@ -30,19 +30,13 @@ const hlService = {
   },
 };
 
-mock.module("../../src/execution/exchange-pool.js", () => ({
-  getExchangePool: () => ({
-    isInitialized: () => false,
-    isMultiWallet: () => false,
-    getShared: () => {
-      throw new Error(
-        "getShared should not be called when pool is not initialized",
-      );
-    },
-    get: () => {
-      throw new Error("get should not be called when pool is not initialized");
-    },
-  }),
+mock.module("../../src/app/execution.js", () => ({
+  isExecutionInitialized: () => false,
+  getExecution: () => {
+    throw new Error(
+      "getExecution should not be called when execution is not initialized",
+    );
+  },
 }));
 
 mock.module("../../src/execution/hl-exchange-service.js", () => ({
@@ -92,6 +86,10 @@ describe("PositionMonitor BB fallback guard", () => {
   afterEach(() => {
     delete process.env.ACTIVE_EXCHANGE;
     resetPositionMonitor();
+  });
+
+  afterAll(() => {
+    mock.restore();
   });
 
   it("keeps HL singleton fallback for queryExchangePositions in HL live mode", async () => {

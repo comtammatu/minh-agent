@@ -6,7 +6,7 @@
  * empty. Post advisor + EXITING-stranding fixes, every position close
  * produces exactly ONE exit row carrying pnl/side/pattern/grade, making the
  * journal the canonical closed-trade record (see migration 013 +
- * docs/plan/implementation-notes-advisor-v1.md).
+ * docs/archive/plan/implementation-notes-advisor-v1.md).
  *
  * Row convention (matches the advisor's isWin signal-less rule): exit rows
  * with NULL pnl are audit-only; pnl = 0 rows are signal-less (legacy
@@ -130,7 +130,7 @@ export async function getClosedTradeStatsForWallet(): Promise<
       AND (details->>'pnl')::double precision != 0
   `;
   return rows.map((r) => ({
-    walletLabel: "smc-sd",
+    walletLabel: "minh",
     wins: Number(r.wins),
     losses: Number(r.losses),
     tradeCount: Number(r.trade_count),

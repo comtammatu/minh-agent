@@ -7,7 +7,7 @@ import {
 
 /**
  * PostgreSQL connection pool.
- * R15: max 5 — single-process, sequential writes. 5 handles dashboard server (Bun.serve) reads + write-through from runtime.
+ * R15: max 5 — single-process, sequential writes.
  */
 export const sql = postgres(
   process.env.DATABASE_URL ?? "postgres://minh:minh_dev@localhost:5432/minh",

@@ -83,7 +83,7 @@ export function getPipelineStats(): PipelineStats {
 
 /** Backward-compatible snapshot map for UI/tests that still expect keyed access. */
 export function getPipelineStatsMap(): Map<string, PipelineStats> {
-  return new Map([["smc-sd", getPipelineStats()]]);
+  return new Map([["minh", getPipelineStats()]]);
 }
 
 /** Reset pipeline diagnostic stats. */

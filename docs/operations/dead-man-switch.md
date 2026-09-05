@@ -7,7 +7,7 @@ Two-track safety system that auto-cancels open orders if the bot freezes or cras
 | HL DMS | Hyperliquid | Native `scheduleCancel` API (exchange-side) | `src/runtime/app.ts` |
 | BB Watchdog | Bybit | External process polling heartbeat file | `scripts/bb-watchdog.ts` |
 
-Both tracks gate on `PAPER_TRADE=false` — paper-mode processes never arm them.
+Both tracks gate on live execution (`EXECUTION_MODE=live`; legacy `PAPER_TRADE=false` only when `EXECUTION_MODE` is unset) — paper-mode processes never arm them.
 
 ---
 
@@ -77,7 +77,7 @@ All constants live in [src/config.ts](../../src/config.ts):
 | `BB_HEARTBEAT_PATH` | `/tmp/minh-heartbeat.json` | Where the writer puts `{pid, ts}` |
 | `BB_HEARTBEAT_WRITE_MS` | `30_000` (30 s) | Writer cadence in main process |
 | `BB_HEARTBEAT_THRESHOLD_MS` | `300_000` (5 min) | Watchdog triggers if file older than this |
-| `BB_WATCHDOG_ENABLED` | derived | `ACTIVE_EXCHANGE=BB && PAPER_TRADE=false` |
+| `BB_WATCHDOG_ENABLED` | derived | `ACTIVE_EXCHANGE=BB && EXECUTION_MODE=live` |
 
 Margin: 5 min threshold / 30 s write cadence = **10× safety factor**. A normal slow operation (DB compaction, backfill stall, GC pause) does not trigger the watchdog. Only a multi-minute freeze does.
 
@@ -88,7 +88,7 @@ Override `BB_HEARTBEAT_PATH` in environments where `/tmp` is per-process (some c
 ## Run the watchdog
 
 ```bash
-ACTIVE_EXCHANGE=BB PAPER_TRADE=false BYBIT_API_KEY=… BYBIT_API_SECRET=… \
+ACTIVE_EXCHANGE=BB EXECUTION_MODE=live BYBIT_API_KEY=… BYBIT_API_SECRET=… \
   bun run scripts/bb-watchdog.ts
 ```
 

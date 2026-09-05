@@ -173,7 +173,7 @@ describe("aggregatePatterns", () => {
       },
       {
         week: new Date(),
-        patternType: "smc-sd",
+        patternType: "minh",
         signalGrade: "B",
         trades: 5,
         wins: 2,
@@ -187,7 +187,7 @@ describe("aggregatePatterns", () => {
     // Sorted by totalPnl DESC
     expect(result[0]?.patternType).toBe("ob");
     expect(result[0]?.winRate).toBe(0.7);
-    expect(result[1]?.patternType).toBe("smc-sd");
+    expect(result[1]?.patternType).toBe("minh");
     expect(result[1]?.winRate).toBe(0.4);
   });
 

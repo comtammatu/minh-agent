@@ -54,7 +54,7 @@ import {
   RETRY,
 } from "../config.js";
 import { getLatestBook } from "../feed/orderbook.js";
-import { fetchAllMids, fetchOpenOrders } from "../feed/perp-info.js";
+import { fetchAllMids, fetchOpenOrders } from "../feed/hl-info.js";
 import { acquire } from "../feed/rate-limiter.js";
 import { info } from "../feed/rest.js";
 import { log } from "../lib/logger.js";

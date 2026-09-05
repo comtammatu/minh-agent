@@ -609,9 +609,9 @@ export function clearPipelineState(): void {
   resetPipelineStats();
 }
 
-// ── Internals used by pipeline.ts ────────────────────────────────────────────
+// ── Internals (test / engine helpers) ────────────────────────────────────────
 
-/** Get the mutable statusState map (for pipeline.ts to update during runPipeline). */
+/** Get the mutable statusState map. */
 export function getStatusState(): Map<string, StatusSnapshot> {
   return statusState;
 }
@@ -624,7 +624,7 @@ export function getStatusRefreshCount(
   return statusRefreshCounts.get(statusKey(coin, interval)) ?? 0;
 }
 
-/** Get the mutable activeSetups map (for pipeline.ts to read/write during runPipeline). */
+/** Get the mutable activeSetups map. */
 export function getActiveSetupsMap(): Map<string, ActiveSetup> {
   return activeSetups;
 }
@@ -640,6 +640,12 @@ function traceKey(trace: DecisionTrace): string {
 /** Record or update a decision trace (called during pipeline evaluation). */
 export function recordDecisionTrace(trace: DecisionTrace): void {
   decisionTraces.set(traceKey(trace), trace);
+  // Presence Case bus (Greenfield)
+  void import("../domain/case/bus.js")
+    .then((m) => m.upsertCaseFromTrace(trace))
+    .catch(() => {
+      /* non-fatal */
+    });
 }
 
 /** Get all active decision traces. */

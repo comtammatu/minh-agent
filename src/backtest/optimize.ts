@@ -32,7 +32,7 @@ import {
   WF_TEST_WINDOW_MS,
   WF_TRAIN_WINDOW_MS,
 } from "../config.js";
-import { fetchBybitCandlesBatched } from "../feed/bybit/bybit-rest.js";
+import { fetchBybitCandlesBatched } from "../feed/bb/bybit-rest.js";
 import { log } from "../lib/logger.js";
 import type { Candle, CandleInterval } from "../types.js";
 import type {
@@ -648,7 +648,7 @@ async function main() {
     initialCapital: 10_000,
     slippagePct: BACKTEST_SLIPPAGE_PCT,
     commissionPct: BYBIT_COMMISSION_PCT,
-    strategy: "smc-sd",
+    strategy: "minh",
     ...(disabledScanModes.length > 0 ? { disabledScanModes } : {}),
   };
 

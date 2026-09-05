@@ -12,7 +12,7 @@ import type { ISubscription } from "@nktkas/hyperliquid";
 import { HIP3_DEXES, MARK_ORACLE_DIVERGENCE_THRESHOLD } from "../config.js";
 import { log } from "../lib/logger.js";
 import type { AssetCtxSnapshot } from "../types.js";
-import { fetchAllPerpDexNames, fetchMetaAndAssetCtxs } from "./perp-info.js";
+import { fetchAllPerpDexNames, fetchMetaAndAssetCtxs } from "./hl-info.js";
 import { acquire } from "./rate-limiter.js";
 import { info } from "./rest.js";
 import { getWsClient, registerSubscription, removeSubscription } from "./ws.js";

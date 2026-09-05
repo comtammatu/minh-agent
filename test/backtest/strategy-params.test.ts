@@ -8,7 +8,7 @@
  *   1. MIN_CONFIDENCE=0.99 blocks all signals (0 trades)
  *   2. Default params (undefined) = same results as explicit default values
  *   3. REGIME_MULT overrides change confidence calculation
- *   4. SMC_MIN_RR override filters trades by R:R
+ *   4. MINH_MIN_RR override filters trades by R:R
  *
  * Evolution Phase 1 — Days 2-3.
  */
@@ -22,7 +22,7 @@ import type {
 import {
   MIN_CONFIDENCE,
   REGIME_MULTIPLIERS,
-  SMC_MIN_RR,
+  MINH_MIN_RR,
 } from "../../src/config.js";
 import { applyRegimeModifier } from "../../src/strategy/shared/regime.js";
 import type { Candle, CandleInterval } from "../../src/types.js";
@@ -69,7 +69,7 @@ const baseConfig: BacktestConfig = {
   initialCapital: 10000,
   slippagePct: 0.0005,
   commissionPct: 0.0003,
-  strategy: "smc-sd",
+  strategy: "minh",
 };
 
 // ─── StrategyParams Type ─────────────────────────────────────────────────────
@@ -80,22 +80,22 @@ describe("StrategyParams type", () => {
       MIN_CONFIDENCE: 0.6,
       REGIME_MULT_COUNTER: 0.3,
       REGIME_MULT_NEUTRAL: 0.8,
-      SMC_DRILLDOWN_CONFIDENCE_BASE: 0.7,
+      MINH_DRILLDOWN_CONFIDENCE_BASE: 0.7,
       SL_WICK_ATR_MULT: 0.5,
-      SMC_MIN_RR: 2.0,
+      MINH_MIN_RR: 2.0,
     };
     expect(params.MIN_CONFIDENCE).toBe(0.6);
     expect(params.REGIME_MULT_COUNTER).toBe(0.3);
     expect(params.REGIME_MULT_NEUTRAL).toBe(0.8);
-    expect(params.SMC_DRILLDOWN_CONFIDENCE_BASE).toBe(0.7);
+    expect(params.MINH_DRILLDOWN_CONFIDENCE_BASE).toBe(0.7);
     expect(params.SL_WICK_ATR_MULT).toBe(0.5);
-    expect(params.SMC_MIN_RR).toBe(2.0);
+    expect(params.MINH_MIN_RR).toBe(2.0);
   });
 
   test("all fields are optional", () => {
     const empty: StrategyParams = {};
     expect(empty.MIN_CONFIDENCE).toBeUndefined();
-    expect(empty.SMC_MIN_RR).toBeUndefined();
+    expect(empty.MINH_MIN_RR).toBeUndefined();
   });
 
   test("BacktestConfig accepts strategyParams", () => {
@@ -176,7 +176,7 @@ describe("default equivalence", () => {
         MIN_CONFIDENCE,
         REGIME_MULT_COUNTER: REGIME_MULTIPLIERS.counter,
         REGIME_MULT_NEUTRAL: REGIME_MULTIPLIERS.neutral,
-        SMC_MIN_RR,
+        MINH_MIN_RR,
       },
     });
 
@@ -241,16 +241,16 @@ describe("regime multiplier override", () => {
   });
 });
 
-// ─── SMC_MIN_RR Override ─────────────────────────────────────────────────────
+// ─── MINH_MIN_RR Override ─────────────────────────────────────────────────────
 
-describe("SMC_MIN_RR override", () => {
-  test("higher SMC_MIN_RR produces fewer or equal trades", () => {
+describe("MINH_MIN_RR override", () => {
+  test("higher MINH_MIN_RR produces fewer or equal trades", () => {
     const candles = makeTestCandles();
 
     const baseline = runBacktest(candles, baseConfig);
     const highRR = runBacktest(candles, {
       ...baseConfig,
-      strategyParams: { SMC_MIN_RR: 10.0 },
+      strategyParams: { MINH_MIN_RR: 10.0 },
     });
 
     // Very high R:R requirement should filter out most trades

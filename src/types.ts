@@ -24,7 +24,7 @@ export type StructureBias = "bullish" | "bearish" | "neutral";
 
 export type SignalSide = "long" | "short";
 
-export type PatternType = "smc-sd";
+export type PatternType = "minh";
 
 export interface Signal {
   type: PatternType;

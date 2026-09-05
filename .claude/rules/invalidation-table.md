@@ -1,12 +1,9 @@
 # Pattern Invalidation Rules
 
+Single live pattern type: **`minh`**. Thresholds live in `PATTERN_TTL_BARS` (`src/config.ts`). Logic: `src/strategy/shared/invalidation.ts`.
+
 | Pattern | TTL (bars) | Invalidation Condition |
 |---------|------------|------------------------|
-| Order Block | 20 | Close beyond OB zone |
-| FVG | 10 | Filled (Consequent Encroachment) |
-| Spring | 15 | New low below spring × 0.99 |
-| Demand Zone | 25 | Close beyond swing/structure level |
-| Breakout | 5 | Retrace 0.5% beyond break level |
-| VSA Signal | 8 | Close beyond SL |
-| Price Action | 6 | Close beyond pattern extreme |
-| Volume Profile | 12 | Close beyond VA boundary |
+| minh | 12 | Close beyond zone boundary ± 0.5× ATR buffer (`zone-broken`), or TTL expiry |
+
+Do not reintroduce multi-pattern TTL rows unless a new `PatternType` ships in `src/types.ts` and `PATTERN_TTL_BARS` in the same change.

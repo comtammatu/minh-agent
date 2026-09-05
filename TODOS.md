@@ -1,157 +1,39 @@
 # TODOS
 
-Active backlog only. Historical review notes and superseded plans live in [docs/archive/plan/decisions.md](docs/archive/plan/decisions.md).
-Priority: **P0 (urgent safety), P1 (do next), P2 (soon), P3 (someday)**.
+Active backlog only — **Minh Greenfield**. History: [docs/archive/](docs/archive/README.md). Features: [docs/FEATURES.md](docs/FEATURES.md). Pipeline: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Advisor + Learning Loop (2026-06-10, branch feat/advisor-learning-loop)
+Priority: **P0** urgent safety · **P1** next · **P2** soon · **P3** someday.
 
-### [DONE 2026-06-10] Advisor + Learning Loop v1 — close the loop
-- Outcome signal fixed (position-monitor close paths estimated pnl/closePrice, was pnl:0 everywhere); exit journal carries pnlR + regime + patternData keys; one trade_outcome memory per close, tagged executionMode.
-- `src/advisor/`: pure bucket stats (Laplace smoothing, hierarchy fallback), risk-reduction-only verdicts (veto/dampen, never boost), in-memory cache, insight job writing `pattern_insight` memories; `pruneMemories` now actually scheduled.
-- Entry gate beside portfolio-risk filter; `ADVISOR_MODE=off|shadow|active` (default **shadow** — verdicts journaled as `advisor` events but not enforced). Surfaces: telegram `/advisor`, `GET /api/advisor`.
-- Contract: [docs/plan/task-contract-advisor-learning-loop-2026-06-10.md](docs/plan/task-contract-advisor-learning-loop-2026-06-10.md); decisions log: [docs/plan/implementation-notes-advisor-v1.md](docs/plan/implementation-notes-advisor-v1.md).
-- Resolves arch-refactor task-contract Q2 (advisor: NOW, deterministic v1, no LLM/secrets).
+**Active:** Greenfield presence rebuild (Ink TUI + Telegram). Browser dashboard / Bloomberg DESIGN targets are out of scope.
 
-### [P1] Advisor shadow→active promotion gate
-- Let shadow mode accumulate `advisor` journal events, then evaluate: would enforced vetoes have improved PF/expectancy? Promote `ADVISOR_MODE=active` only on positive evidence. Needs a small analysis script over trade_journal (eventType=advisor join exit outcomes by setupId).
+## Advisor
 
-### [DONE 2026-06-10] Fix EXITING stranding on single-dispatch closes + thesis paper-tiger close
-- Close events (sl/tp/trail/position_closed) are completed-close notifications → `handleInPosition` now transitions straight to IDLE (PAUSED under global pause). EXITING is reserved for agent-initiated closes (`close_position` submitted, positionId retained, tick-retry intact).
-- `handleExiting` completes on any close event; tick safety net finishes EXITING when positionId is null (`exit_complete_no_position` journal) instead of stranding the coin until restart.
-- **Bigger bug found during the fix**: thesis `severe` closes never submitted an exchange close — the agent went flat + monitor untracked while the position stayed OPEN on the exchange (unmanaged + double-position risk on re-entry). `executeAction('close')` now routes monitor-initiated reasons to a real `close_position` via new `pm.setCloseCallback` → OrderManager; the agent stays IN_POSITION until reconcile confirms. Trail/reconcile reasons remain notifications.
-- Regression tests: reconcile single-dispatch close → IDLE + re-entry works; invalidation flow unchanged; PnL dedupe intact; close-action routing (thesis → onClose, no fake dispatch, stays tracked).
+### [P1] Shadow → active promotion gate
+- Accumulate `advisor` journal events in shadow; evaluate whether enforced vetoes would have improved PF/expectancy.
+- Promote `ADVISOR_MODE=active` only on positive evidence.
+- Needs analysis script: journal `advisor` events joined to exits by `setupId`.
+- Contract/notes (archived): `docs/archive/plan/task-contract-advisor-learning-loop-2026-06-10.md`
 
-### [DONE 2026-06-11] `positions` table has no writer → analytics now journal-derived
-- Decision: option (b) — closed trades derive from `trade_journal` exit rows (one per close post-stranding-fix); avoids permanent dual bookkeeping. Old `pattern_performance` matview had never worked anyway (joined on JSON keys the agent never wrote).
-- Migration 013 re-sources all three matviews from journal exits (COALESCE'd keys for CONCURRENTLY); pnl=0 / NULL-pnl rows excluded as signal-less (advisor isWin convention).
-- `handleExiting` exits now carry full setup context via `buildExitJournalDetails` (+ `grade`) — also fixes invalidation closes writing no `trade_outcome` memory (learning-loop gap).
-- `openPositionCount` from in-memory PositionMonitor; `positions` table now fully unused (cleanup migration is a future nicety).
-- Full rationale: [docs/plan/implementation-notes-advisor-v1.md](docs/plan/implementation-notes-advisor-v1.md).
-
-### [P2] Advisor follow-ons (deferred from v1 by design)
-- Backtest validation: advisor-gate injection into `src/backtest/engine.ts` + walk-forward gate before enabling active mode.
-- Mode-aware stats filter (paper vs live outcomes) once both exist in one DB.
-- Fill-based realized PnL (supersede `pnlEstimated` price-based estimates).
-
-## Execution safety (from /autoplan 2026-05-19 — Phase 3 Eng Review)
-
-See [docs/plan/stack-decision-draft.md](docs/plan/stack-decision-draft.md) for full context.
-
-### [DONE 2026-05-19] Fix cancel-failure-hidden bug — order-manager.ts
-- Fixed: if exchange cancel + cloid retry both fail, status now stays `submitted` (was: silently marked `cancelled`).
-- Test added: `cancelOrder > preserves status when exchange cancel + cloid retry both fail`.
-
-### [DONE 2026-05-19] Add HL scheduleCancel (dead-man-switch) — exchange method
-- Implemented `scheduleCancel(timestampMs?)` on `HLExchangeService` via `@nktkas/hyperliquid` SDK.
-- Added optional `scheduleCancel?(timestampMs?)` to `IExchangeService` interface.
-- BB returns explicit failure (not no-op); caller relies on `cancelAllOpenOrders()` at shutdown.
-
-### [DONE 2026-05-19] Wire HL scheduleCancel into runtime — periodic refresh
-- Added `DMS_DEADLINE_MS` (6h), `DMS_REFRESH_MS` (4h), `isPaperMode()`, `isDmsEnabled()` in `src/config.ts`.
-- `PAPER_TRADE` env wired (default `true`). DMS arms only when `ACTIVE_EXCHANGE=HL && PAPER_TRADE=false`.
-- `runApp()` arms via `setInterval` after pool init; refresh tick logs on error. Graceful shutdown calls `scheduleCancel(undefined)`.
-- Policy tests in `test/runtime/dms-arming.test.ts` lock in cadence ≤10 ops/day and ≥5s HL minimum.
-
-### [DONE 2026-05-19] BB heartbeat watchdog — process-freeze coverage
-- Implemented Option A from the design comparison: standalone Bun script (`scripts/bb-watchdog.ts`) polling a heartbeat file (`{pid, ts}`) written every 30s by the main runtime when `ACTIVE_EXCHANGE=BB && PAPER_TRADE=false`.
-- Detection logic is pure (`evaluateHeartbeat`) and unit-tested; the loop, file IO, and `cancelAllOpenOrders()` call sit at the edge.
-- Stale + dead PID → crash; stale + alive PID → freeze. Both fire the cancel and exit non-zero for supervisor restart. Missing file → intentional shutdown (no-op).
-- Graceful shutdown deletes the heartbeat file so the watchdog doesn't fire on operator-driven stops.
-- Configurable via `BB_HEARTBEAT_PATH` / `BB_HEARTBEAT_WRITE_MS` / `BB_HEARTBEAT_THRESHOLD_MS` (defaults: `/tmp/minh-heartbeat.json`, 30s, 5min).
-- Deploy guide (systemd + pm2 + container) and design rationale in [docs/operations/dead-man-switch.md](docs/operations/dead-man-switch.md).
-- Tests: `test/runtime/heartbeat.test.ts` (writer/reader + isPidAlive) and `test/runtime/bb-watchdog.test.ts` (decision matrix + gating + cadence invariants).
-
-### [DONE 2026-06-05] Reconciliation pass — surface cancel-failed orders + sync exchange state
-- `getOpenOrders()` on HL + BB exchange services (null on API error → skip cycle)
-- Pure planner in `src/agent/order-reconciler.ts`; executor in `OrderManager.reconcileWithExchange()`
-- Wired into PositionMonitor sync (~10s tick, throttled to `ORDER_RECONCILE_INTERVAL_MS` 30s)
-- Retries stale active DB orders, cancels exchange ghosts when DB already cancelled, alerts orphan/drift via log + journal
-
-### [DONE 2026-06-05] Execution boundary contract test suite (P1 baseline)
-- `test/execution/execution-boundary.contract.test.ts` — cloid format, cancelOnExchange routing (incl. 0x parseInt regression), cancel-failure ghost prevention, HL SL/TP after fill, BB inline SL/TP skip, modify-trigger cancel+replace race, reconcileWithExchange (ghost cancel, stale retry, paper skip, API null)
-- HL contracts in `src/execution/exchange-service.test.ts` — cloid SDK forward, perp+spot effectiveBalance, wallet init stability, scheduleCancel DMS
-- BB contracts in `src/execution/bybit-exchange-service.test.ts` — orderLinkId round-trip, effectiveBalance cache
-- Run gate: `bun run test:execution-contract` (14 tests; also included in `bun run test:run`)
-
-### [DONE 2026-06-05] Operator-control surface contract (`src/server/`)
-- `POST /api/operator/flatten` (confirm required) + `POST /api/operator/pause` + `POST /api/operator/resume`
-- Audit log via `logOperatorAuditEntry` with `operatorSource: dashboard`
-- Dashboard hold-to-confirm controls wired in `dashboard/src/components/operator-controls.tsx`
-- JWT/auth deferred per DESIGN target; localhost-only for now
-
-Current implementation source of truth:
-- `SETUP.md`
-- `docs/CODEBASE_MAP.md`
-- `docs/runtime-and-feed.md`
-- `docs/strategy-engine.md`
-- `docs/agent-and-execution.md`
-
-### [DONE 2026-06-04] Arch + AI Agents Refactor (cursor/refactor-arch-ai-agents-f5ce)
-- Doc reality sync (Elysia/SSE/memory lies removed from active; DESIGN tagged current vs target).
-- May cleanup S2-S5 complete (script move, biome+knip + baseline/triage, telegram split to <600 files).
-- Memory tests (S6c) + test/memory/ added.
-- AI Agent System Structure rebuilt: .claude/ now has environment/cursor-cloud.md (exact match to Cloud tools/git/PR/MCP/Task), agents/ as playbooks, .cursor/ optional, protocol/gates/CLAUDE aligned, no fiction.
-- Advisor skeleton + minimal journal wire (optional, deferred full).
-- All 10 plan todos complete; PR #10; all gates noted (pre-existing type issues + env for PG in tests); reviewer checklist on diff.
-- See docs/plan/task-contract-arch-ai-agents-refactor-2026-06-04.md and .claude/README.md .
-
-Planning note:
-
-- `docs/archive/plan/` contains historical sprint plans and roadmap drafts.
-- Do not treat sprint `[DONE]` markers as proof that `src/advisor/` or `src/memory/` exist on the current branch. (`src/server/` and `dashboard/` are now implemented.)
-
----
+### [P2] Advisor follow-ons
+- Backtest validation: inject advisor gate into `src/backtest/engine.ts` + walk-forward before active mode
+- Mode-aware stats filter (paper vs live) once both exist in one DB
+- Fill-based realized PnL (replace price-estimated `pnlEstimated`)
 
 ## Strategy
 
-### [P2] AMD Standalone — Investigate 1H CHoCH-only entry without 4H POI gate
+### [P1] Simulator slot contention — enable drilldown in optimizer
+- Simulator one-position-per-coin rejects 5m micro-entry when `1h_same_tf` is open.
+- Option A: `--mode 5m-only` for optimizer. Option B: allow drilldown coexist/override in `TradeSimulator.tryFill()`.
+- Effort: S. Context in `docs/archive/plan/decisions.md`.
 
-**What:** Remove 4H POI requirement from the signal pipeline. Test `scan1hSameTF` in isolation: pure 1H BOS/CHoCH + zone proximity, no HTF gate.
+### [P2] AMD standalone — 1H CHoCH without 4H POI gate
+- Only if D+E+F 10-coin holdout stays PF &lt; 1.1 with 40+ trades.
+- Add `scan1hAMDStandalone` skipping HTF context; run optimizer.
 
-**Why:** If D+E+F optimizer run (10 coins, SMC_1H_CONFIDENCE_BASE param) still shows PF~1.0 with 40+ holdout trades, the SMC-SD strategy structure itself has no alpha. The next hypothesis to test is whether the 4H POI gate is the bottleneck (fires rarely, excludes valid setups) or the signal (1H BOS + bounce has no edge regardless of filter).
+### [P3] Multiplicative confidence scoring
+- Replace additive confidence stack with multiplicative or min-N-of-M model.
+- Only after 1H + drilldown investigations fail to produce holdout PF &gt; 1.1.
 
-**How to start:** Add a new scan mode `scan1hAMDStandalone` in `smc-sd/index.ts` that skips HTF context entirely. Run optimizer on this mode with 10 coins.
+## Recently completed (do not re-litigate)
 
-**Trigger:** Only pursue if D+E+F 10-coin run shows holdout PF < 1.1 with 40+ trades.
-
-**Effort:** M (3-5 days code + 4h optimizer run)
-**Depends on:** D+E+F run results
-**Added by:** CEO Review 2026-04-11
-
-### [DONE] Debug Drilldown Cascade — Why does 4H→15m→5m fire zero times?
-
-**Status:** DIAGNOSED 2026-04-12. Root cause: 5m FVG-only entry requirement (8,703 kills), CHoCH gate (1,293 kills), short TTL (907 expirations). See `docs/archive/plan/decisions.md` "Drilldown Cascade Diagnostic Results".
-
-**Diagnostic tool:** `scripts/backtest/run-drilldown-diag.ts`
-
-### [DONE] Fix Drilldown 5m Entry Bottleneck — F1-F4 applied 2026-04-12
-
-**Status:** F1-F4 applied. 5m signals 27→49 (+81%). See `docs/archive/plan/decisions.md` "Drilldown 5m Entry Fixes Applied".
-
-### [P1] Fix Simulator Slot Contention — Enable drilldown trades in optimizer
-
-**What:** The optimizer simulator rejects 5m micro-entry when the same coin already has an open `1h_same_tf` position. `simulator.tryFill()` enforces one-position-per-coin. Either (A) run optimizer with `1h_same_tf` disabled to validate 5m signal quality in isolation, or (B) add priority routing so drilldown mode can coexist with or override the 1h position for the same coin.
-
-**Why:** F1-F4 raised 5m signals to 49 but drilldown trades remain 0 in all optimizer runs. Root cause confirmed: `1h_same_tf` fills coin slot first → 5m micro-entry rejected by simulator. Drilldown R:R (10:1-40:1) is the highest-value path.
-
-**How to start:**
-- Option A (fastest): add `--mode 5m-only` flag to optimizer run script that disables `scan1hSameTF`. Run 10-coin optimizer. If holdout PF ≥ 1.1 with ≥ 40 trades → 5m standalone has alpha.
-- Option B: modify `TradeSimulator.tryFill()` to allow drilldown entries to coexist or supersede same-coin 1h positions.
-
-**Effort:** S (1-2 sessions)
-**Depends on:** F1-F4 done (CONFIRMED), Drilldown diagnostic (DONE)
-**Added by:** Slot contention analysis 2026-04-12
-
-### [P3] Investigate Multiplicative Confidence Scoring Model
-
-**What:** Replace additive confidence scoring (16 separate +0.05-0.12 bonuses that stack) with a multiplicative model (each factor is a probability, multiply them) or minimum-required-confluences model (need N of M conditions, not just enough bonuses to pass threshold).
-
-**Why:** The additive model makes it trivially easy to pass MIN_CONFIDENCE by stacking 3-4 small bonuses regardless of signal quality. A BOS entry with weak zone + displacement + directional close + discount already reaches 0.65+. The scoring architecture may be the structural bottleneck preventing meaningful differentiation between good and bad signals.
-
-**How to start:** Analyze confidence distributions of winning vs losing trades from optimizer runs. If both clusters have similar confidence scores, the scoring model isn't discriminating.
-
-**Trigger:** Only pursue after both 1H fixes AND drilldown investigation fail to produce holdout PF > 1.1. This is a strategy architecture change affecting all scan modes.
-
-**Effort:** L (5-7 days design + implementation + full regression)
-**Depends on:** Results from P2 items above
-**Added by:** Eng Review 2026-04-12 (outside voice recommendation)
+Advisor v1 (shadow), EXITING stranding fix, journal-derived analytics (migration 013), cancel-failure visibility, HL DMS + BB watchdog, order reconciliation, execution-boundary contracts, operator flatten/pause/resume APIs, arch/docs agent-config cleanup. Details under `docs/archive/plan/`.

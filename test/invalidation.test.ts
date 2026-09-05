@@ -16,12 +16,12 @@ function makeSetup(
   patternData: Record<string, unknown>,
   detectedAtBar = 10,
 ): ActiveSetup {
-  const expiresAtBar = computeExpiresAtBar("smc-sd", detectedAtBar);
+  const expiresAtBar = computeExpiresAtBar("minh", detectedAtBar);
   return {
-    id: `BTC|1h|smc-sd|${side}`,
+    id: `BTC|1h|minh|${side}`,
     coin: "BTC",
     interval: "1h" as CandleInterval,
-    type: "smc-sd",
+    type: "minh",
     side,
     confidence: 0.7,
     entryPrice: 100,
@@ -41,7 +41,7 @@ describe("invalidation — TTL", () => {
       { zoneBottom: 98, zoneTop: 102, atrAtEntry: 2 },
       0,
     );
-    const ttl = PATTERN_TTL_BARS["smc-sd"]!;
+    const ttl = PATTERN_TTL_BARS["minh"]!;
     const candles = [makeCandle({ c: 100 })];
     const result = isInvalidated(setup, candles, ttl);
     expect(result.invalidated).toBe(true);
@@ -62,7 +62,7 @@ describe("invalidation — TTL", () => {
   });
 });
 
-describe("invalidation — smc-sd zone", () => {
+describe("invalidation — minh zone", () => {
   it("long: invalidates when close below zoneBottom - ATR buffer", () => {
     const atr = 2;
     const zoneBottom = 98;
@@ -139,23 +139,23 @@ describe("invalidation — 0-bar skip", () => {
 
 describe("setupId", () => {
   it("generates canonical id without strategy prefix", () => {
-    expect(setupId("BTC", "4h", "smc-sd")).toBe("BTC|4h|smc-sd");
+    expect(setupId("BTC", "4h", "minh")).toBe("BTC|4h|minh");
   });
 
   it("ignores extra trailing args and still returns the canonical id", () => {
-    expect(setupId("BTC", "4h", "smc-sd", "alpha")).toBe("BTC|4h|smc-sd");
+    expect(setupId("BTC", "4h", "minh", "alpha")).toBe("BTC|4h|minh");
   });
 
   it("same coin/tf/type always resolves to the same canonical id", () => {
-    const a = setupId("ETH", "1h", "smc-sd", "smc-sd");
-    const b = setupId("ETH", "1h", "smc-sd", "alpha");
+    const a = setupId("ETH", "1h", "minh", "minh");
+    const b = setupId("ETH", "1h", "minh", "alpha");
     expect(a).toBe(b);
   });
 });
 
 describe("computeExpiresAtBar", () => {
   it("computes correct bar using TTL", () => {
-    const ttl = PATTERN_TTL_BARS["smc-sd"]!;
-    expect(computeExpiresAtBar("smc-sd", 100)).toBe(100 + ttl);
+    const ttl = PATTERN_TTL_BARS["minh"]!;
+    expect(computeExpiresAtBar("minh", 100)).toBe(100 + ttl);
   });
 });

@@ -2,17 +2,8 @@
  * Setup invalidation logic.
  * Pure functions — no side effects, no I/O.
  *
- * Invalidation rules per pattern type:
- *   order-block   — price closes beyond OB zone (zone broken)
- *   fvg           — price closes through FVG midpoint (gap filled)
- *   spring        — price closes below spring low (spring failed)
- *   demand-zone   — price closes below demand zone bottom (zone lost)
- *   breakout      — price reverses back into broken zone (failed breakout)
- *   vsa-signal    — price closes through the bar's opposite extreme (pattern failed)
- *   price-action  — price closes through the pattern bar's opposite extreme
- *   volume-profile — price closes through the profile level (level broken)
- *
- * TTL: max bar lifetime per type (PATTERN_TTL_BARS in config.ts)
+ * Live pattern: minh — close beyond zone boundary ± ATR buffer, or TTL expiry.
+ * TTL: PATTERN_TTL_BARS in config.ts (see .claude/rules/invalidation-table.md).
  */
 
 import { PATTERN_TTL_BARS } from "../../config.js";
@@ -56,7 +47,7 @@ export function isInvalidated(
   const pd = setup.patternData;
 
   switch (setup.type) {
-    case "smc-sd": {
+    case "minh": {
       // Zone-based invalidation: close beyond zone boundary + ATR buffer
       const smcZoneBottom = pd.zoneBottom as number;
       const smcZoneTop = pd.zoneTop as number;

@@ -17,6 +17,5 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "test", "scripts"],
-  "exclude": ["scripts/gen-fixtures.ts"]
+  "include": ["src", "test", "scripts"]
 }

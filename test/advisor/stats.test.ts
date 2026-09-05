@@ -12,7 +12,7 @@ const NOW = 1_750_000_000_000;
 
 function outcome(partial: Partial<OutcomeRow>): OutcomeRow {
   return {
-    pattern: "smc-sd",
+    pattern: "minh",
     regime: "BULL",
     side: "long",
     timeframe: "1h",
@@ -31,7 +31,7 @@ function rows(losses: number, wins: number): OutcomeRow[] {
 }
 
 const DIMS: SetupDims = {
-  pattern: "smc-sd",
+  pattern: "minh",
   side: "long",
   regime: "BULL",
   interval: "1h",
@@ -40,17 +40,17 @@ const DIMS: SetupDims = {
 describe("bucketKeysFor", () => {
   it("returns most-specific-first hierarchy when all dims present", () => {
     expect(bucketKeysFor(DIMS)).toEqual([
-      "smc-sd|BULL|long|1h",
-      "smc-sd|BULL|long",
-      "smc-sd|long",
+      "minh|BULL|long|1h",
+      "minh|BULL|long",
+      "minh|long",
     ]);
   });
 
   it("skips levels whose dimensions are missing", () => {
-    expect(bucketKeysFor({ ...DIMS, regime: null })).toEqual(["smc-sd|long"]);
+    expect(bucketKeysFor({ ...DIMS, regime: null })).toEqual(["minh|long"]);
     expect(bucketKeysFor({ ...DIMS, interval: null })).toEqual([
-      "smc-sd|BULL|long",
-      "smc-sd|long",
+      "minh|BULL|long",
+      "minh|long",
     ]);
   });
 });
@@ -61,15 +61,15 @@ describe("aggregateOutcomes", () => {
     expect(snap.sampleSize).toBe(10);
     expect(snap.global?.trades).toBe(10);
     expect(snap.global?.wins).toBe(7);
-    const l1 = snap.buckets.get("smc-sd|BULL|long|1h");
+    const l1 = snap.buckets.get("minh|BULL|long|1h");
     expect(l1?.trades).toBe(10);
     expect(l1?.losses).toBe(3);
-    expect(snap.buckets.get("smc-sd|long")?.trades).toBe(10);
+    expect(snap.buckets.get("minh|long")?.trades).toBe(10);
   });
 
   it("applies Laplace smoothing to win rate", () => {
     const snap = aggregateOutcomes(rows(0, 4), NOW);
-    const stats = snap.buckets.get("smc-sd|BULL|long|1h");
+    const stats = snap.buckets.get("minh|BULL|long|1h");
     // (4 + 1) / (4 + 1 + 1) — never a hard 100%
     expect(stats?.smoothedWinRate).toBeCloseTo(5 / 6, 10);
   });
@@ -117,7 +117,7 @@ describe("evaluateSetup", () => {
     const snap = aggregateOutcomes(rows(12, 0), NOW);
     const verdict = evaluateSetup(DIMS, snap);
     expect(verdict.action).toBe("veto");
-    expect(verdict.bucketKey).toBe("smc-sd|BULL|long|1h");
+    expect(verdict.bucketKey).toBe("minh|BULL|long|1h");
     expect(verdict.sampleSize).toBe(12);
   });
 
@@ -147,7 +147,7 @@ describe("evaluateSetup", () => {
     const verdict = evaluateSetup(DIMS, snap);
     expect(verdict.action).toBe("allow");
     expect(verdict.sizeMultiplier).toBe(1);
-    expect(verdict.bucketKey).toBe("smc-sd|BULL|long|1h");
+    expect(verdict.bucketKey).toBe("minh|BULL|long|1h");
   });
 
   it("falls back to a broader bucket when the specific one is too small", () => {
@@ -163,10 +163,10 @@ describe("evaluateSetup", () => {
     );
     const snap = aggregateOutcomes(broad, NOW);
     const verdict = evaluateSetup(
-      { pattern: "smc-sd", side: "short", regime: "BEAR", interval: "4h" },
+      { pattern: "minh", side: "short", regime: "BEAR", interval: "4h" },
       snap,
     );
-    expect(verdict.bucketKey).toBe("smc-sd|short");
+    expect(verdict.bucketKey).toBe("minh|short");
     expect(verdict.action).toBe("veto");
   });
 });

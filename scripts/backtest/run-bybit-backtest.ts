@@ -1,11 +1,11 @@
 /**
  * Bybit Backtest Runner — fetch candles from Bybit REST → run backtest engine.
  *
- * Usage: bun run scripts/backtest/run-bybit-backtest.ts [smc-sd]
- * Legacy alias `all` is accepted and maps to `smc-sd`.
+ * Usage: bun run scripts/backtest/run-bybit-backtest.ts
+ * (Single strategy path: minh. Legacy args `minh` / `all` are ignored.)
  *
  * No PostgreSQL required — all data fetched directly into memory.
- * Uses fetchBybitCandlesBatched from feed/bybit/bybit-rest.ts.
+ * Uses fetchBybitCandlesBatched from feed/bb/bybit-rest.ts.
  */
 
 import { runBacktest } from "../../src/backtest/engine.js";
@@ -29,7 +29,7 @@ import {
   WF_TEST_WINDOW_MS,
   WF_TRAIN_WINDOW_MS,
 } from "../../src/config.js";
-import { fetchBybitCandlesBatched } from "../../src/feed/bybit/bybit-rest.js";
+import { fetchBybitCandlesBatched } from "../../src/feed/bb/bybit-rest.js";
 import { log } from "../../src/lib/logger.js";
 import { formatPipelineStats } from "../../src/strategy/diagnostics.js";
 import type { Candle, CandleInterval } from "../../src/types.js";
@@ -305,13 +305,13 @@ function runStrategyBacktest(
 }
 
 function normalizeStrategyArg(raw: string | undefined): StrategyType {
-  const value = raw?.trim().toLowerCase() ?? "smc-sd";
-  if (value === "smc-sd" || value === "all") return "smc-sd";
+  const value = raw?.trim().toLowerCase() ?? "minh";
+  if (value === "minh" || value === "all") return "minh";
   log.warn(
     "bb-backtest",
-    `Unsupported strategy "${value}" - using canonical setup engine smc-sd`,
+    `Unsupported strategy "${value}" - using canonical setup engine minh`,
   );
-  return "smc-sd";
+  return "minh";
 }
 
 // ─── Main ──────────────────────────────────────────────────────────────────

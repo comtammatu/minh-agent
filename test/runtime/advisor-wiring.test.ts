@@ -5,11 +5,8 @@ import { ADVISOR, getAdvisorMode } from "../../src/config.js";
 /**
  * Advisor runtime-wiring gating + cadence invariants.
  *
- * These are policy tests: they don't boot the runtime. They lock in the
- * config-level contract that runtime/app.ts depends on when wiring the
- * advisor (step 9: setAdvisor injection, refresh-on-close + periodic
- * refresh, insight job) so the wiring stays fail-open and the periodic
- * refresh keeps the snapshot inside the staleness window.
+ * Policy tests for config-level contracts that runtime/app.ts depends on when
+ * wiring the advisor (setAdvisor injection, refresh-on-close + periodic refresh).
  */
 describe("Advisor wiring policy", () => {
   describe("getAdvisorMode", () => {
@@ -52,19 +49,7 @@ describe("Advisor wiring policy", () => {
     });
 
     it("periodic refresh outpaces the staleness window", () => {
-      // An idle runtime (no trade closes) must keep the snapshot fresh via the
-      // interval alone — otherwise the advisor silently disables itself
-      // between trades once isSnapshotFresh starts failing.
       expect(ADVISOR.refreshMs).toBeLessThan(ADVISOR.staleAfterMs);
-    });
-
-    it("insight job cadence is valid and not hotter than the stats refresh", () => {
-      expect(ADVISOR.insightIntervalMs).toBeGreaterThan(0);
-      // The insight job reads the cache snapshot — the snapshot must have been
-      // refreshed at least once between consecutive insight runs.
-      expect(ADVISOR.insightIntervalMs).toBeGreaterThanOrEqual(
-        ADVISOR.refreshMs,
-      );
     });
   });
 
@@ -74,17 +59,12 @@ describe("Advisor wiring policy", () => {
     });
 
     it("snapshot is null (pass-through) before the first refresh completes", () => {
-      // runtime/app.ts fires `void advisorCache.refresh()` without awaiting —
-      // boot must not be delayed, so the entry path can observe the cache
-      // before any stats load. getSnapshot() must be synchronous and null-safe.
       resetAdvisorCache();
       const cache = getAdvisorCache();
       expect(cache.getSnapshot()).toBeNull();
     });
 
     it("getAdvisorCache returns a process-wide singleton", () => {
-      // setAdvisor injection + refresh intervals + insight job all reference
-      // the same instance — a per-call instance would split the snapshot.
       resetAdvisorCache();
       expect(getAdvisorCache()).toBe(getAdvisorCache());
     });

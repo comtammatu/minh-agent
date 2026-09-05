@@ -1,8 +1,7 @@
 /**
- * Golden tests — compare Minh indicator output against fixture snapshots.
- * Run `bun run scripts/gen-fixtures.ts` first to generate test/fixtures/*.json.
- *
- * If fixtures don't exist, tests are skipped (graceful degradation).
+ * Golden tests — compare Minh indicator output against fixture snapshots
+ * under test/fixtures/*.json (checked in). If the fixture dir is missing,
+ * tests in this file are skipped.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -52,7 +51,7 @@ function loadFixture<T>(name: string): T | null {
 
 describe("core indicators", () => {
   if (!fixturesExist) {
-    it.skip("fixtures not generated — run bun run scripts/gen-fixtures.ts", () => {});
+    it.skip("fixtures not generated — add test/fixtures/*.json", () => {});
     return;
   }
 
@@ -859,7 +858,7 @@ describe("smc indicators", () => {
 });
 
 // ── Structure tests removed — analyzeStructure deleted in A6 ──────────────────
-// classifySwings + detectStructuralBias now tested in test/price-action-structure.test.ts
+// classifySwings / detectStructuralBias lived in removed price-action.ts (unused by minh)
 
 // ── Smoke tests (no fixtures needed) ─────────────────────────────────────────
 

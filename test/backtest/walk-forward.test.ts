@@ -361,7 +361,7 @@ function makeTrade(pnl: number): BacktestTrade {
     coin: "BTC",
     interval: "1h" as CandleInterval,
     side: "long" as const,
-    patternType: "smc-sd" as const,
+    patternType: "minh" as const,
     confluenceGrade: "B" as const,
     entryPrice: 40000,
     exitPrice: pnl > 0 ? 40000 + pnl : 40000 + pnl,

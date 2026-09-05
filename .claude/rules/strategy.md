@@ -8,7 +8,7 @@ Strategy code is the **pure** half of the pipeline. Side effects belong in `agen
 ## Invariants
 - Pure functions only — zero I/O, zero side effects
 - Live and replay both go through the same canonical setup path:
-  `onCandleTick()` → closed-candle gate → `smc-sd` setup generation
+  `onCandleTick()` → closed-candle gate → `minh` setup generation
 - Bypassing `onCandleTick()` or `pipelineEmitter` instantly drifts live vs backtest
 - No magic numbers — all thresholds live in `src/config.ts`
 
@@ -28,5 +28,6 @@ Strategy code is the **pure** half of the pipeline. Side effects belong in `agen
 - See `docs/archive/plan/decisions.md` for the multiplicative-vs-additive scoring debate
 
 ## See also
-- Pipeline diagram + setup-to-order path: [docs/strategy-engine.md](../../docs/strategy-engine.md)
+- Pipeline + capability map: [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)
+- Deep dive: [docs/strategy-engine.md](../../docs/strategy-engine.md)
 - Pattern TTLs: [invalidation-table.md](invalidation-table.md)

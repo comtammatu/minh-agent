@@ -38,7 +38,7 @@ describe("OrderManager BB fallback guard", () => {
 
     const om = new OrderManager();
     expect(() => callGetExchange(om)).toThrow(
-      "ExchangePool must be initialized in BB live mode",
+      "execution must be initialized in BB live mode",
     );
     expect(hlSingletonFallbackCalls).toBe(0);
   });

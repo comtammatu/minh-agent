@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
-  assertDashboardBindingAllowed,
   BYBIT_STATIC_COINS,
   getActiveExchange,
   getDefaultCoins,
@@ -91,48 +90,5 @@ describe("tryGetActiveExchange", () => {
   it("returns BB when set to BB", () => {
     process.env.ACTIVE_EXCHANGE = "BB";
     expect(tryGetActiveExchange()).toBe("BB");
-  });
-});
-
-describe("assertDashboardBindingAllowed", () => {
-  let origRemoteEnabled: string | undefined;
-  let origAuthToken: string | undefined;
-
-  beforeEach(() => {
-    origRemoteEnabled = process.env.DASHBOARD_REMOTE_ENABLED;
-    origAuthToken = process.env.DASHBOARD_AUTH_TOKEN;
-  });
-
-  afterEach(() => {
-    if (origRemoteEnabled === undefined) {
-      delete process.env.DASHBOARD_REMOTE_ENABLED;
-    } else {
-      process.env.DASHBOARD_REMOTE_ENABLED = origRemoteEnabled;
-    }
-    if (origAuthToken === undefined) {
-      delete process.env.DASHBOARD_AUTH_TOKEN;
-    } else {
-      process.env.DASHBOARD_AUTH_TOKEN = origAuthToken;
-    }
-  });
-
-  it("allows localhost bindings", () => {
-    expect(() => assertDashboardBindingAllowed("127.0.0.1")).not.toThrow();
-    expect(() => assertDashboardBindingAllowed("localhost")).not.toThrow();
-    expect(() => assertDashboardBindingAllowed("::1")).not.toThrow();
-  });
-
-  it("rejects non-localhost binding without remote auth opt-in", () => {
-    delete process.env.DASHBOARD_REMOTE_ENABLED;
-    delete process.env.DASHBOARD_AUTH_TOKEN;
-    expect(() => assertDashboardBindingAllowed("0.0.0.0")).toThrow(
-      "Refusing dashboard bind",
-    );
-  });
-
-  it("allows non-localhost binding only with remote opt-in and auth token", () => {
-    process.env.DASHBOARD_REMOTE_ENABLED = "true";
-    process.env.DASHBOARD_AUTH_TOKEN = "secret";
-    expect(() => assertDashboardBindingAllowed("0.0.0.0")).not.toThrow();
   });
 });

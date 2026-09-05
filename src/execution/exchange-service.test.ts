@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 
 // ── Mock setup ────────────────────────────────────────────────────────────
 
-// Mock global fetch for raw /info calls (perp-info.ts)
+// Mock global fetch for dex-scoped HL /info calls (hl-info.ts)
 const originalFetch = globalThis.fetch;
 beforeEach(() => {
   globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {

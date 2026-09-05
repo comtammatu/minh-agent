@@ -152,7 +152,7 @@ async function main() {
     initialCapital: INITIAL_CAPITAL,
     slippagePct: BACKTEST_SLIPPAGE_PCT,
     commissionPct: BACKTEST_COMMISSION_PCT,
-    strategy: "smc-sd",
+    strategy: "minh",
     exitMode: "multi",
   };
 

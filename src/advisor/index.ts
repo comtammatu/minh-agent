@@ -1,13 +1,11 @@
 /**
- * Advisor — learning loop v1 public API.
+ * Advisor — pre-entry bucket stats from trade_journal.
  *
- * Pure core: stats.ts (aggregation + evaluation), insights.ts (generation).
- * I/O edges: cache.ts (snapshot refresh), insights.ts runInsightJob.
- * Internals (bucket keys, verdict/insight shapes) are importable from their
- * source modules; this index exports only what runtime consumers use.
+ * Pure core: stats.ts, insights.ts (on-demand generation).
+ * I/O edge: cache.ts (snapshot refresh).
  */
 
 export { getAdvisorCache, resetAdvisorCache } from "./cache.js";
-export { runInsightJob } from "./insights.js";
+export { generateInsights, insightImportance } from "./insights.js";
 export { aggregateOutcomes, evaluateSetup, isSnapshotFresh } from "./stats.js";
 export type { AdvisorSnapshot, OutcomeRow, SetupDims } from "./types.js";

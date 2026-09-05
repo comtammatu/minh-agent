@@ -1,8 +1,11 @@
 /**
- * Order Flow indicators — pure functions for delta, book, and funding confirmation.
+ * Order Flow indicators — pure helpers for delta, book imbalance, and volume profile.
  *
- * Used by Layer 4 (confirm) to boost/penalize zones based on order flow data.
- * All functions are pure: no I/O, no side effects, deterministic.
+ * Live money path currently uses:
+ *   - bidAskImbalance (via feed/orderbook → OrderManager / HL execution)
+ *   - buildVolumeProfile / computeDelta (tests + research helpers)
+ * Confirm helpers (deltaConfirm, bookConfirm, fundingConfirm, oiConfirm) are
+ * pure library code — not wired into minh confluence today.
  */
 
 import {

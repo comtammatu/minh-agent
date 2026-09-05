@@ -24,11 +24,11 @@ function exitDetails(overrides: Record<string, unknown>): object {
     closePrice: 51000,
     pnl: 100,
     reason: "tp_hit",
-    setupId: "BTC|1h|smc-sd|long",
+    setupId: "BTC|1h|minh|long",
     interval: "1h",
     side: "long",
     confidence: 0.7,
-    pattern: "smc-sd",
+    pattern: "minh",
     grade: "A",
     ...overrides,
   };
@@ -56,7 +56,7 @@ beforeAll(async () => {
         (date_trunc('day', NOW()) + INTERVAL '2 hours', 'exit', 'BTC',
           ${testSql.json(exitDetails({ pnl: 50, side: "short", grade: "B" }))}, 'IDLE'),
         (date_trunc('day', NOW()) + INTERVAL '3 hours', 'exit', 'ETH',
-          ${testSql.json(exitDetails({ pnl: -100, pattern: "smc-sd", grade: "A" }))}, 'IDLE'),
+          ${testSql.json(exitDetails({ pnl: -100, pattern: "minh", grade: "A" }))}, 'IDLE'),
         (date_trunc('day', NOW()) + INTERVAL '4 hours', 'exit', 'SOL',
           ${testSql.json(exitDetails({ pnl: 0 }))}, 'IDLE'),
         (date_trunc('day', NOW()) + INTERVAL '5 hours', 'exit', 'SOL',
@@ -182,7 +182,7 @@ describe("metrics-repo queries (journal-derived)", () => {
       (r: { signal_grade: string }) => r.signal_grade === "A",
     );
     expect(gradeA).toBeDefined();
-    expect(gradeA?.pattern_type).toBe("smc-sd");
+    expect(gradeA?.pattern_type).toBe("minh");
     expect(Number(gradeA?.trades)).toBe(2); // BTC +100 and ETH -100
     expect(Number(gradeA?.wins)).toBe(1);
 

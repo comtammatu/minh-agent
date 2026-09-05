@@ -22,5 +22,7 @@ Feed code is the market-data I/O boundary (REST, WebSocket, stream coordination)
 - Stale data WARNS; never silently trust a dead stream
 
 ## See also
-- HL/BB exchange landmines: [exchange-gotchas.md](exchange-gotchas.md)
-- Quality gates for feed changes: [quality-gates.md](quality-gates.md)
+- Pipeline SSOT: [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)
+- Deep dive: [docs/runtime-and-feed.md](../../docs/runtime-and-feed.md)
+- HL/BB landmines: [exchange-gotchas.md](exchange-gotchas.md)
+- Quality gates: [quality-gates.md](quality-gates.md)

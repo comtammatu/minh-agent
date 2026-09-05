@@ -25,12 +25,12 @@ import {
   WF_TEST_WINDOW_MS,
   WF_TRAIN_WINDOW_MS,
 } from "../../src/config.js";
-import { fetchBybitCandlesBatched } from "../../src/feed/bybit/bybit-rest.js";
+import { fetchBybitCandlesBatched } from "../../src/feed/bb/bybit-rest.js";
 import { log } from "../../src/lib/logger.js";
 import {
   getDrilldownDiagnostics,
   resetDrilldownDiagnostics,
-} from "../../src/strategy/strategies/smc-sd/index.js";
+} from "../../src/strategy/minh/index.js";
 import type { Candle, CandleInterval } from "../../src/types.js";
 
 const TIMEFRAMES: CandleInterval[] = ["5m", "15m", "1h", "4h"];
@@ -136,7 +136,7 @@ async function main() {
     initialCapital: 10_000,
     slippagePct: BACKTEST_SLIPPAGE_PCT,
     commissionPct: BYBIT_COMMISSION_PCT,
-    strategy: "smc-sd",
+    strategy: "minh",
   };
 
   const wfConfig: WalkForwardConfig = {

@@ -111,7 +111,7 @@ const baseConfig: BacktestConfig = {
   initialCapital: 10_000,
   slippagePct: BACKTEST_SLIPPAGE_PCT,
   commissionPct: 0.00055,
-  strategy: "smc-sd",
+  strategy: "minh",
 };
 
 const wfConfig: WalkForwardConfig = {
@@ -201,9 +201,9 @@ describe("optimize", () => {
       MIN_CONFIDENCE: 0.55,
       REGIME_MULT_COUNTER: 0.25,
       REGIME_MULT_NEUTRAL: 0.8,
-      SMC_DRILLDOWN_CONFIDENCE_BASE: 0.7,
+      MINH_DRILLDOWN_CONFIDENCE_BASE: 0.7,
       SL_WICK_ATR_MULT: 0.5,
-      SMC_MIN_RR: 2.0,
+      MINH_MIN_RR: 2.0,
     };
 
     const result = runTrial(trainCandles, baseConfig, wfConfig, params, 0);
@@ -251,9 +251,9 @@ describe("optimize", () => {
       MIN_CONFIDENCE: 0.55,
       REGIME_MULT_COUNTER: 0.25,
       REGIME_MULT_NEUTRAL: 0.8,
-      SMC_DRILLDOWN_CONFIDENCE_BASE: 0.7,
+      MINH_DRILLDOWN_CONFIDENCE_BASE: 0.7,
       SL_WICK_ATR_MULT: 0.5,
-      SMC_MIN_RR: 2.0,
+      MINH_MIN_RR: 2.0,
     };
 
     // Create a mock trial result for holdout validation
@@ -281,9 +281,9 @@ describe("optimize", () => {
       MIN_CONFIDENCE: 0.58, // from config.ts MIN_CONFIDENCE
       REGIME_MULT_COUNTER: 0.25, // from config.ts REGIME_MULTIPLIERS.counter
       REGIME_MULT_NEUTRAL: 0.8, // from config.ts REGIME_MULTIPLIERS.neutral
-      SMC_DRILLDOWN_CONFIDENCE_BASE: 0.7,
+      MINH_DRILLDOWN_CONFIDENCE_BASE: 0.7,
       SL_WICK_ATR_MULT: 0.5,
-      SMC_MIN_RR: 2.0,
+      MINH_MIN_RR: 2.0,
     };
 
     const result = runTrial(trainCandles, baseConfig, wfConfig, p3Params, 0);
@@ -303,9 +303,9 @@ describe("optimize", () => {
       MIN_CONFIDENCE: 0.55,
       REGIME_MULT_COUNTER: 0.25,
       REGIME_MULT_NEUTRAL: 0.8,
-      SMC_DRILLDOWN_CONFIDENCE_BASE: 0.7,
+      MINH_DRILLDOWN_CONFIDENCE_BASE: 0.7,
       SL_WICK_ATR_MULT: 0.5,
-      SMC_MIN_RR: 2.0,
+      MINH_MIN_RR: 2.0,
     };
 
     const result = runTrial(emptyCandles, baseConfig, wfConfig, params, 0);

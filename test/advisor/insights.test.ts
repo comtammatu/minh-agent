@@ -10,7 +10,7 @@ const NOW = 1_750_000_000_000;
 
 function outcome(partial: Partial<OutcomeRow>): OutcomeRow {
   return {
-    pattern: "smc-sd",
+    pattern: "minh",
     regime: "BULL",
     side: "long",
     timeframe: "1h",
@@ -40,10 +40,10 @@ describe("generateInsights", () => {
     );
     expect(insights.length).toBeGreaterThan(0);
     const keys = insights.map((i) => i.bucketKey);
-    expect(keys).toContain("smc-sd|SIDEWAYS|short|1h");
-    expect(keys).toContain("smc-sd|BULL|long|1h");
+    expect(keys).toContain("minh|SIDEWAYS|short|1h");
+    expect(keys).toContain("minh|BULL|long|1h");
     const losing = insights.find(
-      (i) => i.bucketKey === "smc-sd|SIDEWAYS|short|1h",
+      (i) => i.bucketKey === "minh|SIDEWAYS|short|1h",
     );
     expect(losing?.winRateDelta).toBeLessThan(0);
     expect(losing?.content).toContain("underperforms");

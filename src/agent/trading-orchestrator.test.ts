@@ -22,10 +22,10 @@ import type { AgentAction } from "./types.js";
 
 function makeSetup(overrides: Partial<ActiveSetup> = {}): ActiveSetup {
   return {
-    id: "BTC|1h|smc-sd|long",
+    id: "BTC|1h|minh|long",
     coin: "BTC",
     interval: "1h",
-    type: "smc-sd",
+    type: "minh",
     side: "long",
     confidence: 0.75,
     entryPrice: 50000,
@@ -49,7 +49,7 @@ function outcomeRows(
   overrides: Partial<OutcomeRow> = {},
 ): OutcomeRow[] {
   return Array.from({ length: total }, (_, i) => ({
-    pattern: "smc-sd",
+    pattern: "minh",
     regime: null,
     side: "long" as const,
     timeframe: null,
@@ -126,7 +126,7 @@ describe("TradingAgent — advisor gate", () => {
       mode: "shadow",
       applied: false,
       action: "veto",
-      bucketKey: "smc-sd|long",
+      bucketKey: "minh|long",
       sampleSize: 12,
     });
     expect(typeof journals[0]?.details.reason).toBe("string");
@@ -148,7 +148,7 @@ describe("TradingAgent — advisor gate", () => {
       mode: "active",
       applied: true,
       action: "veto",
-      bucketKey: "smc-sd|long",
+      bucketKey: "minh|long",
     });
   });
 
@@ -260,7 +260,7 @@ describe("TradingAgent — advisor gate", () => {
 
     const journals = advisorJournals();
     expect(journals).toHaveLength(1);
-    expect(journals[0]?.details.bucketKey).toBe("smc-sd|BULL|long|1h");
+    expect(journals[0]?.details.bucketKey).toBe("minh|BULL|long|1h");
     expect(agent.getCoinState("BTC")).toBe("IDLE"); // vetoed
   });
 
@@ -272,7 +272,7 @@ describe("TradingAgent — advisor gate", () => {
 
     const journals = advisorJournals();
     expect(journals).toHaveLength(1);
-    expect(journals[0]?.details.bucketKey).toBe("smc-sd|long");
+    expect(journals[0]?.details.bucketKey).toBe("minh|long");
   });
 });
 
@@ -383,7 +383,7 @@ describe("TradingAgent — EXITING stranding regression", () => {
 
     agent.dispatch("ETH", {
       type: "setup_invalidated",
-      setupId: "BTC|1h|smc-sd|long",
+      setupId: "BTC|1h|minh|long",
       reason: "zone_broken",
     });
     expect(agent.getCoinState("ETH")).toBe("EXITING");
@@ -407,7 +407,7 @@ describe("TradingAgent — EXITING stranding regression", () => {
     // then a trigger event nulls positionId without completing the state.
     agent.dispatch("SOL", {
       type: "setup_invalidated",
-      setupId: "BTC|1h|smc-sd|long",
+      setupId: "BTC|1h|minh|long",
       reason: "zone_broken",
     });
     expect(agent.getCoinState("SOL")).toBe("EXITING");

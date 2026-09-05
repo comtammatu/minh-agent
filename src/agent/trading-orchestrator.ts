@@ -11,8 +11,15 @@ import {
   isSnapshotFresh,
   type SetupDims,
 } from "../advisor/index.js";
-import { type AdvisorMode, DEFAULT_RISK_PERCENT } from "../config.js";
+import { type AdvisorMode, DEFAULT_RISK_PERCENT, getExecutionMode } from "../config.js";
+import { setCaseGate } from "../domain/case/bus.js";
 import { log } from "../lib/logger.js";
+import {
+  armCaseGateWithSetup,
+  consumeCaseGate,
+  shouldGateEntry,
+  takeDeferredSetup,
+} from "../presence/gate.js";
 import type { ActiveSetup, MarketRegime } from "../types.js";
 import { prunePnlHistory, runAllChecks } from "./circuit-breakers.js";
 import { shouldBlockCorrelatedEntry } from "./correlation-guard.js";
@@ -170,8 +177,11 @@ export class TradingAgent {
 
     // Portfolio risk check: block place_order if over-exposed (S6),
     // then advisor gate: veto / dampen from learned outcome stats (advisor v1)
-    const filteredActions = this.filterByAdvisor(
-      this.filterByPortfolioRisk(result.actions, coin, ctx),
+    const filteredActions = this.filterByCaseGate(
+      this.filterByAdvisor(
+        this.filterByPortfolioRisk(result.actions, coin, ctx),
+        coin,
+      ),
       coin,
     );
     const placeOrderBlocked =
@@ -536,6 +546,90 @@ export class TradingAgent {
     if (action.type === "watch" || action.type === "place_order") {
       ctx.activeSetup = action.setup;
     }
+  }
+
+  /** Release a Voice-confirmed Case Gate entry (re-emits place_order to listeners). */
+  confirmCaseGateEntry(
+    caseId: string,
+  ): "approved" | "expired" | "missing" {
+    const status = consumeCaseGate(caseId);
+    if (status !== "approved") {
+      setCaseGate(caseId, status === "expired" ? "expired" : "skipped");
+      takeDeferredSetup(caseId);
+      return status;
+    }
+
+    const setup = takeDeferredSetup(caseId);
+    if (!setup) {
+      setCaseGate(caseId, "skipped");
+      return "missing";
+    }
+
+    setCaseGate(caseId, "approved");
+    const key = stateKey(setup.coin);
+    const ctx = this.getOrCreateCoinContext(key, setup.coin);
+    ctx.state = "ENTERING";
+    ctx.activeSetup = setup;
+    ctx.stateEnteredAt = Date.now();
+    this.coins.set(key, ctx);
+
+    log.info(
+      "agent",
+      `${setup.coin.padEnd(8)} CASE GATE | approved → place_order`,
+    );
+    this.emitter.emit("action", { type: "place_order", setup });
+    return "approved";
+  }
+
+  /**
+   * Filter place_order through Case Gate (Voice confirm for A/A+ entries).
+   * Replaces place_order with skip journal until operator confirms via /confirm.
+   */
+  private filterByCaseGate(
+    actions: AgentAction[],
+    coin: string,
+  ): AgentAction[] {
+    const placeAction = actions.find(
+      (a): a is { type: "place_order"; setup: ActiveSetup } =>
+        a.type === "place_order",
+    );
+    if (!placeAction) return actions;
+
+    const grade = placeAction.setup.confluenceGrade;
+    if (
+      !shouldGateEntry({
+        grade,
+        executionMode: getExecutionMode() as "paper" | "live",
+      })
+    ) {
+      return actions;
+    }
+
+    const caseId = placeAction.setup.id;
+    armCaseGateWithSetup(
+      {
+        caseId,
+        setupId: placeAction.setup.id,
+        coin,
+        grade,
+      },
+      placeAction.setup,
+    );
+    setCaseGate(caseId, "pending");
+    log.info(
+      "agent",
+      `${coin.padEnd(8)} CASE GATE | pending Voice confirm | ${grade ?? "?"}`,
+    );
+
+    return [
+      ...actions.filter((a) => a.type !== "place_order"),
+      journalAction("skip", coin, {
+        reason: "case_gate_pending",
+        setupId: placeAction.setup.id,
+        caseId,
+        grade,
+      }),
+    ];
   }
 
   /**
